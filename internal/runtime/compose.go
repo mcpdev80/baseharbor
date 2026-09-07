@@ -38,33 +38,57 @@ func DetectCompose(ctx context.Context) (Compose, error) {
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
-	return c.run(ctx, composeFile, envFile, "up", "-d")
+	return c.UpProject(ctx, "baseharbor", composeFile, envFile)
 }
 
 func (c Compose) Down(ctx context.Context, composeFile, envFile string) error {
-	return c.run(ctx, composeFile, envFile, "down")
+	return c.DownProject(ctx, "baseharbor", composeFile, envFile)
 }
 
 func (c Compose) Status(ctx context.Context, composeFile, envFile string) (string, error) {
-	return c.output(ctx, composeFile, envFile, "ps")
+	return c.StatusProject(ctx, "baseharbor", composeFile, envFile)
 }
 
 func (c Compose) Config(ctx context.Context, composeFile, envFile string) error {
-	return c.run(ctx, composeFile, envFile, "config", "--quiet")
+	return c.ConfigProject(ctx, "baseharbor", composeFile, envFile)
 }
 
-func (c Compose) run(ctx context.Context, composeFile, envFile string, args ...string) error {
-	_, err := c.output(ctx, composeFile, envFile, args...)
+func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "up", "-d")
+}
+
+func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "down")
+}
+
+func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
+	return c.outputProject(ctx, project, composeFile, envFile, "ps")
+}
+
+func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
+}
+
+func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
+}
+
+func (c Compose) runProject(ctx context.Context, project, composeFile, envFile string, args ...string) error {
+	_, err := c.outputProject(ctx, project, composeFile, envFile, args...)
 	return err
 }
 
-func (c Compose) output(ctx context.Context, composeFile, envFile string, args ...string) (string, error) {
+func (c Compose) outputProject(ctx context.Context, project, composeFile, envFile string, args ...string) (string, error) {
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
+	if strings.TrimSpace(project) == "" {
+		return "", errors.New("compose project name is required")
+	}
 
 	fullArgs := append([]string{}, c.prefix...)
-	fullArgs = append(fullArgs, "--project-name", "baseharbor", "--file", composeFile, "--env-file", envFile)
+	fullArgs = append(fullArgs, "--project-name", project, "--file", composeFile, "--env-file", envFile)
 	fullArgs = append(fullArgs, args...)
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
