@@ -3,9 +3,6 @@ name: renovate
 on:
   schedule:
     - cron: '17 1 * * *'
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
   workflow_dispatch:
 
 permissions:
