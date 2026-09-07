@@ -7,12 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	goruntime "runtime"
 	"time"
 
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/jackc/pgx/v5"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type Check struct {
@@ -83,11 +82,6 @@ func checkCompose(runtimeName string) Check {
 		return Check{Name: "compose", OK: false, Message: runtimeName + " compose unavailable"}
 	}
 	return Check{Name: "compose", OK: true, Message: runtimeName + " compose available"}
-}
-
-func runtimeStateExists() bool {
-	_, err := os.Stat(filepath.Join(".baseharbor", "runtime", "runtime.env"))
-	return err == nil
 }
 
 func checkPostgres(cfg bhruntime.Config) Check {
