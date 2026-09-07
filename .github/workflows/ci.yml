@@ -38,5 +38,15 @@ jobs:
         run: go test ./...
       - name: Vet
         run: go vet ./...
+      - name: Validate compose
+        run: |
+          cat > /tmp/baseharbor-runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
       - name: Build baha
         run: go build ./cmd/baha
