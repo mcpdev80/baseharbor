@@ -29,9 +29,9 @@ The runner:
 
 A failed migration is therefore not marked as applied.
 
-## Initial core schema
+## Core schema
 
-The first migration contains only identity and tenancy primitives:
+The core schema currently contains only identity and tenancy primitives:
 
 - `tenants`
 - `external_identities`
@@ -39,17 +39,51 @@ The first migration contains only identity and tenancy primitives:
 
 Application-specific tables do not belong in the BaseHarbor core schema.
 
-## Row-level security
+## Database-enforced tenant isolation
 
-PostgreSQL RLS is a BaseHarbor goal, but it is intentionally not enabled by this migration yet.
+Tenant-bound database access uses transaction-local PostgreSQL context.
 
-RLS is only useful when the database session receives a trustworthy tenant identity and application database roles cannot bypass the policy accidentally. Enabling policies before the request/session propagation contract exists would create false confidence.
+`WithTenantTx` validates the tenant UUID, begins a transaction and sets:
 
-The RLS follow-up must therefore include together:
+```sql
+SELECT set_config('baseharbor.tenant_id', '<tenant-uuid>', true);
+```
 
-- trusted tenant context propagation into the PostgreSQL session or transaction
-- deny-by-default policies
-- separation of migration/administrative and runtime database roles
-- tests proving cross-tenant reads and writes are denied
+The final `true` makes the setting transaction-local. It is discarded automatically on commit or rollback and therefore cannot intentionally persist as tenant state on a pooled connection.
 
-Until that layer exists, tenant isolation must not be claimed as database-enforced.
+`memberships` has row-level security enabled and forced. Its policy compares `tenant_id` with `current_setting('baseharbor.tenant_id', true)::uuid` for both reads and writes.
+
+Consequences:
+
+- no tenant context exposes no tenant membership rows
+- tenant A cannot read tenant B memberships
+- tenant A cannot insert or update rows into tenant B
+- application code does not need to remember to add a tenant predicate to every query
+- `FORCE ROW LEVEL SECURITY` also prevents ordinary table owners from silently bypassing policies
+
+Global tables such as `tenants` and `external_identities` are not currently tenant-scoped. Future tenant-bound core or module tables must receive equivalent RLS policies as part of the migration that creates them.
+
+## Database roles
+
+`deploy/postgres/roles.sql` defines two non-login capability roles:
+
+- `baseharbor_runtime`
+- `baseharbor_migrator`
+
+Both are explicitly `NOSUPERUSER` and `NOBYPASSRLS`.
+
+Runtime service identities should receive the `baseharbor_runtime` capability only. Administrative/bootstrap credentials must not be used by normal BaseHarbor request handling.
+
+Role reconciliation is deliberately separate from schema migrations because PostgreSQL role creation requires elevated cluster privileges. The future `baha` provisioning lifecycle will create/reconcile roles with an administrative connection, apply migrations with the migration identity, then reconcile runtime grants.
+
+## Verification
+
+CI uses a real PostgreSQL service in the existing test job. The integration test proves that:
+
+- access without tenant context returns no membership rows
+- tenant A sees only tenant A rows
+- direct lookup of tenant B data from tenant A is hidden
+- cross-tenant writes are rejected by PostgreSQL
+- malformed tenant IDs are rejected before tenant scope is established
+
+Tenant isolation is therefore tested as a PostgreSQL security boundary rather than only as application filtering logic.
