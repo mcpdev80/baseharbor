@@ -26,6 +26,17 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO baseharbor_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO baseharbor_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO baseharbor_runtime;
 
--- Re-run this reconciliation after migrations so newly created tables receive
--- runtime privileges. Future baha lifecycle commands will own that sequencing.
+GRANT USAGE, CREATE ON SCHEMA public TO baseharbor_migrator;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO baseharbor_migrator;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO baseharbor_migrator;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE baseharbor_migrator IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO baseharbor_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE baseharbor_migrator IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO baseharbor_runtime;
+
+-- Re-run this reconciliation after migrations for installations that predate
+-- these roles. Fresh installations should provision roles before migrations so
+-- the migrator owns new objects and default privileges apply automatically.
