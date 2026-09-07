@@ -1,17 +1,34 @@
 # BaseHarbor
 
-Secure, modular, self-hosted backend foundation with auth, data, storage, jobs, observability, AI and MCP — managed through the `baha` CLI.
+Secure, modular, self-hosted application backend runtime managed through the `baha` CLI.
 
-BaseHarbor is intended to provide reusable backend infrastructure for independent applications without forcing those applications into one monolith.
+BaseHarbor provides reusable backend infrastructure for independent applications without forcing those applications into one monolith or a proprietary data-access SDK.
 
 ## Status
 
-Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations and database-enforced tenant isolation are in place. The current milestone adds the first single-node operational runtime managed by `baha`.
+Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations, database-enforced tenant isolation, the first single-node control-plane runtime, and the declarative application resource model are in place.
+
+The current application CLI can create and inspect desired state and perform read-only planning/preflight. Per-application service convergence is the next runtime milestone.
 
 ## CLI
 
+Build the single operator binary:
+
 ```bash
 go build -o baha ./cmd/baha
+```
+
+Discover commands at every level:
+
+```bash
+./baha --help
+./baha app --help
+./baha app create --help
+```
+
+Control-plane commands:
+
+```bash
 ./baha version
 ./baha init
 ./baha doctor
@@ -20,49 +37,59 @@ go build -o baha ./cmd/baha
 ./baha down
 ```
 
-Current commands:
+Application desired-state commands:
 
-- `baha version` — print build information.
-- `baha init` — create a minimal `baseharbor.yaml` with restrictive permissions.
-- `baha doctor` — validate the host, container runtime and actual service readiness.
-- `baha up` — materialize and start the local PostgreSQL/OpenBao Compose runtime.
-- `baha status` — show container state and BaseHarbor service readiness.
-- `baha down` — stop the local runtime without deleting persistent volumes.
+```bash
+./baha app create demo
+./baha app list
+./baha app show demo
+./baha app plan demo
+./baha app preflight demo
+```
 
-The runtime binds PostgreSQL and OpenBao to loopback by default. OpenBao uses persistent server mode rather than an insecure development root token, so a fresh runtime is intentionally reported as not ready until its initialization/unseal lifecycle is completed.
+`baha doctor` and `baha status` verify actual service readiness. PostgreSQL readiness requires a successful authenticated connection and query; OpenBao must be reachable, initialized, and unsealed.
 
-See [docs/runtime-compose.md](docs/runtime-compose.md) for the runtime model and current limitations.
+Application lifecycle follows the stable contract:
+
+```text
+plan -> preflight -> apply -> verify
+```
+
+See [docs/cli.md](docs/cli.md) and [docs/runtime-compose.md](docs/runtime-compose.md).
 
 ## Design goals
 
-- one-command setup and lifecycle management
-- secure defaults, least privilege and deny by default
-- modular architecture with independent consuming applications
+- one dependable binary for setup and lifecycle management
+- secure defaults, least privilege and fail-closed behavior
+- isolated backend service stacks for independent applications
+- native protocols for application consumption
 - self-hosted first, cloud-native where useful
 - Docker/Podman first; Kubernetes optional
 - mature open-source components instead of unnecessary reinvention
-- AI, MCP and RAG as first-class platform capabilities
+- observable health, backup/restore, certificates and lifecycle operations
+- AI, MCP and RAG as optional first-class platform capabilities
 
-See [docs/architecture.md](docs/architecture.md) for the initial boundaries and principles.
+See [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Planned platform capabilities
 
 ```text
 BaseHarbor
 ├── baha CLI
-├── control plane
+├── shared control plane
+├── isolated application service stacks
 ├── auth / authorization
-├── database
-├── secrets
-├── storage
-├── jobs
-├── realtime
-├── audit
+├── PostgreSQL
+├── Redis / Valkey
+├── secrets / OpenBao
+├── certificates / PKI
+├── object storage
+├── backup / restore
 ├── observability
+├── jobs / realtime
 ├── AI integration
 ├── MCP
-├── RAG
-└── module system
+└── RAG
 ```
 
 ## License

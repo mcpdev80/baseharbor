@@ -49,4 +49,19 @@ jobs:
           EOF
           docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
       - name: Build baha
-        run: go build ./cmd/baha
+        run: go build -o /tmp/baha ./cmd/baha
+      - name: Smoke test baha binary
+        run: |
+          /tmp/baha --help >/tmp/baha-help.txt
+          grep -q "Usage:" /tmp/baha-help.txt
+          /tmp/baha app --help >/tmp/baha-app-help.txt
+          grep -q "create" /tmp/baha-app-help.txt
+          /tmp/baha app create --help >/tmp/baha-app-create-help.txt
+          grep -q -- "--environment" /tmp/baha-app-create-help.txt
+          /tmp/baha version | grep -q '^baha '
+          set +e
+          /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
+          code=$?
+          set -e
+          test "$code" -eq 2
+          grep -q "unknown command" /tmp/baha-invalid.err

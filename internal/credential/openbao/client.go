@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"unicode"
 
 	"github.com/mcpdev80/baseharbor/internal/credential"
 )
@@ -20,6 +21,7 @@ var (
 	ErrAccessDenied  = errors.New("credential access denied")
 	ErrInvalidReply  = errors.New("invalid OpenBao response")
 	ErrRequestFailed = errors.New("OpenBao request failed")
+	ErrInvalidRef    = errors.New("invalid credential ref")
 )
 
 // Client resolves opaque BaseHarbor credential references from an OpenBao KV v2 mount.
@@ -62,7 +64,7 @@ func (c *Client) Resolve(ctx context.Context, ref string, _ string) (credential.
 
 	requestURL, err := c.secretURL(ref)
 	if err != nil {
-		return credential.Data{}, ErrRequestFailed
+		return credential.Data{}, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
@@ -117,17 +119,36 @@ func (c *Client) Resolve(ctx context.Context, ref string, _ string) (credential.
 	return credential.Data{Payload: payload}, nil
 }
 
+func validateRef(ref string) error {
+	if ref == "" || strings.HasPrefix(ref, "/") || strings.Contains(ref, "\\") {
+		return ErrInvalidRef
+	}
+	if strings.ContainsAny(ref, "?#@") {
+		return ErrInvalidRef
+	}
+	for _, r := range ref {
+		if unicode.IsControl(r) {
+			return ErrInvalidRef
+		}
+	}
+	parts := strings.Split(ref, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return ErrInvalidRef
+		}
+	}
+	return nil
+}
+
 func (c *Client) secretURL(ref string) (string, error) {
+	if err := validateRef(ref); err != nil {
+		return "", err
+	}
 	base, err := url.Parse(c.cfg.Address)
 	if err != nil {
 		return "", err
 	}
-
-	cleanRef := strings.TrimPrefix(path.Clean("/"+ref), "/")
-	if cleanRef == "." || strings.HasPrefix(cleanRef, "../") {
-		return "", errors.New("invalid credential ref")
-	}
 	mount := strings.Trim(strings.TrimSpace(c.cfg.Mount), "/")
-	base.Path = path.Join(base.Path, "v1", mount, "data", cleanRef)
+	base.Path = path.Join(base.Path, "v1", mount, "data", ref)
 	return base.String(), nil
 }

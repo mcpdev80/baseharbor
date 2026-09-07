@@ -1,6 +1,6 @@
 # PostgreSQL and migrations
 
-BaseHarbor uses PostgreSQL as its primary durable store.
+BaseHarbor uses PostgreSQL as its primary durable control-plane store.
 
 ## Driver
 
@@ -18,16 +18,34 @@ The connection layer:
 
 SQL migrations are embedded into the BaseHarbor binary from `internal/database/migrations`.
 
-The runner:
+Forward migrations keep their stable historical names, for example:
+
+```text
+0001_core_identity.sql
+0002_tenant_rls.sql
+```
+
+Optional rollback files use the same version stem plus `.down.sql`:
+
+```text
+0001_core_identity.down.sql
+0002_tenant_rls.down.sql
+```
+
+The forward runner:
 
 1. creates `baseharbor_schema_migrations` if needed
-2. loads embedded `.sql` files
+2. loads embedded forward `.sql` files while ignoring `.down.sql` files
 3. applies them in lexical order
 4. skips versions already recorded
 5. runs each migration in a transaction
 6. records a migration only inside the same successful transaction
 
 A failed migration is therefore not marked as applied.
+
+`RollbackLast` reverses exactly the most recently applied migration and requires an explicit matching rollback file. It never guesses how to undo schema. The rollback SQL and deletion of the migration record run in the same transaction.
+
+A rollback migration must only undo objects or settings owned by its matching forward migration. In particular, rolling back a later migration must not remove schema created by an earlier migration.
 
 ## Core schema
 
@@ -78,12 +96,14 @@ Role reconciliation is deliberately separate from schema migrations because Post
 
 ## Verification
 
-CI uses a real PostgreSQL service in the existing test job. The integration test proves that:
+CI uses a real PostgreSQL service in the existing test job. Integration tests prove that:
 
 - access without tenant context returns no membership rows
 - tenant A sees only tenant A rows
 - direct lookup of tenant B data from tenant A is hidden
 - cross-tenant writes are rejected by PostgreSQL
 - malformed tenant IDs are rejected before tenant scope is established
+- rolling back the RLS migration leaves the earlier core identity schema intact
+- rolling back the core identity migration removes only its own schema
 
-Tenant isolation is therefore tested as a PostgreSQL security boundary rather than only as application filtering logic.
+Tenant isolation and migration rollback ownership are therefore tested as PostgreSQL boundaries rather than only as application conventions.

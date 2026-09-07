@@ -96,3 +96,28 @@ func TestResolveRejectsEmptyReference(t *testing.T) {
 		t.Fatalf("expected ErrEmptyRef, got %v", err)
 	}
 }
+
+func TestResolveRejectsAmbiguousReferences(t *testing.T) {
+	client, err := NewWithHTTPClient(Config{Address: "https://bao.example", Token: "token", Mount: "secret"}, &http.Client{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{
+		"../secret",
+		"apps/../secret",
+		"/apps/test",
+		"apps//test",
+		"apps/./test",
+		"apps/test?foo=bar",
+		"apps/test#fragment",
+		"apps@test",
+		`apps\test`,
+	} {
+		t.Run(ref, func(t *testing.T) {
+			_, err := client.Resolve(context.Background(), ref, "tenant-a")
+			if !errors.Is(err, ErrInvalidRef) {
+				t.Fatalf("expected ErrInvalidRef for %q, got %v", ref, err)
+			}
+		})
+	}
+}

@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type Check struct {
@@ -21,7 +22,7 @@ type Check struct {
 
 func Doctor() []Check {
 	checks := []Check{
-		{Name: "os", OK: runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows", Message: runtime.GOOS + "/" + runtime.GOARCH},
+		{Name: "os", OK: goruntime.GOOS == "linux" || goruntime.GOOS == "darwin" || goruntime.GOOS == "windows", Message: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 
 	containerRuntime, runtimeOK := checkContainerRuntime()
@@ -36,12 +37,20 @@ func Doctor() []Check {
 // RuntimeChecks reports actual service readiness once BaseHarbor runtime state
 // exists. A running but sealed/uninitialized OpenBao is intentionally not OK.
 func RuntimeChecks() []Check {
-	if !runtimeStateExists() {
-		return nil
+	files, err := bhruntime.ExistingFiles("")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return []Check{{Name: "runtime-config", OK: false, Message: "runtime state is unreadable"}}
+	}
+	cfg, err := bhruntime.LoadConfig(files.Env)
+	if err != nil {
+		return []Check{{Name: "runtime-config", OK: false, Message: "runtime configuration is invalid"}}
 	}
 	return []Check{
-		checkTCP("postgres", "127.0.0.1:5432"),
-		checkOpenBao(),
+		checkPostgres(cfg),
+		checkOpenBao(cfg.OpenBaoPort),
 	}
 }
 
@@ -75,25 +84,28 @@ func checkCompose(runtimeName string) Check {
 	return Check{Name: "compose", OK: true, Message: runtimeName + " compose available"}
 }
 
-func runtimeStateExists() bool {
-	_, err := os.Stat(filepath.Join(".baseharbor", "runtime", "runtime.env"))
-	return err == nil
-}
-
-func checkTCP(name, address string) Check {
-	conn, err := net.DialTimeout("tcp", address, 2*time.Second)
+func checkPostgres(cfg bhruntime.Config) Check {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	connString := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable", cfg.PostgresUser, cfg.PostgresPassword, cfg.PostgresPort, cfg.PostgresDB)
+	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
-		return Check{Name: name, OK: false, Message: "not reachable at " + address}
+		return Check{Name: "postgres", OK: false, Message: fmt.Sprintf("connection failed on 127.0.0.1:%d", cfg.PostgresPort)}
 	}
-	_ = conn.Close()
-	return Check{Name: name, OK: true, Message: "reachable at " + address}
+	defer conn.Close(ctx)
+	var one int
+	if err := conn.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
+		return Check{Name: "postgres", OK: false, Message: "connected but readiness query failed"}
+	}
+	return Check{Name: "postgres", OK: true, Message: fmt.Sprintf("query succeeded on 127.0.0.1:%d", cfg.PostgresPort)}
 }
 
-func checkOpenBao() Check {
+func checkOpenBao(port int) Check {
 	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:8200/v1/sys/health")
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	resp, err := client.Get("http://" + address + "/v1/sys/health")
 	if err != nil {
-		return Check{Name: "openbao", OK: false, Message: "not reachable at 127.0.0.1:8200"}
+		return Check{Name: "openbao", OK: false, Message: "not reachable at " + address}
 	}
 	defer resp.Body.Close()
 
