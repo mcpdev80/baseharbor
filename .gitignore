@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# BaseHarbor generated runtime state and secrets
+.baseharbor/
+
 # Editor/IDE
 # .idea/
 # .vscode/
