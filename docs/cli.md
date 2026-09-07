@@ -27,7 +27,8 @@ baha
 │   ├── list
 │   ├── show
 │   ├── plan
-│   └── preflight
+│   ├── preflight
+│   └── apply
 └── version
 ```
 
@@ -37,6 +38,7 @@ Use help at every level:
 baha --help
 baha app --help
 baha app create --help
+baha app apply --help
 baha help app create
 ```
 
@@ -60,16 +62,6 @@ baha app create demo
 
 With no explicit service selection, PostgreSQL is enabled as the minimal useful default.
 
-Explicit selection:
-
-```bash
-baha app create mailflow \
-  --environment prod \
-  --postgres \
-  --redis \
-  --secrets
-```
-
 Application state is stored under:
 
 ```text
@@ -78,48 +70,31 @@ Application state is stored under:
 
 The directory is owner-only and manifests are written with owner-only permissions. Manifests contain desired configuration, never plaintext service credentials.
 
-Inspect it:
+## Plan, preflight, apply and verify
 
 ```bash
-baha app list
-baha app show mailflow
+baha app plan demo
+baha app preflight demo
+baha app apply demo
 ```
 
-## Plan and preflight
+`plan` and `preflight` are read-only. `apply` repeats the required validation, materializes the application runtime, runs Compose convergence, and returns success only after verification succeeds.
 
-Before BaseHarbor gains app-level mutation, the command model already separates desired state and prerequisite checks:
-
-```bash
-baha app plan mailflow
-```
-
-prints the resources BaseHarbor intends to converge and makes no changes.
-
-```bash
-baha app preflight mailflow
-```
-
-checks:
-
-- manifest validity
-- local application-state permissions
-- Docker/Podman + Compose availability
-- desired-state plan construction
-
-and makes no changes.
-
-This becomes the stable lifecycle pattern for future commands:
+The stable lifecycle contract is:
 
 ```text
 plan → preflight → apply → verify
 ```
 
+The current convergence milestone supports PostgreSQL-only desired state. It creates a unique Compose project per application/environment, giving the application its own default network and PostgreSQL volume. PostgreSQL has no published host port by default. Generated runtime credentials live in an owner-only runtime environment file and are preserved on repeated apply operations.
+
+Verification executes an authenticated PostgreSQL query and requires `SELECT 1` to succeed. A running container alone is not considered ready.
+
+If Redis/Valkey or managed secrets are enabled in the manifest, `app apply` currently fails closed instead of silently ignoring unsupported desired state.
+
 ## Planned command evolution
 
-The next application-runtime milestones add commands without changing the command hierarchy:
-
 ```text
-baha app apply NAME
 baha app up NAME
 baha app down NAME
 baha app status NAME
