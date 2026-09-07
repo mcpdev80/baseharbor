@@ -11,9 +11,9 @@ type contextKey string
 const tenantContextKey contextKey = "baseharbor:tenancy:context"
 
 var (
-	ErrNoMembership       = errors.New("no tenant membership")
-	ErrAmbiguousTenant    = errors.New("ambiguous tenant membership")
-	ErrInvalidMembership  = errors.New("invalid tenant membership")
+	ErrNoMembership      = errors.New("no tenant membership")
+	ErrAmbiguousTenant   = errors.New("ambiguous tenant membership")
+	ErrInvalidMembership = errors.New("invalid tenant membership")
 )
 
 // Context is the resolved tenant scope for one authenticated request.
