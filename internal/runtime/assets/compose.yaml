@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  openbao:
+    image: openbao/openbao:2.6.2
+    restart: unless-stopped
+    command: server
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+      BAO_LOCAL_CONFIG: >-
+        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/data"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"api_addr":"http://127.0.0.1:8200"}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
+    volumes:
+      - openbao-data:/openbao/data
+    healthcheck:
+      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$$?; [ $$code -eq 0 ] || [ $$code -eq 2 ]"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  postgres-data:
+  openbao-data:
