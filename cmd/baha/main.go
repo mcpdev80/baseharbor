@@ -117,6 +117,16 @@ func runtimeStatus() error {
 		return err
 	}
 	fmt.Print(status)
+
+	checks := health.RuntimeChecks()
+	if len(checks) == 0 {
+		return nil
+	}
+	formatted, ok := health.Format(checks)
+	fmt.Print(formatted)
+	if !ok {
+		return errors.New("runtime is running but not ready")
+	}
 	return nil
 }
 
@@ -148,7 +158,7 @@ Commands:
   init       Create a minimal BaseHarbor configuration
   up         Start the local BaseHarbor runtime
   down       Stop the local BaseHarbor runtime
-  status     Show runtime container status
+  status     Show container and service readiness status
   doctor     Check whether the host and runtime are ready
   version    Print build version
   help       Show this help
