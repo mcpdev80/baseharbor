@@ -6,9 +6,9 @@ BaseHarbor provides reusable backend infrastructure for independent applications
 
 ## Status
 
-Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations, database-enforced tenant isolation, the first single-node control-plane runtime, and the declarative application resource model are in place.
+Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
 
-The current application CLI can create and inspect desired state and perform read-only planning/preflight. Per-application service convergence is the next runtime milestone.
+The first per-application convergence slice is PostgreSQL: `baha app apply NAME` creates an isolated Compose project with a dedicated PostgreSQL volume and network, does not publish a host port by default, preserves generated credentials across repeated apply operations, and reports ready only after an authenticated `SELECT 1` succeeds.
 
 ## CLI
 
@@ -23,7 +23,7 @@ Discover commands at every level:
 ```bash
 ./baha --help
 ./baha app --help
-./baha app create --help
+./baha app apply --help
 ```
 
 Control-plane commands:
@@ -37,7 +37,7 @@ Control-plane commands:
 ./baha down
 ```
 
-Application desired-state commands:
+Application commands:
 
 ```bash
 ./baha app create demo
@@ -45,6 +45,7 @@ Application desired-state commands:
 ./baha app show demo
 ./baha app plan demo
 ./baha app preflight demo
+./baha app apply demo
 ```
 
 `baha doctor` and `baha status` verify actual service readiness. PostgreSQL readiness requires a successful authenticated connection and query; OpenBao must be reachable, initialized, and unsealed.
@@ -54,6 +55,8 @@ Application lifecycle follows the stable contract:
 ```text
 plan -> preflight -> apply -> verify
 ```
+
+The current `app apply` milestone intentionally supports PostgreSQL-only desired state. Manifests that also enable Redis/Valkey or managed secrets fail closed until those convergence modules are implemented.
 
 See [docs/cli.md](docs/cli.md) and [docs/runtime-compose.md](docs/runtime-compose.md).
 
