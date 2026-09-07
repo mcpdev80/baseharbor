@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Europe/Berlin",
+  "schedule": [
+    "* 2-5 * * *"
+  ],
+  "dependencyDashboard": true,
+  "rebaseWhen": "behind-base-branch",
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "ignoreTests": false,
+  "prConcurrentLimit": 10,
+  "branchConcurrentLimit": 10,
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "description": "Keep all supported dependency sources current and merge only after green checks",
+      "matchManagers": [
+        "gomod",
+        "github-actions",
+        "dockerfile",
+        "docker-compose"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Group routine non-major updates into one daily PR",
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "pin",
+        "digest"
+      ],
+      "groupName": "daily non-major dependencies"
+    },
+    {
+      "description": "Keep major updates separate but still allow green-CI automerge",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "* 2-5 * * *"
+    ],
+    "automerge": true
+  }
+}
