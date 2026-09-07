@@ -29,13 +29,20 @@ func Doctor() []Check {
 	if runtimeOK {
 		checks = append(checks, checkCompose(containerRuntime.Name))
 	}
-
-	if runtimeStateExists() {
-		checks = append(checks, checkTCP("postgres", "127.0.0.1:5432"))
-		checks = append(checks, checkOpenBao())
-	}
-
+	checks = append(checks, RuntimeChecks()...)
 	return checks
+}
+
+// RuntimeChecks reports actual service readiness once BaseHarbor runtime state
+// exists. A running but sealed/uninitialized OpenBao is intentionally not OK.
+func RuntimeChecks() []Check {
+	if !runtimeStateExists() {
+		return nil
+	}
+	return []Check{
+		checkTCP("postgres", "127.0.0.1:5432"),
+		checkOpenBao(),
+	}
 }
 
 func checkContainerRuntime() (Check, bool) {
