@@ -54,16 +54,22 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 		memberB  = "55555555-5555-4555-8555-555555555555"
 	)
 
-	if _, err := admin.Exec(ctx, `
-INSERT INTO tenants (id, slug, name) VALUES
-    ($1, 'tenant-a', 'Tenant A'),
-    ($2, 'tenant-b', 'Tenant B');
-INSERT INTO external_identities (id, issuer, subject)
-    VALUES ($3, 'https://issuer.example', 'subject-1');
-INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
-    ($4, $1, $3, 'editor'),
-    ($5, $2, $3, 'viewer');
-`, tenantA, tenantB, identity, memberA, memberB); err != nil {
+	if _, err := admin.Exec(ctx,
+		"INSERT INTO tenants (id, slug, name) VALUES ($1, 'tenant-a', 'Tenant A'), ($2, 'tenant-b', 'Tenant B')",
+		tenantA, tenantB,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx,
+		"INSERT INTO external_identities (id, issuer, subject) VALUES ($1, 'https://issuer.example', 'subject-1')",
+		identity,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx,
+		"INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES ($1, $2, $3, 'editor'), ($4, $5, $3, 'viewer')",
+		memberA, tenantA, identity, memberB, tenantB,
+	); err != nil {
 		t.Fatal(err)
 	}
 
