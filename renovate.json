@@ -11,7 +11,7 @@
   "rebaseWhen": "behind-base-branch",
   "automerge": true,
   "automergeType": "pr",
-  "platformAutomerge": true,
+  "platformAutomerge": false,
   "ignoreTests": false,
   "prConcurrentLimit": 10,
   "branchConcurrentLimit": 10,
