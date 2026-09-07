@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var (
@@ -34,6 +37,12 @@ func run(args []string) error {
 		return nil
 	case "init":
 		return initConfig()
+	case "up":
+		return runtimeUp()
+	case "down":
+		return runtimeDown()
+	case "status":
+		return runtimeStatus()
 	case "doctor":
 		formatted, ok := health.Format(health.Doctor())
 		fmt.Print(formatted)
@@ -47,6 +56,78 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runtimeUp() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return err
+	}
+	files, err := bhruntime.EnsureFiles("")
+	if err != nil {
+		return err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	fmt.Println("BaseHarbor runtime started")
+	fmt.Println("next: run 'baha status' and 'baha doctor'")
+	return nil
+}
+
+func runtimeDown() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return err
+	}
+	files, err := bhruntime.ExistingFiles("")
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
+	if err := compose.Down(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	fmt.Println("BaseHarbor runtime stopped")
+	return nil
+}
+
+func runtimeStatus() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return err
+	}
+	files, err := bhruntime.ExistingFiles("")
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
+	status, err := compose.Status(ctx, files.Compose, files.Env)
+	if err != nil {
+		return err
+	}
+	fmt.Print(status)
+
+	checks := health.RuntimeChecks()
+	if len(checks) == 0 {
+		return nil
+	}
+	formatted, ok := health.Format(checks)
+	fmt.Print(formatted)
+	if !ok {
+		return errors.New("runtime is running but not ready")
+	}
+	return nil
 }
 
 func initConfig() error {
@@ -75,7 +156,10 @@ Usage:
 
 Commands:
   init       Create a minimal BaseHarbor configuration
-  doctor     Check whether the host is ready for BaseHarbor
+  up         Start the local BaseHarbor runtime
+  down       Stop the local BaseHarbor runtime
+  status     Show container and service readiness status
+  doctor     Check whether the host and runtime are ready
   version    Print build version
   help       Show this help
 `)

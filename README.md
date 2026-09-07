@@ -6,7 +6,7 @@ BaseHarbor is intended to provide reusable backend infrastructure for independen
 
 ## Status
 
-Early development. The first milestone is the lifecycle foundation: a small, testable Go CLI before platform services are added.
+Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations and database-enforced tenant isolation are in place. The current milestone adds the first single-node operational runtime managed by `baha`.
 
 ## CLI
 
@@ -15,13 +15,23 @@ go build -o baha ./cmd/baha
 ./baha version
 ./baha init
 ./baha doctor
+./baha up
+./baha status
+./baha down
 ```
 
 Current commands:
 
 - `baha version` — print build information.
 - `baha init` — create a minimal `baseharbor.yaml` with restrictive permissions.
-- `baha doctor` — validate the host and detect Docker or Podman.
+- `baha doctor` — validate the host, container runtime and actual service readiness.
+- `baha up` — materialize and start the local PostgreSQL/OpenBao Compose runtime.
+- `baha status` — show container state and BaseHarbor service readiness.
+- `baha down` — stop the local runtime without deleting persistent volumes.
+
+The runtime binds PostgreSQL and OpenBao to loopback by default. OpenBao uses persistent server mode rather than an insecure development root token, so a fresh runtime is intentionally reported as not ready until its initialization/unseal lifecycle is completed.
+
+See [docs/runtime-compose.md](docs/runtime-compose.md) for the runtime model and current limitations.
 
 ## Design goals
 
