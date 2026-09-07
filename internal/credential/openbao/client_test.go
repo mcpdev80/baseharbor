@@ -64,8 +64,8 @@ func TestResolveReadsKVv2SecretWithoutLeakingToken(t *testing.T) {
 
 func TestResolveMapsSafeErrors(t *testing.T) {
 	for status, expected := range map[int]error{
-		http.StatusForbidden: ErrAccessDenied,
-		http.StatusNotFound:  ErrNotFound,
+		http.StatusForbidden:  ErrAccessDenied,
+		http.StatusNotFound:   ErrNotFound,
 		http.StatusBadGateway: ErrRequestFailed,
 	} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
