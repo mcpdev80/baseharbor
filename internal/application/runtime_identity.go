@@ -12,6 +12,7 @@ import (
 
 const runtimeIdentityBinding = "baseharbor-runtime"
 const runtimeIdentityTokenFile = "token"
+const runtimeIdentityRevokedFile = "revoked"
 
 func EnsureRuntimeIdentity(m Manifest, files RuntimeFiles) (string, error) {
 	if !m.Services.Secrets {
@@ -37,19 +38,91 @@ func EnsureRuntimeIdentity(m Manifest, files RuntimeFiles) (string, error) {
 		return "", fmt.Errorf("read application runtime identity token: %w", err)
 	}
 
-	var raw [32]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", fmt.Errorf("generate application runtime identity token: %w", err)
+	token, err := newRuntimeIdentityToken()
+	if err != nil {
+		return "", err
 	}
-	token := base64.RawURLEncoding.EncodeToString(raw[:])
 	if err := writeOwnerOnlyFile(path, []byte(token+"\n")); err != nil {
 		return "", fmt.Errorf("write application runtime identity token: %w", err)
 	}
 	return path, nil
 }
 
+func RotateRuntimeIdentity(m Manifest, files RuntimeFiles) error {
+	path, err := EnsureRuntimeIdentity(m, files)
+	if err != nil {
+		return err
+	}
+	if path == "" {
+		return errors.New("application does not enable managed secrets")
+	}
+	if err := ownerOnlyRuntimeIdentity(path); err != nil {
+		return err
+	}
+	token, err := newRuntimeIdentityToken()
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("open application runtime identity token for rotation: %w", err)
+	}
+	_, writeErr := file.WriteString(token + "\n")
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return fmt.Errorf("rotate application runtime identity token: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close rotated application runtime identity token: %w", closeErr)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("secure rotated application runtime identity token: %w", err)
+	}
+	if err := os.Remove(RuntimeIdentityRevokedPath(files)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("clear application runtime identity revocation: %w", err)
+	}
+	return nil
+}
+
+func RevokeRuntimeIdentity(m Manifest, files RuntimeFiles) error {
+	path, err := EnsureRuntimeIdentity(m, files)
+	if err != nil {
+		return err
+	}
+	if path == "" {
+		return errors.New("application does not enable managed secrets")
+	}
+	if err := ownerOnlyRuntimeIdentity(path); err != nil {
+		return err
+	}
+	if err := writeOwnerOnlyFile(RuntimeIdentityRevokedPath(files), []byte("revoked\n")); err != nil {
+		return fmt.Errorf("revoke application runtime identity: %w", err)
+	}
+	return nil
+}
+
 func RuntimeIdentityTokenPath(files RuntimeFiles) string {
 	return filepath.Join(files.Bindings, runtimeIdentityBinding, runtimeIdentityTokenFile)
+}
+
+func RuntimeIdentityRevokedPath(files RuntimeFiles) string {
+	return filepath.Join(files.Bindings, runtimeIdentityBinding, runtimeIdentityRevokedFile)
+}
+
+func RuntimeIdentityRevoked(files RuntimeFiles) bool {
+	info, err := os.Stat(RuntimeIdentityRevokedPath(files))
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 == 0
+}
+
+func newRuntimeIdentityToken() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate application runtime identity token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func ownerOnlyRuntimeIdentity(path string) error {
@@ -57,8 +130,8 @@ func ownerOnlyRuntimeIdentity(path string) error {
 	if err != nil {
 		return err
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("application runtime identity token %s is accessible by group or others (%o)", path, info.Mode().Perm())
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("application runtime identity token %s is not an owner-only regular file (%o)", path, info.Mode().Perm())
 	}
 	return nil
 }
