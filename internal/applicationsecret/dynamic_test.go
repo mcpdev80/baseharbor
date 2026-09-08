@@ -30,10 +30,10 @@ func TestDynamicReferencesAreOpaqueAndStrict(t *testing.T) {
 		t.Fatalf("valid reference rejected: %v", err)
 	}
 	for _, ref := range []Reference{
-		"OPENAI_API_KEY",
-		"baseharbor://other/" + validKey,
-		"baseharbor://secrets/OPENAI_API_KEY",
-		"baseharbor://secrets/dyn-short",
+		Reference("OPENAI_API_KEY"),
+		Reference("baseharbor://other/" + validKey),
+		Reference("baseharbor://secrets/OPENAI_API_KEY"),
+		Reference("baseharbor://secrets/dyn-short"),
 		Reference(dynamicReferencePrefix + validKey + "/nested"),
 		Reference(dynamicReferencePrefix + validKey + "?x=1"),
 	} {
