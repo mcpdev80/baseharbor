@@ -1,0 +1,101 @@
+name: runtime-broker-performance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build exact static broker binary
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o /tmp/baha ./cmd/baha
+          mkdir -p /tmp/baseharbor-runtime-image
+          cp /tmp/baha /tmp/baseharbor-runtime-image/baha
+          cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
+
+      - name: Bootstrap performance application
+        run: |
+          workdir=$(mktemp -d)
+          printf '%s\n' "$workdir" >/tmp/baseharbor-perf-workdir
+          cd "$workdir"
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat >.baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=perf-control-plane
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+          /tmp/baha up
+          /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          /tmp/baha app create perf-demo --postgres --require-secret BOOTSTRAP_SECRET
+          set +e
+          /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          printf '%s' 'bootstrap' | /tmp/baha app secret set perf-demo BOOTSTRAP_SECRET --stdin
+          /tmp/baha app apply perf-demo | grep -q "Application perf-demo is ready"
+
+      - name: Measure 200 real mTLS secret resolves
+        run: |
+          broker_id=$(docker ps --filter 'label=com.docker.compose.project=baseharbor-broker-perf-demo-dev' --filter 'label=com.docker.compose.service=broker' -q)
+          test -n "$broker_id"
+          docker exec "$broker_id" sh -ec '
+            token=$(cat /run/secrets/runtime-token)
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/perf-demo/secret-refs
+            mtls="--cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key"
+            created=$(curl --fail --silent --show-error $mtls \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"value\":\"perf-secret\"}" "$base")
+            ref=$(printf "%s" "$created" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p")
+            test -n "$ref"
+
+            : >/tmp/latencies
+            i=1
+            while [ "$i" -le 200 ]; do
+              result=$(curl --silent --show-error --output /tmp/resolve.out --write-out "%{http_code} %{time_total}" $mtls \
+                -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+                -d "{\"ref\":\"$ref\"}" "$base/resolve")
+              code=${result%% *}
+              latency=${result#* }
+              test "$code" = 200
+              grep -q "\"value\":\"perf-secret\"" /tmp/resolve.out
+              printf "%s\n" "$latency" >>/tmp/latencies
+              i=$((i + 1))
+            done
+
+            sort -n /tmp/latencies >/tmp/latencies.sorted
+            p50=$(sed -n "100p" /tmp/latencies.sorted)
+            p95=$(sed -n "190p" /tmp/latencies.sorted)
+            p99=$(sed -n "198p" /tmp/latencies.sorted)
+            max=$(tail -1 /tmp/latencies.sorted)
+            printf "secret resolve latency seconds: p50=%s p95=%s p99=%s max=%s\n" "$p50" "$p95" "$p99" "$max"
+
+            awk -v v="$p95" "BEGIN { exit !(v < 0.100) }"
+            awk -v v="$p99" "BEGIN { exit !(v < 0.250) }"
+          '
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f /tmp/baseharbor-perf-workdir ]; then
+            cd "$(cat /tmp/baseharbor-perf-workdir)"
+            /tmp/baha app destroy perf-demo --yes || true
+            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v || true
+          fi
