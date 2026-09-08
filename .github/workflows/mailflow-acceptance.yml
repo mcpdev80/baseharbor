@@ -19,6 +19,19 @@ jobs:
         run: go build -o /tmp/baha ./cmd/baha
       - name: Checkout MailFlow BaseHarbor readiness branch
         run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
+      - name: Extend MailFlow acceptance with TLS file bindings
+        working-directory: /tmp/mailflow
+        run: |
+          cat >> baseharbor.yaml <<'EOF'
+              - name: TLS_CERT_FILE
+              - name: TLS_KEY_FILE
+          EOF
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tmp/mailflow-tls.key \
+            -out /tmp/mailflow-tls.crt \
+            -days 1 \
+            -subj '/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost'
       - name: Bootstrap BaseHarbor control plane
         working-directory: /tmp/mailflow
         run: |
@@ -35,7 +48,7 @@ jobs:
           /tmp/baha up
           /tmp/baha openbao bootstrap --recovery-file /tmp/mailflow-openbao-recovery.json
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
-      - name: Prove required secret gate
+      - name: Prove required secret gate and import sensitive files
         working-directory: /tmp/mailflow
         run: |
           set +e
@@ -45,6 +58,7 @@ jobs:
           test "$code" -eq 1
           grep -q "required secrets check failed" /tmp/mailflow-missing-secret.out
           printf '%s' 'mailflow-ci-secret' | /tmp/baha app secret set SECRET_KEY --stdin
+          /tmp/baha app secret tls-set --cert-file /tmp/mailflow-tls.crt --key-file /tmp/mailflow-tls.key
       - name: Apply MailFlow through BaseHarbor
         working-directory: /tmp/mailflow
         run: |
@@ -64,7 +78,7 @@ jobs:
             docker inspect "$api_id" --format '{{json .State.Health}}' || true
             docker logs "$api_id" || true
           fi
-      - name: Verify managed backend replacement and runtime contract
+      - name: Verify managed backends, env secret and TLS file bindings
         working-directory: /tmp/mailflow
         run: |
           project=baseharbor-workload-mailflow-production
@@ -79,7 +93,14 @@ jobs:
 
           api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
-          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
+          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]; assert os.environ["TLS_CERT_FILE"] == "/run/baseharbor/bindings/secrets/TLS_CERT_FILE"; assert os.environ["TLS_KEY_FILE"] == "/run/baseharbor/bindings/secrets/TLS_KEY_FILE"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
+
+          cert_host=.baseharbor/apps/mailflow/runtime/bindings/secrets/TLS_CERT_FILE
+          key_host=.baseharbor/apps/mailflow/runtime/bindings/secrets/TLS_KEY_FILE
+          test "$(stat -c '%a' "$cert_host")" = 600
+          test "$(stat -c '%a' "$key_host")" = 600
+          grep -q 'BEGIN CERTIFICATE' "$cert_host"
+          grep -q 'PRIVATE KEY' "$key_host"
       - name: Cleanup
         if: always()
         working-directory: /tmp/mailflow
