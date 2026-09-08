@@ -22,6 +22,7 @@ type WorkloadFiles struct {
 	Override       string
 	Services       []string
 	Project        string
+	Partial        bool
 }
 
 var conventionalWorkloadComposePaths = []string{
@@ -94,7 +95,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	selected, err := selectWorkloadServices(services, m.Workload.Services)
+	selected, err := selectWorkloadServices(m, services, m.Workload.Services)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -116,6 +117,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 		Override:       overridePath,
 		Services:       selected,
 		Project:        WorkloadProjectName(m),
+		Partial:        len(selected) != len(services),
 	}, true, nil
 }
 
@@ -163,21 +165,39 @@ func composeServiceNames(path string) ([]string, error) {
 	return services, nil
 }
 
-func selectWorkloadServices(available, requested []string) ([]string, error) {
-	if len(requested) == 0 {
-		selected := append([]string(nil), available...)
-		sort.Strings(selected)
-		return selected, nil
-	}
+func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
 	availableSet := make(map[string]struct{}, len(available))
 	for _, service := range available {
 		availableSet[service] = struct{}{}
 	}
-	selected := append([]string(nil), requested...)
-	for _, service := range selected {
-		if _, ok := availableSet[service]; !ok {
-			return nil, fmt.Errorf("workload service %q is not present in the application Compose file", service)
+	if len(requested) > 0 {
+		selected := append([]string(nil), requested...)
+		for _, service := range selected {
+			if _, ok := availableSet[service]; !ok {
+				return nil, fmt.Errorf("workload service %q is not present in the application Compose file", service)
+			}
 		}
+		sort.Strings(selected)
+		return selected, nil
+	}
+
+	shadowed := map[string]struct{}{}
+	if len(PostgresInstanceNames(m)) > 0 {
+		shadowed["postgres"] = struct{}{}
+	}
+	if len(RedisInstanceNames(m)) > 0 {
+		shadowed["redis"] = struct{}{}
+		shadowed["valkey"] = struct{}{}
+	}
+	selected := make([]string, 0, len(available))
+	for _, service := range available {
+		if _, skip := shadowed[service]; skip {
+			continue
+		}
+		selected = append(selected, service)
+	}
+	if len(selected) == 0 {
+		return nil, errors.New("application workload contains no services after managed backend services were excluded")
 	}
 	sort.Strings(selected)
 	return selected, nil
