@@ -59,10 +59,10 @@ func appStatusCommand(store application.Store) *cli.Command {
 					err := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
 					cancel()
 					if err != nil {
-						fmt.Fprintln(out, "[FAIL] postgres          running but readiness query failed")
+						fmt.Fprintln(out, "[FAIL] postgres          one or more instances failed readiness")
 						ready = false
 					} else {
-						fmt.Fprintln(out, "[OK] postgres          running and authenticated SELECT 1 succeeded")
+						fmt.Fprintf(out, "[OK] postgres          %d instance(s) running and authenticated SELECT 1 succeeded\n", len(application.PostgresInstanceNames(m)))
 					}
 				}
 			}
@@ -75,10 +75,10 @@ func appStatusCommand(store application.Store) *cli.Command {
 					err := application.VerifyValkeyRuntime(checkCtx, compose, m, files)
 					cancel()
 					if err != nil {
-						fmt.Fprintln(out, "[FAIL] valkey            running but authenticated PING failed")
+						fmt.Fprintln(out, "[FAIL] valkey            one or more instances failed authenticated PING")
 						ready = false
 					} else {
-						fmt.Fprintln(out, "[OK] valkey            running and authenticated PING returned PONG")
+						fmt.Fprintf(out, "[OK] valkey            %d instance(s) running and authenticated PING returned PONG\n", len(application.RedisInstanceNames(m)))
 					}
 				}
 			}
@@ -185,13 +185,13 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				checks = append(checks,
 					preflight.Check{Name: "postgres running", Run: func(context.Context) error {
 						if !containsString(running, "postgres") {
-							return errors.New("postgres service is not running")
+							return errors.New("no postgres instance is running")
 						}
 						return nil
 					}},
 					preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
 						if !containsString(running, "postgres") {
-							return errors.New("postgres service is not running")
+							return errors.New("no postgres instance is running")
 						}
 						return application.VerifyPostgresRuntime(ctx, compose, m, files)
 					}},
@@ -201,13 +201,13 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				checks = append(checks,
 					preflight.Check{Name: "valkey running", Run: func(context.Context) error {
 						if !containsString(running, "valkey") {
-							return errors.New("valkey service is not running")
+							return errors.New("no valkey instance is running")
 						}
 						return nil
 					}},
 					preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
 						if !containsString(running, "valkey") {
-							return errors.New("valkey service is not running")
+							return errors.New("no valkey instance is running")
 						}
 						return application.VerifyValkeyRuntime(ctx, compose, m, files)
 					}},
@@ -270,7 +270,8 @@ func ownerOnly(path string) error {
 
 func containsString(values []string, wanted string) bool {
 	for _, value := range values {
-		if strings.TrimSpace(value) == wanted {
+		value = strings.TrimSpace(value)
+		if value == wanted || strings.HasPrefix(value, wanted+"-") {
 			return true
 		}
 	}
