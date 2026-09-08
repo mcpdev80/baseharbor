@@ -174,6 +174,117 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", false, false, false)
+	m = WithPostgresInstances(m, "primary", "analytics")
+	m = WithRedisInstances(m, "cache", "sessions")
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composeText := string(compose)
+	for _, wanted := range []string{
+		"  postgres-primary:\n",
+		"  postgres-analytics:\n",
+		"  valkey-cache:\n",
+		"  valkey-sessions:\n",
+		`127.0.0.1:${POSTGRES_PRIMARY_HOST_PORT}:5432`,
+		`127.0.0.1:${POSTGRES_ANALYTICS_HOST_PORT}:5432`,
+		`127.0.0.1:${VALKEY_CACHE_HOST_PORT}:6379`,
+		`127.0.0.1:${VALKEY_SESSIONS_HOST_PORT}:6379`,
+	} {
+		if !strings.Contains(composeText, wanted) {
+			t.Fatalf("multi-instance compose missing %q:\n%s", wanted, composeText)
+		}
+	}
+
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := map[string]struct{}{}
+	for _, key := range []string{"POSTGRES_PRIMARY_HOST_PORT", "POSTGRES_ANALYTICS_HOST_PORT", "VALKEY_CACHE_HOST_PORT", "VALKEY_SESSIONS_HOST_PORT"} {
+		value := values[key]
+		if value == "" {
+			t.Fatalf("runtime env missing %s", key)
+		}
+		if _, exists := ports[value]; exists {
+			t.Fatalf("runtime reused host port %s", value)
+		}
+		ports[value] = struct{}{}
+	}
+
+	appEnv, err := os.ReadFile(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appText := string(appEnv)
+	for _, wanted := range []string{
+		"DATABASE_URL=postgresql://",
+		"DATABASE_PRIMARY_URL=postgresql://",
+		"DATABASE_ANALYTICS_URL=postgresql://",
+		"REDIS_CACHE_URL=redis://",
+		"REDIS_SESSIONS_URL=redis://",
+		"VALKEY_CACHE_URL=redis://",
+		"VALKEY_SESSIONS_URL=redis://",
+	} {
+		if !strings.Contains(appText, wanted) {
+			t.Fatalf("multi-instance application contract missing %q:\n%s", wanted, appText)
+		}
+	}
+	if strings.Contains(appText, "\nREDIS_URL=") || strings.Contains(appText, "\nVALKEY_URL=") {
+		t.Fatalf("ambiguous generic Redis URL must not be emitted for cache+sessions:\n%s", appText)
+	}
+
+	for _, path := range []string{
+		filepath.Join(files.Bindings, "postgres", "primary", "uri"),
+		filepath.Join(files.Bindings, "postgres", "analytics", "uri"),
+		filepath.Join(files.Bindings, "valkey", "cache", "uri"),
+		filepath.Join(files.Bindings, "valkey", "sessions", "uri"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("named binding %s: %v", path, err)
+		}
+	}
+}
+
+func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", false, false, false)
+	m = WithPostgresInstances(m, "primary")
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := before["POSTGRES_PRIMARY_PASSWORD"]
+	port := before["POSTGRES_PRIMARY_HOST_PORT"]
+
+	m = WithPostgresInstances(m, "analytics")
+	if _, err := EnsureRuntime(store, m); err != nil {
+		t.Fatal(err)
+	}
+	after, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after["POSTGRES_PRIMARY_PASSWORD"] != password || after["POSTGRES_PRIMARY_HOST_PORT"] != port {
+		t.Fatal("adding a named PostgreSQL instance rotated the existing primary instance")
+	}
+	if after["POSTGRES_ANALYTICS_PASSWORD"] == "" || after["POSTGRES_ANALYTICS_HOST_PORT"] == "" {
+		t.Fatal("new analytics instance was not materialized")
+	}
+}
+
 func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("cache", "dev", false, true, false)
