@@ -31,11 +31,15 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if !m.Services.Secrets {
 		return Files{}, errors.New("runtime secret broker requires managed secrets")
 	}
-	tokenPath, err := application.EnsureRuntimeIdentity(m, appFiles)
+	canonicalToken, err := application.EnsureRuntimeIdentity(m, appFiles)
 	if err != nil {
 		return Files{}, err
 	}
-	credentialProjection, err := ensureCredentialProjection(appFiles)
+	credentialProjection, err := projectOwnerOnlyFile(appFiles, openbao.ApplicationCredentialsPath(appFiles.Dir), "openbao.env", "OpenBao application credentials")
+	if err != nil {
+		return Files{}, err
+	}
+	tokenProjection, err := projectOwnerOnlyFile(appFiles, canonicalToken, "runtime-token", "application runtime identity token")
 	if err != nil {
 		return Files{}, err
 	}
@@ -47,7 +51,7 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err != nil {
 		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
 	}
-	content, err := composeYAML(m, mtls, tokenPath, credentialProjection, image)
+	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, image)
 	if err != nil {
 		return Files{}, err
 	}
@@ -78,21 +82,23 @@ func Existing(appFiles application.RuntimeFiles) (Files, error) {
 	return Files{Compose: composePath, Image: strings.TrimSpace(string(data))}, nil
 }
 
-func ensureCredentialProjection(appFiles application.RuntimeFiles) (string, error) {
-	source := openbao.ApplicationCredentialsPath(appFiles.Dir)
+func projectOwnerOnlyFile(appFiles application.RuntimeFiles, source, targetName, label string) (string, error) {
 	info, err := os.Lstat(source)
 	if err != nil {
-		return "", fmt.Errorf("inspect canonical OpenBao application credentials: %w", err)
+		return "", fmt.Errorf("inspect canonical %s: %w", label, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", errors.New("canonical OpenBao application credentials must be a regular file")
+		return "", fmt.Errorf("canonical %s must be a regular file", label)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
-		return "", fmt.Errorf("canonical OpenBao application credentials are accessible by group or others (%o)", info.Mode().Perm())
+		return "", fmt.Errorf("canonical %s is accessible by group or others (%o)", label, info.Mode().Perm())
 	}
 	value, err := os.ReadFile(source)
 	if err != nil {
-		return "", fmt.Errorf("read canonical OpenBao application credentials: %w", err)
+		return "", fmt.Errorf("read canonical %s: %w", label, err)
+	}
+	if len(value) == 0 {
+		return "", fmt.Errorf("canonical %s is empty", label)
 	}
 
 	dir := filepath.Join(appFiles.Bindings, "runtime-broker")
@@ -102,22 +108,22 @@ func ensureCredentialProjection(appFiles application.RuntimeFiles) (string, erro
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", fmt.Errorf("protect runtime broker binding directory: %w", err)
 	}
-	path := filepath.Join(dir, "openbao.env")
+	path := filepath.Join(dir, targetName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, value, 0o600); err != nil {
-		return "", fmt.Errorf("write runtime broker credential projection: %w", err)
+		return "", fmt.Errorf("write %s runtime projection: %w", label, err)
 	}
 	if err := os.Chmod(tmp, 0o644); err != nil {
 		_ = os.Remove(tmp)
-		return "", fmt.Errorf("prepare runtime broker credential projection: %w", err)
+		return "", fmt.Errorf("prepare %s runtime projection: %w", label, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return "", fmt.Errorf("install runtime broker credential projection: %w", err)
+		return "", fmt.Errorf("install %s runtime projection: %w", label, err)
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("resolve runtime broker credential projection: %w", err)
+		return "", fmt.Errorf("resolve %s runtime projection: %w", label, err)
 	}
 	return absolute, nil
 }
