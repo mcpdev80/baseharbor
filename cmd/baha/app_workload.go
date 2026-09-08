@@ -28,12 +28,27 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 	return application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
 }
 
+func repositoryWorkloadComposeFiles(resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles) ([]string, error) {
+	composeFiles := []string{workload.Compose, workload.Override}
+	runtimeIdentityOverride, enabled, err := application.MaterializeRuntimeIdentityWorkloadOverride(resolved.Manifest, workload, files)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		composeFiles = append(composeFiles, runtimeIdentityOverride)
+	}
+	return composeFiles, nil
+}
+
 func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return false, err
 	}
-	composeFiles := []string{workload.Compose, workload.Override}
+	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	if err != nil {
+		return false, err
+	}
 	if err := compose.ConfigProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
 		return false, fmt.Errorf("validate application workload Compose integration: %w", err)
 	}
@@ -74,7 +89,10 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err != nil || !found {
 		return false, err
 	}
-	composeFiles := []string{workload.Compose, workload.Override}
+	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	if err != nil {
+		return false, err
+	}
 	if err := compose.ConfigProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
 		return false, fmt.Errorf("validate application workload before stop: %w", err)
 	}
@@ -96,7 +114,10 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 	if err != nil || !found {
 		return workload, nil, found, err
 	}
-	composeFiles := []string{workload.Compose, workload.Override}
+	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	if err != nil {
+		return workload, nil, true, err
+	}
 	if err := compose.ConfigProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
 		return workload, nil, true, err
 	}
@@ -109,7 +130,10 @@ func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose
 	if err != nil || !found {
 		return len(running), found, err
 	}
-	composeFiles := []string{workload.Compose, workload.Override}
+	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	if err != nil {
+		return len(running), true, err
+	}
 	active, err := compose.ServicesProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...)
 	if err != nil {
 		return len(running), true, err
