@@ -12,8 +12,8 @@ const (
 	FormatMagic   = "BASEHARBOR-APP-BACKUP"
 	SchemaVersion = 1
 
-	MaxEntries           = 128
-	MaxEntryBytes  int64 = 512 << 20
+	MaxEntries            = 128
+	MaxEntryBytes   int64 = 512 << 20
 	MaxPayloadBytes int64 = 2 << 30
 )
 
