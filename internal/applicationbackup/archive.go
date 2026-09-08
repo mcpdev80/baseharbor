@@ -10,7 +10,7 @@ import (
 )
 
 type Payload struct {
-	Manifest Manifest     `json:"manifest"`
+	Manifest Manifest       `json:"manifest"`
 	Entries  []PayloadEntry `json:"entries"`
 }
 
