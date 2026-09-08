@@ -123,7 +123,7 @@ jobs:
 
           api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
-          docker exec -i -e SECRET_REF="$ref" "$api_id" python <<'PY'
+          docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
           import asyncio
           import os
           import uuid
@@ -209,7 +209,7 @@ jobs:
           test -n "$ref"
           api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
-          docker exec -i -e SECRET_REF="$ref" "$api_id" python <<'PY'
+          docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
           import asyncio
           import os
           from sqlalchemy import text
