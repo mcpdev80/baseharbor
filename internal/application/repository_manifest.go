@@ -9,6 +9,8 @@ import (
 
 const RepositoryManifestName = "baseharbor.yaml"
 
+const stateGitIgnore = "*\n!.gitignore\n"
+
 // FindRepositoryManifest returns the nearest baseharbor.yaml from start upward.
 // This lets developers run baha from nested directories inside an application repository.
 func FindRepositoryManifest(start string) (string, error) {
@@ -58,6 +60,9 @@ func (s Store) Sync(m Manifest) (string, error) {
 	if err := m.Validate(); err != nil {
 		return "", err
 	}
+	if err := ensureStateGitIgnore(s.Root); err != nil {
+		return "", err
+	}
 	appDir := filepath.Join(s.Root, m.Name)
 	if err := os.MkdirAll(appDir, 0o700); err != nil {
 		return "", fmt.Errorf("create application state directory: %w", err)
@@ -79,4 +84,27 @@ func (s Store) Sync(m Manifest) (string, error) {
 		return "", fmt.Errorf("replace synchronized application manifest: %w", err)
 	}
 	return path, nil
+}
+
+func ensureStateGitIgnore(storeRoot string) error {
+	stateDir := filepath.Dir(storeRoot)
+	if filepath.Base(storeRoot) != "apps" {
+		return nil
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return fmt.Errorf("create BaseHarbor state directory: %w", err)
+	}
+	path := filepath.Join(stateDir, ".gitignore")
+	if data, err := os.ReadFile(path); err == nil {
+		if string(data) == stateGitIgnore {
+			return nil
+		}
+		return fmt.Errorf("%s exists with unexpected content; refusing to overwrite Git safety rules", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect BaseHarbor state Git ignore: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(stateGitIgnore), 0o644); err != nil {
+		return fmt.Errorf("write BaseHarbor state Git ignore: %w", err)
+	}
+	return nil
 }
