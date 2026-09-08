@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
@@ -17,7 +19,10 @@ var (
 )
 
 func main() {
-	err := runWithIO(context.Background(), os.Args[1:], os.Stdout, os.Stderr)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	err := runWithIO(ctx, os.Args[1:], os.Stdout, os.Stderr)
 	if err == nil {
 		return
 	}
