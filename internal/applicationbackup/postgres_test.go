@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
@@ -22,7 +23,8 @@ func TestPostgresPayloadEntriesRoundTrip(t *testing.T) {
 		t.Fatalf("entry names = %v, want %v", got, want)
 	}
 
-	archive, err := Build("mailflow", "dev", testCreatedAt, entries, []byte("correct horse battery staple"))
+	createdAt := time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC)
+	archive, err := Build("mailflow", "dev", createdAt, entries, []byte("correct horse battery staple"))
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
