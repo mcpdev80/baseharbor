@@ -5,7 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const maxApplicationBackupSecrets = 4096
@@ -20,7 +21,7 @@ type ApplicationSecretBackupEntry struct {
 	Value []byte
 }
 
-func ExportApplicationSecrets(ctx context.Context, executor Executor, files runtimeFiles, identity ApplicationIdentity, credentialsPath string) (ApplicationSecretBackup, error) {
+func ExportApplicationSecrets(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity, credentialsPath string) (ApplicationSecretBackup, error) {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return ApplicationSecretBackup{}, err
 	}
@@ -42,7 +43,7 @@ func ExportApplicationSecrets(ctx context.Context, executor Executor, files runt
 	return backup, nil
 }
 
-func RestoreApplicationSecrets(ctx context.Context, executor Executor, files runtimeFiles, identity ApplicationIdentity, credentialsPath string, backup ApplicationSecretBackup) error {
+func RestoreApplicationSecrets(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity, credentialsPath string, backup ApplicationSecretBackup) error {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return err
 	}
@@ -106,6 +107,5 @@ func validateApplicationSecretBackup(backup ApplicationSecretBackup) error {
 			return fmt.Errorf("application secret backup key %q exceeds maximum size", entry.Key)
 		}
 	}
-	sort.Slice(backup.Secrets, func(i, j int) bool { return backup.Secrets[i].Key < backup.Secrets[j].Key })
 	return nil
 }
