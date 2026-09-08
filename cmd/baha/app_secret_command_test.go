@@ -16,7 +16,7 @@ func TestApplicationSecretCommandsAreDiscoverable(t *testing.T) {
 	if secret == nil {
 		t.Fatal("app secret command is missing")
 	}
-	for _, name := range []string{"set", "list", "delete"} {
+	for _, name := range []string{"set", "list", "delete", "tls-set"} {
 		child := findSecretTestChild(secret, name)
 		if child == nil {
 			t.Fatalf("app secret %s command is missing", name)
