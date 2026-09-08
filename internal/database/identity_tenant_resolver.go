@@ -74,6 +74,9 @@ ORDER BY m.tenant_id, m.role
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(memberships) == 0 {
+		return nil, tenancy.ErrNoMembership
+	}
 
 	resolved, err := tenancy.Resolve(externalIdentityID, memberships)
 	if err != nil {
