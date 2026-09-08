@@ -98,6 +98,31 @@ func nonEmptyLines(out string) []string {
 	return values
 }
 
+func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
+	if len(overrides) == 0 {
+		return os.Environ(), nil
+	}
+	for key, value := range overrides {
+		if key == "" || strings.ContainsRune(key, '=') || strings.ContainsRune(value, 0) {
+			return nil, errors.New("invalid compose process environment")
+		}
+	}
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, replaced := overrides[key]; replaced {
+				continue
+			}
+		}
+		env = append(env, entry)
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env, nil
+}
+
 func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
@@ -123,12 +148,10 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 	if strings.TrimSpace(workdir) != "" {
 		cmd.Dir = workdir
 	}
-	cmd.Env = os.Environ()
-	for key, value := range environment {
-		if strings.ContainsRune(key, '=') || strings.ContainsRune(value, 0) {
-			return "", errors.New("invalid compose process environment")
-		}
-		cmd.Env = append(cmd.Env, key+"="+value)
+	var err error
+	cmd.Env, err = mergeProcessEnvironment(environment)
+	if err != nil {
+		return "", err
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
