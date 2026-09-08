@@ -14,7 +14,11 @@ import (
 func rootCommand() *cli.Command {
 	store := application.DefaultStore()
 	appCmd := appCommand(store)
-	appCmd.Children = append(appCmd.Children, appApplyCommand(store))
+	appCmd.Children = append(appCmd.Children,
+		appApplyCommand(store),
+		appStatusCommand(store),
+		appDoctorCommand(store),
+	)
 
 	root := &cli.Command{
 		Name:    "baha",
