@@ -21,7 +21,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
 		Usage:   "baha app status [NAME]",
-		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Managed required secrets are considered ready only when their values are present and readable. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "status")
 			if err != nil {
@@ -129,7 +129,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor [NAME]",
-		Long:    "Checks desired state, local runtime files, Compose configuration, service state, authenticated protocol readiness and managed secret health. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Checks desired state, local runtime files, Compose configuration, service state, authenticated protocol readiness, managed OpenBao secret scope health and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "doctor")
 			if err != nil {
