@@ -27,13 +27,19 @@ jobs:
           --health-retries 10
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Format check
-        run: test -z "$(gofmt -l .)"
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'The following Go files need gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
       - name: Test
         run: go test ./...
       - name: Vet
@@ -50,6 +56,8 @@ jobs:
           docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
       - name: Build baha
         run: go build -o /tmp/baha ./cmd/baha
+      - name: Build runtime broker image
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Smoke test baha binary
         run: |
           /tmp/baha --help >/tmp/baha-help.txt

@@ -21,7 +21,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
 		Usage:   "baha app status [NAME]",
-		Long:    "Reports materialized backend state, repository workload state and protocol-level readiness. Managed required secrets are considered ready only when their values are present and readable. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Reports materialized backend state, repository workload state and protocol-level readiness. Managed required secrets are considered ready only when their values are present and readable, and managed secret applications are ready only when their per-application mTLS broker can authenticate to OpenBao. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "status")
 			if err != nil {
@@ -115,6 +115,15 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 					cancel()
 				}
+				brokerCtx, brokerCancel := context.WithTimeout(ctx, 10*time.Second)
+				brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
+				brokerCancel()
+				if brokerErr != nil {
+					fmt.Fprintln(out, "[FAIL] secret-broker     per-application mTLS/OpenBao readiness failed")
+					ready = false
+				} else {
+					fmt.Fprintln(out, "[OK] secret-broker     mTLS identity and app-scoped OpenBao readiness succeeded")
+				}
 			}
 			if count, found, workloadErr := checkRepositoryWorkloadReady(ctx, compose, resolved, files); found {
 				if workloadErr != nil {
@@ -140,7 +149,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor [NAME]",
-		Long:    "Checks desired state, local runtime files, Compose configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Checks desired state, local runtime files, Compose configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health, per-application mTLS broker readiness and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "doctor")
 			if err != nil {
@@ -249,6 +258,12 @@ func appDoctorCommand(store application.Store) *cli.Command {
 						}
 						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					}},
+					preflight.Check{Name: "runtime secret broker", Run: func(ctx context.Context) error {
+						if runtimeErr != nil {
+							return runtimeErr
+						}
+						return verifyRuntimeBrokerRunning(ctx, compose, m, files)
 					}},
 				)
 				if len(application.RequiredSecretNames(m)) > 0 {

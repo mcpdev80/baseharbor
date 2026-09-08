@@ -19,7 +19,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply [NAME]",
-		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network and injects container-routable native service URLs. Declared secrets.required entries are readiness gates.",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network and injects container-routable native service URLs. Declared secrets.required entries are readiness gates. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
@@ -84,6 +84,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
+
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
@@ -94,6 +95,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("required secrets check failed: %w", err)
 				}
 			}
+
 			if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
@@ -120,6 +122,12 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			if verifyErr != nil {
 				return fmt.Errorf("application verification failed: %w", verifyErr)
+			}
+
+			if m.Services.Secrets {
+				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
+					return err
+				}
 			}
 
 			printRuntimeReady(out, m)
@@ -156,6 +164,7 @@ func printRuntimeReady(out io.Writer, m application.Manifest) {
 	}
 	if m.Services.Secrets {
 		fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole and secret scope verified")
+		fmt.Fprintln(out, "[OK] secret-broker     mTLS identity and app-scoped OpenBao readiness succeeded")
 		if len(m.Secrets.Required) > 0 {
 			fmt.Fprintf(out, "[OK] required-secrets  %d declared secret(s) present\n", len(m.Secrets.Required))
 		}

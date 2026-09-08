@@ -22,7 +22,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down [NAME]",
-		Long:    "Stops a repository application workload first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Stops a repository application workload and its per-application runtime secret broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "down")
 			if err != nil {
@@ -72,6 +72,12 @@ func appDownCommand(store application.Store) *cli.Command {
 			} else if stopped {
 				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
 			}
+			if m.Services.Secrets {
+				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+					return err
+				}
+				fmt.Fprintln(out, "[OK] secret-broker     per-application runtime secret broker stopped")
+			}
 
 			project := application.RuntimeProjectName(m)
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
@@ -100,7 +106,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
 		Usage:   "baha app destroy [NAME] [--yes]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. Application-owned Compose volumes and a repository-owned baseharbor.yaml are preserved.",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application secret broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. Application-owned Compose volumes and a repository-owned baseharbor.yaml are preserved.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, err := parseDestroyArgs(args)
 			if err != nil {
@@ -195,6 +201,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			if m.Services.Secrets {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
+				fmt.Fprintln(out, "  broker:     per-application mTLS secret broker")
 			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
@@ -209,6 +216,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if runtimeErr == nil {
 				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 					return err
+				}
+				if m.Services.Secrets {
+					if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+						return err
+					}
 				}
 				if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
 					return err

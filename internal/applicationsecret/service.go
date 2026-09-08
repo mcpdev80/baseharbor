@@ -20,11 +20,20 @@ type Metadata struct {
 }
 
 type Service struct {
-	store application.Store
+	store         application.Store
+	runtimeClient *openbao.ApplicationRuntimeClient
 }
 
 func New(store application.Store) *Service {
 	return &Service{store: store}
+}
+
+// NewRuntime creates the narrow data-plane service used by the managed runtime
+// API. Dynamic secret operations use the application's own OpenBao AppRole over
+// the internal network and do not require Docker/Podman control or manager
+// credentials.
+func NewRuntime(store application.Store, client *openbao.ApplicationRuntimeClient) *Service {
+	return &Service{store: store, runtimeClient: client}
 }
 
 func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
@@ -128,6 +137,12 @@ type resolvedApplication struct {
 	credentialsPath string
 }
 
+type runtimeResolvedApplication struct {
+	manifest        application.Manifest
+	identity        openbao.ApplicationIdentity
+	credentialsPath string
+}
+
 func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication, error) {
 	m, _, err := s.store.Load(name)
 	if err != nil {
@@ -155,4 +170,29 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 		return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
 	}
 	return resolvedApplication{manifest: m, compose: compose, platformFiles: platformFiles, identity: openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}, credentialsPath: openbao.ApplicationCredentialsPath(files.Dir)}, nil
+}
+
+func (s *Service) resolveRuntime(name string) (runtimeResolvedApplication, error) {
+	if s.runtimeClient == nil {
+		return runtimeResolvedApplication{}, errors.New("application runtime secret backend is not configured")
+	}
+	m, _, err := s.store.Load(name)
+	if err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	if !m.Services.Secrets {
+		return runtimeResolvedApplication{}, errors.New("application does not enable managed secrets")
+	}
+	files, err := application.ExistingRuntimeFiles(s.store, m)
+	if err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	if err := application.CheckRuntimePermissions(files); err != nil {
+		return runtimeResolvedApplication{}, err
+	}
+	return runtimeResolvedApplication{
+		manifest:        m,
+		identity:        openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment},
+		credentialsPath: openbao.ApplicationCredentialsPath(files.Dir),
+	}, nil
 }

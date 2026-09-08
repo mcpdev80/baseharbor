@@ -1,0 +1,7 @@
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates curl
+COPY baha /usr/local/bin/baha
+RUN chmod 0755 /usr/local/bin/baha
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/baha"]
+CMD ["serve"]

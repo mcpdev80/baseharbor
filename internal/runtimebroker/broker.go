@@ -1,0 +1,250 @@
+package runtimebroker
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+)
+
+const (
+	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:latest"
+	ServiceName  = "broker"
+	RuntimeURL   = "https://baseharbor-secrets:8443"
+)
+
+type Files struct {
+	Compose string
+	Image   string
+}
+
+func ProjectName(m application.Manifest) string {
+	return "baseharbor-broker-" + m.Name + "-" + m.Environment
+}
+
+func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
+	if !m.Services.Secrets {
+		return Files{}, errors.New("runtime secret broker requires managed secrets")
+	}
+	canonicalToken, err := application.EnsureRuntimeIdentity(m, appFiles)
+	if err != nil {
+		return Files{}, err
+	}
+	credentialProjection, err := projectOwnerOnlyFile(appFiles, openbao.ApplicationCredentialsPath(appFiles.Dir), "openbao.env", "OpenBao application credentials")
+	if err != nil {
+		return Files{}, err
+	}
+	tokenProjection, err := projectOwnerOnlyFile(appFiles, canonicalToken, "runtime-token", "application runtime identity token")
+	if err != nil {
+		return Files{}, err
+	}
+	image, err := ensureImage(appFiles.Dir)
+	if err != nil {
+		return Files{}, err
+	}
+	composePath, err := filepath.Abs(filepath.Join(appFiles.Dir, "broker.compose.yaml"))
+	if err != nil {
+		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
+	}
+	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, image)
+	if err != nil {
+		return Files{}, err
+	}
+	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		return Files{}, fmt.Errorf("write runtime broker compose file: %w", err)
+	}
+	if err := os.Chmod(composePath, 0o600); err != nil {
+		return Files{}, fmt.Errorf("protect runtime broker compose file: %w", err)
+	}
+	return Files{Compose: composePath, Image: image}, nil
+}
+
+func Existing(appFiles application.RuntimeFiles) (Files, error) {
+	composePath, err := filepath.Abs(filepath.Join(appFiles.Dir, "broker.compose.yaml"))
+	if err != nil {
+		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
+	}
+	imagePath := filepath.Join(appFiles.Dir, "broker-image")
+	for _, path := range []string{composePath, imagePath} {
+		if _, err := os.Stat(path); err != nil {
+			return Files{}, err
+		}
+	}
+	data, err := os.ReadFile(imagePath)
+	if err != nil {
+		return Files{}, err
+	}
+	return Files{Compose: composePath, Image: strings.TrimSpace(string(data))}, nil
+}
+
+func projectOwnerOnlyFile(appFiles application.RuntimeFiles, source, targetName, label string) (string, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return "", fmt.Errorf("inspect canonical %s: %w", label, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("canonical %s must be a regular file", label)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("canonical %s is accessible by group or others (%o)", label, info.Mode().Perm())
+	}
+	value, err := os.ReadFile(source)
+	if err != nil {
+		return "", fmt.Errorf("read canonical %s: %w", label, err)
+	}
+	if len(value) == 0 {
+		return "", fmt.Errorf("canonical %s is empty", label)
+	}
+
+	dir := filepath.Join(appFiles.Bindings, "runtime-broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create runtime broker binding directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", fmt.Errorf("protect runtime broker binding directory: %w", err)
+	}
+	path := filepath.Join(dir, targetName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, value, 0o600); err != nil {
+		return "", fmt.Errorf("write %s runtime projection: %w", label, err)
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("prepare %s runtime projection: %w", label, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("install %s runtime projection: %w", label, err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s runtime projection: %w", label, err)
+	}
+	return absolute, nil
+}
+
+func ensureImage(dir string) (string, error) {
+	path := filepath.Join(dir, "broker-image")
+	if data, err := os.ReadFile(path); err == nil {
+		image := strings.TrimSpace(string(data))
+		if image == "" || strings.ContainsAny(image, "\r\n\x00") {
+			return "", errors.New("runtime broker image state is invalid")
+		}
+		return image, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read runtime broker image state: %w", err)
+	}
+	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	if image == "" {
+		image = DefaultImage
+	}
+	if strings.ContainsAny(image, "\r\n\x00") {
+		return "", errors.New("BASEHARBOR_RUNTIME_IMAGE is invalid")
+	}
+	if err := os.WriteFile(path, []byte(image+"\n"), 0o600); err != nil {
+		return "", fmt.Errorf("write runtime broker image state: %w", err)
+	}
+	return image, nil
+}
+
+func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, image string) (string, error) {
+	backendNetwork := application.ApplicationBackendNetworkName(m)
+	paths := map[string]string{
+		"runtime token":            tokenPath,
+		"OpenBao credentials":      credPath,
+		"runtime CA":               mtls.CA,
+		"broker certificate":       mtls.BrokerCert,
+		"broker private key":       mtls.BrokerKey,
+		"probe client certificate": mtls.ClientCert,
+		"probe client private key": mtls.ClientKey,
+	}
+	for label, path := range paths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s path: %w", label, err)
+		}
+		info, err := os.Stat(absolute)
+		if err != nil {
+			return "", fmt.Errorf("inspect %s path: %w", label, err)
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("%s path is not a regular file", label)
+		}
+		paths[label] = absolute
+	}
+	tokenPath = paths["runtime token"]
+	credPath = paths["OpenBao credentials"]
+	mtls.CA = paths["runtime CA"]
+	mtls.BrokerCert = paths["broker certificate"]
+	mtls.BrokerKey = paths["broker private key"]
+	mtls.ClientCert = paths["probe client certificate"]
+	mtls.ClientKey = paths["probe client private key"]
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString("  broker:\n")
+	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    command: [\"serve\"]\n")
+	b.WriteString("    environment:\n")
+	b.WriteString("      BASEHARBOR_API_LISTEN_ADDR: \"0.0.0.0:8443\"\n")
+	b.WriteString("      BASEHARBOR_API_TLS_CERT_FILE: \"/run/baseharbor/identity/broker-cert.pem\"\n")
+	b.WriteString("      BASEHARBOR_API_TLS_KEY_FILE: \"/run/secrets/broker-key\"\n")
+	b.WriteString("      BASEHARBOR_API_TLS_CLIENT_CA_FILE: \"/run/baseharbor/identity/ca.pem\"\n")
+	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_APP_NAME: %s\n", strconv.Quote(m.Name))
+	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_ENVIRONMENT: %s\n", strconv.Quote(m.Environment))
+	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"http://openbao:8200\"\n")
+	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE: \"/run/secrets/openbao-credentials\"\n")
+	b.WriteString("      BASEHARBOR_RUNTIME_TOKEN_FILE: \"/run/secrets/runtime-token\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    tmpfs:\n")
+	b.WriteString("      - \"/tmp:rw,noexec,nosuid,nodev,size=16m\"\n")
+	b.WriteString("    cap_drop:\n")
+	b.WriteString("      - ALL\n")
+	b.WriteString("    security_opt:\n")
+	b.WriteString("      - \"no-new-privileges:true\"\n")
+	b.WriteString("    volumes:\n")
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mtls.CA+":/run/baseharbor/identity/ca.pem:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mtls.BrokerCert+":/run/baseharbor/identity/broker-cert.pem:ro"))
+	b.WriteString("    secrets:\n")
+	b.WriteString("      - broker-key\n")
+	b.WriteString("      - openbao-credentials\n")
+	b.WriteString("      - runtime-token\n")
+	b.WriteString("      - probe-client-cert\n")
+	b.WriteString("      - probe-client-key\n")
+	b.WriteString("    healthcheck:\n")
+	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-secrets:8443/readyz\"]\n")
+	b.WriteString("      interval: 5s\n")
+	b.WriteString("      timeout: 5s\n")
+	b.WriteString("      retries: 12\n")
+	b.WriteString("      start_period: 2s\n")
+	b.WriteString("    networks:\n")
+	b.WriteString("      backend:\n")
+	b.WriteString("        aliases:\n")
+	b.WriteString("          - baseharbor-secrets\n")
+	b.WriteString("      secrets: {}\n")
+	b.WriteString("\nsecrets:\n")
+	b.WriteString("  broker-key:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.BrokerKey))
+	b.WriteString("  openbao-credentials:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(credPath))
+	b.WriteString("  runtime-token:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(tokenPath))
+	b.WriteString("  probe-client-cert:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.ClientCert))
+	b.WriteString("  probe-client-key:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.ClientKey))
+	b.WriteString("\nnetworks:\n")
+	b.WriteString("  backend:\n")
+	b.WriteString("    external: true\n")
+	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
+	b.WriteString("  secrets:\n")
+	b.WriteString("    external: true\n")
+	b.WriteString("    name: baseharbor-secrets\n")
+	return b.String(), nil
+}
