@@ -102,26 +102,71 @@ services:
     enabled: true
 ```
 
-For the current milestone, managed secrets are supported alongside PostgreSQL and/or Valkey. A secrets-only application is rejected until BaseHarbor has an application lifecycle that does not depend on a materialized Compose workload.
+Managed secrets are currently supported alongside PostgreSQL and/or Valkey. A secrets-only application is rejected until BaseHarbor has an application lifecycle that does not depend on a materialized Compose workload.
 
 `baha app apply NAME` provisions:
 
-- one exact KV v2 secret document at `baseharbor/apps/<app>/<environment>`
+- one application/environment KV v2 namespace below `baseharbor/apps/<app>/<environment>/`
 - one policy named `baseharbor-app-<app>-<environment>`
 - one AppRole with the same BaseHarbor-managed name
 - one owner-only local bootstrap credential file at `.baseharbor/apps/<app>/runtime/openbao.env`
+- one reserved namespace marker named `_baseharbor`
 
 The local file contains only the application's RoleID and SecretID. It does not contain application secret payloads, a manager token, an unseal key, or a root token.
 
-The application policy has no wildcard access to another application or environment. BaseHarbor also reserves a separate verification document below `baseharbor/apps/_baseharbor-probes/<app>/<environment>`. Apply/up verification writes only to that probe document; it never overwrites or deletes the application's real secret document.
+Each operator-managed secret key is stored as its own KV v2 document:
 
-`baha app status NAME` and `baha app doctor NAME` are read-only. They authenticate the application AppRole, inspect required token capabilities, and validate that the AppRole and policy still match the BaseHarbor-managed definition. They do not perform KV writes or deletes.
+```text
+baseharbor/apps/<app>/<environment>/<KEY>
+```
 
-`baha app down NAME` preserves the OpenBao scope. `baha app destroy NAME --yes` removes the application's secret metadata, probe metadata, AppRole and policy as part of permanent destruction. Destructive OpenBao mutation is refused when the AppRole/policy ownership definition has been changed unexpectedly.
+The application policy may wildcard only below the exact application/environment namespace. It has no access to another application or environment. BaseHarbor also reserves a separate verification document below `baseharbor/apps/_baseharbor-probes/<app>/<environment>`. Apply/up verification writes only to that probe document; it never overwrites or deletes operator-managed application secrets.
+
+`baha app status NAME` and `baha app doctor NAME` are read-only. They authenticate the application AppRole and validate that the AppRole and policy still match the BaseHarbor-managed definition. They do not perform KV writes or deletes.
+
+`baha app down NAME` preserves the OpenBao scope. `baha app destroy NAME --yes` removes every managed application secret document, the namespace marker, probe metadata, AppRole and policy as part of permanent destruction. Destructive OpenBao mutation is refused when the AppRole/policy ownership definition has been changed unexpectedly.
+
+## Managing application secret values
+
+Secret values are managed through `baha` without placing them on the command line or printing them back to the terminal.
+
+Create or replace a value:
+
+```bash
+printf '%s' 'secret-value' | baha app secret set demo API_TOKEN --stdin
+```
+
+The value is read only from stdin. BaseHarbor rejects an empty value, values larger than 1 MiB and non-UTF-8 input. After the KV write, BaseHarbor reads the stored value internally and compares it byte-for-byte before reporting success. The value is not included in normal output or errors.
+
+List configured key names:
+
+```bash
+baha app secret list demo
+```
+
+Only key names are returned. Secret values are never rendered by this command family.
+
+Preview permanent deletion:
+
+```bash
+baha app secret delete demo API_TOKEN
+```
+
+Confirm permanent deletion:
+
+```bash
+baha app secret delete demo API_TOKEN --yes
+```
+
+Confirmed deletion uses KV v2 metadata deletion, removing the selected key's metadata and all historical versions. BaseHarbor then verifies that the key is no longer present. Without `--yes`, the operation is read-only.
+
+Application secret keys are limited to ASCII letters, digits, `_`, `-` and `.`, with a maximum length of 128 characters. Keys may not start with `-` or `.`, and BaseHarbor-reserved names are rejected.
+
+There is intentionally no operator command that prints a secret value. A future workload-consumption path will use provider-standard runtime mechanisms rather than turning `baha` into a general-purpose secret reveal tool.
 
 ### Current application-consumption boundary
 
-This milestone establishes the isolated server-side scope and application identity. It does **not** yet inject OpenBao credentials into application containers or claim that arbitrary application code can reach the bundled loopback-only OpenBao listener directly.
+This milestone provides isolated server-side scope, application identity and safe operator CRUD for secret values. It does **not** yet inject OpenBao credentials or resolved secret values into application containers, and it does not claim that arbitrary application code can reach the bundled loopback-only OpenBao listener directly.
 
 Applications will continue to use native/provider-standard mechanisms as runtime connectivity and credential injection are added. BaseHarbor does not require a proprietary application SDK.
 
@@ -139,10 +184,10 @@ credential.Broker
       +-- openbao.Client
 ```
 
-The platform bootstrap and managed-identity lifecycle are operator/control-plane boundaries:
+The platform bootstrap, managed-identity lifecycle and operator secret mutations are control-plane boundaries:
 
 ```text
-baha openbao ... / baha app apply ...
+baha openbao ... / baha app apply ... / baha app secret ...
       |
       v
 platform OpenBao lifecycle
@@ -157,7 +202,9 @@ This separation prevents bootstrap privileges from leaking into normal applicati
 
 A trust plane bootstrapped by a BaseHarbor version before application-scope provisioning does not automatically gain the newer manager-policy permissions. BaseHarbor fails closed when those permissions are absent instead of attempting privilege escalation with insufficient credentials.
 
-During the current pre-release phase, such a trust plane must be explicitly rebuilt/re-bootstrapped or reconciled by an operator before `services.secrets` convergence can succeed. A dedicated in-place trust-plane reconciliation workflow remains future work.
+Application scopes created before per-key secret namespaces were introduced must be reconciled with `baha app apply NAME` before `baha app secret ...` is used. Apply rewrites only the BaseHarbor-owned policy/AppRole definition and creates the reserved namespace marker; it does not replace existing RoleID/SecretID state implicitly.
+
+During the current pre-release phase, a trust plane whose manager policy itself is too old must still be explicitly rebuilt/re-bootstrapped or reconciled by an operator. A dedicated in-place trust-plane reconciliation workflow remains future work.
 
 ## Current scope
 
@@ -170,17 +217,20 @@ Implemented:
 - restricted manager AppRole provisioning and initial root-token revocation
 - owner-only recovery and manager credential files
 - application `services.secrets` convergence alongside PostgreSQL/Valkey
-- exact per-application/environment KV scopes
+- exact per-application/environment KV namespaces
 - application-specific policies and AppRoles
 - owner-only application RoleID/SecretID bootstrap state
 - read-only application scope status/doctor inspection
+- stdin-only operator secret writes with post-write verification
+- secret-key listing without values
+- previewed and confirmed permanent per-key deletion
 - fail-closed destructive ownership validation
 - negative cross-application isolation verification in CI
 
 Not yet implemented:
 
 - secrets-only application runtimes
-- injecting application OpenBao credentials into workload containers
+- injecting application OpenBao credentials or resolved values into workload containers
 - direct workload connectivity to the bundled loopback-only OpenBao listener
 - moving PostgreSQL/Valkey credentials out of local runtime files into OpenBao
 - dynamic PostgreSQL credentials

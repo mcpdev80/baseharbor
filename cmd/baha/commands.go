@@ -21,6 +21,7 @@ func rootCommand() *cli.Command {
 		appDownCommand(store),
 		appUpCommand(store),
 		appDestroyCommand(store),
+		appSecretCommand(store),
 	)
 
 	root := &cli.Command{

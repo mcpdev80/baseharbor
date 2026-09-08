@@ -83,6 +83,15 @@ func TestApplicationScopesRealOpenBaoIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	betaCreds, err := loadApplicationCredentials(betaCredPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	betaToken, err := loginApplication(ctx, compose, files, betaCreds)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := execWithToken(ctx, compose, files, alphaToken, `exec bao kv put -mount=baseharbor apps/alpha/dev marker=preserved`); err != nil {
 		t.Fatal(err)
 	}
@@ -93,10 +102,44 @@ func TestApplicationScopesRealOpenBaoIsolation(t *testing.T) {
 		t.Fatal("alpha application identity could write beta secret scope")
 	}
 
+	if err := SetApplicationSecret(ctx, compose, files, alpha, alphaCredPath, "API_TOKEN", []byte("top-secret")); err != nil {
+		t.Fatalf("set alpha application secret: %v", err)
+	}
+	keys, err := ListApplicationSecretKeys(ctx, compose, files, alpha, alphaCredPath)
+	if err != nil {
+		t.Fatalf("list alpha application secrets: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "API_TOKEN" {
+		t.Fatalf("unexpected application secret keys: %#v", keys)
+	}
+	out, err := execWithToken(ctx, compose, files, alphaToken, `exec bao kv get -field=value -mount=baseharbor apps/alpha/dev/API_TOKEN`)
+	if err != nil || strings.TrimSpace(out) != "top-secret" {
+		t.Fatal("alpha application identity could not read its managed secret value")
+	}
+	if _, err := execWithToken(ctx, compose, files, betaToken, `exec bao kv get -mount=baseharbor apps/alpha/dev/API_TOKEN`); err == nil {
+		t.Fatal("beta application identity could read alpha managed secret value")
+	}
+	if _, err := execWithToken(ctx, compose, files, betaToken, `exec bao kv put -mount=baseharbor apps/alpha/dev/API_TOKEN value=escaped`); err == nil {
+		t.Fatal("beta application identity could overwrite alpha managed secret value")
+	}
+	if err := DeleteApplicationSecret(ctx, compose, files, alpha, alphaCredPath, "API_TOKEN"); err != nil {
+		t.Fatalf("delete alpha application secret: %v", err)
+	}
+	keys, err = ListApplicationSecretKeys(ctx, compose, files, alpha, alphaCredPath)
+	if err != nil {
+		t.Fatalf("list alpha application secrets after delete: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("deleted secret still listed: %#v", keys)
+	}
+	if _, err := execWithToken(ctx, compose, files, alphaToken, `exec bao kv metadata get -mount=baseharbor apps/alpha/dev/API_TOKEN`); err == nil {
+		t.Fatal("deleted secret metadata or historical versions remain accessible")
+	}
+
 	if err := InspectApplicationScope(ctx, compose, files, alpha, alphaCredPath); err != nil {
 		t.Fatalf("read-only scope inspection failed: %v", err)
 	}
-	out, err := execWithToken(ctx, compose, files, alphaToken, `exec bao kv get -field=marker -mount=baseharbor apps/alpha/dev`)
+	out, err = execWithToken(ctx, compose, files, alphaToken, `exec bao kv get -field=marker -mount=baseharbor apps/alpha/dev`)
 	if err != nil || strings.TrimSpace(out) != "preserved" {
 		t.Fatal("read-only scope inspection changed application secret data")
 	}
@@ -131,8 +174,17 @@ bao policy write baseharbor-app-alpha-dev "$tmp" >/dev/null`
 	if err := EnsureApplicationScope(ctx, compose, files, alpha, alphaCredPath); err != nil {
 		t.Fatalf("reconcile alpha policy: %v", err)
 	}
+	if err := SetApplicationSecret(ctx, compose, files, alpha, alphaCredPath, "DESTROY_ME", []byte("destroyed-with-app")); err != nil {
+		t.Fatalf("set pre-destroy application secret: %v", err)
+	}
 	if err := DestroyVerifiedApplicationScope(ctx, compose, files, alpha); err != nil {
 		t.Fatalf("destroy alpha: %v", err)
+	}
+	if _, err := execWithToken(ctx, compose, files, managerToken, `exec bao kv metadata get -mount=baseharbor apps/alpha/dev/DESTROY_ME`); err == nil {
+		t.Fatal("application destroy left managed secret metadata behind")
+	}
+	if _, err := execWithToken(ctx, compose, files, managerToken, `exec bao kv metadata get -mount=baseharbor apps/alpha/dev/_baseharbor`); err == nil {
+		t.Fatal("application destroy left managed namespace marker behind")
 	}
 	if err := DestroyVerifiedApplicationScope(ctx, compose, files, beta); err != nil {
 		t.Fatalf("destroy beta: %v", err)
