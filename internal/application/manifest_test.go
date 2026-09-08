@@ -4,17 +4,18 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestManifestRoundTrip(t *testing.T) {
-	want := New("mailflow", "prod", true, true, true)
+	want := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "OPENAI_API_KEY", "SMTP_PASSWORD")
 	got, err := ParseYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
 	}
 }
@@ -26,11 +27,24 @@ func TestManifestDefaultsToPostgres(t *testing.T) {
 	}
 }
 
+func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
+	m := WithRequiredSecrets(New("demo", "dev", true, false, false), "API_TOKEN")
+	if !m.Services.Secrets {
+		t.Fatal("required secrets must enable managed secrets")
+	}
+	if got := RequiredSecretNames(m); !reflect.DeepEqual(got, []string{"API_TOKEN"}) {
+		t.Fatalf("unexpected required secrets %#v", got)
+	}
+}
+
 func TestManifestValidationFailsClosed(t *testing.T) {
 	cases := []Manifest{
 		New("UPPER", "dev", true, false, false),
 		{Version: 99, Name: "demo", Environment: "dev", Services: Services{Postgres: true}},
 		{Version: 1, Name: "demo", Environment: "dev"},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretContract{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
+		WithRequiredSecrets(New("demo", "dev", true, false, true), "nested/key"),
+		WithRequiredSecrets(New("demo", "dev", true, false, true), "API_TOKEN", "API_TOKEN"),
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
