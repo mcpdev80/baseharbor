@@ -29,6 +29,9 @@ services:
       - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
       - openbao-data:/openbao/file
+    networks:
+      - default
+      - secrets
     healthcheck:
       test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$$?; [ $$code -eq 0 ] || [ $$code -eq 2 ]"]
       interval: 5s
@@ -39,3 +42,8 @@ services:
 volumes:
   postgres-data:
   openbao-data:
+
+networks:
+  secrets:
+    name: baseharbor-secrets
+    internal: true
