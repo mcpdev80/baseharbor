@@ -151,7 +151,7 @@ func decryptPayload(password []byte, envelope Envelope) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("backup ciphertext encoding is invalid")
 	}
-	if int64(len(ciphertext)) > MaxPayloadBytes+64<<20 {
+	if int64(len(ciphertext)) > MaxPayloadBytes+(64<<20) {
 		return nil, errors.New("backup ciphertext exceeds maximum size")
 	}
 	aad, err := json.Marshal(envelopeAAD{Magic: envelope.Magic, Version: envelope.Version, KDF: envelope.KDF})
