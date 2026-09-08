@@ -25,7 +25,9 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 	if strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL")) == "" {
 		if err := validateExistingRuntimeIdentityOverride(path, files); err == nil {
 			return path, true, nil
-		} else if !errors.Is(err, os.ErrNotExist) {
+		} else if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		} else {
 			return "", false, err
 		}
 	}
@@ -75,7 +77,7 @@ func validateExistingRuntimeIdentityOverride(path string, files RuntimeFiles) er
 func runtimeAPIURL() (string, error) {
 	raw := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL"))
 	if raw == "" {
-		return "", fmt.Errorf("%w: BASEHARBOR_RUNTIME_API_URL is required for first workload apply with managed dynamic secrets", ErrRuntimeAPIURL)
+		return "", fmt.Errorf("%w: BASEHARBOR_RUNTIME_API_URL is not configured", ErrRuntimeAPIURL)
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {

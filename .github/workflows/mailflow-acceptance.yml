@@ -1,0 +1,88 @@
+name: mailflow-acceptance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mailflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build BaseHarbor CLI
+        run: go build -o /tmp/baha ./cmd/baha
+      - name: Checkout MailFlow BaseHarbor readiness branch
+        run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
+      - name: Bootstrap BaseHarbor control plane
+        working-directory: /tmp/mailflow
+        run: |
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat > .baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=mailflow-control-plane-ci
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+          /tmp/baha up
+          /tmp/baha openbao bootstrap --recovery-file /tmp/mailflow-openbao-recovery.json
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+      - name: Prove required secret gate
+        working-directory: /tmp/mailflow
+        run: |
+          set +e
+          /tmp/baha app apply >/tmp/mailflow-missing-secret.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "required secrets check failed" /tmp/mailflow-missing-secret.out
+          printf '%s' 'mailflow-ci-secret' | /tmp/baha app secret set SECRET_KEY --stdin
+      - name: Apply MailFlow through BaseHarbor
+        working-directory: /tmp/mailflow
+        run: |
+          /tmp/baha app apply | tee /tmp/mailflow-apply.out
+          grep -q "Application mailflow is ready" /tmp/mailflow-apply.out
+          /tmp/baha app status | tee /tmp/mailflow-status.out
+          /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
+          grep -q "Application runtime is healthy" /tmp/mailflow-doctor.out
+      - name: Diagnose MailFlow workload failure
+        if: failure()
+        working-directory: /tmp/mailflow
+        run: |
+          project=baseharbor-workload-mailflow-production
+          docker ps -a --filter "label=com.docker.compose.project=$project" --format 'table {{.Names}}\t{{.Status}}' || true
+          api_id=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q | head -1)
+          if [ -n "$api_id" ]; then
+            docker inspect "$api_id" --format '{{json .State.Health}}' || true
+            docker logs "$api_id" || true
+          fi
+      - name: Verify managed backend replacement and runtime contract
+        working-directory: /tmp/mailflow
+        run: |
+          project=baseharbor-workload-mailflow-production
+          services=$(docker ps --filter "label=com.docker.compose.project=$project" --format '{{.Label "com.docker.compose.service"}}' | sort)
+          printf '%s\n' "$services"
+          printf '%s\n' "$services" | grep -qx 'api'
+          printf '%s\n' "$services" | grep -qx 'edge'
+          printf '%s\n' "$services" | grep -qx 'web'
+          printf '%s\n' "$services" | grep -qx 'worker'
+          ! printf '%s\n' "$services" | grep -qx 'postgres'
+          ! printf '%s\n' "$services" | grep -qx 'redis'
+
+          api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
+          test -n "$api_id"
+          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
+      - name: Cleanup
+        if: always()
+        working-directory: /tmp/mailflow
+        run: |
+          /tmp/baha app destroy --yes || true
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v || true

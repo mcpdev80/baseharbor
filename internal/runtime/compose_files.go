@@ -5,36 +5,70 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
 
 func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "config", "--quiet")
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--quiet")
+	return err
+}
+
+func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
 	return err
 }
 
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "up", "-d")
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "up", "-d")
+	return err
+}
+
+func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+	args := []string{"up", "-d"}
+	if len(services) > 0 {
+		args = append(args, "--no-deps")
+		args = append(args, services...)
+	}
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
 	return err
 }
 
 func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "down")
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "down")
+	return err
+}
+
+func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+	if len(services) == 0 {
+		return nil
+	}
+	args := []string{"rm", "-f", "-s"}
+	args = append(args, services...)
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
 	return err
 }
 
 func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) (string, error) {
-	return c.outputProjectFiles(ctx, project, workdir, composeFiles, "ps")
+	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "ps")
 }
 
 func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service string, composeFiles []string, args ...string) (string, error) {
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
-	return c.outputProjectFiles(ctx, project, workdir, composeFiles, cmdArgs...)
+	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, cmdArgs...)
 }
 
 func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "config", "--services")
+	out, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--services")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
+}
+
+func (c Compose) ServicesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]string, error) {
+	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--services")
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +76,15 @@ func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir stri
 }
 
 func (c Compose) RunningServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "ps", "--services", "--status", "running")
+	out, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "ps", "--services", "--status", "running")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
+}
+
+func (c Compose) RunningServicesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]string, error) {
+	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--services", "--status", "running")
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +101,32 @@ func nonEmptyLines(out string) []string {
 	return values
 }
 
-func (c Compose) outputProjectFiles(ctx context.Context, project, workdir string, composeFiles []string, args ...string) (string, error) {
+func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
+	if len(overrides) == 0 {
+		return os.Environ(), nil
+	}
+	for key, value := range overrides {
+		if key == "" || strings.ContainsRune(key, '=') || strings.ContainsRune(value, 0) {
+			return nil, errors.New("invalid compose process environment")
+		}
+	}
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, replaced := overrides[key]; replaced {
+				continue
+			}
+		}
+		env = append(env, entry)
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env, nil
+}
+
+func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -83,6 +150,11 @@ func (c Compose) outputProjectFiles(ctx context.Context, project, workdir string
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
 	if strings.TrimSpace(workdir) != "" {
 		cmd.Dir = workdir
+	}
+	var err error
+	cmd.Env, err = mergeProcessEnvironment(environment)
+	if err != nil {
+		return "", err
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
