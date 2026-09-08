@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrInvalidApplicationName = errors.New("invalid application name")
+	ErrInvalidApplicationName       = errors.New("invalid application name")
 	ErrApplicationOwnershipConflict = errors.New("application is owned by another tenant")
 )
 
