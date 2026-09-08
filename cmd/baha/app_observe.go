@@ -20,16 +20,14 @@ func appStatusCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
-		Usage:   "baha app status NAME",
-		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Running containers are not considered ready unless each enabled service passes its authenticated verification; managed secrets also require a working isolated OpenBao AppRole scope and every declared required secret must be present and readable.",
+		Usage:   "baha app status [NAME]",
+		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 1 {
-				return usageError("baha app status requires exactly one NAME", "Example: baha app status demo")
-			}
-			m, _, err := store.Load(args[0])
+			resolved, err := resolveApplication(store, args, "status")
 			if err != nil {
 				return err
 			}
+			m := resolved.Manifest
 			if err := application.CheckSupportedRuntimeServices(m); err != nil {
 				return err
 			}
@@ -47,6 +45,9 @@ func appStatusCommand(store application.Store) *cli.Command {
 				return err
 			}
 			fmt.Fprintf(out, "Application %s (%s)\n", m.Name, m.Environment)
+			if resolved.FromRepository {
+				fmt.Fprintf(out, "Manifest: %s\n", resolved.ManifestPath)
+			}
 			fmt.Fprintf(out, "Project: %s\n", project)
 
 			ready := true
@@ -127,16 +128,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
-		Usage:   "baha app doctor NAME",
-		Long:    "Checks desired state, secure local runtime files, Compose configuration, service state, authenticated protocol readiness, managed OpenBao secret scope health and required-secret presence/usability without mutating the application.",
+		Usage:   "baha app doctor [NAME]",
+		Long:    "Checks desired state, local runtime files, Compose configuration, service state, authenticated protocol readiness and managed secret health. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 1 {
-				return usageError("baha app doctor requires exactly one NAME", "Example: baha app doctor demo")
-			}
-			m, manifestPath, err := store.Load(args[0])
+			resolved, err := resolveApplication(store, args, "doctor")
 			if err != nil {
 				return err
 			}
+			m := resolved.Manifest
 			files, runtimeErr := application.ExistingRuntimeFiles(store, m)
 			var compose bhruntime.Compose
 			var running []string
@@ -147,7 +146,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
+				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
 				{Name: "runtime state", Run: func(context.Context) error { return runtimeErr }},
 				{Name: "runtime permissions", Run: func(context.Context) error {
 					if runtimeErr != nil {
