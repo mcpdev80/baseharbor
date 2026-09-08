@@ -34,6 +34,9 @@ func BuildPlan(m Manifest) (Plan, error) {
 	}
 	if m.Services.Secrets {
 		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "secrets-scope", Description: "ensure isolated application secret scope"})
+		for _, name := range RequiredSecretNames(m) {
+			p.Actions = append(p.Actions, Action{Kind: "require", Resource: "secret:" + name, Description: "require configured and usable application secret before workload start"})
+		}
 	}
 	return p, nil
 }
