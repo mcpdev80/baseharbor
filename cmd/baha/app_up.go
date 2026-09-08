@@ -19,7 +19,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up NAME",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services, including managed OpenBao secret scopes, pass authenticated verification.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services, managed OpenBao secret scopes and required application secrets pass verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app up requires exactly one NAME", "Example: baha app up demo")
@@ -80,6 +80,9 @@ func appUpCommand(store application.Store) *cli.Command {
 						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 					}},
+					preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+						return checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+					}},
 				)
 			}
 			results, ok := preflight.Run(checkCtx, checks)
@@ -101,6 +104,9 @@ func appUpCommand(store application.Store) *cli.Command {
 				if verifyErr == nil && m.Services.Secrets {
 					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					if verifyErr == nil {
+						verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+					}
 				}
 				if verifyErr == nil {
 					printRuntimeReady(out, m)

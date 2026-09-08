@@ -102,9 +102,25 @@ func TestApplicationScopesRealOpenBaoIsolation(t *testing.T) {
 		t.Fatal("alpha application identity could write beta secret scope")
 	}
 
+	statuses, err := InspectRequiredApplicationSecrets(ctx, compose, files, alpha, alphaCredPath, []string{"API_TOKEN"})
+	if err != nil {
+		t.Fatalf("inspect missing required secret: %v", err)
+	}
+	if len(statuses) != 1 || statuses[0].Present || statuses[0].Usable || RequireApplicationSecrets(statuses) == nil {
+		t.Fatalf("missing required secret was not reported correctly: %#v", statuses)
+	}
+
 	if err := SetApplicationSecret(ctx, compose, files, alpha, alphaCredPath, "API_TOKEN", []byte("top-secret")); err != nil {
 		t.Fatalf("set alpha application secret: %v", err)
 	}
+	statuses, err = InspectRequiredApplicationSecrets(ctx, compose, files, alpha, alphaCredPath, []string{"API_TOKEN"})
+	if err != nil {
+		t.Fatalf("inspect configured required secret: %v", err)
+	}
+	if len(statuses) != 1 || !statuses[0].Present || !statuses[0].Usable || RequireApplicationSecrets(statuses) != nil {
+		t.Fatalf("configured required secret was not reported usable: %#v", statuses)
+	}
+
 	keys, err := ListApplicationSecretKeys(ctx, compose, files, alpha, alphaCredPath)
 	if err != nil {
 		t.Fatalf("list alpha application secrets: %v", err)
@@ -125,6 +141,14 @@ func TestApplicationScopesRealOpenBaoIsolation(t *testing.T) {
 	if err := DeleteApplicationSecret(ctx, compose, files, alpha, alphaCredPath, "API_TOKEN"); err != nil {
 		t.Fatalf("delete alpha application secret: %v", err)
 	}
+	statuses, err = InspectRequiredApplicationSecrets(ctx, compose, files, alpha, alphaCredPath, []string{"API_TOKEN"})
+	if err != nil {
+		t.Fatalf("inspect deleted required secret: %v", err)
+	}
+	if len(statuses) != 1 || statuses[0].Present || statuses[0].Usable || RequireApplicationSecrets(statuses) == nil {
+		t.Fatalf("deleted required secret remained ready: %#v", statuses)
+	}
+
 	keys, err = ListApplicationSecretKeys(ctx, compose, files, alpha, alphaCredPath)
 	if err != nil {
 		t.Fatalf("list alpha application secrets after delete: %v", err)
