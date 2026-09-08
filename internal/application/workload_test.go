@@ -59,6 +59,31 @@ func TestResolveWorkloadComposeFailsClosedWhenAmbiguous(t *testing.T) {
 	}
 }
 
+func TestManagedBackendsShadowConventionalComposeServices(t *testing.T) {
+	m := New("mailflow", "production", true, true, false)
+	available := []string{"edge", "postgres", "redis", "api", "worker", "web"}
+	selected, err := selectWorkloadServices(m, available, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(selected, ",")
+	want := "api,edge,web,worker"
+	if got != want {
+		t.Fatalf("selected services=%q want %q", got, want)
+	}
+}
+
+func TestExplicitWorkloadServicesOverrideAutomaticShadowing(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	selected, err := selectWorkloadServices(m, []string{"postgres", "api"}, []string{"postgres"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(selected, ",") != "postgres" {
+		t.Fatalf("explicit workload selection was changed: %#v", selected)
+	}
+}
+
 func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.T) {
 	root := t.TempDir()
 	composePath := filepath.Join(root, "docker-compose.yml")
