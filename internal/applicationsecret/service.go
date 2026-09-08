@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -44,6 +45,9 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	required := make(map[string]struct{}, len(resolved.manifest.Secrets.Required))
 	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required))
 	for _, key := range keys {
+		if strings.HasPrefix(key, dynamicKeyPrefix) {
+			continue
+		}
 		names[key] = struct{}{}
 	}
 	for _, requirement := range resolved.manifest.Secrets.Required {
@@ -80,6 +84,9 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 }
 
 func (s *Service) Set(ctx context.Context, name, key string, value []byte) error {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return errors.New("dynamic application secrets must be managed through a secret reference")
+	}
 	if len(value) == 0 {
 		return errors.New("application secret value is empty")
 	}
@@ -96,6 +103,9 @@ func (s *Service) Set(ctx context.Context, name, key string, value []byte) error
 }
 
 func (s *Service) Delete(ctx context.Context, name, key string) error {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return errors.New("dynamic application secrets must be managed through a secret reference")
+	}
 	resolved, err := s.resolve(ctx, name)
 	if err != nil {
 		return err
