@@ -137,14 +137,14 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 		for _, name := range secretNames {
 			hostSecretPath := SecretFileHostPath(files, name)
 			// The containing BaseHarbor state directory stays owner-only (0700),
-			// which prevents other host users from reaching this file. The file
-			// itself must be readable after a bind mount by an arbitrary non-root
-			// container user, so the projection is read-only (0444) while Compose
-			// additionally mounts it read-only into only the selected service.
+			// preventing other host users from traversing to the projection. The
+			// projection itself stays owner-writable and world-readable (0644) so
+			// BaseHarbor can refresh it and an arbitrary non-root container user can
+			// read it after the explicit read-only bind mount.
 			if err := os.Chmod(filepath.Dir(hostSecretPath), 0o700); err != nil {
 				return "", false, fmt.Errorf("secure application secret binding directory: %w", err)
 			}
-			if err := os.Chmod(hostSecretPath, 0o444); err != nil {
+			if err := os.Chmod(hostSecretPath, 0o644); err != nil {
 				return "", false, fmt.Errorf("prepare application secret file binding %s: %w", name, err)
 			}
 			hostPath, err := filepath.Abs(hostSecretPath)
