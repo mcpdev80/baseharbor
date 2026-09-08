@@ -24,6 +24,41 @@ func TestManifestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
+	want := New("mailflow", "prod", false, false, false)
+	want.Services.Postgres = false
+	want = WithPostgresInstances(want, "primary", "analytics")
+	want = WithRedisInstances(want, "cache", "sessions")
+	got, err := ParseYAML(want.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(PostgresInstanceNames(got), []string{"analytics", "primary"}) {
+		t.Fatalf("unexpected PostgreSQL instances: %#v", PostgresInstanceNames(got))
+	}
+	if !reflect.DeepEqual(RedisInstanceNames(got), []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected Redis instances: %#v", RedisInstanceNames(got))
+	}
+	for _, expected := range []string{"    instances:\n", "      primary: {}\n", "      analytics: {}\n", "      cache: {}\n", "      sessions: {}\n"} {
+		if !strings.Contains(got.YAML(), expected) {
+			t.Fatalf("named service YAML missing %q:\n%s", expected, got.YAML())
+		}
+	}
+}
+
+func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	if got := PostgresInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default PostgreSQL instances: %#v", got)
+	}
+	if got := RedisInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default Redis instances: %#v", got)
+	}
+	if strings.Contains(m.YAML(), "instances:") {
+		t.Fatalf("simple manifest should stay compact:\n%s", m.YAML())
+	}
+}
+
 func TestManifestParsesLegacyScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
@@ -71,6 +106,7 @@ func TestManifestValidationFailsClosed(t *testing.T) {
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true, PostgresInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
