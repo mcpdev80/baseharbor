@@ -128,6 +128,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 			},
 		},
 	}
+	command.Children = append(command.Children, appSecretTLSSetCommand(store, service))
 	return command
 }
 
