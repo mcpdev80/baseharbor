@@ -14,7 +14,12 @@ type Store struct {
 	Root string
 }
 
-func DefaultStore() Store { return Store{Root: filepath.Join(".baseharbor", "apps")} }
+func DefaultStore() Store {
+	if manifest, err := FindRepositoryManifest("."); err == nil {
+		return Store{Root: filepath.Join(filepath.Dir(manifest), ".baseharbor", "apps")}
+	}
+	return Store{Root: filepath.Join(".baseharbor", "apps")}
+}
 
 func (s Store) Create(m Manifest) (string, error) {
 	if err := m.Validate(); err != nil {
