@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DefaultRuntimeAPIURL                    = "https://baseharbor-secrets:8443"
+	DefaultRuntimeAPIURL                   = "https://baseharbor-secrets:8443"
 	RuntimeIdentityContainerTokenPath      = "/run/secrets/baseharbor-runtime-token"
 	RuntimeIdentityContainerCAPath         = "/run/secrets/baseharbor-runtime-ca"
 	RuntimeIdentityContainerClientCertPath = "/run/secrets/baseharbor-runtime-client-cert"
