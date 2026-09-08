@@ -20,16 +20,24 @@ func BuildPlan(m Manifest) (Plan, error) {
 	}
 	p := Plan{Application: m.Name, Environment: m.Environment}
 	p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})
-	if m.Services.Postgres {
+	for _, instance := range PostgresInstanceNames(m) {
+		resource := "postgres"
+		if instance != defaultServiceInstance {
+			resource += ":" + instance
+		}
 		p.Actions = append(p.Actions,
-			Action{Kind: "ensure", Resource: "postgres-volume", Description: "ensure dedicated PostgreSQL data volume"},
-			Action{Kind: "ensure", Resource: "postgres", Description: "ensure dedicated PostgreSQL service"},
+			Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated PostgreSQL data volume for %s", instance)},
+			Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated PostgreSQL service for %s", instance)},
 		)
 	}
-	if m.Services.Redis {
+	for _, instance := range RedisInstanceNames(m) {
+		resource := "valkey"
+		if instance != defaultServiceInstance {
+			resource += ":" + instance
+		}
 		p.Actions = append(p.Actions,
-			Action{Kind: "ensure", Resource: "valkey-volume", Description: "ensure dedicated Valkey data volume"},
-			Action{Kind: "ensure", Resource: "valkey", Description: "ensure dedicated authenticated Valkey service"},
+			Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated Valkey data volume for %s", instance)},
+			Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated authenticated Valkey service for %s", instance)},
 		)
 	}
 	if m.Services.Secrets {
