@@ -31,6 +31,14 @@ func TestStoreSyncPreservesRuntimeState(t *testing.T) {
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}
+	ignorePath := filepath.Join(filepath.Dir(store.Root), ".gitignore")
+	ignore, err := os.ReadFile(ignorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ignore) != stateGitIgnore {
+		t.Fatalf("unexpected state gitignore %q", string(ignore))
+	}
 	runtimeDir := filepath.Join(store.Root, "demo", "runtime")
 	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		t.Fatal(err)
