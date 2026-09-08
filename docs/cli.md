@@ -10,7 +10,7 @@
 - Read-only inspection is distinct from mutation.
 - Usage errors and operational failures have different exit codes.
 - Secrets are not printed unless a future command explicitly requires and documents reveal behavior.
-- Commands must report actual readiness, not just process/container state.
+- Commands report actual protocol readiness, not just process/container state.
 - Preflight comes before mutation; verification comes after mutation.
 - Destructive commands verify exact resource ownership and fail closed on ambiguity.
 
@@ -38,20 +38,6 @@ baha
 └── version
 ```
 
-Use help at every level:
-
-```bash
-baha --help
-baha app --help
-baha app create --help
-baha app apply --help
-baha app status --help
-baha app doctor --help
-baha app down --help
-baha app up --help
-baha app destroy --help
-```
-
 ## Exit codes
 
 | Code | Meaning |
@@ -60,17 +46,17 @@ baha app destroy --help
 | `1` | operational/runtime failure |
 | `2` | invalid command or arguments |
 
-This distinction is part of the CLI contract so scripts and automation can react correctly.
-
 ## Application manifests
 
-Create a first application definition:
+Examples:
 
 ```bash
-baha app create demo
+baha app create postgres-app --postgres
+baha app create cache-app --redis
+baha app create full-app --postgres --redis
 ```
 
-With no explicit service selection, PostgreSQL is enabled as the minimal useful default.
+With no service flag, PostgreSQL remains the minimal default. The manifest field is named `redis` for protocol/API compatibility; BaseHarbor provisions Valkey as the managed implementation.
 
 Application state is stored under:
 
@@ -78,7 +64,29 @@ Application state is stored under:
 .baseharbor/apps/<name>/baseharbor.yaml
 ```
 
-The directory is owner-only and manifests are written with owner-only permissions. Manifests contain desired configuration, never plaintext service credentials.
+Manifests contain desired configuration, never plaintext service credentials.
+
+## Supported application services
+
+### PostgreSQL
+
+- `postgres:18-alpine`
+- dedicated application volume
+- no host port by default
+- generated application password
+- readiness: authenticated `SELECT 1`
+
+### Valkey
+
+- `valkey/valkey:9.1.2-alpine`
+- Redis-compatible protocol
+- dedicated application volume mounted at `/data`
+- AOF persistence enabled
+- generated application password
+- no host port by default
+- readiness: authenticated `PING` must return `PONG`
+
+Managed secrets are still unsupported by app convergence and fail closed when requested.
 
 ## Plan, preflight, apply and verify
 
@@ -88,101 +96,69 @@ baha app preflight demo
 baha app apply demo
 ```
 
-`plan` and `preflight` are read-only. `apply` repeats the required validation, materializes the application runtime, runs Compose convergence, and returns success only after verification succeeds.
+`plan` and `preflight` are read-only. `apply` validates desired state, materializes the runtime, converges Compose, and returns success only after every enabled service passes verification.
 
 The stable lifecycle contract is:
 
 ```text
-plan → preflight → apply → verify
+plan -> preflight -> apply -> verify
 ```
 
-The current convergence milestone supports PostgreSQL-only desired state. It creates a unique Compose project per application/environment, giving the application its own default network and PostgreSQL volume. PostgreSQL has no published host port by default. Generated runtime credentials live in an owner-only runtime environment file and are preserved on repeated apply operations.
-
-Verification executes an authenticated PostgreSQL query and requires `SELECT 1` to succeed. A running container alone is not considered ready.
-
-If Redis/Valkey or managed secrets are enabled in the manifest, `app apply` currently fails closed instead of silently ignoring unsupported desired state.
+Each application/environment uses its own Compose project, private default network, service containers and persistent volumes. Generated runtime credentials live in an owner-only `runtime.env` and are preserved across repeated apply operations.
 
 ## Status and doctor
-
-After apply, inspect the operational state without mutating it:
 
 ```bash
 baha app status demo
 baha app doctor demo
 ```
 
-`app status` is compact and automation-friendly. It confirms that the PostgreSQL service is actually running and that an authenticated `SELECT 1` succeeds. It exits non-zero if the application is not ready.
+`app status` is compact and automation-friendly. It checks running state plus protocol readiness for every enabled service.
 
-`app doctor` performs deeper diagnostics and reports each boundary separately:
+`app doctor` reports each boundary independently, including:
 
 - manifest validity
 - supported desired services
 - manifest permissions
 - materialized runtime state
 - runtime file permissions
+- managed runtime definition integrity
 - Docker/Podman + Compose availability
 - Compose configuration validity
-- PostgreSQL service running state
-- authenticated PostgreSQL readiness
+- service running state
+- PostgreSQL authenticated query readiness when enabled
+- Valkey authenticated PING readiness when enabled
 
-Neither command changes application state or prints runtime credentials.
+Neither command mutates application state or prints credentials.
 
 ## Stop and resume without deleting data
 
-Stop an application while preserving persistent state:
-
 ```bash
 baha app down demo
-```
-
-`app down` performs a read-only safety preflight first. It verifies the manifest and runtime permissions, verifies that the Compose file still exactly matches the BaseHarbor-managed definition, validates the Compose configuration and checks ownership labels for the expected project resources.
-
-After the preflight succeeds, it removes the application container and transient Compose network while preserving:
-
-- the dedicated PostgreSQL volume
-- the application manifest
-- the generated runtime environment and credentials
-- the BaseHarbor runtime definition
-
-Post-verification confirms that the container and network are gone and that an existing PostgreSQL volume was not removed.
-
-Resume the existing materialized runtime with:
-
-```bash
 baha app up demo
 ```
 
-`app up` is deliberately different from `app apply`. It does not materialize new runtime state and refuses to recreate a missing PostgreSQL volume. Before starting anything it requires the existing manifest, owner-only runtime files, unchanged BaseHarbor-managed Compose definition, valid Compose configuration, unambiguous resource ownership, and the already-existing managed PostgreSQL volume.
+`app down` performs ownership and runtime-definition preflight first. It removes service containers and the transient network while preserving every managed persistent volume, the application manifest, runtime definition and credentials. Post-verification checks that existing persistent volumes were retained.
 
-After start it waits for the authenticated PostgreSQL `SELECT 1` verification to succeed before reporting the application ready. Existing runtime credentials remain unchanged and the preserved PostgreSQL volume is reused.
+`app up` is deliberately different from `app apply`. It never materializes fresh runtime state. Every expected persistent volume must already exist; if one is missing, `app up` fails closed rather than silently creating an empty replacement. After start, all enabled services must pass authenticated protocol verification.
 
 ## Permanent destruction
 
-Preview first:
+Preview:
 
 ```bash
 baha app destroy demo
 ```
 
-This command is non-mutating without `--yes`. It runs the ownership and safety preflight and prints the exact currently present BaseHarbor-managed runtime resources plus the local application-state directory that would be deleted.
-
-Permanent deletion requires explicit confirmation:
+Permanent deletion:
 
 ```bash
 baha app destroy demo --yes
 ```
 
-Before deletion BaseHarbor verifies:
+Before deletion BaseHarbor verifies the manifest, local file permissions, generated runtime definition, Compose configuration, exact expected resource names, and `com.docker.compose.project` ownership labels. Ambiguous ownership fails closed.
 
-- the manifest and local file permissions
-- the generated runtime definition has not been modified
-- Compose configuration validity
-- exact expected container, network and volume names
-- the `com.docker.compose.project` ownership label for every expected resource that exists
-
-If an expected resource name exists but its ownership label does not match the application project, destruction fails closed and nothing is intentionally deleted by BaseHarbor.
-
-After the preflight, `--yes` removes the owned Compose runtime including persistent volumes, then verifies that the managed runtime resources are absent before deleting the local application state. The final state deletion is also verified.
+With `--yes`, owned service containers, network and all managed persistent volumes are removed. BaseHarbor verifies runtime-resource absence before deleting local application state, then verifies state deletion as well.
 
 ## Planned command evolution
 
@@ -202,5 +178,3 @@ baha backup ...
 baha restore ...
 baha upgrade ...
 ```
-
-The CLI should stay conservative: adding a command is preferable to making one command silently perform unrelated actions.

@@ -18,7 +18,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up NAME",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate a missing persistent PostgreSQL volume and reports success only after an authenticated PostgreSQL verification query succeeds.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services pass protocol-level verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app up requires exactly one NAME", "Example: baha app up demo")
@@ -38,15 +38,10 @@ func appUpCommand(store application.Store) *cli.Command {
 			var before []bhruntime.ProjectResource
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "supported desired services", Run: func(context.Context) error {
-					if !m.Services.Postgres || m.Services.Redis || m.Services.Secrets {
-						return application.ErrUnsupportedService
-					}
-					return nil
-				}},
+				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files) }},
+				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
@@ -60,9 +55,11 @@ func appUpCommand(store application.Store) *cli.Command {
 					before, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
 					return err
 				}},
-				{Name: "persistent PostgreSQL volume", Run: func(context.Context) error {
-					if !application.ResourceExists(before, "volume") {
-						return errors.New("managed PostgreSQL volume is missing; refusing to recreate persistent state during app up")
+				{Name: "persistent data volumes", Run: func(context.Context) error {
+					for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+						if !application.ResourceNamedExists(before, volume) {
+							return fmt.Errorf("managed %s is missing; refusing to recreate persistent state during app up", volume.Name)
+						}
 					}
 					return nil
 				}},
@@ -82,9 +79,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			defer verifyCancel()
 			var verifyErr error
 			for verifyCtx.Err() == nil {
-				verifyErr = application.VerifyPostgresRuntime(verifyCtx, compose, m, files)
+				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
 				if verifyErr == nil {
-					fmt.Fprintln(out, "[OK] postgres          authenticated SELECT 1 succeeded")
+					printRuntimeReady(out, m)
 					fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
 					return nil
 				}

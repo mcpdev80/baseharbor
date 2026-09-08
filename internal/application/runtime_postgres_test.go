@@ -1,21 +1,20 @@
 package application
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestEnsurePostgresRuntimeIsolatedAndIdempotent(t *testing.T) {
+func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, false)
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)
 	}
 
-	files, err := EnsurePostgresRuntime(store, m)
+	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,10 +39,7 @@ func TestEnsurePostgresRuntimeIsolatedAndIdempotent(t *testing.T) {
 	if strings.Contains(string(firstEnv), "POSTGRES_PASSWORD=baseharbor") {
 		t.Fatal("runtime must use a generated password")
 	}
-	if err := os.WriteFile(files.Env, firstEnv, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := EnsurePostgresRuntime(store, m); err != nil {
+	if _, err := EnsureRuntime(store, m); err != nil {
 		t.Fatal(err)
 	}
 	secondEnv, err := os.ReadFile(files.Env)
@@ -65,11 +61,65 @@ func TestEnsurePostgresRuntimeIsolatedAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestEnsurePostgresRuntimeRejectsUnsupportedDesiredServices(t *testing.T) {
+func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, false)
-	if _, err := EnsurePostgresRuntime(store, m); !errors.Is(err, ErrUnsupportedService) {
-		t.Fatalf("expected ErrUnsupportedService, got %v", err)
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, wanted := range []string{
+		"postgres:18-alpine",
+		"valkey/valkey:9.1.2-alpine",
+		"postgres-data:/var/lib/postgresql",
+		"valkey-data:/data",
+		"appendonly yes",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("runtime compose missing %q", wanted)
+		}
+	}
+	if strings.Contains(text, "ports:") {
+		t.Fatal("application services must not publish host ports by default")
+	}
+	env, err := os.ReadFile(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(env), "VALKEY_PASSWORD=") {
+		t.Fatal("Valkey credential was not generated")
+	}
+}
+
+func TestEnsureRuntimeValkeyOnly(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("cache", "dev", false, true, false)
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compose), "postgres:") {
+		t.Fatal("Valkey-only runtime unexpectedly contains PostgreSQL")
+	}
+	if !strings.Contains(string(compose), "valkey/valkey:9.1.2-alpine") {
+		t.Fatal("Valkey-only runtime is missing Valkey")
+	}
+}
+
+func TestEnsureRuntimeRejectsSecretsUntilImplemented(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, false, true)
+	if _, err := EnsureRuntime(store, m); err == nil {
+		t.Fatal("expected managed secrets to fail closed")
 	}
 }
 

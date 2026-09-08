@@ -21,7 +21,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down NAME",
-		Long:    "Stops and removes the application's managed containers and transient network while preserving its PostgreSQL volume, manifest, runtime definition and credentials. Ownership is verified before mutation.",
+		Long:    "Stops and removes the application's managed containers and transient network while preserving its managed data volumes, manifest, runtime definition and credentials. Ownership is verified before mutation.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app down requires exactly one NAME", "Example: baha app down demo")
@@ -41,9 +41,10 @@ func appDownCommand(store application.Store) *cli.Command {
 			var before []bhruntime.ProjectResource
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files) }},
+				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
@@ -65,7 +66,6 @@ func appDownCommand(store application.Store) *cli.Command {
 			}
 
 			project := application.RuntimeProjectName(m)
-			volumeExisted := application.ResourceExists(before, "volume")
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
@@ -76,8 +76,10 @@ func appDownCommand(store application.Store) *cli.Command {
 			if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
 				return errors.New("verify application down: container or network still exists")
 			}
-			if volumeExisted && !application.ResourceExists(after, "volume") {
-				return errors.New("verify application down: persistent PostgreSQL volume was not preserved")
+			for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+				if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
+					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
+				}
 			}
 			fmt.Fprintf(out, "Application %s is stopped. Persistent data is preserved.\n", m.Name)
 			return nil
@@ -100,6 +102,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if err := application.CheckSupportedRuntimeServices(m); err != nil {
+				return err
+			}
 
 			files, runtimeErr := application.ExistingRuntimeFiles(store, m)
 			if runtimeErr != nil && !errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
@@ -117,7 +122,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if runtimeErr == nil {
 				checks = append(checks,
 					preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-					preflight.Check{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files) }},
+					preflight.Check{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 					preflight.Check{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 						var err error
 						compose, err = bhruntime.DetectCompose(ctx)

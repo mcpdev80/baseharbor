@@ -60,11 +60,10 @@ jobs:
           grep -q "up" /tmp/baha-app-help.txt
           grep -q "destroy" /tmp/baha-app-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
-          grep -q -- "--environment" /tmp/baha-app-create-help.txt
-          /tmp/baha app apply --help >/tmp/baha-app-apply-help.txt
-          grep -q "plan, preflight, apply and verification" /tmp/baha-app-apply-help.txt
-          /tmp/baha app status --help | grep -q "authenticated"
-          /tmp/baha app doctor --help | grep -q "without mutating"
+          grep -q -- "--redis" /tmp/baha-app-create-help.txt
+          /tmp/baha app apply --help | grep -q "PostgreSQL and Valkey"
+          /tmp/baha app status --help | grep -q "protocol-level readiness"
+          /tmp/baha app doctor --help | grep -q "protocol readiness"
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "existing runtime definition"
           /tmp/baha app destroy --help | grep -q -- "--yes"
@@ -75,35 +74,42 @@ jobs:
           set -e
           test "$code" -eq 2
           grep -q "unknown command" /tmp/baha-invalid.err
-      - name: Verify application PostgreSQL lifecycle
+      - name: Verify application PostgreSQL and Valkey lifecycle
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
-          /tmp/baha app create ci-demo --postgres
+          /tmp/baha app create ci-demo --postgres --redis
           /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
+          /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
           /tmp/baha app apply ci-demo | grep -q "Application ci-demo is ready"
           /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "Application runtime is healthy"
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
 
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
+          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli set lifecycle_probe preserved' | grep -q '^OK$'
           env_hash_before=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
 
           /tmp/baha app down ci-demo | grep -q "Persistent data is preserved"
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
+          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
 
           /tmp/baha app up ci-demo | grep -q "running and ready"
           env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
           test "$env_hash_before" = "$env_hash_after"
           /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
+          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
 
           /tmp/baha app destroy ci-demo | grep -q "No changes were made"
           test -d .baseharbor/apps/ci-demo
           docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
+          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
 
           /tmp/baha app destroy ci-demo --yes | grep -q "permanently destroyed"
           test ! -e .baseharbor/apps/ci-demo

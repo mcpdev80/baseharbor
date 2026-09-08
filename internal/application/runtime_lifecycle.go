@@ -13,24 +13,53 @@ import (
 
 var ErrRuntimeDefinitionChanged = errors.New("application runtime definition differs from the BaseHarbor-managed definition")
 
-func ExpectedPostgresRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 	project := RuntimeProjectName(m)
-	return []bhruntime.ProjectResource{
-		{Kind: "container", Name: project + "-postgres-1"},
-		{Kind: "network", Name: project + "_default"},
-		{Kind: "volume", Name: project + "_postgres-data"},
+	resources := []bhruntime.ProjectResource{{Kind: "network", Name: project + "_default"}}
+	if m.Services.Postgres {
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-postgres-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: project + "_postgres-data"},
+		)
 	}
+	if m.Services.Redis {
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-valkey-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: project + "_valkey-data"},
+		)
+	}
+	return resources
+}
+
+// ExpectedPostgresRuntimeResources is kept for compatibility with the first
+// runtime milestone. New lifecycle code should use ExpectedRuntimeResources.
+func ExpectedPostgresRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	return ExpectedRuntimeResources(m)
+}
+
+func ExpectedPersistentRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	var resources []bhruntime.ProjectResource
+	for _, resource := range ExpectedRuntimeResources(m) {
+		if resource.Kind == "volume" {
+			resources = append(resources, resource)
+		}
+	}
+	return resources
 }
 
 // CheckManagedRuntimeDefinition prevents destructive operations from trusting a
-// locally modified Compose file. BaseHarbor may only destroy the runtime shape
-// it originally generated and understands.
-func CheckManagedRuntimeDefinition(files RuntimeFiles) error {
+// locally modified Compose file. BaseHarbor may only mutate the runtime shape it
+// originally generated and understands for the current manifest.
+func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	data, err := os.ReadFile(files.Compose)
 	if err != nil {
 		return fmt.Errorf("read application compose definition: %w", err)
 	}
-	if !bytes.Equal(data, []byte(postgresComposeYAML)) {
+	expected, err := RuntimeComposeYAML(m)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(data, []byte(expected)) {
 		return ErrRuntimeDefinitionChanged
 	}
 	return nil
@@ -39,7 +68,7 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles) error {
 func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
 	project := RuntimeProjectName(m)
 	var existing []bhruntime.ProjectResource
-	for _, resource := range ExpectedPostgresRuntimeResources(m) {
+	for _, resource := range ExpectedRuntimeResources(m) {
 		exists, err := compose.InspectProjectResource(ctx, project, resource)
 		if err != nil {
 			return nil, err
@@ -54,6 +83,15 @@ func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {
 	for _, resource := range resources {
 		if resource.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func ResourceNamedExists(resources []bhruntime.ProjectResource, wanted bhruntime.ProjectResource) bool {
+	for _, resource := range resources {
+		if resource.Kind == wanted.Kind && resource.Name == wanted.Name {
 			return true
 		}
 	}
