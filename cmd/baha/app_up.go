@@ -18,17 +18,15 @@ func appUpCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
-		Usage:   "baha app up NAME",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services, managed OpenBao secret scopes and required application secrets pass verification.",
+		Usage:   "baha app up [NAME]",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 1 {
-				return usageError("baha app up requires exactly one NAME", "Example: baha app up demo")
-			}
-			m, manifestPath, err := store.Load(args[0])
+			resolved, err := resolveApplication(store, args, "up")
 			if err != nil {
 				return err
 			}
-			files, err := application.ExistingRuntimeFiles(store, m)
+			m := resolved.Manifest
+			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
 			}
@@ -41,7 +39,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {

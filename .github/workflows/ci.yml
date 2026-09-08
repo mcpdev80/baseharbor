@@ -56,11 +56,17 @@ jobs:
           grep -q "Usage:" /tmp/baha-help.txt
           grep -q "openbao" /tmp/baha-help.txt
           /tmp/baha app --help >/tmp/baha-app-help.txt
+          grep -q "init" /tmp/baha-app-help.txt
           grep -q "apply" /tmp/baha-app-help.txt
           grep -q "down" /tmp/baha-app-help.txt
           grep -q "up" /tmp/baha-app-help.txt
           grep -q "destroy" /tmp/baha-app-help.txt
           grep -q "secret" /tmp/baha-app-help.txt
+          /tmp/baha app init --help >/tmp/baha-app-init-help.txt
+          grep -q "baseharbor.yaml" /tmp/baha-app-init-help.txt
+          grep -q -- "--postgres-instance" /tmp/baha-app-init-help.txt
+          grep -q -- "--redis-instance" /tmp/baha-app-init-help.txt
+          grep -q -- "--require-secret" /tmp/baha-app-init-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--redis" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt

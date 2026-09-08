@@ -22,6 +22,16 @@ func TestParseSecretSetArgsRequiresStdin(t *testing.T) {
 	}
 }
 
+func TestParseSecretSetArgsSupportsRepositoryShorthand(t *testing.T) {
+	name, key, err := parseSecretSetArgs([]string{"API_TOKEN", "--stdin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "" || key != "API_TOKEN" {
+		t.Fatalf("unexpected repository shorthand values %q %q", name, key)
+	}
+}
+
 func TestParseSecretDeleteArgsDefaultsToPreview(t *testing.T) {
 	name, key, yes, err := parseSecretDeleteArgs([]string{"demo", "API_TOKEN"})
 	if err != nil {
@@ -36,6 +46,16 @@ func TestParseSecretDeleteArgsDefaultsToPreview(t *testing.T) {
 	}
 	if !yes {
 		t.Fatal("expected --yes to enable confirmed deletion")
+	}
+}
+
+func TestParseSecretDeleteArgsSupportsRepositoryShorthand(t *testing.T) {
+	name, key, yes, err := parseSecretDeleteArgs([]string{"API_TOKEN", "--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "" || key != "API_TOKEN" || !yes {
+		t.Fatalf("unexpected repository shorthand values: %q %q %v", name, key, yes)
 	}
 }
 
