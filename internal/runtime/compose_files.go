@@ -28,6 +28,11 @@ func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string
 	return c.outputProjectFiles(ctx, project, workdir, composeFiles, "ps")
 }
 
+func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service string, composeFiles []string, args ...string) (string, error) {
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProjectFiles(ctx, project, workdir, composeFiles, cmdArgs...)
+}
+
 func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
 	out, err := c.outputProjectFiles(ctx, project, workdir, composeFiles, "config", "--services")
 	if err != nil {
