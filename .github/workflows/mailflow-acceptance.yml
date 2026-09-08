@@ -19,8 +19,12 @@ jobs:
           go-version-file: go.mod
       - name: Build BaseHarbor CLI
         run: go build -o /tmp/baha ./cmd/baha
-      - name: Build runtime broker image
-        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Package exact tested runtime broker binary
+        run: |
+          mkdir -p /tmp/baseharbor-runtime-image
+          cp /tmp/baha /tmp/baseharbor-runtime-image/baha
+          cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
       - name: Checkout MailFlow BaseHarbor readiness branch
         run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
       - name: Extend MailFlow acceptance with TLS file bindings
