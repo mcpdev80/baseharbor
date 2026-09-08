@@ -7,19 +7,37 @@ import (
 	"testing"
 )
 
-func TestApplicationPolicyIsExactToApplicationAndEnvironment(t *testing.T) {
+func TestApplicationPolicyIsScopedToApplicationAndEnvironment(t *testing.T) {
 	alpha := ApplicationIdentity{Name: "alpha", Environment: "dev"}
 	beta := ApplicationIdentity{Name: "beta", Environment: "dev"}
 	policy := applicationPolicy(alpha)
 
 	if !strings.Contains(policy, `path "baseharbor/data/apps/alpha/dev"`) {
-		t.Fatal("policy does not contain the application's exact data path")
+		t.Fatal("policy does not contain the application's exact legacy data path")
 	}
-	if strings.Contains(policy, "apps/alpha/dev/*") {
-		t.Fatal("policy unexpectedly grants a wildcard below the application secret document")
+	if !strings.Contains(policy, `path "baseharbor/data/apps/alpha/dev/*"`) {
+		t.Fatal("policy does not contain the application's isolated secret namespace")
 	}
 	if strings.Contains(policy, applicationSecretPath(beta)) {
 		t.Fatal("policy contains another application's secret path")
+	}
+	if strings.Contains(policy, `path "baseharbor/data/apps/*"`) {
+		t.Fatal("application policy grants a cross-application wildcard")
+	}
+	if strings.Count(policy, `path "baseharbor/metadata/apps/alpha/dev"`) != 1 {
+		t.Fatal("application secret root metadata policy must be defined exactly once")
+	}
+	rootMetadata := `path "baseharbor/metadata/apps/alpha/dev" {
+  capabilities = ["read", "list", "delete"]
+}`
+	if !strings.Contains(policy, rootMetadata) {
+		t.Fatal("application secret root is missing exact metadata list capability")
+	}
+	probeMetadata := `path "baseharbor/metadata/apps/_baseharbor-probes/alpha/dev" {
+  capabilities = ["read", "delete"]
+}`
+	if !strings.Contains(policy, probeMetadata) {
+		t.Fatal("application verification probe gained unexpected metadata capabilities")
 	}
 }
 

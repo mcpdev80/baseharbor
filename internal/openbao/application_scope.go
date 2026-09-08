@@ -94,6 +94,12 @@ bao policy write %s "$tmp" >/dev/null`, policyName)
 		}
 		return err
 	}
+	if err := EnsureApplicationSecretNamespace(ctx, executor, files, identity, credentialsPath); err != nil {
+		if createdCredentials {
+			_ = os.Remove(credentialsPath)
+		}
+		return err
+	}
 	return nil
 }
 
@@ -141,6 +147,17 @@ func DestroyApplicationScope(ctx context.Context, executor Executor, files bhrun
 		return err
 	}
 
+	secretDocuments, err := listApplicationSecretDocuments(ctx, executor, files, managerToken, identity)
+	if err != nil {
+		return err
+	}
+	for _, key := range secretDocuments {
+		secretPath := applicationSecretKeyPath(identity, key)
+		if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`exec bao kv metadata delete -mount=baseharbor %s`, secretPath)); err != nil {
+			return errors.New("delete managed OpenBao application secret document failed")
+		}
+	}
+
 	for _, secretPath := range []string{applicationSecretPath(identity), applicationProbePath(identity)} {
 		if _, err := execWithToken(ctx, executor, files, managerToken, fmt.Sprintf(`bao kv metadata delete -mount=baseharbor %s >/dev/null 2>&1 || true`, secretPath)); err != nil {
 			return fmt.Errorf("delete OpenBao application secret metadata: %w", err)
@@ -158,10 +175,56 @@ func DestroyApplicationScope(ctx context.Context, executor Executor, files bhrun
 func applicationPolicy(identity ApplicationIdentity) string {
 	secretPath := applicationSecretPath(identity)
 	probePath := applicationProbePath(identity)
-	return applicationPathPolicy(secretPath) + "\n" + applicationPathPolicy(probePath)
+	return applicationSecretRootPolicy(secretPath) + "\n" + applicationSecretNamespacePolicy(secretPath) + "\n" + applicationProbePolicy(probePath)
 }
 
-func applicationPathPolicy(path string) string {
+func applicationSecretRootPolicy(path string) string {
+	return fmt.Sprintf(`path "baseharbor/data/%s" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
+path "baseharbor/metadata/%s" {
+  capabilities = ["read", "list", "delete"]
+}
+
+path "baseharbor/delete/%s" {
+  capabilities = ["update"]
+}
+
+path "baseharbor/undelete/%s" {
+  capabilities = ["update"]
+}
+
+path "baseharbor/destroy/%s" {
+  capabilities = ["update"]
+}
+`, path, path, path, path, path)
+}
+
+func applicationSecretNamespacePolicy(path string) string {
+	return fmt.Sprintf(`path "baseharbor/data/%s/*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
+path "baseharbor/metadata/%s/*" {
+  capabilities = ["read", "list", "delete"]
+}
+
+path "baseharbor/delete/%s/*" {
+  capabilities = ["update"]
+}
+
+path "baseharbor/undelete/%s/*" {
+  capabilities = ["update"]
+}
+
+path "baseharbor/destroy/%s/*" {
+  capabilities = ["update"]
+}
+`, path, path, path, path, path)
+}
+
+func applicationProbePolicy(path string) string {
 	return fmt.Sprintf(`path "baseharbor/data/%s" {
   capabilities = ["create", "update", "read", "delete"]
 }
