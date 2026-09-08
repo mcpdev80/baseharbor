@@ -46,6 +46,15 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		}
 	}()
 
+	network := bhruntime.ProjectResource{Kind: "network", Name: ApplicationBackendNetworkName(m)}
+	exists, err := compose.InspectProjectResource(ctx, project, network)
+	if err != nil {
+		t.Fatalf("inspect application backend network: %v", err)
+	}
+	if !exists {
+		t.Fatalf("application backend network %s was not created", network.Name)
+	}
+
 	deadline := time.Now().Add(45 * time.Second)
 	for {
 		err = VerifyPostgresRuntime(ctx, compose, m, files)
