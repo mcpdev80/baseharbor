@@ -26,7 +26,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			files, err := application.ExistingRuntimeFiles(store, m)
+			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
 			}
@@ -39,7 +39,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
