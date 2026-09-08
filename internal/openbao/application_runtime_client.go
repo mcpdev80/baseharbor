@@ -41,6 +41,11 @@ func NewApplicationRuntimeClient(rawURL string) (*ApplicationRuntimeClient, erro
 	}, nil
 }
 
+func (c *ApplicationRuntimeClient) Check(ctx context.Context, credentialsPath string) error {
+	_, err := c.login(ctx, credentialsPath)
+	return err
+}
+
 func (c *ApplicationRuntimeClient) GetApplicationSecret(ctx context.Context, identity ApplicationIdentity, credentialsPath, key string) ([]byte, error) {
 	if err := validateRuntimeSecretRequest(identity, key); err != nil {
 		return nil, err
