@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -76,9 +75,23 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 		); err != nil {
 			return fmt.Errorf("restore postgres instance %s: %w", instance, err)
 		}
-	}
-	if err := VerifyPostgresRuntime(ctx, runtimeVerifier{runtime: runtime}, m, files); err != nil {
-		return fmt.Errorf("verify restored postgres runtime: %w", err)
+		out, err := runtime.ExecProject(
+			ctx,
+			RuntimeProjectName(m),
+			files.Compose,
+			files.Env,
+			service,
+			"psql",
+			"-U", "baseharbor",
+			"-d", database,
+			"-tAc", "SELECT 1",
+		)
+		if err != nil {
+			return fmt.Errorf("verify restored postgres instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "1" {
+			return fmt.Errorf("verify restored postgres instance %s: unexpected query result %q", instance, strings.TrimSpace(out))
+		}
 	}
 	return nil
 }
@@ -114,15 +127,4 @@ func ValidatePostgresBackupSet(m Manifest, backups []PostgresBackup) error {
 		}
 	}
 	return nil
-}
-
-type runtimeVerifier struct {
-	runtime PostgresBackupRuntime
-}
-
-func (v runtimeVerifier) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
-	if v.runtime == nil {
-		return "", errors.New("postgres backup runtime is nil")
-	}
-	return v.runtime.ExecProject(ctx, project, composeFile, envFile, service, args...)
 }
