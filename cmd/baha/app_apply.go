@@ -19,7 +19,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply [NAME]",
-		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. Declared secrets.required entries are readiness gates: missing or unreadable required secrets stop apply before the workload is considered ready.",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network and injects container-routable native service URLs. Declared secrets.required entries are readiness gates.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
@@ -44,6 +44,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
+				{Name: "application workload", Run: func(context.Context) error {
+					return preflightRepositoryWorkload(resolved)
 				}},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
@@ -108,17 +111,24 @@ func appApplyCommand(store application.Store) *cli.Command {
 					}
 				}
 				if verifyErr == nil {
-					printRuntimeReady(out, m)
-					fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
-					fmt.Fprintln(out, "Environment contract: baha app env --path")
-					return nil
+					break
 				}
 				select {
 				case <-verifyCtx.Done():
 				case <-time.After(time.Second):
 				}
 			}
-			return fmt.Errorf("application verification failed: %w", verifyErr)
+			if verifyErr != nil {
+				return fmt.Errorf("application verification failed: %w", verifyErr)
+			}
+
+			printRuntimeReady(out, m)
+			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
+			fmt.Fprintln(out, "Environment contract: baha app env --path")
+			return nil
 		},
 	}
 }

@@ -19,7 +19,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up [NAME]",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Repository workloads are started after their BaseHarbor backend is ready. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "up")
 			if err != nil {
@@ -42,6 +42,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
+				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
@@ -109,16 +110,22 @@ func appUpCommand(store application.Store) *cli.Command {
 					}
 				}
 				if verifyErr == nil {
-					printRuntimeReady(out, m)
-					fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
-					return nil
+					break
 				}
 				select {
 				case <-verifyCtx.Done():
 				case <-time.After(time.Second):
 				}
 			}
-			return fmt.Errorf("application verification failed: %w", verifyErr)
+			if verifyErr != nil {
+				return fmt.Errorf("application verification failed: %w", verifyErr)
+			}
+			printRuntimeReady(out, m)
+			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
+			return nil
 		},
 	}
 }
