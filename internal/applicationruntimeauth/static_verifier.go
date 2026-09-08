@@ -25,7 +25,7 @@ func (v *StaticVerifier) Verify(_ context.Context, app, token string) error {
 		return ErrUnauthorized
 	}
 	info, err := os.Stat(v.tokenFile)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 {
 		return ErrUnauthorized
 	}
 	stored, err := os.ReadFile(v.tokenFile)
