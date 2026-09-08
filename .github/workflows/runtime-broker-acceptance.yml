@@ -18,10 +18,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build BaseHarbor and broker image
+      - name: Build BaseHarbor and package exact tested binary
         run: |
           go build -o /tmp/baha ./cmd/baha
-          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+          mkdir -p /tmp/baseharbor-runtime-image
+          cp /tmp/baha /tmp/baseharbor-runtime-image/baha
+          cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
 
       - name: Bootstrap isolated control plane
         run: |
@@ -46,51 +49,81 @@ jobs:
         run: |
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
+
           /tmp/baha app create broker-demo --postgres --require-secret BOOTSTRAP_SECRET
+          set +e
+          /tmp/baha app apply broker-demo >/tmp/broker-demo-required.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "required secrets check failed" /tmp/broker-demo-required.out
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
           /tmp/baha app apply broker-demo | tee /tmp/broker-demo-apply.out
           grep -q "mTLS identity and app-scoped OpenBao readiness succeeded" /tmp/broker-demo-apply.out
           /tmp/baha app status broker-demo | grep -q "secret-broker.*mTLS identity and app-scoped OpenBao readiness succeeded"
-          /tmp/baha app doctor broker-demo | grep -q "runtime secret broker.*OK\|\[OK\].*runtime secret broker"
+          /tmp/baha app doctor broker-demo | grep -q "Application runtime is healthy"
 
           /tmp/baha app create other-demo --postgres --require-secret BOOTSTRAP_SECRET
+          set +e
+          /tmp/baha app apply other-demo >/tmp/other-demo-required.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "required secrets check failed" /tmp/other-demo-required.out
           printf '%s' 'bootstrap-b' | /tmp/baha app secret set other-demo BOOTSTRAP_SECRET --stdin
           /tmp/baha app apply other-demo | grep -q "Application other-demo is ready"
 
-      - name: Prove dynamic secret create resolve rotate delete over mTLS
+      - name: Prove dynamic secret create resolve rotate and wrong-token rejection
         run: |
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
           project=baseharbor-broker-broker-demo-dev
           broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
-          docker exec "$broker_id" sh -ec '
+
+          ref=$(docker exec "$broker_id" sh -ec '
+            token=$(cat /run/secrets/runtime-token)
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs
+            create=$(curl --fail --silent --show-error \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert \
+              --key /run/secrets/probe-client-key \
+              -H "Authorization: Bearer $token" \
+              -H "Content-Type: application/json" \
+              -d "{\"value\":\"provider-key-v1\"}" "$base")
+            printf "%s" "$create" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p"
+          ')
+          test -n "$ref"
+          printf '%s\n' "$ref" > /tmp/broker-demo-secret-ref
+
+          docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
             base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs
             mtls="--cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key"
 
-            create=$(curl --fail --silent --show-error $mtls -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"value\":\"provider-key-v1\"}" "$base")
-            ref=$(printf "%s" "$create" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p")
-            test -n "$ref"
-            printf "%s" "$ref" > /tmp/runtime-secret-ref
-
-            resolved=$(curl --fail --silent --show-error $mtls -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"ref\":\"$ref\"}" "$base/resolve")
+            resolved=$(curl --fail --silent --show-error $mtls \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
             printf "%s" "$resolved" | grep -q "\"value\":\"provider-key-v1\""
 
-            rotated=$(curl --fail --silent --show-error $mtls -X PUT -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"ref\":\"$ref\",\"value\":\"provider-key-v2\"}" "$base/resolve")
+            rotated=$(curl --fail --silent --show-error $mtls -X PUT \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\",\"value\":\"provider-key-v2\"}" "$base/resolve")
             printf "%s" "$rotated" | grep -q "\"configured\":true"
 
-            resolved=$(curl --fail --silent --show-error $mtls -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"ref\":\"$ref\"}" "$base/resolve")
+            resolved=$(curl --fail --silent --show-error $mtls \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
             printf "%s" "$resolved" | grep -q "\"value\":\"provider-key-v2\""
 
-            code=$(curl --silent --output /tmp/wrong-token.out --write-out "%{http_code}" $mtls -H "Authorization: Bearer definitely-wrong" -H "Content-Type: application/json" -d "{\"ref\":\"$ref\"}" "$base/resolve")
+            code=$(curl --silent --output /tmp/wrong-token.out --write-out "%{http_code}" $mtls \
+              -H "Authorization: Bearer definitely-wrong" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
             test "$code" = 401
           '
 
       - name: Prove cross-app mTLS identity is rejected before authorization
         run: |
-          workdir=$(cat /tmp/baseharbor-broker-workdir)
-          cd "$workdir"
           target_project=baseharbor-broker-broker-demo-dev
           other_project=baseharbor-broker-other-demo-dev
           target_id=$(docker ps --filter "label=com.docker.compose.project=$target_project" --filter 'label=com.docker.compose.service=broker' -q)
@@ -100,45 +133,64 @@ jobs:
           target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
           test -n "$target_ip"
           set +e
-          docker exec "$other_id" sh -ec "curl --fail --silent --show-error --resolve baseharbor-secrets:8443:$target_ip --cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key https://baseharbor-secrets:8443/readyz >/tmp/cross-app.out 2>/tmp/cross-app.err"
+          docker exec "$other_id" sh -ec "curl --fail --silent --show-error \
+            --resolve baseharbor-secrets:8443:$target_ip \
+            --cacert /run/baseharbor/identity/ca.pem \
+            --cert /run/secrets/probe-client-cert \
+            --key /run/secrets/probe-client-key \
+            https://baseharbor-secrets:8443/readyz >/tmp/cross-app.out 2>/tmp/cross-app.err"
           code=$?
           set -e
           test "$code" -ne 0
 
-      - name: Prove broker lifecycle and dynamic secret durability
+      - name: Prove broker lifecycle and same dynamic secret ref survives restart
         run: |
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
+          ref=$(cat /tmp/broker-demo-secret-ref)
+          test -n "$ref"
+
+          client_before=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
           /tmp/baha app down broker-demo | tee /tmp/broker-down.out
           grep -q "secret-broker.*stopped" /tmp/broker-down.out
           test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-broker-demo-dev)"
 
           /tmp/baha app up broker-demo | grep -q "Application broker-demo is running and ready"
           /tmp/baha app status broker-demo | grep -q "secret-broker.*mTLS identity and app-scoped OpenBao readiness succeeded"
+          client_after=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
+          test "$client_before" != "$client_after"
 
           broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
-          docker exec "$broker_id" sh -ec '
+          test -n "$broker_id"
+          docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
-            ref=$(cat /tmp/runtime-secret-ref 2>/dev/null || true)
-            if [ -z "$ref" ]; then
-              exit 2
-            fi
-          ' || true
-          # The ref is application data, not broker-local state; resolve it from the host-captured create response below.
-          ref=$(docker exec "$broker_id" sh -ec 'token=$(cat /run/secrets/runtime-token); base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs; mtls="--cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key"; create=$(curl --fail --silent --show-error $mtls -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"value\":\"lifecycle-probe\"}" "$base"); printf "%s" "$create" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p"')
-          test -n "$ref"
-          docker exec "$broker_id" sh -ec "token=\$(cat /run/secrets/runtime-token); curl --fail --silent --show-error --cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key -H \"Authorization: Bearer \$token\" -H 'Content-Type: application/json' -d '{\"ref\":\"$ref\"}' https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs/resolve | grep -q '\"value\":\"lifecycle-probe\"'"
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs
+            resolved=$(curl --fail --silent --show-error \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert \
+              --key /run/secrets/probe-client-key \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
+            printf "%s" "$resolved" | grep -q "\"value\":\"provider-key-v2\""
+          '
 
-      - name: Prove delete is permanent
+      - name: Prove delete is permanent for the same ref
         run: |
-          workdir=$(cat /tmp/baseharbor-broker-workdir)
-          cd "$workdir"
+          ref=$(cat /tmp/broker-demo-secret-ref)
           broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
-          ref=$(docker exec "$broker_id" sh -ec 'token=$(cat /run/secrets/runtime-token); base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs; mtls="--cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key"; create=$(curl --fail --silent --show-error $mtls -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"value\":\"delete-me\"}" "$base"); printf "%s" "$create" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p"')
-          test -n "$ref"
-          docker exec "$broker_id" sh -ec "token=\$(cat /run/secrets/runtime-token); base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs; curl --fail --silent --show-error --cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key -X DELETE -H \"Authorization: Bearer \$token\" -H 'Content-Type: application/json' -d '{\"ref\":\"$ref\"}' \"\$base/resolve\""
-          code=$(docker exec "$broker_id" sh -ec "token=\$(cat /run/secrets/runtime-token); base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs; curl --silent --output /tmp/deleted.out --write-out '%{http_code}' --cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key -H \"Authorization: Bearer \$token\" -H 'Content-Type: application/json' -d '{\"ref\":\"$ref\"}' \"\$base/resolve\"")
-          test "$code" = 404
+          test -n "$broker_id"
+          docker exec -e REF="$ref" "$broker_id" sh -ec '
+            token=$(cat /run/secrets/runtime-token)
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/broker-demo/secret-refs
+            mtls="--cacert /run/baseharbor/identity/ca.pem --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key"
+            curl --fail --silent --show-error $mtls -X DELETE \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve"
+            code=$(curl --silent --output /tmp/deleted.out --write-out "%{http_code}" $mtls \
+              -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
+            test "$code" = 404
+          '
 
       - name: Cleanup
         if: always()
