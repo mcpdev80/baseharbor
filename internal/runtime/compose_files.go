@@ -40,7 +40,11 @@ func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir st
 }
 
 func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "down")
+	return c.DownProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
+}
+
+func (c Compose) DownProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "down")
 	return err
 }
 
