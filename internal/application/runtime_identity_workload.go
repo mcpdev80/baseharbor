@@ -16,6 +16,23 @@ const SecretFileBindingContainerDir = "/run/baseharbor/bindings/secrets"
 
 var ErrRuntimeAPIURL = errors.New("application runtime API URL is invalid")
 
+type WorkloadBindingPlan struct {
+	RuntimeIdentityServices []string
+	FileSecretsByService    map[string][]string
+}
+
+func (p WorkloadBindingPlan) Empty() bool {
+	if len(p.RuntimeIdentityServices) > 0 {
+		return false
+	}
+	for _, names := range p.FileSecretsByService {
+		if len(names) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func RequiredSecretUsesFileBinding(name string) bool {
 	return strings.HasSuffix(name, "_FILE")
 }
@@ -41,83 +58,93 @@ func SecretFileContainerPath(name string) string {
 	return SecretFileBindingContainerDir + "/" + name
 }
 
-// MaterializeRuntimeIdentityWorkloadOverride adds protected BaseHarbor runtime
-// bindings without rewriting the application Compose file. App runtime identity
-// is optional; declared *_FILE secrets still receive an owner-only read-only
-// binding even when no runtime API endpoint is configured.
-func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFiles, files RuntimeFiles) (string, bool, error) {
-	if !m.Services.Secrets || len(workload.Services) == 0 {
+func ConfiguredRuntimeAPIURL() (string, bool, error) {
+	raw := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL"))
+	if raw == "" {
+		return "", false, nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false, fmt.Errorf("%w: BASEHARBOR_RUNTIME_API_URL must be an absolute HTTPS URL without credentials, query, or fragment", ErrRuntimeAPIURL)
+	}
+	return strings.TrimRight(parsed.String(), "/"), true, nil
+}
+
+// MaterializeRuntimeIdentityWorkloadOverride adds only the protected bindings
+// that selected application services actually consume. Sharing a Compose
+// project does not grant access to another service's secret files or runtime
+// identity token.
+func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFiles, files RuntimeFiles, plan WorkloadBindingPlan) (string, bool, error) {
+	if !m.Services.Secrets || len(workload.Services) == 0 || plan.Empty() {
 		return "", false, nil
 	}
 	path := filepath.Join(files.Dir, "workload.runtime-identity.override.yaml")
-	rawAPIURL := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL"))
-	fileBindings := HasRequiredFileSecrets(m)
-	if rawAPIURL == "" && !fileBindings {
-		if err := validateExistingRuntimeIdentityOverride(path, files); err == nil {
-			return path, true, nil
-		} else if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
-		} else {
-			return "", false, err
-		}
+	apiURL, apiConfigured, err := ConfiguredRuntimeAPIURL()
+	if err != nil {
+		return "", false, err
 	}
 
-	apiURL := ""
-	tokenPath := ""
-	if rawAPIURL != "" {
-		var err error
-		apiURL, err = runtimeAPIURL()
-		if err != nil {
-			return "", false, err
-		}
-		tokenPath, err = EnsureRuntimeIdentity(m, files)
-		if err != nil {
-			return "", false, err
-		}
+	runtimeServices := make(map[string]struct{}, len(plan.RuntimeIdentityServices))
+	for _, service := range plan.RuntimeIdentityServices {
+		runtimeServices[service] = struct{}{}
+	}
+	if len(runtimeServices) > 0 && !apiConfigured {
+		return "", false, fmt.Errorf("%w: a workload consumes BASEHARBOR_RUNTIME_TOKEN_FILE but BASEHARBOR_RUNTIME_API_URL is not configured", ErrRuntimeAPIURL)
 	}
 
 	absoluteToken := ""
-	if tokenPath != "" {
-		var err error
+	if len(runtimeServices) > 0 {
+		tokenPath, err := EnsureRuntimeIdentity(m, files)
+		if err != nil {
+			return "", false, err
+		}
 		absoluteToken, err = filepath.Abs(tokenPath)
 		if err != nil {
 			return "", false, fmt.Errorf("resolve application runtime identity token: %w", err)
 		}
 	}
-	absoluteSecretDir := ""
-	if fileBindings {
-		secretDir := SecretFileHostDir(files)
-		if err := os.MkdirAll(secretDir, 0o700); err != nil {
-			return "", false, fmt.Errorf("create application secret file binding directory: %w", err)
-		}
-		if err := os.Chmod(secretDir, 0o700); err != nil {
-			return "", false, fmt.Errorf("secure application secret file binding directory: %w", err)
-		}
-		var err error
-		absoluteSecretDir, err = filepath.Abs(secretDir)
-		if err != nil {
-			return "", false, fmt.Errorf("resolve application secret file binding directory: %w", err)
+
+	services := make(map[string]struct{})
+	for service := range runtimeServices {
+		services[service] = struct{}{}
+	}
+	for service, names := range plan.FileSecretsByService {
+		if len(names) > 0 {
+			services[service] = struct{}{}
 		}
 	}
+	orderedServices := make([]string, 0, len(services))
+	for service := range services {
+		orderedServices = append(orderedServices, service)
+	}
+	sort.Strings(orderedServices)
 
-	services := append([]string(nil), workload.Services...)
-	sort.Strings(services)
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for _, service := range services {
+	for _, service := range orderedServices {
 		fmt.Fprintf(&b, "  %s:\n", service)
-		if apiURL != "" {
+		if _, ok := runtimeServices[service]; ok {
 			b.WriteString("    environment:\n")
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_API_URL: %s\n", strconv.Quote(apiURL))
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_TOKEN_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerTokenPath))
 		}
-		if absoluteToken != "" || absoluteSecretDir != "" {
-			b.WriteString("    volumes:\n")
-			if absoluteToken != "" {
-				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(absoluteToken+":"+RuntimeIdentityContainerTokenPath+":ro"))
+		var mounts []string
+		if _, ok := runtimeServices[service]; ok {
+			mounts = append(mounts, absoluteToken+":"+RuntimeIdentityContainerTokenPath+":ro")
+		}
+		secretNames := append([]string(nil), plan.FileSecretsByService[service]...)
+		sort.Strings(secretNames)
+		for _, name := range secretNames {
+			hostPath, err := filepath.Abs(SecretFileHostPath(files, name))
+			if err != nil {
+				return "", false, fmt.Errorf("resolve application secret file binding %s: %w", name, err)
 			}
-			if absoluteSecretDir != "" {
-				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(absoluteSecretDir+":"+SecretFileBindingContainerDir+":ro"))
+			mounts = append(mounts, hostPath+":"+SecretFileContainerPath(name)+":ro")
+		}
+		if len(mounts) > 0 {
+			b.WriteString("    volumes:\n")
+			for _, mount := range mounts {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mount))
 			}
 		}
 	}
@@ -125,32 +152,4 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 		return "", false, fmt.Errorf("write application runtime binding workload override: %w", err)
 	}
 	return path, true, nil
-}
-
-func validateExistingRuntimeIdentityOverride(path string, files RuntimeFiles) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return errors.New("application runtime identity workload override is not owner-only")
-	}
-	if _, err := os.Stat(RuntimeIdentityTokenPath(files)); err == nil {
-		return ownerOnlyRuntimeIdentity(RuntimeIdentityTokenPath(files))
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-func runtimeAPIURL() (string, error) {
-	raw := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL"))
-	if raw == "" {
-		return "", fmt.Errorf("%w: BASEHARBOR_RUNTIME_API_URL is not configured", ErrRuntimeAPIURL)
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", fmt.Errorf("%w: BASEHARBOR_RUNTIME_API_URL must be an absolute HTTPS URL without credentials, query, or fragment", ErrRuntimeAPIURL)
-	}
-	return strings.TrimRight(parsed.String(), "/"), nil
 }
