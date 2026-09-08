@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -19,21 +18,22 @@ func appApplyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
-		Usage:   "baha app apply NAME",
-		Long:    "Runs plan, preflight, apply and verification for the requested application. PostgreSQL and Valkey are supported, along with managed OpenBao secret scopes. Secret scope convergence requires an initialized, unsealed BaseHarbor OpenBao trust plane. Applications with secrets.required fail closed until every declared secret exists.",
+		Usage:   "baha app apply [NAME]",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 1 {
-				return usageError("baha app apply requires exactly one NAME", "Example: baha app apply demo")
-			}
-			m, manifestPath, err := store.Load(args[0])
+			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
 				return err
 			}
+			m := resolved.Manifest
 			plan, err := application.BuildPlan(m)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "Plan for %s (%s): %d actions\n", plan.Application, plan.Environment, len(plan.Actions))
+			if resolved.FromRepository {
+				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
+			}
 
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -42,16 +42,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "application state permissions", Run: func(context.Context) error {
-					info, err := os.Stat(manifestPath)
-					if err != nil {
-						return err
-					}
-					if info.Mode().Perm()&0o077 != 0 {
-						return fmt.Errorf("%s is accessible by group or others (%o)", manifestPath, info.Mode().Perm())
-					}
-					return nil
-				}},
+				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
@@ -117,6 +108,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if verifyErr == nil {
 					printRuntimeReady(out, m)
 					fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
+					fmt.Fprintf(out, "Environment contract: baha app env --path\n")
 					return nil
 				}
 				select {
