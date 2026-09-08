@@ -26,8 +26,11 @@ func TestEnsurePostgresRuntimeIsolatedAndIdempotent(t *testing.T) {
 	if strings.Contains(string(compose), "ports:") {
 		t.Fatal("application postgres must not publish a host port by default")
 	}
-	if !strings.Contains(string(compose), "postgres-data:/var/lib/postgresql/data") {
-		t.Fatal("dedicated postgres volume is missing")
+	if !strings.Contains(string(compose), "postgres-data:/var/lib/postgresql") {
+		t.Fatal("dedicated postgres volume is missing or uses the pre-18 mount path")
+	}
+	if strings.Contains(string(compose), "postgres-data:/var/lib/postgresql/data") {
+		t.Fatal("PostgreSQL 18 runtime must not use the pre-18 data volume mount")
 	}
 
 	firstEnv, err := os.ReadFile(files.Env)
