@@ -20,7 +20,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply NAME",
-		Long:    "Runs plan, preflight, apply and verification for the requested application. PostgreSQL and Valkey are supported, along with managed OpenBao secret scopes. Secret scope convergence requires an initialized, unsealed BaseHarbor OpenBao trust plane.",
+		Long:    "Runs plan, preflight, apply and verification for the requested application. PostgreSQL and Valkey are supported, along with managed OpenBao secret scopes. Required secrets are a fail-closed workload start gate: BaseHarbor may materialize the runtime and secret scope, but it will not start the workload until every required secret is present and readable.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app apply requires exactly one NAME", "Example: baha app apply demo")
@@ -94,6 +94,16 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if err := openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
 					return fmt.Errorf("converge OpenBao application secret scope: %w", err)
 				}
+				if len(application.RequiredSecretNames(m)) > 0 {
+					statuses, err := inspectRequiredSecrets(ctx, compose, platformFiles, m, files)
+					if err != nil {
+						return fmt.Errorf("inspect required application secrets: %w", err)
+					}
+					printRequiredSecretStatus(out, statuses)
+					if err := requireReadySecrets(statuses); err != nil {
+						return fmt.Errorf("workload start blocked: %w; configure missing values with 'baha app secret set %s KEY --stdin'", err, m.Name)
+					}
+				}
 			}
 			if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
@@ -107,6 +117,14 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if verifyErr == nil && m.Services.Secrets {
 					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+				}
+				if verifyErr == nil && len(application.RequiredSecretNames(m)) > 0 {
+					statuses, err := inspectRequiredSecrets(verifyCtx, compose, platformFiles, m, files)
+					if err != nil {
+						verifyErr = err
+					} else {
+						verifyErr = requireReadySecrets(statuses)
+					}
 				}
 				if verifyErr == nil {
 					printRuntimeReady(out, m)
@@ -146,5 +164,8 @@ func printRuntimeReady(out io.Writer, m application.Manifest) {
 	}
 	if m.Services.Secrets {
 		fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole and secret scope verified")
+	}
+	if len(application.RequiredSecretNames(m)) > 0 {
+		fmt.Fprintln(out, "[OK] required-secrets  all required secret values are present and readable")
 	}
 }
