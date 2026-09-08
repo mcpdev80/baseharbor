@@ -58,17 +58,25 @@ GRANT SELECT ON external_identities, memberships TO baseharbor_resolver_ci;
 	if _, err := admin.Exec(ctx, `
 INSERT INTO tenants (id, slug, name) VALUES
     ($1, 'tenant-a', 'Tenant A'),
-    ($2, 'tenant-b', 'Tenant B');
+    ($2, 'tenant-b', 'Tenant B')
+`, tenantA, tenantB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, `
 INSERT INTO external_identities (id, issuer, subject) VALUES
-    ($3, 'https://issuer.example', 'subject-a'),
-    ($4, 'https://issuer.example', 'subject-b'),
-    ($5, 'https://issuer.example', 'subject-ambiguous');
+    ($1, 'https://issuer.example', 'subject-a'),
+    ($2, 'https://issuer.example', 'subject-b'),
+    ($3, 'https://issuer.example', 'subject-ambiguous')
+`, identityA, identityB, identityAmb); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, `
 INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
     ('66666666-6666-4666-8666-666666666661', $1, $3, 'editor'),
     ('66666666-6666-4666-8666-666666666662', $1, $3, 'viewer'),
     ('66666666-6666-4666-8666-666666666663', $2, $4, 'viewer'),
     ('66666666-6666-4666-8666-666666666664', $1, $5, 'viewer'),
-    ('66666666-6666-4666-8666-666666666665', $2, $5, 'viewer');
+    ('66666666-6666-4666-8666-666666666665', $2, $5, 'viewer')
 `, tenantA, tenantB, identityA, identityB, identityAmb); err != nil {
 		t.Fatal(err)
 	}
