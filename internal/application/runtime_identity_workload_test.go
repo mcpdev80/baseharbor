@@ -24,7 +24,7 @@ func TestRuntimeIdentityWorkloadOverrideRequiresHTTPSAPIURL(t *testing.T) {
 	}
 }
 
-func TestRuntimeIdentityWorkloadOverrideMountsOwnerOnlyToken(t *testing.T) {
+func TestRuntimeIdentityWorkloadOverrideMountsOwnerOnlyTokenAndIsReusable(t *testing.T) {
 	m := New("demo", "dev", true, false, true)
 	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
 	files.Bindings = filepath.Join(files.Dir, "bindings")
@@ -65,5 +65,14 @@ func TestRuntimeIdentityWorkloadOverrideMountsOwnerOnlyToken(t *testing.T) {
 	}
 	if overrideInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("override mode = %o, want 600", overrideInfo.Mode().Perm())
+	}
+
+	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "")
+	reused, reusedEnabled, err := MaterializeRuntimeIdentityWorkloadOverride(m, workload, files)
+	if err != nil {
+		t.Fatalf("reuse without operator env failed: %v", err)
+	}
+	if !reusedEnabled || reused != path {
+		t.Fatalf("reused override = %q enabled=%v, want %q true", reused, reusedEnabled, path)
 	}
 }
