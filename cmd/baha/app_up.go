@@ -19,7 +19,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up [NAME]",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. Required application secrets are verified before workload start and missing values fail closed. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "up")
 			if err != nil {
