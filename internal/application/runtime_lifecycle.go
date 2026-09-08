@@ -15,7 +15,7 @@ var ErrRuntimeDefinitionChanged = errors.New("application runtime definition dif
 
 func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 	project := RuntimeProjectName(m)
-	resources := []bhruntime.ProjectResource{{Kind: "network", Name: project + "_default"}}
+	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkName(m)}}
 	for _, instance := range PostgresInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
