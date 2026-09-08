@@ -33,6 +33,7 @@ baha
 │   ├── status
 │   ├── doctor
 │   ├── down
+│   ├── up
 │   └── destroy
 └── version
 ```
@@ -47,6 +48,7 @@ baha app apply --help
 baha app status --help
 baha app doctor --help
 baha app down --help
+baha app up --help
 baha app destroy --help
 ```
 
@@ -125,7 +127,9 @@ baha app doctor demo
 
 Neither command changes application state or prints runtime credentials.
 
-## Stop without deleting data
+## Stop and resume without deleting data
+
+Stop an application while preserving persistent state:
 
 ```bash
 baha app down demo
@@ -140,7 +144,17 @@ After the preflight succeeds, it removes the application container and transient
 - the generated runtime environment and credentials
 - the BaseHarbor runtime definition
 
-Post-verification confirms that the container and network are gone and that an existing PostgreSQL volume was not removed. `baha app apply demo` can then converge the same application again with its existing data.
+Post-verification confirms that the container and network are gone and that an existing PostgreSQL volume was not removed.
+
+Resume the existing materialized runtime with:
+
+```bash
+baha app up demo
+```
+
+`app up` is deliberately different from `app apply`. It does not materialize new runtime state and refuses to recreate a missing PostgreSQL volume. Before starting anything it requires the existing manifest, owner-only runtime files, unchanged BaseHarbor-managed Compose definition, valid Compose configuration, unambiguous resource ownership, and the already-existing managed PostgreSQL volume.
+
+After start it waits for the authenticated PostgreSQL `SELECT 1` verification to succeed before reporting the application ready. Existing runtime credentials remain unchanged and the preserved PostgreSQL volume is reused.
 
 ## Permanent destruction
 
@@ -173,7 +187,6 @@ After the preflight, `--yes` removes the owned Compose runtime including persist
 ## Planned command evolution
 
 ```text
-baha app up NAME
 baha app env NAME
 baha app backup NAME
 baha app restore NAME

@@ -10,7 +10,7 @@ Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrati
 
 The first per-application convergence slice is PostgreSQL: `baha app apply NAME` creates an isolated Compose project with a dedicated PostgreSQL volume and network, does not publish a host port by default, preserves generated credentials across repeated apply operations, and reports ready only after an authenticated `SELECT 1` succeeds.
 
-The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
+The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, resumed from its existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
 ## CLI
 
@@ -29,6 +29,7 @@ Discover commands at every level:
 ./baha app status --help
 ./baha app doctor --help
 ./baha app down --help
+./baha app up --help
 ./baha app destroy --help
 ```
 
@@ -55,11 +56,14 @@ Application commands:
 ./baha app status demo
 ./baha app doctor demo
 ./baha app down demo
+./baha app up demo
 ./baha app destroy demo
 ./baha app destroy demo --yes
 ```
 
-`baha app down` removes the managed container and transient network but preserves the PostgreSQL volume, runtime state and credentials. A later `baha app apply` converges the same application again using the preserved data.
+`baha app down` removes the managed container and transient network but preserves the PostgreSQL volume, runtime state and credentials.
+
+`baha app up` resumes only an already-materialized runtime. It validates ownership and the managed runtime definition, requires the existing PostgreSQL volume instead of silently recreating missing persistent state, and reports success only after an authenticated PostgreSQL query succeeds.
 
 `baha app destroy` is destructive by design. Without `--yes` it performs the safety preflight and prints the exact managed resources that would be removed, but makes no changes. With `--yes`, BaseHarbor first verifies the generated runtime definition and exact Compose ownership labels. Ambiguous or mismatched ownership fails closed before deletion. Persistent volumes and local application state are then removed and absence is verified.
 
@@ -71,9 +75,9 @@ Application convergence follows the stable contract:
 plan -> preflight -> apply -> verify
 ```
 
-Destructive lifecycle operations add explicit ownership verification before mutation and post-verification after mutation.
+Lifecycle resume and destructive operations add explicit ownership/state verification before mutation and post-verification after mutation.
 
-The current `app apply` milestone intentionally supports PostgreSQL-only desired state. Manifests that also enable Redis/Valkey or managed secrets fail closed until those convergence modules are implemented.
+The current application runtime milestone intentionally supports PostgreSQL-only desired state. Manifests that also enable Redis/Valkey or managed secrets fail closed until those convergence modules are implemented.
 
 See [docs/cli.md](docs/cli.md) and [docs/runtime-compose.md](docs/runtime-compose.md).
 
