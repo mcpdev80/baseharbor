@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
@@ -19,7 +20,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
