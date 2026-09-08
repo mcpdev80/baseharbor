@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -21,12 +20,16 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	return err
 }
 
-func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+func materializeRepositoryWorkload(resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, bool, error) {
 	if !resolved.FromRepository {
-		return false, nil
+		return application.WorkloadFiles{}, false, nil
 	}
 	repositoryRoot := filepath.Dir(resolved.ManifestPath)
-	workload, found, err := application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
+	return application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
+}
+
+func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return false, err
 	}
@@ -66,6 +69,41 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	return false, fmt.Errorf("application workload did not reach the expected running service set; active=%v running=%v", activeServices, running)
 }
 
+func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	if err != nil || !found {
+		return false, err
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+	if err := compose.ConfigProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
+		return false, fmt.Errorf("validate application workload before stop: %w", err)
+	}
+	if err := compose.DownProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
+		return false, fmt.Errorf("stop application workload: %w", err)
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...)
+	if err != nil {
+		return false, fmt.Errorf("verify application workload stopped: %w", err)
+	}
+	if len(running) != 0 {
+		return false, fmt.Errorf("verify application workload stopped: services still running: %v", running)
+	}
+	return true, nil
+}
+
+func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, []string, bool, error) {
+	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	if err != nil || !found {
+		return workload, nil, found, err
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+	if err := compose.ConfigProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
+		return workload, nil, true, err
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...)
+	return workload, running, true, err
+}
+
 func workloadRunningEnough(active, running, requested []string) bool {
 	runningSet := make(map[string]struct{}, len(running))
 	for _, service := range running {
@@ -92,10 +130,4 @@ func workloadRunningEnough(active, running, requested []string) bool {
 		}
 	}
 	return true
-}
-
-func sortedStrings(values []string) []string {
-	result := append([]string(nil), values...)
-	sort.Strings(result)
-	return result
 }
