@@ -2,6 +2,7 @@ package openbao
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,8 +35,11 @@ func (f *fakeExecutor) ExecProject(_ context.Context, _, _, _, _ string, args ..
 func (f *fakeExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, _ string, args ...string) (string, error) {
 	joined := strings.Join(args, " ")
 	f.args = append(f.args, joined)
-	if strings.Contains(joined, "operator unseal") {
-		if strings.TrimSpace(string(input)) != "unseal-secret" {
+	if strings.Contains(joined, "sys/unseal") {
+		var payload struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(input, &payload); err != nil || payload.Key != "unseal-secret" {
 			return "", ErrInvalidRecoveryFile
 		}
 		f.sealed = false
