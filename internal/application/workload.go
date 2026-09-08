@@ -276,7 +276,7 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 	}
 	u := &url.URL{
 		Scheme: "redis",
-		User:   url.UserPassword("", password),
+		User:   url.UserPassword("default", password),
 		Host:   net.JoinHostPort(runtimeServiceName("valkey", instance), "6379"),
 		Path:   "/0",
 	}
