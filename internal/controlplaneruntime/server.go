@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
+	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecretapi"
 	"github.com/mcpdev80/baseharbor/internal/auth"
@@ -84,8 +86,9 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	if err != nil {
 		return err
 	}
+	secretService := applicationsecret.New(store)
 	secretHandler, err := applicationsecretapi.New(
-		applicationsecret.New(store),
+		secretService,
 		database.NewApplicationOwnershipStore(pool),
 		authorization.NewService(),
 	)
@@ -93,6 +96,10 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		return err
 	}
 	protected, err := controlplaneapi.New(security, secretHandler)
+	if err != nil {
+		return err
+	}
+	runtimeHandler, err := applicationruntimeapi.New(secretService, applicationruntimeauth.New(store))
 	if err != nil {
 		return err
 	}
@@ -117,6 +124,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
 	})
 	mux.Handle("/api/", protected)
+	mux.Handle("/runtime/", runtimeHandler)
 
 	server := &http.Server{
 		Addr:              cfg.listenAddr(),
