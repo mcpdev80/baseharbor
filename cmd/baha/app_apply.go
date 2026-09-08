@@ -42,7 +42,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
@@ -71,7 +73,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return errors.New("application preflight failed")
 			}
 
-			files, err := application.EnsureRuntime(store, m)
+			files, err := application.EnsureRuntime(resolved.Store, m)
 			if err != nil {
 				return err
 			}
@@ -108,7 +110,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if verifyErr == nil {
 					printRuntimeReady(out, m)
 					fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
-					fmt.Fprintf(out, "Environment contract: baha app env --path\n")
+					fmt.Fprintln(out, "Environment contract: baha app env --path")
 					return nil
 				}
 				select {
