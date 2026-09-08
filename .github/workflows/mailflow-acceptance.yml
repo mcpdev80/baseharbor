@@ -10,6 +10,8 @@ jobs:
   mailflow:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
@@ -17,6 +19,8 @@ jobs:
           go-version-file: go.mod
       - name: Build BaseHarbor CLI
         run: go build -o /tmp/baha ./cmd/baha
+      - name: Build runtime broker image
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Checkout MailFlow BaseHarbor readiness branch
         run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
       - name: Extend MailFlow acceptance with TLS file bindings
@@ -77,6 +81,13 @@ jobs:
           if [ -n "$api_id" ]; then
             docker inspect "$api_id" --format '{{json .State.Health}}' || true
             docker logs "$api_id" || true
+          fi
+          broker_project=baseharbor-broker-mailflow-production
+          docker ps -a --filter "label=com.docker.compose.project=$broker_project" --format 'table {{.Names}}\t{{.Status}}' || true
+          broker_id=$(docker ps -a --filter "label=com.docker.compose.project=$broker_project" -q | head -1)
+          if [ -n "$broker_id" ]; then
+            docker inspect "$broker_id" --format '{{json .State.Health}}' || true
+            docker logs "$broker_id" || true
           fi
       - name: Verify managed backends, env secret and TLS file bindings
         working-directory: /tmp/mailflow
