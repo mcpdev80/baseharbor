@@ -21,16 +21,14 @@ func appDownCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
-		Usage:   "baha app down NAME",
-		Long:    "Stops and removes the application's managed containers and transient network while preserving its managed data volumes, manifest, runtime definition, credentials and managed OpenBao secret scope. Ownership is verified before mutation.",
+		Usage:   "baha app down [NAME]",
+		Long:    "Stops and removes managed containers and transient network while preserving data volumes, runtime credentials and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 1 {
-				return usageError("baha app down requires exactly one NAME", "Example: baha app down demo")
-			}
-			m, manifestPath, err := store.Load(args[0])
+			resolved, err := resolveApplication(store, args, "down")
 			if err != nil {
 				return err
 			}
+			m := resolved.Manifest
 			files, err := application.ExistingRuntimeFiles(store, m)
 			if err != nil {
 				return err
@@ -43,7 +41,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
+				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
@@ -91,18 +89,23 @@ func appDownCommand(store application.Store) *cli.Command {
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
-		Summary: "Permanently remove a BaseHarbor-managed application runtime and state",
-		Usage:   "baha app destroy NAME [--yes]",
-		Long:    "Performs a read-only ownership and safety preflight, then shows the exact BaseHarbor-managed resources that would be removed. Without --yes no changes are made. With --yes, owned runtime resources, persistent volumes, managed OpenBao application scope and application state are permanently deleted and absence is verified.\n\nOptions:\n  --yes  Confirm permanent deletion after the safety preflight",
+		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
+		Usage:   "baha app destroy [NAME] [--yes]",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. A repository-owned baseharbor.yaml is never deleted; it remains the application contract.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, err := parseDestroyArgs(args)
 			if err != nil {
 				return err
 			}
-			m, manifestPath, err := store.Load(name)
+			var appArgs []string
+			if name != "" {
+				appArgs = []string{name}
+			}
+			resolved, err := resolveApplication(store, appArgs, "destroy")
 			if err != nil {
 				return err
 			}
+			m := resolved.Manifest
 			if err := application.CheckSupportedRuntimeServices(m); err != nil {
 				return err
 			}
@@ -122,7 +125,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
+				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
 			}
 			if runtimeErr == nil {
 				checks = append(checks,
@@ -178,8 +181,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			appDir := filepath.Join(store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
+			if resolved.FromRepository {
+				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
+			}
 			if !confirmed {
-				fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete these BaseHarbor-managed resources.")
+				fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 				return nil
 			}
 
@@ -211,6 +217,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("verify application destruction: %w", err)
 			}
 			fmt.Fprintf(out, "Application %s was permanently destroyed.\n", m.Name)
+			if resolved.FromRepository {
+				fmt.Fprintln(out, "Repository baseharbor.yaml was preserved; run 'baha app apply' to recreate the backend.")
+			}
 			return nil
 		},
 	}
@@ -227,13 +236,10 @@ func parseDestroyArgs(args []string) (string, bool, error) {
 			return "", false, usageError("unknown option "+arg, "Run 'baha app destroy --help' for available options.")
 		default:
 			if name != "" {
-				return "", false, usageError("baha app destroy accepts exactly one NAME", "Example: baha app destroy demo --yes")
+				return "", false, usageError("baha app destroy accepts at most one NAME", "Inside an application repository omit NAME.")
 			}
 			name = arg
 		}
-	}
-	if name == "" {
-		return "", false, usageError("baha app destroy requires NAME", "Example: baha app destroy demo")
 	}
 	return name, confirmed, nil
 }
