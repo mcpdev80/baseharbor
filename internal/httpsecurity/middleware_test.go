@@ -80,9 +80,9 @@ func TestMiddlewareFailsClosedAndPropagatesVerifiedContext(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "verified request",
-			header:     "Bearer " + token,
-			verify:     func(_ context.Context, got string) (*identity.Principal, error) {
+			name:   "verified request",
+			header: "Bearer " + token,
+			verify: func(_ context.Context, got string) (*identity.Principal, error) {
 				if got != token {
 					t.Fatalf("verifier token = %q, want supplied bearer token", got)
 				}
