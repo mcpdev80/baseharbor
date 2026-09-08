@@ -56,15 +56,12 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--path"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out.String()) != files.ApplicationEnv {
-		t.Fatalf("unexpected application env path: %q want %q", strings.TrimSpace(out.String()), files.ApplicationEnv)
+	expectedPath, err := filepath.Abs(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !filepath.IsAbs(files.ApplicationEnv) {
-		// DefaultStore is relative by design; consumers can still load this path from
-		// the project working directory without any BaseHarbor runtime dependency.
-		if !strings.HasSuffix(files.ApplicationEnv, filepath.Join("runtime", "application.env")) {
-			t.Fatalf("unexpected relative application env path: %s", files.ApplicationEnv)
-		}
+	if strings.TrimSpace(out.String()) != expectedPath {
+		t.Fatalf("unexpected application env path: %q want %q", strings.TrimSpace(out.String()), expectedPath)
 	}
 }
 
