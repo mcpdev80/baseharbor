@@ -24,11 +24,11 @@ services:
     environment:
       BAO_ADDR: http://127.0.0.1:8200
       BAO_LOCAL_CONFIG: >-
-        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/data"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"api_addr":"http://127.0.0.1:8200"}
+        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/file"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"api_addr":"http://127.0.0.1:8200"}
     ports:
       - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
-      - openbao-data:/openbao/data
+      - openbao-data:/openbao/file
     healthcheck:
       test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$$?; [ $$code -eq 0 ] || [ $$code -eq 2 ]"]
       interval: 5s

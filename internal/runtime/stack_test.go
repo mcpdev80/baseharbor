@@ -71,3 +71,16 @@ func TestEmbeddedComposeUsesLoopbackBindings(t *testing.T) {
 		t.Fatal("openbao must not run in dev mode")
 	}
 }
+
+func TestEmbeddedComposeUsesWritableOpenBaoFileStoragePath(t *testing.T) {
+	text := string(composeYAML)
+	if !strings.Contains(text, `"path":"/openbao/file"`) {
+		t.Fatal("openbao file storage must use the image-managed /openbao/file path")
+	}
+	if !strings.Contains(text, "openbao-data:/openbao/file") {
+		t.Fatal("openbao persistent volume must mount at /openbao/file")
+	}
+	if strings.Contains(text, "/openbao/data") {
+		t.Fatal("openbao runtime must not use the non-image-managed /openbao/data path")
+	}
+}
