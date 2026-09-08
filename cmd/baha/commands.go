@@ -16,6 +16,7 @@ func rootCommand() *cli.Command {
 	appCmd := appCommand(store)
 	appCmd.Children = append(appCmd.Children,
 		appApplyCommand(store),
+		appEnvCommand(store),
 		appStatusCommand(store),
 		appDoctorCommand(store),
 		appDownCommand(store),

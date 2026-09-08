@@ -48,6 +48,86 @@ baha app create mailflow \
 
 Declaring a required secret automatically enables managed secrets.
 
+## Native runtime contract
+
+Applications do not log in to BaseHarbor and do not require the `baha` process, a BaseHarbor SDK or a proprietary protocol at runtime.
+
+When `baha app apply` materializes PostgreSQL or Valkey, BaseHarbor publishes the managed service on an automatically allocated **loopback-only** host port and generates normal application-facing connection information.
+
+The generated owner-only dotenv contract is:
+
+```text
+.baseharbor/apps/<app>/runtime/application.env
+```
+
+For PostgreSQL and Valkey it contains standard variables such as:
+
+```text
+BASEHARBOR_APP_NAME=mailflow
+BASEHARBOR_ENVIRONMENT=dev
+BASEHARBOR_BINDINGS=.baseharbor/apps/mailflow/runtime/bindings
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+VALKEY_URL=redis://...
+```
+
+A developer may point normal framework or IDE dotenv support at that file. The application itself only sees standard environment variables and native service protocols.
+
+BaseHarbor also materializes file bindings:
+
+```text
+bindings/
+├── metadata.json
+├── postgres/
+│   ├── host
+│   ├── port
+│   ├── database
+│   ├── username
+│   ├── password
+│   └── uri
+└── valkey/
+    ├── host
+    ├── port
+    ├── password
+    └── uri
+```
+
+Directories are owner-only and binding files are written with owner-only permissions. Service ports are bound to `127.0.0.1`, never to all host interfaces by default.
+
+The contract intentionally supports both common consumption styles:
+
+```text
+DATABASE_URL
+```
+
+or:
+
+```text
+<bindings>/postgres/password
+```
+
+No application code has to call BaseHarbor to retrieve either form.
+
+## CLI convenience is optional
+
+`baha app env` exists for developer convenience and inspection; it is not a runtime dependency.
+
+```bash
+baha app env mailflow
+baha app env mailflow --format json
+baha app env mailflow --format yaml
+baha app env mailflow --format shell
+baha app env mailflow --path
+```
+
+Credential-bearing service URLs are masked by default. Printing them requires an explicit operation:
+
+```bash
+baha app env mailflow --reveal
+```
+
+`--path` prints the protected `application.env` path so an editor, IDE, process manager or normal dotenv loader can consume it directly.
+
 ## Lifecycle semantics
 
 `plan` includes a requirement action for every required secret.
@@ -85,9 +165,9 @@ SMTP_PASSWORD      no         no
 
 They never reveal secret values.
 
-## Delivery is not part of the requirement contract
+## Secret delivery remains separate from the requirement contract
 
-The application declares what it needs, not how BaseHarbor delivers it.
+The application declares what it needs, not how BaseHarbor internally stores or rotates it.
 
 Runtime delivery may evolve independently and can use standard mechanisms such as:
 
