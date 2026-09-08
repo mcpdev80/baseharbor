@@ -27,6 +27,22 @@ func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
 	}
 }
 
+func TestApplicationBackendNetworkNameIsStableAndIsolated(t *testing.T) {
+	mailflowProd := New("mailflow", "prod", true, false, false)
+	mailflowDev := New("mailflow", "dev", true, false, false)
+	awcProd := New("awc", "prod", true, false, false)
+
+	if got, want := ApplicationBackendNetworkName(mailflowProd), "baseharbor-mailflow-prod_default"; got != want {
+		t.Fatalf("unexpected backend network name: got %q want %q", got, want)
+	}
+	if ApplicationBackendNetworkName(mailflowProd) == ApplicationBackendNetworkName(mailflowDev) {
+		t.Fatal("different environments must not share the same backend network")
+	}
+	if ApplicationBackendNetworkName(mailflowProd) == ApplicationBackendNetworkName(awcProd) {
+		t.Fatal("different applications must not share the same backend network")
+	}
+}
+
 func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
 	m := New("mailflow", "prod", false, false, false)
 	m = WithPostgresInstances(m, "primary", "analytics")
