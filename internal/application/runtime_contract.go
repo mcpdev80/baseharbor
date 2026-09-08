@@ -37,6 +37,10 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	}
 
 	bindingsDir := filepath.Join(files.Dir, "bindings")
+	bindingsAbs, err := filepath.Abs(bindingsDir)
+	if err != nil {
+		return RuntimeContract{}, fmt.Errorf("resolve application bindings directory: %w", err)
+	}
 	if err := os.MkdirAll(bindingsDir, 0o700); err != nil {
 		return RuntimeContract{}, fmt.Errorf("create application bindings directory: %w", err)
 	}
@@ -48,12 +52,16 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	var env strings.Builder
 	fmt.Fprintf(&env, "BASEHARBOR_APP_NAME=%s\n", m.Name)
 	fmt.Fprintf(&env, "BASEHARBOR_ENVIRONMENT=%s\n", m.Environment)
-	fmt.Fprintf(&env, "BASEHARBOR_BINDINGS=%s\n", bindingsDir)
+	fmt.Fprintf(&env, "BASEHARBOR_BINDINGS=%s\n", bindingsAbs)
 
 	if m.Services.Postgres {
 		binding := filepath.Join(bindingsDir, "postgres")
+		bindingRef := filepath.Join(bindingsAbs, "postgres")
 		if err := os.MkdirAll(binding, 0o700); err != nil {
 			return RuntimeContract{}, fmt.Errorf("create PostgreSQL binding: %w", err)
+		}
+		if err := os.Chmod(binding, 0o700); err != nil {
+			return RuntimeContract{}, fmt.Errorf("secure PostgreSQL binding: %w", err)
 		}
 		uri, err := postgresConnectionURL(values)
 		if err != nil {
@@ -71,13 +79,17 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 			return RuntimeContract{}, err
 		}
 		fmt.Fprintf(&env, "DATABASE_URL=%s\n", uri)
-		serviceRefs["postgres"] = runtimeServiceRef{Binding: binding}
+		serviceRefs["postgres"] = runtimeServiceRef{Binding: bindingRef}
 	}
 
 	if m.Services.Redis {
 		binding := filepath.Join(bindingsDir, "valkey")
+		bindingRef := filepath.Join(bindingsAbs, "valkey")
 		if err := os.MkdirAll(binding, 0o700); err != nil {
 			return RuntimeContract{}, fmt.Errorf("create Valkey binding: %w", err)
+		}
+		if err := os.Chmod(binding, 0o700); err != nil {
+			return RuntimeContract{}, fmt.Errorf("secure Valkey binding: %w", err)
 		}
 		uri, err := valkeyConnectionURL(values)
 		if err != nil {
@@ -94,7 +106,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		}
 		fmt.Fprintf(&env, "REDIS_URL=%s\n", uri)
 		fmt.Fprintf(&env, "VALKEY_URL=%s\n", uri)
-		serviceRefs["valkey"] = runtimeServiceRef{Binding: binding}
+		serviceRefs["valkey"] = runtimeServiceRef{Binding: bindingRef}
 	}
 
 	applicationEnv := filepath.Join(files.Dir, "application.env")
