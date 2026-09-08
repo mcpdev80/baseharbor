@@ -117,6 +117,7 @@ func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
 			if _, replaced := overrides[key]; replaced {
 				continue
 			}
+		}
 		env = append(env, entry)
 	}
 	for key, value := range overrides {
