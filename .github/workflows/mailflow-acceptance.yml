@@ -18,7 +18,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build BaseHarbor CLI
-        run: go build -o /tmp/baha ./cmd/baha
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/baha ./cmd/baha
       - name: Package exact tested runtime broker binary
         run: |
           mkdir -p /tmp/baseharbor-runtime-image
