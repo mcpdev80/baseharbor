@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -131,7 +132,7 @@ func (c *ApplicationRuntimeClient) DeleteApplicationSecret(ctx context.Context, 
 }
 
 func (c *ApplicationRuntimeClient) login(ctx context.Context, credentialsPath string) (string, error) {
-	credentials, err := loadApplicationCredentials(credentialsPath)
+	credentials, err := loadRuntimeApplicationCredentials(credentialsPath)
 	if err != nil {
 		return "", err
 	}
@@ -149,6 +150,45 @@ func (c *ApplicationRuntimeClient) login(ctx context.Context, credentialsPath st
 		return "", errors.New("OpenBao application AppRole login failed")
 	}
 	return reply.Auth.ClientToken, nil
+}
+
+// loadRuntimeApplicationCredentials intentionally differs from the host-side
+// loader. The canonical host state remains owner-only (0600). A container
+// runtime may project that file as a read-only Compose secret with broader read
+// bits, so the broker accepts readability but still rejects symlinks,
+// non-regular files and any group/world writable projection.
+func loadRuntimeApplicationCredentials(path string) (ApplicationCredentials, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return ApplicationCredentials{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return ApplicationCredentials{}, errors.New("OpenBao runtime credential projection must be a regular file")
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return ApplicationCredentials{}, fmt.Errorf("OpenBao runtime credential projection is writable by group or others (%o)", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ApplicationCredentials{}, err
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return ApplicationCredentials{}, errors.New("invalid OpenBao runtime credential projection")
+		}
+		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	credentials := ApplicationCredentials{RoleID: values["OPENBAO_ROLE_ID"], SecretID: values["OPENBAO_SECRET_ID"]}
+	if credentials.RoleID == "" || credentials.SecretID == "" {
+		return ApplicationCredentials{}, errors.New("invalid OpenBao runtime credential projection")
+	}
+	return credentials, nil
 }
 
 func (c *ApplicationRuntimeClient) requestJSON(ctx context.Context, method, path, token string, payload any, reply any) (int, error) {
