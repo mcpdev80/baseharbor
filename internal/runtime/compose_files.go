@@ -40,7 +40,7 @@ func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, 
 	return err
 }
 
-func (c Compose) RemoveProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
 	if len(services) == 0 {
 		return nil
 	}
@@ -117,7 +117,6 @@ func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
 			if _, replaced := overrides[key]; replaced {
 				continue
 			}
-		}
 		env = append(env, entry)
 	}
 	for key, value := range overrides {
