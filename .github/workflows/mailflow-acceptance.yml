@@ -95,10 +95,12 @@ jobs:
           test -n "$api_id"
           docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]; assert os.environ["TLS_CERT_FILE"] == "/run/baseharbor/bindings/secrets/TLS_CERT_FILE"; assert os.environ["TLS_KEY_FILE"] == "/run/baseharbor/bindings/secrets/TLS_KEY_FILE"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
 
-          cert_host=.baseharbor/apps/mailflow/runtime/bindings/secrets/TLS_CERT_FILE
-          key_host=.baseharbor/apps/mailflow/runtime/bindings/secrets/TLS_KEY_FILE
-          test "$(stat -c '%a' "$cert_host")" = 600
-          test "$(stat -c '%a' "$key_host")" = 600
+          secret_dir=.baseharbor/apps/mailflow/runtime/bindings/secrets
+          cert_host="$secret_dir/TLS_CERT_FILE"
+          key_host="$secret_dir/TLS_KEY_FILE"
+          test "$(stat -c '%a' "$secret_dir")" = 700
+          test "$(stat -c '%a' "$cert_host")" = 444
+          test "$(stat -c '%a' "$key_host")" = 444
           grep -q 'BEGIN CERTIFICATE' "$cert_host"
           grep -q 'PRIVATE KEY' "$key_host"
       - name: Cleanup
