@@ -8,7 +8,40 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
+
+var projectEnvironmentCache = struct {
+	sync.Mutex
+	items map[string]map[string]string
+}{items: map[string]map[string]string{}}
+
+func cacheProjectEnvironment(project string, environment map[string]string) {
+	if len(environment) == 0 {
+		return
+	}
+	copy := make(map[string]string, len(environment))
+	for key, value := range environment {
+		copy[key] = value
+	}
+	projectEnvironmentCache.Lock()
+	projectEnvironmentCache.items[project] = copy
+	projectEnvironmentCache.Unlock()
+}
+
+func takeProjectEnvironment(project string) map[string]string {
+	projectEnvironmentCache.Lock()
+	defer projectEnvironmentCache.Unlock()
+	environment := projectEnvironmentCache.items[project]
+	delete(projectEnvironmentCache.items, project)
+	return environment
+}
+
+func clearProjectEnvironment(project string) {
+	projectEnvironmentCache.Lock()
+	delete(projectEnvironmentCache.items, project)
+	projectEnvironmentCache.Unlock()
+}
 
 func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--quiet")
@@ -17,6 +50,9 @@ func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string
 
 func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
+	if err == nil {
+		cacheProjectEnvironment(project, environment)
+	}
 	return err
 }
 
@@ -40,10 +76,11 @@ func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir st
 }
 
 func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	return c.DownProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
+	return c.DownProjectFilesEnv(ctx, project, workdir, takeProjectEnvironment(project), composeFiles...)
 }
 
 func (c Compose) DownProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
+	defer clearProjectEnvironment(project)
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "down")
 	return err
 }
