@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
-	name, environment, postgres, redis, secrets, required, err := parseCreateArgs([]string{
+	name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs([]string{
 		"mailflow",
 		"--environment", "production",
 		"--postgres",
@@ -23,8 +23,33 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 	if name != "mailflow" || environment != "production" || !postgres || !redis || !secrets {
 		t.Fatalf("unexpected create parse result: %q %q %t %t %t", name, environment, postgres, redis, secrets)
 	}
+	if len(postgresInstances) != 0 || len(redisInstances) != 0 {
+		t.Fatalf("unexpected named service instances: postgres=%#v redis=%#v", postgresInstances, redisInstances)
+	}
 	if !reflect.DeepEqual(required, []string{"OPENAI_API_KEY", "SMTP_PASSWORD"}) {
 		t.Fatalf("unexpected required secrets %#v", required)
+	}
+}
+
+func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
+	_, _, postgres, redis, _, postgresInstances, redisInstances, _, err := parseCreateArgs([]string{
+		"mailflow",
+		"--postgres-instance", "primary",
+		"--postgres-instance=analytics",
+		"--redis-instance", "cache",
+		"--redis-instance=sessions",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if postgres || redis {
+		t.Fatal("named instances must not implicitly request an additional default instance")
+	}
+	if !reflect.DeepEqual(postgresInstances, []string{"primary", "analytics"}) {
+		t.Fatalf("unexpected PostgreSQL instances %#v", postgresInstances)
+	}
+	if !reflect.DeepEqual(redisInstances, []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected Redis instances %#v", redisInstances)
 	}
 }
 
