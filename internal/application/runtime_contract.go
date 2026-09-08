@@ -20,9 +20,9 @@ type RuntimeContract struct {
 }
 
 type runtimeMetadata struct {
-	Version     int                         `json:"version"`
-	Application string                      `json:"application"`
-	Environment string                      `json:"environment"`
+	Version     int                          `json:"version"`
+	Application string                       `json:"application"`
+	Environment string                       `json:"environment"`
 	Services    map[string]runtimeServiceRef `json:"services"`
 }
 
