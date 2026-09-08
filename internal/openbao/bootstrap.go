@@ -306,9 +306,12 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 }
 
 func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files, key string) error {
-	input := []byte(key + "\n")
-	if _, err := executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, input, serviceName,
-		"bao", "operator", "unseal", "-format=json"); err != nil {
+	payload, err := json.Marshal(map[string]string{"key": key})
+	if err != nil {
+		return errors.New("encode OpenBao unseal request")
+	}
+	if _, err := executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, payload, serviceName,
+		"bao", "write", "-format=json", "sys/unseal", "-"); err != nil {
 		return fmt.Errorf("unseal OpenBao: %w", err)
 	}
 	state, err := Inspect(ctx, executor, files)
