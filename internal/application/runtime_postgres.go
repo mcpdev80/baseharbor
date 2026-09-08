@@ -26,10 +26,10 @@ func RuntimeProjectName(m Manifest) string {
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
-	if m.Services.Secrets {
-		return fmt.Errorf("%w: managed secrets convergence is not implemented yet", ErrUnsupportedService)
-	}
 	if !m.Services.Postgres && !m.Services.Redis {
+		if m.Services.Secrets {
+			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
+		}
 		return fmt.Errorf("%w: no supported runtime service is enabled", ErrUnsupportedService)
 	}
 	return nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -18,7 +19,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up NAME",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services pass protocol-level verification.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services, including managed OpenBao secret scopes, pass authenticated verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app up requires exactly one NAME", "Example: baha app up demo")
@@ -36,6 +37,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			defer cancel()
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
+			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -64,6 +66,22 @@ func appUpCommand(store application.Store) *cli.Command {
 					return nil
 				}},
 			}
+			if m.Services.Secrets {
+				checks = append(checks,
+					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+						var err error
+						platformFiles, err = bhruntime.ExistingFiles("")
+						return err
+					}},
+					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+						if platformFiles.Compose == "" {
+							return errors.New("BaseHarbor OpenBao runtime is not materialized")
+						}
+						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					}},
+				)
+			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
 			if !ok {
@@ -80,6 +98,10 @@ func appUpCommand(store application.Store) *cli.Command {
 			var verifyErr error
 			for verifyCtx.Err() == nil {
 				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
+				if verifyErr == nil && m.Services.Secrets {
+					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+				}
 				if verifyErr == nil {
 					printRuntimeReady(out, m)
 					fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)

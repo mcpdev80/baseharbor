@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -20,7 +21,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
 		Usage:   "baha app status NAME",
-		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Running containers are not considered ready unless each enabled service passes its authenticated verification.",
+		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Running containers are not considered ready unless each enabled service passes its authenticated verification; managed secrets also require a working isolated OpenBao AppRole scope.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app status requires exactly one NAME", "Example: baha app status demo")
@@ -81,6 +82,24 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 				}
 			}
+			if m.Services.Secrets {
+				platformFiles, platformErr := bhruntime.ExistingFiles("")
+				if platformErr != nil {
+					fmt.Fprintln(out, "[FAIL] secrets           BaseHarbor OpenBao runtime is not materialized")
+					ready = false
+				} else {
+					checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+					err := openbao.InspectApplicationScope(checkCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					cancel()
+					if err != nil {
+						fmt.Fprintln(out, "[FAIL] secrets           isolated OpenBao application scope is not ready")
+						ready = false
+					} else {
+						fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole authentication succeeded")
+					}
+				}
+			}
 			if !ready {
 				return errors.New("application is not ready")
 			}
@@ -94,7 +113,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor NAME",
-		Long:    "Checks desired state, secure local runtime files, Compose configuration, service state and authenticated protocol readiness without mutating the application.",
+		Long:    "Checks desired state, secure local runtime files, Compose configuration, service state, authenticated protocol readiness and managed OpenBao secret scope health without mutating the application.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app doctor requires exactly one NAME", "Example: baha app doctor demo")
@@ -106,6 +125,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			files, runtimeErr := application.ExistingRuntimeFiles(store, m)
 			var compose bhruntime.Compose
 			var running []string
+			var platformFiles bhruntime.Files
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			checks := []preflight.Check{
@@ -174,6 +194,25 @@ func appDoctorCommand(store application.Store) *cli.Command {
 							return errors.New("valkey service is not running")
 						}
 						return application.VerifyValkeyRuntime(ctx, compose, m, files)
+					}},
+				)
+			}
+			if m.Services.Secrets {
+				checks = append(checks,
+					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+						var err error
+						platformFiles, err = bhruntime.ExistingFiles("")
+						return err
+					}},
+					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+						if runtimeErr != nil {
+							return runtimeErr
+						}
+						if platformFiles.Compose == "" {
+							return errors.New("BaseHarbor OpenBao runtime is not materialized")
+						}
+						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 					}},
 				)
 			}

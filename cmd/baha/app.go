@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -112,9 +113,9 @@ func appCommand(store application.Store) *cli.Command {
 		},
 		{
 			Name:    "preflight",
-			Summary: "Validate an application before future mutation",
+			Summary: "Validate an application before mutation",
 			Usage:   "baha app preflight NAME",
-			Long:    "Checks manifest integrity, secure local state and the container runtime. It never mutates application resources.",
+			Long:    "Checks manifest integrity, supported desired services, secure local state, the container runtime and any requested OpenBao application-provisioning prerequisites. It never mutates application resources.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if len(args) != 1 {
 					return usageError("baha app preflight requires exactly one NAME", "Example: baha app preflight demo")
@@ -125,8 +126,11 @@ func appCommand(store application.Store) *cli.Command {
 				}
 				checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
+				var compose bhruntime.Compose
+				var platformFiles bhruntime.Files
 				checks := []preflight.Check{
 					{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+					{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 					{
 						Name: "application state permissions",
 						Run: func(context.Context) error {
@@ -143,7 +147,8 @@ func appCommand(store application.Store) *cli.Command {
 					{
 						Name: "container runtime + compose",
 						Run: func(ctx context.Context) error {
-							_, err := bhruntime.DetectCompose(ctx)
+							var err error
+							compose, err = bhruntime.DetectCompose(ctx)
 							return err
 						},
 					},
@@ -154,6 +159,22 @@ func appCommand(store application.Store) *cli.Command {
 							return err
 						},
 					},
+				}
+				if m.Services.Secrets {
+					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+					checks = append(checks,
+						preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+							var err error
+							platformFiles, err = bhruntime.ExistingFiles("")
+							return err
+						}},
+						preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {
+							if platformFiles.Compose == "" {
+								return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+							}
+							return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
+						}},
+					)
 				}
 				results, ok := preflight.Run(checkCtx, checks)
 				preflight.Format(out, results)

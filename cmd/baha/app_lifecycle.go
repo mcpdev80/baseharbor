@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -21,7 +22,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down NAME",
-		Long:    "Stops and removes the application's managed containers and transient network while preserving its managed data volumes, manifest, runtime definition and credentials. Ownership is verified before mutation.",
+		Long:    "Stops and removes the application's managed containers and transient network while preserving its managed data volumes, manifest, runtime definition, credentials and managed OpenBao secret scope. Ownership is verified before mutation.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app down requires exactly one NAME", "Example: baha app down demo")
@@ -92,7 +93,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove a BaseHarbor-managed application runtime and state",
 		Usage:   "baha app destroy NAME [--yes]",
-		Long:    "Performs a read-only ownership and safety preflight, then shows the exact BaseHarbor-managed resources that would be removed. Without --yes no changes are made. With --yes, owned runtime resources, persistent volumes and application state are permanently deleted and absence is verified.\n\nOptions:\n  --yes  Confirm permanent deletion after the safety preflight",
+		Long:    "Performs a read-only ownership and safety preflight, then shows the exact BaseHarbor-managed resources that would be removed. Without --yes no changes are made. With --yes, owned runtime resources, persistent volumes, managed OpenBao application scope and application state are permanently deleted and absence is verified.\n\nOptions:\n  --yes  Confirm permanent deletion after the safety preflight",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, err := parseDestroyArgs(args)
 			if err != nil {
@@ -110,11 +111,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if runtimeErr != nil && !errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
 				return runtimeErr
 			}
+			if m.Services.Secrets && runtimeErr != nil {
+				return errors.New("managed OpenBao secrets are enabled but the application runtime state is incomplete; refusing destroy")
+			}
 
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			var compose bhruntime.Compose
 			var existing []bhruntime.ProjectResource
+			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "manifest permissions", Run: func(context.Context) error { return ownerOnly(manifestPath) }},
@@ -138,6 +143,22 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					}},
 				)
 			}
+			if m.Services.Secrets {
+				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+				checks = append(checks,
+					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+						var err error
+						platformFiles, err = bhruntime.ExistingFiles("")
+						return err
+					}},
+					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+						if platformFiles.Compose == "" {
+							return errors.New("BaseHarbor OpenBao runtime is not materialized")
+						}
+						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					}},
+				)
+			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
 			if !ok {
@@ -151,6 +172,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				for _, resource := range existing {
 					fmt.Fprintf(out, "  %-10s %s\n", resource.Kind+":", resource.Name)
 				}
+			}
+			if m.Services.Secrets {
+				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
 			}
 			appDir := filepath.Join(store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
@@ -169,6 +193,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 				if len(remaining) != 0 {
 					return fmt.Errorf("verify application runtime destruction: %d managed resources remain", len(remaining))
+				}
+			}
+			if m.Services.Secrets {
+				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
+					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
 			}
 			if err := store.Delete(m.Name); err != nil {

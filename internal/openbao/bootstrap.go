@@ -471,4 +471,12 @@ path "baseharbor/undelete/apps/*" {
 path "baseharbor/destroy/apps/*" {
   capabilities = ["update"]
 }
+
+path "sys/policies/acl/baseharbor-app-*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
+path "auth/approle/role/baseharbor-app-*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
 `
