@@ -18,7 +18,7 @@ Managed secrets use an isolated application/environment namespace plus an applic
 
 Applications can declare required secret names as part of their manifest contract. `baha app apply` and `baha app up` fail closed before workload start when a required secret is missing or unreadable. `preflight`, `status` and `doctor` report only presence/usability metadata and never reveal secret values.
 
-Application secret operations now share one internal service boundary across the CLI and the HTTP handler contract. The handler requires authenticated principal, tenant context, RBAC permission and positive application-ownership proof before access. It is intentionally not exposed through a public listener until authoritative application-to-tenant ownership is implemented.
+Application secret operations share one internal service boundary across the CLI and HTTP handler contract. The protected HTTP chain now includes bearer parsing, concrete OIDC/JWKS verification, fail-closed tenant resolution, RBAC and PostgreSQL-backed application ownership. Pre-tenant membership lookup remains under a dedicated SELECT-only identity-scoped RLS policy rather than using superuser or `BYPASSRLS` access. The network listener is still intentionally disabled until runtime OIDC/database/listener configuration and startup verification are wired explicitly.
 
 The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data or the OpenBao scope with `baha app down NAME`, resumed from existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
@@ -125,7 +125,7 @@ The recovery file should be stored separately from the host/application data it 
 
 Managed application scopes and operator secret management are implemented. Runtime delivery remains a separate provider concern: BaseHarbor may later use in-memory files, explicit environment injection, workload identity/OpenBao, or Kubernetes-native secret projection without changing the `secrets.required` application contract.
 
-See [docs/application-contract.md](docs/application-contract.md), [docs/application-secret-api.md](docs/application-secret-api.md), [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
+See [docs/application-contract.md](docs/application-contract.md), [docs/application-secret-api.md](docs/application-secret-api.md), [docs/authentication.md](docs/authentication.md), [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Design goals
 

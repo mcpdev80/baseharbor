@@ -74,16 +74,16 @@ application_name  -> exactly one tenant_id
 
 ## Protected request chain
 
-Protected control-plane handlers are now composed behind one mandatory request-security chain:
+Protected control-plane handlers are composed behind one mandatory request-security chain:
 
 ```text
 Authorization: Bearer <token>
         ↓
-auth.Verifier
+OIDC discovery / JWKS verification
         ↓
 identity.Principal
         ↓
-TenantResolver
+identity-scoped TenantResolver
         ↓
 tenancy.Context
         ↓
@@ -94,17 +94,19 @@ ApplicationOwnershipStore
 application secret handler
 ```
 
-The chain fails closed when the bearer header is missing or malformed, token verification fails, the verified principal is incomplete, tenant resolution fails or is ambiguous, or the resolved tenant context is incomplete.
+`auth.OIDCVerifier` uses the established `go-oidc` implementation for signature, issuer, expiry and audience validation rather than implementing JWT cryptography inside BaseHarbor.
 
-The bearer token is passed only to the configured verifier and is never included in API responses.
+`database.IdentityTenantResolver` resolves memberships before a tenant context exists through a dedicated PostgreSQL `FOR SELECT` RLS policy keyed by the already verified issuer and subject. It does not use a superuser connection or a role with `BYPASSRLS`.
 
-The tenant resolver is deliberately a separate trust boundary. The current `memberships` table uses forced tenant RLS, so pre-tenant identity-to-membership resolution must not bypass that protection through a superuser or `BYPASSRLS` shortcut.
+The resolver fails closed when there is no membership, an invalid principal, or memberships spanning more than one tenant. Multiple roles inside the same tenant are resolved by the existing `tenancy.Resolve` rules.
+
+See [authentication.md](authentication.md) for the complete trust-boundary description.
 
 ## Current exposure status
 
-The protected HTTP handler chain is implemented and testable, but BaseHarbor still does **not** claim that this API is publicly listening.
+The protected handler, concrete OIDC verifier, database-backed application ownership and safe pre-tenant tenant resolver are implemented and testable.
 
-A concrete OIDC/JWT verifier and a safe pre-tenant identity-to-membership resolver still need to be provided through runtime configuration before a network listener can be enabled. Until then, the handler remains unexposed rather than weakening authentication or tenant isolation.
+BaseHarbor still does **not** claim that this API is publicly listening. Runtime OIDC settings, database wiring, listener/TLS configuration and startup verification still need to be assembled explicitly before opening the control-plane network endpoint.
 
 ## Secret non-disclosure
 

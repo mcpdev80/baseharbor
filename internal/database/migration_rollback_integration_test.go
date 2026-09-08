@@ -26,11 +26,44 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback application ownership migration: %v", err)
+		t.Fatalf("rollback identity resolution migration: %v", err)
+	}
+	var identityPolicyExists bool
+	if err := pool.QueryRow(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'memberships'
+      AND policyname = 'memberships_identity_resolution'
+)
+`).Scan(&identityPolicyExists); err != nil {
+		t.Fatal(err)
+	}
+	if identityPolicyExists {
+		t.Fatal("identity resolution policy still exists after rolling back its owning migration")
 	}
 
 	var ownershipExists, tenantsExists, membershipsExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.application_ownerships') IS NOT NULL").Scan(&ownershipExists); err != nil {
+		t.Fatal(err)
+	}
+	if !ownershipExists {
+		t.Fatal("rolling back identity resolution removed application ownership schema")
+	}
+
+	var rlsEnabled bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if !rlsEnabled {
+		t.Fatal("rolling back identity resolution unexpectedly disabled membership RLS")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback application ownership migration: %v", err)
+	}
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.application_ownerships') IS NOT NULL").Scan(&ownershipExists); err != nil {
 		t.Fatal(err)
 	}
@@ -46,8 +79,6 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	if !tenantsExists || !membershipsExists {
 		t.Fatal("rolling back application ownership removed earlier identity schema")
 	}
-
-	var rlsEnabled bool
 	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
 		t.Fatal(err)
 	}
