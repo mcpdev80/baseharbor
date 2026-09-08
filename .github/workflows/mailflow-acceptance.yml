@@ -53,6 +53,17 @@ jobs:
           /tmp/baha app status | tee /tmp/mailflow-status.out
           /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
           grep -q "Application runtime is healthy" /tmp/mailflow-doctor.out
+      - name: Diagnose MailFlow workload failure
+        if: failure()
+        working-directory: /tmp/mailflow
+        run: |
+          project=baseharbor-workload-mailflow-production
+          docker ps -a --filter "label=com.docker.compose.project=$project" --format 'table {{.Names}}\t{{.Status}}' || true
+          api_id=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q | head -1)
+          if [ -n "$api_id" ]; then
+            docker inspect "$api_id" --format '{{json .State.Health}}' || true
+            docker logs "$api_id" || true
+          fi
       - name: Verify managed backend replacement and runtime contract
         working-directory: /tmp/mailflow
         run: |
@@ -68,12 +79,7 @@ jobs:
 
           api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
-          docker exec "$api_id" python - <<'PY'
-          import os
-          assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"
-          assert "@postgres:5432/" in os.environ["DATABASE_URL"]
-          assert "@valkey:6379/0" in os.environ["REDIS_URL"]
-          PY
+          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
       - name: Cleanup
         if: always()
         working-directory: /tmp/mailflow
