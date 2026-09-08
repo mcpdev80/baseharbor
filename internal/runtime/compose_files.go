@@ -20,6 +20,10 @@ func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir str
 	return err
 }
 
+func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) (string, error) {
+	return c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
+}
+
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "up", "-d")
 	return err
