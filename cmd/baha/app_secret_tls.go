@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 const (
@@ -70,15 +71,66 @@ func appSecretTLSSetCommand(store application.Store, service *applicationsecret.
 			if !now.Before(leaf.NotAfter) {
 				return fmt.Errorf("TLS certificate expired at %s", leaf.NotAfter.UTC().Format(time.RFC3339))
 			}
-			if err := service.Set(ctx, resolved.Manifest.Name, defaultTLSCertSecret, certPEM); err != nil {
-				return err
-			}
-			if err := service.Set(ctx, resolved.Manifest.Name, defaultTLSKeySecret, keyData); err != nil {
+			if err := storeTLSMaterial(ctx, service, resolved.Manifest.Name, certPEM, keyData); err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "TLS certificate and private key stored for application %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
 			return nil
 		},
+	}
+}
+
+type previousSecret struct {
+	value   []byte
+	present bool
+}
+
+func getPreviousSecret(ctx context.Context, service *applicationsecret.Service, app, key string) (previousSecret, error) {
+	value, err := service.Get(ctx, app, key)
+	if err == nil {
+		return previousSecret{value: value, present: true}, nil
+	}
+	if errors.Is(err, openbao.ErrApplicationSecretNotFound) {
+		return previousSecret{}, nil
+	}
+	return previousSecret{}, err
+}
+
+func restoreSecret(ctx context.Context, service *applicationsecret.Service, app, key string, previous previousSecret) error {
+	if previous.present {
+		return service.Set(ctx, app, key, previous.value)
+	}
+	err := service.Delete(ctx, app, key)
+	if errors.Is(err, openbao.ErrApplicationSecretNotFound) {
+		return nil
+	}
+	return err
+}
+
+func storeTLSMaterial(ctx context.Context, service *applicationsecret.Service, app string, certPEM, keyData []byte) error {
+	previousCert, err := getPreviousSecret(ctx, service, app, defaultTLSCertSecret)
+	if err != nil {
+		return fmt.Errorf("inspect existing TLS certificate secret: %w", err)
+	}
+	previousKey, err := getPreviousSecret(ctx, service, app, defaultTLSKeySecret)
+	if err != nil {
+		return fmt.Errorf("inspect existing TLS private-key secret: %w", err)
+	}
+	if err := service.Set(ctx, app, defaultTLSCertSecret, certPEM); err != nil {
+		return fmt.Errorf("store TLS certificate: %w", err)
+	}
+	if err := service.Set(ctx, app, defaultTLSKeySecret, keyData); err == nil {
+		return nil
+	} else {
+		originalErr := fmt.Errorf("store TLS private key: %w", err)
+		rollbackErr := errors.Join(
+			restoreSecret(ctx, service, app, defaultTLSCertSecret, previousCert),
+			restoreSecret(ctx, service, app, defaultTLSKeySecret, previousKey),
+		)
+		if rollbackErr != nil {
+			return errors.Join(originalErr, fmt.Errorf("restore previous TLS secret state: %w", rollbackErr))
+		}
+		return originalErr
 	}
 }
 
