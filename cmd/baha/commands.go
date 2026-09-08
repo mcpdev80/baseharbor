@@ -13,6 +13,9 @@ import (
 
 func rootCommand() *cli.Command {
 	store := application.DefaultStore()
+	appCmd := appCommand(store)
+	appCmd.Children = append(appCmd.Children, appApplyCommand(store))
+
 	root := &cli.Command{
 		Name:    "baha",
 		Summary: "BaseHarbor command-line interface",
@@ -61,7 +64,7 @@ func rootCommand() *cli.Command {
 				return nil
 			},
 		},
-		appCommand(store),
+		appCmd,
 		{
 			Name:    "version",
 			Aliases: []string{"--version", "-v"},

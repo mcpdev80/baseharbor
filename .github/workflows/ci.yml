@@ -55,9 +55,11 @@ jobs:
           /tmp/baha --help >/tmp/baha-help.txt
           grep -q "Usage:" /tmp/baha-help.txt
           /tmp/baha app --help >/tmp/baha-app-help.txt
-          grep -q "create" /tmp/baha-app-help.txt
+          grep -q "apply" /tmp/baha-app-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--environment" /tmp/baha-app-create-help.txt
+          /tmp/baha app apply --help >/tmp/baha-app-apply-help.txt
+          grep -q "plan, preflight, apply and verification" /tmp/baha-app-apply-help.txt
           /tmp/baha version | grep -q '^baha '
           set +e
           /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
@@ -65,3 +67,14 @@ jobs:
           set -e
           test "$code" -eq 2
           grep -q "unknown command" /tmp/baha-invalid.err
+      - name: Verify application PostgreSQL vertical slice
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          /tmp/baha app create ci-demo --postgres
+          /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
+          /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
+          /tmp/baha app apply ci-demo | grep -q "Application ci-demo is ready"
+          test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
+          ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
+          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env down -v
