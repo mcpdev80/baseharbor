@@ -99,8 +99,8 @@ jobs:
           cert_host="$secret_dir/TLS_CERT_FILE"
           key_host="$secret_dir/TLS_KEY_FILE"
           test "$(stat -c '%a' "$secret_dir")" = 700
-          test "$(stat -c '%a' "$cert_host")" = 444
-          test "$(stat -c '%a' "$key_host")" = 444
+          test "$(stat -c '%a' "$cert_host")" = 644
+          test "$(stat -c '%a' "$key_host")" = 644
           grep -q 'BEGIN CERTIFICATE' "$cert_host"
           grep -q 'PRIVATE KEY' "$key_host"
       - name: Cleanup
