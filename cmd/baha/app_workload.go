@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,9 +33,57 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 	return application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
 }
 
-func repositoryWorkloadComposeFiles(resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles) ([]string, error) {
+type renderedComposeConfig struct {
+	Services map[string]struct {
+		Environment map[string]any `json:"environment"`
+	} `json:"services"`
+}
+
+func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, environment map[string]string) (application.WorkloadBindingPlan, error) {
+	baseFiles := []string{workload.Compose, workload.Override}
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, baseFiles...)
+	if err != nil {
+		return application.WorkloadBindingPlan{}, fmt.Errorf("render application workload for binding discovery: %w", err)
+	}
+	var config renderedComposeConfig
+	if err := json.Unmarshal([]byte(rendered), &config); err != nil {
+		return application.WorkloadBindingPlan{}, fmt.Errorf("decode rendered application workload: %w", err)
+	}
+	selected := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		selected[service] = struct{}{}
+	}
+	plan := application.WorkloadBindingPlan{FileSecretsByService: map[string][]string{}}
+	for service, definition := range config.Services {
+		if _, ok := selected[service]; !ok {
+			continue
+		}
+		if _, ok := definition.Environment["BASEHARBOR_RUNTIME_TOKEN_FILE"]; ok {
+			plan.RuntimeIdentityServices = append(plan.RuntimeIdentityServices, service)
+		}
+		for _, requirement := range resolved.Manifest.Secrets.Required {
+			if !application.RequiredSecretUsesFileBinding(requirement.Name) {
+				continue
+			}
+			if _, ok := definition.Environment[requirement.Name]; ok {
+				plan.FileSecretsByService[service] = append(plan.FileSecretsByService[service], requirement.Name)
+			}
+		}
+	}
+	sort.Strings(plan.RuntimeIdentityServices)
+	for service := range plan.FileSecretsByService {
+		sort.Strings(plan.FileSecretsByService[service])
+	}
+	return plan, nil
+}
+
+func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string) ([]string, error) {
 	composeFiles := []string{workload.Compose, workload.Override}
-	runtimeIdentityOverride, enabled, err := application.MaterializeRuntimeIdentityWorkloadOverride(resolved.Manifest, workload, files)
+	plan, err := repositoryWorkloadBindingPlan(ctx, compose, resolved, workload, environment)
+	if err != nil {
+		return nil, err
+	}
+	runtimeIdentityOverride, enabled, err := application.MaterializeRuntimeIdentityWorkloadOverride(resolved.Manifest, workload, files, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -42,8 +93,14 @@ func repositoryWorkloadComposeFiles(resolved resolvedApplication, workload appli
 	return composeFiles, nil
 }
 
-func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication) (map[string]string, error) {
+func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
+	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
+		return nil, err
+	} else if configured {
+		environment["BASEHARBOR_RUNTIME_API_URL"] = runtimeURL
+		environment["BASEHARBOR_RUNTIME_TOKEN_FILE"] = application.RuntimeIdentityContainerTokenPath
+	}
 	if len(resolved.Manifest.Secrets.Required) == 0 {
 		return environment, nil
 	}
@@ -56,12 +113,48 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 		if err != nil {
 			return nil, fmt.Errorf("resolve required workload secret %s: %w", requirement.Name, err)
 		}
+		if application.RequiredSecretUsesFileBinding(requirement.Name) {
+			path := application.SecretFileHostPath(files, requirement.Name)
+			if err := writeWorkloadSecretFile(path, value); err != nil {
+				return nil, fmt.Errorf("materialize required workload secret file %s: %w", requirement.Name, err)
+			}
+			environment[requirement.Name] = application.SecretFileContainerPath(requirement.Name)
+			continue
+		}
 		if strings.IndexByte(string(value), 0) >= 0 {
 			return nil, fmt.Errorf("required secret %q contains a NUL byte and cannot be projected to a process environment", requirement.Name)
 		}
 		environment[requirement.Name] = string(value)
 	}
 	return environment, nil
+}
+
+func writeWorkloadSecretFile(path string, value []byte) error {
+	if len(value) == 0 {
+		return fmt.Errorf("secret value is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(value)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func validWorkloadEnvironmentName(name string) bool {
@@ -101,11 +194,11 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if err != nil || !found {
 		return false, err
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return false, err
 	}
@@ -154,11 +247,11 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err != nil || !found {
 		return false, err
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return false, err
 	}
@@ -196,11 +289,11 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 	if err != nil || !found {
 		return workload, nil, found, err
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return workload, nil, true, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return workload, nil, true, err
 	}
@@ -216,11 +309,11 @@ func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose
 	if err != nil || !found {
 		return len(running), found, err
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(resolved, workload, files)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return len(running), true, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return len(running), true, err
 	}

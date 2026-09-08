@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
@@ -36,15 +37,22 @@ type Config struct {
 	ShutdownTimeout time.Duration
 }
 
+func (c Config) operatorAPIEnabled() bool {
+	return strings.TrimSpace(c.OIDCIssuer) != "" || len(c.OIDCAudiences) > 0
+}
+
 func (c Config) Validate() error {
-	if strings.TrimSpace(c.DatabaseURL) == "" {
-		return ErrMissingDatabaseURL
-	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
 		return ErrMissingTLSFiles
 	}
 	if _, err := tls.LoadX509KeyPair(c.TLSCertFile, c.TLSKeyFile); err != nil {
 		return fmt.Errorf("load control-plane TLS certificate: %w", err)
+	}
+	if !c.operatorAPIEnabled() {
+		return nil
+	}
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		return ErrMissingDatabaseURL
 	}
 	return auth.Config{Issuer: c.OIDCIssuer, Audiences: c.OIDCAudiences}.Validate()
 }
@@ -68,37 +76,20 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		return err
 	}
 
-	pool, err := database.Open(ctx, database.Config{DSN: cfg.DatabaseURL, ConnectTimeout: 10 * time.Second})
-	if err != nil {
-		return fmt.Errorf("open control-plane database: %w", err)
-	}
-	defer pool.Close()
-	if err := database.VerifySchemaReady(ctx, pool); err != nil {
-		return fmt.Errorf("verify control-plane schema: %w", err)
+	var pool *pgxpool.Pool
+	if strings.TrimSpace(cfg.DatabaseURL) != "" {
+		var err error
+		pool, err = database.Open(ctx, database.Config{DSN: cfg.DatabaseURL, ConnectTimeout: 10 * time.Second})
+		if err != nil {
+			return fmt.Errorf("open control-plane database: %w", err)
+		}
+		defer pool.Close()
+		if err := database.VerifySchemaReady(ctx, pool); err != nil {
+			return fmt.Errorf("verify control-plane schema: %w", err)
+		}
 	}
 
-	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
-	if err != nil {
-		return err
-	}
-	resolver := database.NewIdentityTenantResolver(pool)
-	security, err := httpsecurity.New(verifier, resolver)
-	if err != nil {
-		return err
-	}
 	secretService := applicationsecret.New(store)
-	secretHandler, err := applicationsecretapi.New(
-		secretService,
-		database.NewApplicationOwnershipStore(pool),
-		authorization.NewService(),
-	)
-	if err != nil {
-		return err
-	}
-	protected, err := controlplaneapi.New(security, secretHandler)
-	if err != nil {
-		return err
-	}
 	runtimeHandler, err := applicationruntimeapi.New(secretService, applicationruntimeauth.New(store))
 	if err != nil {
 		return err
@@ -111,20 +102,49 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if err := database.Ping(checkCtx, pool); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
-			return
+		if pool != nil {
+			checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := database.Ping(checkCtx, pool); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
 	})
-	mux.Handle("/api/", protected)
 	mux.Handle("/runtime/", runtimeHandler)
+
+	if cfg.operatorAPIEnabled() {
+		if pool == nil {
+			return ErrMissingDatabaseURL
+		}
+		verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
+		if err != nil {
+			return err
+		}
+		resolver := database.NewIdentityTenantResolver(pool)
+		security, err := httpsecurity.New(verifier, resolver)
+		if err != nil {
+			return err
+		}
+		secretHandler, err := applicationsecretapi.New(
+			secretService,
+			database.NewApplicationOwnershipStore(pool),
+			authorization.NewService(),
+		)
+		if err != nil {
+			return err
+		}
+		protected, err := controlplaneapi.New(security, secretHandler)
+		if err != nil {
+			return err
+		}
+		mux.Handle("/api/", protected)
+	}
 
 	server := &http.Server{
 		Addr:              cfg.listenAddr(),

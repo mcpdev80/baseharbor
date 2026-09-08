@@ -25,9 +25,9 @@ func appSecretCommand(store application.Store) *cli.Command {
 	command.Children = []*cli.Command{
 		{
 			Name:    "set",
-			Summary: "Create or replace one secret value from stdin",
-			Usage:   "baha app secret set [NAME] KEY --stdin",
-			Long:    "Reads one UTF-8 secret value from stdin. In a repository use 'baha app secret set KEY --stdin'; outside a repository use the explicit NAME form. Values are never accepted as command-line arguments or printed.",
+			Summary: "Create or replace one secret value from stdin or a file",
+			Usage:   "baha app secret set [NAME] KEY (--stdin | --file PATH)",
+			Long:    "Reads one secret value from stdin or directly from a file. In a repository use 'baha app secret set KEY --stdin' or 'baha app secret set TLS_KEY_FILE --file ./key.pem'. Secret values are never accepted as command-line arguments or printed.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, err := parseSecretSetArgs(args)
 				if err != nil {
@@ -37,7 +37,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				value, err := readSecretValue(os.Stdin)
+				value, err := readSecretSetValue(args, os.Stdin)
 				if err != nil {
 					return err
 				}
@@ -128,6 +128,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 			},
 		},
 	}
+	command.Children = append(command.Children, appSecretTLSSetCommand(store, service))
 	return command
 }
 
@@ -141,12 +142,22 @@ func resolveSecretApplication(store application.Store, name, command string) (re
 func parseSecretSetArgs(args []string) (string, string, error) {
 	var positional []string
 	stdin := false
-	for _, arg := range args {
+	filePath := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		switch {
 		case arg == "--stdin":
 			stdin = true
+		case arg == "--file":
+			if i+1 >= len(args) {
+				return "", "", usageError("--file requires a path", "Usage: baha app secret set [NAME] KEY (--stdin | --file PATH)")
+			}
+			i++
+			filePath = args[i]
+		case strings.HasPrefix(arg, "--file="):
+			filePath = strings.TrimPrefix(arg, "--file=")
 		case strings.HasPrefix(arg, "-"):
-			return "", "", usageError("unknown option "+arg, "Usage: baha app secret set [NAME] KEY --stdin")
+			return "", "", usageError("unknown option "+arg, "Usage: baha app secret set [NAME] KEY (--stdin | --file PATH)")
 		default:
 			positional = append(positional, arg)
 		}
@@ -154,13 +165,40 @@ func parseSecretSetArgs(args []string) (string, string, error) {
 	if len(positional) < 1 || len(positional) > 2 {
 		return "", "", usageError("baha app secret set requires KEY and accepts optional NAME", "Inside a repository: baha app secret set API_TOKEN --stdin")
 	}
-	if !stdin {
-		return "", "", usageError("baha app secret set requires --stdin", "Secret values are never accepted as command-line arguments.")
+	if stdin == (filePath != "") {
+		return "", "", usageError("baha app secret set requires exactly one input source", "Use either --stdin or --file PATH.")
+	}
+	if filePath != "" && strings.TrimSpace(filePath) == "" {
+		return "", "", usageError("--file path is empty", "Provide a readable file path.")
 	}
 	if len(positional) == 1 {
 		return "", positional[0], nil
 	}
 	return positional[0], positional[1], nil
+}
+
+func secretSetFilePath(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--file" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--file=") {
+			return strings.TrimPrefix(args[i], "--file=")
+		}
+	}
+	return ""
+}
+
+func readSecretSetValue(args []string, stdin io.Reader) ([]byte, error) {
+	if path := secretSetFilePath(args); path != "" {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("open application secret file: %w", err)
+		}
+		defer file.Close()
+		return readSecretValue(file)
+	}
+	return readSecretValue(stdin)
 }
 
 func parseSecretDeleteArgs(args []string) (string, string, bool, error) {
@@ -188,13 +226,13 @@ func parseSecretDeleteArgs(args []string) (string, string, bool, error) {
 func readSecretValue(reader io.Reader) ([]byte, error) {
 	value, err := io.ReadAll(io.LimitReader(reader, (1<<20)+1))
 	if err != nil {
-		return nil, errors.New("read application secret from stdin failed")
+		return nil, errors.New("read application secret failed")
 	}
 	if len(value) > 1<<20 {
 		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
 	}
 	if len(value) == 0 {
-		return nil, errors.New("application secret value from stdin is empty")
+		return nil, errors.New("application secret value is empty")
 	}
 	return value, nil
 }
