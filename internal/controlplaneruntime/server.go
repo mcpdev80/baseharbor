@@ -25,12 +25,12 @@ var (
 )
 
 type Config struct {
-	ListenAddr   string
-	DatabaseURL  string
-	OIDCIssuer   string
-	OIDCAudiences []string
-	TLSCertFile  string
-	TLSKeyFile   string
+	ListenAddr      string
+	DatabaseURL     string
+	OIDCIssuer      string
+	OIDCAudiences   []string
+	TLSCertFile     string
+	TLSKeyFile      string
 	ShutdownTimeout time.Duration
 }
 
