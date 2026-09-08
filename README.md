@@ -8,11 +8,13 @@ BaseHarbor provides reusable backend infrastructure for independent applications
 
 Early development. Identity, authorization, tenancy, secrets foundations, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
 
-Per-application runtime convergence now supports dedicated PostgreSQL and Valkey services. `baha app apply NAME` creates an isolated Compose project with private networking, dedicated persistent volumes, generated credentials, no published database/cache ports by default, and protocol-level verification before reporting readiness.
+Per-application runtime convergence supports dedicated PostgreSQL and Valkey services. `baha app apply NAME` creates an isolated Compose project with private networking, dedicated persistent volumes, generated credentials, no published database/cache ports by default, and protocol-level verification before reporting readiness.
 
 PostgreSQL readiness requires an authenticated `SELECT 1`. Valkey readiness requires an authenticated `PING` returning `PONG`. Valkey uses the official `valkey/valkey:9.1.2-alpine` image with AOF persistence enabled.
 
 The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, resumed from existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
+
+The bundled OpenBao control-plane runtime now has an explicit manual bootstrap and unseal workflow. BaseHarbor initializes OpenBao without persisting or printing the initial root token, creates the `baseharbor/` KV v2 mount, establishes a restricted manager AppRole, verifies it, and revokes the initial root token. Shamir unseal material is written only to an operator-selected recovery file outside `.baseharbor` state.
 
 ## CLI
 
@@ -27,13 +29,7 @@ Discover commands at every level:
 ```bash
 ./baha --help
 ./baha app --help
-./baha app create --help
-./baha app apply --help
-./baha app status --help
-./baha app doctor --help
-./baha app down --help
-./baha app up --help
-./baha app destroy --help
+./baha openbao --help
 ```
 
 Create a PostgreSQL + Valkey application runtime:
@@ -72,9 +68,35 @@ plan -> preflight -> apply -> verify
 
 Lifecycle resume and destructive operations add explicit ownership/state verification before mutation and post-verification after mutation.
 
-Managed secrets remain fail-closed until the OpenBao application-secret convergence module is implemented.
+## OpenBao bootstrap
 
-See [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
+Start the control-plane runtime first:
+
+```bash
+./baha up
+```
+
+On a fresh single-node installation, initialize the bundled OpenBao instance with an explicitly selected recovery file:
+
+```bash
+./baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
+./baha openbao status
+```
+
+The recovery destination is mandatory, is created owner-only, and must be outside `.baseharbor`. BaseHarbor does not print the unseal key. The initial root token is used only in-memory during bootstrap, then revoked after the restricted manager AppRole has been verified.
+
+After an OpenBao restart, the Shamir-sealed single-node profile requires explicit unseal:
+
+```bash
+./baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+./baha openbao status
+```
+
+The recovery file should be stored separately from the host/application data it protects. Automatic KMS/HSM/transit unseal remains a later deployment profile; the current implementation deliberately follows the roadmap requirement to support an explicit manual unseal workflow first.
+
+Managed application secrets remain fail-closed until the next application-secret convergence slice connects `services.secrets` to this trust plane. The existing network credential adapter remains HTTPS-only; the bootstrap workflow operates through the local container-runtime boundary and does not weaken that contract.
+
+See [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Design goals
 

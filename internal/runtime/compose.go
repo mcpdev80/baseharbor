@@ -84,6 +84,14 @@ func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile,
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
 }
 
+// ExecProjectInput executes a command inside a Compose service while supplying
+// stdin without placing that input in the host process argument list. It is
+// intended for sensitive operator flows such as OpenBao unseal/authentication.
+func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
+}
+
 func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
 	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--services", "--status", "running")
 	if err != nil {
@@ -172,6 +180,10 @@ func (c Compose) runProject(ctx context.Context, project, composeFile, envFile s
 }
 
 func (c Compose) outputProject(ctx context.Context, project, composeFile, envFile string, args ...string) (string, error) {
+	return c.outputProjectInput(ctx, project, composeFile, envFile, nil, args...)
+}
+
+func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -184,6 +196,9 @@ func (c Compose) outputProject(ctx context.Context, project, composeFile, envFil
 	fullArgs = append(fullArgs, args...)
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -72,6 +72,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 		appCmd,
+		openBaoCommand(),
 		{
 			Name:    "version",
 			Aliases: []string{"--version", "-v"},

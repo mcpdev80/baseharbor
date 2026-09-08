@@ -54,6 +54,7 @@ jobs:
         run: |
           /tmp/baha --help >/tmp/baha-help.txt
           grep -q "Usage:" /tmp/baha-help.txt
+          grep -q "openbao" /tmp/baha-help.txt
           /tmp/baha app --help >/tmp/baha-app-help.txt
           grep -q "apply" /tmp/baha-app-help.txt
           grep -q "down" /tmp/baha-app-help.txt
@@ -67,6 +68,9 @@ jobs:
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "existing runtime definition"
           /tmp/baha app destroy --help | grep -q -- "--yes"
+          /tmp/baha openbao --help | grep -q "Bootstrap and operate"
+          /tmp/baha openbao bootstrap --help | grep -q -- "--recovery-file"
+          /tmp/baha openbao unseal --help | grep -q "host command argument list"
           /tmp/baha version | grep -q '^baha '
           set +e
           /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
@@ -116,3 +120,59 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+      - name: Verify OpenBao bootstrap and manual unseal lifecycle
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat > .baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+
+          /tmp/baha up | grep -q "control-plane runtime started"
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "not initialized" /tmp/openbao-before.out
+
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
+          test "$(stat -c '%a' "$recovery")" = "600"
+          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
+          ! grep -q 'root_token' "$recovery"
+          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
+          for i in $(seq 1 20); do
+            set +e
+            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$code" -eq 2
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
+          status_code=$?
+          set -e
+          test "$status_code" -eq 1
+          grep -q "sealed" /tmp/openbao-sealed.out
+
+          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
