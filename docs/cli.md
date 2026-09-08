@@ -28,7 +28,9 @@ baha
 │   ├── show
 │   ├── plan
 │   ├── preflight
-│   └── apply
+│   ├── apply
+│   ├── status
+│   └── doctor
 └── version
 ```
 
@@ -39,7 +41,8 @@ baha --help
 baha app --help
 baha app create --help
 baha app apply --help
-baha help app create
+baha app status --help
+baha app doctor --help
 ```
 
 ## Exit codes
@@ -92,13 +95,36 @@ Verification executes an authenticated PostgreSQL query and requires `SELECT 1` 
 
 If Redis/Valkey or managed secrets are enabled in the manifest, `app apply` currently fails closed instead of silently ignoring unsupported desired state.
 
+## Status and doctor
+
+After apply, inspect the operational state without mutating it:
+
+```bash
+baha app status demo
+baha app doctor demo
+```
+
+`app status` is compact and automation-friendly. It confirms that the PostgreSQL service is actually running and that an authenticated `SELECT 1` succeeds. It exits non-zero if the application is not ready.
+
+`app doctor` performs deeper diagnostics and reports each boundary separately:
+
+- manifest validity
+- supported desired services
+- manifest permissions
+- materialized runtime state
+- runtime file permissions
+- Docker/Podman + Compose availability
+- Compose configuration validity
+- PostgreSQL service running state
+- authenticated PostgreSQL readiness
+
+Neither command changes application state or prints runtime credentials.
+
 ## Planned command evolution
 
 ```text
 baha app up NAME
 baha app down NAME
-baha app status NAME
-baha app doctor NAME
 baha app env NAME
 baha app backup NAME
 baha app restore NAME

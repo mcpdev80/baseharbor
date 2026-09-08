@@ -65,6 +65,17 @@ func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFil
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
+func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
+	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--status", "running", "--services")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil, nil
+	}
+	return strings.Fields(out), nil
+}
+
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }

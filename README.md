@@ -10,6 +10,8 @@ Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrati
 
 The first per-application convergence slice is PostgreSQL: `baha app apply NAME` creates an isolated Compose project with a dedicated PostgreSQL volume and network, does not publish a host port by default, preserves generated credentials across repeated apply operations, and reports ready only after an authenticated `SELECT 1` succeeds.
 
+The same application runtime can now be inspected with `baha app status NAME` and diagnosed with `baha app doctor NAME`; both distinguish container state from real PostgreSQL readiness.
+
 ## CLI
 
 Build the single operator binary:
@@ -24,6 +26,8 @@ Discover commands at every level:
 ./baha --help
 ./baha app --help
 ./baha app apply --help
+./baha app status --help
+./baha app doctor --help
 ```
 
 Control-plane commands:
@@ -46,9 +50,11 @@ Application commands:
 ./baha app plan demo
 ./baha app preflight demo
 ./baha app apply demo
+./baha app status demo
+./baha app doctor demo
 ```
 
-`baha doctor` and `baha status` verify actual service readiness. PostgreSQL readiness requires a successful authenticated connection and query; OpenBao must be reachable, initialized, and unsealed.
+`baha doctor`, `baha status`, `baha app status`, and `baha app doctor` verify actual service readiness rather than only process/container state.
 
 Application lifecycle follows the stable contract:
 
