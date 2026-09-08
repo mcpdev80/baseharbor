@@ -20,6 +20,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 var (
@@ -28,13 +29,14 @@ var (
 )
 
 type Config struct {
-	ListenAddr      string
-	DatabaseURL     string
-	OIDCIssuer      string
-	OIDCAudiences   []string
-	TLSCertFile     string
-	TLSKeyFile      string
-	ShutdownTimeout time.Duration
+	ListenAddr        string
+	DatabaseURL       string
+	OIDCIssuer        string
+	OIDCAudiences     []string
+	TLSCertFile       string
+	TLSKeyFile        string
+	RuntimeOpenBaoURL string
+	ShutdownTimeout   time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {
@@ -47,6 +49,11 @@ func (c Config) Validate() error {
 	}
 	if _, err := tls.LoadX509KeyPair(c.TLSCertFile, c.TLSKeyFile); err != nil {
 		return fmt.Errorf("load control-plane TLS certificate: %w", err)
+	}
+	if strings.TrimSpace(c.RuntimeOpenBaoURL) != "" {
+		if _, err := openbao.NewApplicationRuntimeClient(c.RuntimeOpenBaoURL); err != nil {
+			return fmt.Errorf("validate runtime OpenBao endpoint: %w", err)
+		}
 	}
 	if !c.operatorAPIEnabled() {
 		return nil
@@ -89,8 +96,16 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 	}
 
-	secretService := applicationsecret.New(store)
-	runtimeHandler, err := applicationruntimeapi.New(secretService, applicationruntimeauth.New(store))
+	operatorSecretService := applicationsecret.New(store)
+	runtimeSecretService := operatorSecretService
+	if strings.TrimSpace(cfg.RuntimeOpenBaoURL) != "" {
+		client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
+		if err != nil {
+			return fmt.Errorf("create runtime OpenBao client: %w", err)
+		}
+		runtimeSecretService = applicationsecret.NewRuntime(store, client)
+	}
+	runtimeHandler, err := applicationruntimeapi.New(runtimeSecretService, applicationruntimeauth.New(store))
 	if err != nil {
 		return err
 	}
@@ -132,7 +147,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 			return err
 		}
 		secretHandler, err := applicationsecretapi.New(
-			secretService,
+			operatorSecretService,
 			database.NewApplicationOwnershipStore(pool),
 			authorization.NewService(),
 		)
