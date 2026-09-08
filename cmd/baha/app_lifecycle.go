@@ -22,7 +22,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down [NAME]",
-		Long:    "Stops and removes managed containers and transient network while preserving data volumes, runtime credentials and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Stops and removes managed containers and transient network while preserving persistent data volumes, runtime credentials and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "down")
 			if err != nil {
