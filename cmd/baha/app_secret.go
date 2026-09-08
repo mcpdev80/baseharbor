@@ -20,16 +20,20 @@ func appSecretCommand(store application.Store) *cli.Command {
 		Name:    "secret",
 		Summary: "Manage application secret values without printing them",
 		Usage:   "baha app secret <command> [options]",
-		Long:    "Stores application secret values in the application's isolated managed secret namespace. Secret values are accepted only through stdin and are never rendered by this command group.",
+		Long:    "Stores application secret values in the application's isolated managed secret namespace. Inside a repository containing baseharbor.yaml the application NAME may be omitted.",
 	}
 	command.Children = []*cli.Command{
 		{
 			Name:    "set",
 			Summary: "Create or replace one secret value from stdin",
-			Usage:   "baha app secret set NAME KEY --stdin",
-			Long:    "Reads one UTF-8 secret value from stdin and stores it through the application secret service. The value is never accepted as a command-line argument and is not printed. Input is preserved exactly, including trailing newlines.\n\nExample:\n  printf '%s' 'secret-value' | baha app secret set demo API_TOKEN --stdin",
+			Usage:   "baha app secret set [NAME] KEY --stdin",
+			Long:    "Reads one UTF-8 secret value from stdin. In a repository use 'baha app secret set KEY --stdin'; outside a repository use the explicit NAME form. Values are never accepted as command-line arguments or printed.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, err := parseSecretSetArgs(args)
+				if err != nil {
+					return err
+				}
+				resolved, err := resolveSecretApplication(store, name, "secret set")
 				if err != nil {
 					return err
 				}
@@ -37,27 +41,31 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				if err := service.Set(ctx, name, key, value); err != nil {
+				if err := service.Set(ctx, resolved.Manifest.Name, key, value); err != nil {
 					return err
 				}
-				m, _, err := store.Load(name)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "Secret %s updated for application %s (%s).\n", key, m.Name, m.Environment)
+				fmt.Fprintf(out, "Secret %s updated for application %s (%s).\n", key, resolved.Manifest.Name, resolved.Manifest.Environment)
 				return nil
 			},
 		},
 		{
 			Name:    "list",
 			Summary: "List secret key names without values",
-			Usage:   "baha app secret list NAME",
+			Usage:   "baha app secret list [NAME]",
 			Long:    "Lists only managed secret key names. Secret values are never returned.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 1 {
-					return usageError("baha app secret list requires exactly one NAME", "Example: baha app secret list demo")
+				if len(args) > 1 {
+					return usageError("baha app secret list accepts at most one NAME", "Inside an application repository omit NAME.")
 				}
-				items, err := service.List(ctx, args[0])
+				name := ""
+				if len(args) == 1 {
+					name = args[0]
+				}
+				resolved, err := resolveSecretApplication(store, name, "secret list")
+				if err != nil {
+					return err
+				}
+				items, err := service.List(ctx, resolved.Manifest.Name)
 				if err != nil {
 					return err
 				}
@@ -81,14 +89,19 @@ func appSecretCommand(store application.Store) *cli.Command {
 		{
 			Name:    "delete",
 			Summary: "Permanently delete one secret and all of its KV versions",
-			Usage:   "baha app secret delete NAME KEY [--yes]",
-			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. With --yes, permanently removes the selected secret document and all of its managed versions/metadata.",
+			Usage:   "baha app secret delete [NAME] KEY [--yes]",
+			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. Inside a repository omit NAME.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, yes, err := parseSecretDeleteArgs(args)
 				if err != nil {
 					return err
 				}
-				items, err := service.List(ctx, name)
+				resolved, err := resolveSecretApplication(store, name, "secret delete")
+				if err != nil {
+					return err
+				}
+				appName := resolved.Manifest.Name
+				items, err := service.List(ctx, appName)
 				if err != nil {
 					return err
 				}
@@ -102,24 +115,27 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if !found {
 					return openbao.ErrApplicationSecretNotFound
 				}
-				m, _, err := store.Load(name)
-				if err != nil {
-					return err
-				}
 				if !yes {
-					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all managed versions.\n", key, m.Name, m.Environment)
+					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all managed versions.\n", key, appName, resolved.Manifest.Environment)
 					fmt.Fprintln(out, "No changes were made. Re-run with --yes to confirm.")
 					return nil
 				}
-				if err := service.Delete(ctx, name, key); err != nil {
+				if err := service.Delete(ctx, appName, key); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "Secret %s permanently deleted from application %s (%s).\n", key, m.Name, m.Environment)
+				fmt.Fprintf(out, "Secret %s permanently deleted from application %s (%s).\n", key, appName, resolved.Manifest.Environment)
 				return nil
 			},
 		},
 	}
 	return command
+}
+
+func resolveSecretApplication(store application.Store, name, command string) (resolvedApplication, error) {
+	if name == "" {
+		return resolveApplication(store, nil, command)
+	}
+	return resolveApplication(store, []string{name}, command)
 }
 
 func parseSecretSetArgs(args []string) (string, string, error) {
@@ -130,16 +146,19 @@ func parseSecretSetArgs(args []string) (string, string, error) {
 		case arg == "--stdin":
 			stdin = true
 		case strings.HasPrefix(arg, "-"):
-			return "", "", usageError("unknown option "+arg, "Usage: baha app secret set NAME KEY --stdin")
+			return "", "", usageError("unknown option "+arg, "Usage: baha app secret set [NAME] KEY --stdin")
 		default:
 			positional = append(positional, arg)
 		}
 	}
-	if len(positional) != 2 {
-		return "", "", usageError("baha app secret set requires NAME and KEY", "Example: printf '%s' 'value' | baha app secret set demo API_TOKEN --stdin")
+	if len(positional) < 1 || len(positional) > 2 {
+		return "", "", usageError("baha app secret set requires KEY and accepts optional NAME", "Inside a repository: baha app secret set API_TOKEN --stdin")
 	}
 	if !stdin {
 		return "", "", usageError("baha app secret set requires --stdin", "Secret values are never accepted as command-line arguments.")
+	}
+	if len(positional) == 1 {
+		return "", positional[0], nil
 	}
 	return positional[0], positional[1], nil
 }
@@ -152,13 +171,16 @@ func parseSecretDeleteArgs(args []string) (string, string, bool, error) {
 		case arg == "--yes":
 			yes = true
 		case strings.HasPrefix(arg, "-"):
-			return "", "", false, usageError("unknown option "+arg, "Usage: baha app secret delete NAME KEY [--yes]")
+			return "", "", false, usageError("unknown option "+arg, "Usage: baha app secret delete [NAME] KEY [--yes]")
 		default:
 			positional = append(positional, arg)
 		}
 	}
-	if len(positional) != 2 {
-		return "", "", false, usageError("baha app secret delete requires NAME and KEY", "Example: baha app secret delete demo API_TOKEN --yes")
+	if len(positional) < 1 || len(positional) > 2 {
+		return "", "", false, usageError("baha app secret delete requires KEY and accepts optional NAME", "Inside a repository: baha app secret delete API_TOKEN --yes")
+	}
+	if len(positional) == 1 {
+		return "", positional[0], yes, nil
 	}
 	return positional[0], positional[1], yes, nil
 }
