@@ -65,9 +65,6 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if store == nil {
-		return errors.New("application store is required")
-	}
 
 	pool, err := database.Open(ctx, database.Config{DSN: cfg.DatabaseURL, ConnectTimeout: 10 * time.Second})
 	if err != nil {
