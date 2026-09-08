@@ -31,6 +31,7 @@ type OwnershipResolver interface {
 
 type Handler struct {
 	secrets   SecretService
+	dynamic   DynamicSecretService
 	ownership OwnershipResolver
 	rbac      *authorization.Service
 	mux       *http.ServeMux
@@ -41,9 +42,16 @@ func New(secrets SecretService, ownership OwnershipResolver, rbac *authorization
 		return nil, errors.New("application secret API dependencies are required")
 	}
 	h := &Handler{secrets: secrets, ownership: ownership, rbac: rbac, mux: http.NewServeMux()}
+	if dynamic, ok := secrets.(DynamicSecretService); ok {
+		h.dynamic = dynamic
+	}
 	h.mux.HandleFunc("GET /api/v1/apps/{app}/secrets", h.list)
 	h.mux.HandleFunc("PUT /api/v1/apps/{app}/secrets/{name}", h.set)
 	h.mux.HandleFunc("DELETE /api/v1/apps/{app}/secrets/{name}", h.delete)
+	h.mux.HandleFunc("POST /api/v1/apps/{app}/secret-refs", h.createDynamic)
+	h.mux.HandleFunc("POST /api/v1/apps/{app}/secret-refs/resolve", h.readDynamic)
+	h.mux.HandleFunc("PUT /api/v1/apps/{app}/secret-refs/resolve", h.rotateDynamic)
+	h.mux.HandleFunc("DELETE /api/v1/apps/{app}/secret-refs/resolve", h.deleteDynamic)
 	return h, nil
 }
 
