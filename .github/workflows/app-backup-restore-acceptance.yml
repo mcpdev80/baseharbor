@@ -1,0 +1,25 @@
+name: app-backup-restore-acceptance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app-backup-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:app-backup-ci
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build BaseHarbor control-plane image
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Prove CLI destroy recreate restore
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' -count=1 -v
