@@ -17,10 +17,18 @@ func TestSplitNonEmpty(t *testing.T) {
 	}
 }
 
-func TestControlPlaneConfigFromEnvRequiresDatabaseURL(t *testing.T) {
+func TestControlPlaneConfigFromEnvAllowsRuntimeOnlyMode(t *testing.T) {
 	t.Setenv("BASEHARBOR_API_DATABASE_URL", "")
-	if _, err := controlPlaneConfigFromEnv(); err == nil {
-		t.Fatal("controlPlaneConfigFromEnv() error = nil, want error")
+	t.Setenv("BASEHARBOR_API_OIDC_ISSUER", "")
+	t.Setenv("BASEHARBOR_API_OIDC_AUDIENCES", "")
+	t.Setenv("BASEHARBOR_API_TLS_CERT_FILE", "/run/baseharbor/tls.crt")
+	t.Setenv("BASEHARBOR_API_TLS_KEY_FILE", "/run/baseharbor/tls.key")
+	cfg, err := controlPlaneConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseURL != "" || cfg.OIDCIssuer != "" || len(cfg.OIDCAudiences) != 0 {
+		t.Fatalf("unexpected runtime-only config: %#v", cfg)
 	}
 }
 
