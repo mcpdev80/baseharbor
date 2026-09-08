@@ -15,9 +15,11 @@ func ExistingRuntimeFiles(store Store, m Manifest) (RuntimeFiles, error) {
 	}
 	dir := filepath.Join(store.Root, m.Name, "runtime")
 	files := RuntimeFiles{
-		Dir:     dir,
-		Compose: filepath.Join(dir, "compose.yaml"),
-		Env:     filepath.Join(dir, "runtime.env"),
+		Dir:            dir,
+		Compose:        filepath.Join(dir, "compose.yaml"),
+		Env:            filepath.Join(dir, "runtime.env"),
+		ApplicationEnv: filepath.Join(dir, "application.env"),
+		Bindings:       filepath.Join(dir, "bindings"),
 	}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
@@ -32,11 +34,15 @@ func ExistingRuntimeFiles(store Store, m Manifest) (RuntimeFiles, error) {
 
 func CheckRuntimePermissions(files RuntimeFiles) error {
 	paths := []string{files.Dir, files.Compose, files.Env}
-	openBaoCredentials := filepath.Join(files.Dir, "openbao.env")
-	if _, err := os.Stat(openBaoCredentials); err == nil {
-		paths = append(paths, openBaoCredentials)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+	for _, optional := range []string{files.ApplicationEnv, files.Bindings, filepath.Join(files.Dir, "openbao.env")} {
+		if optional == "" {
+			continue
+		}
+		if _, err := os.Stat(optional); err == nil {
+			paths = append(paths, optional)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	for _, path := range paths {
 		info, err := os.Stat(path)
