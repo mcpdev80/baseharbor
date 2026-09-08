@@ -72,11 +72,39 @@ application_name  -> exactly one tenant_id
 
 `ApplicationOwnershipStore.OwnedByTenant` performs the read inside the existing tenant-scoped transaction boundary, so the HTTP handler can use the database-backed store directly as its `OwnershipResolver`.
 
+## Protected request chain
+
+Protected control-plane handlers are now composed behind one mandatory request-security chain:
+
+```text
+Authorization: Bearer <token>
+        ↓
+auth.Verifier
+        ↓
+identity.Principal
+        ↓
+TenantResolver
+        ↓
+tenancy.Context
+        ↓
+RBAC
+        ↓
+ApplicationOwnershipStore
+        ↓
+application secret handler
+```
+
+The chain fails closed when the bearer header is missing or malformed, token verification fails, the verified principal is incomplete, tenant resolution fails or is ambiguous, or the resolved tenant context is incomplete.
+
+The bearer token is passed only to the configured verifier and is never included in API responses.
+
+The tenant resolver is deliberately a separate trust boundary. The current `memberships` table uses forced tenant RLS, so pre-tenant identity-to-membership resolution must not bypass that protection through a superuser or `BYPASSRLS` shortcut.
+
 ## Current exposure status
 
-The ownership relation now exists and is tested, but this document still does **not** claim that the secret API is publicly listening.
+The protected HTTP handler chain is implemented and testable, but BaseHarbor still does **not** claim that this API is publicly listening.
 
-The next control-plane HTTP-server slice must wire authentication, tenant resolution, the database-backed ownership resolver and the application-secret handler together before opening a listener. Public exposure without that complete chain remains unsupported.
+A concrete OIDC/JWT verifier and a safe pre-tenant identity-to-membership resolver still need to be provided through runtime configuration before a network listener can be enabled. Until then, the handler remains unexposed rather than weakening authentication or tenant isolation.
 
 ## Secret non-disclosure
 
