@@ -19,7 +19,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Name:    "up",
 		Summary: "Start an existing application runtime and verify readiness",
 		Usage:   "baha app up NAME",
-		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. It refuses to recreate missing managed data volumes and reports success only after all enabled services, including managed OpenBao secret scopes, pass authenticated verification.",
+		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data. Missing required secrets fail closed before workload start. It refuses to recreate missing managed data volumes and reports success only after all enabled services pass authenticated verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app up requires exactly one NAME", "Example: baha app up demo")
@@ -38,6 +38,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
+			var requiredStatuses []openbao.RequiredSecretStatus
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -81,11 +82,22 @@ func appUpCommand(store application.Store) *cli.Command {
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 					}},
 				)
+				if len(application.RequiredSecretNames(m)) > 0 {
+					checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+						var err error
+						requiredStatuses, err = inspectRequiredSecrets(ctx, compose, platformFiles, m, files)
+						if err != nil {
+							return err
+						}
+						return requireReadySecrets(requiredStatuses)
+					}})
+				}
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
+			printRequiredSecretStatus(out, requiredStatuses)
 			if !ok {
-				return errors.New("application up preflight failed")
+				return errors.New("application up preflight failed; workload was not started")
 			}
 
 			project := application.RuntimeProjectName(m)
@@ -101,6 +113,14 @@ func appUpCommand(store application.Store) *cli.Command {
 				if verifyErr == nil && m.Services.Secrets {
 					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+				}
+				if verifyErr == nil && len(application.RequiredSecretNames(m)) > 0 {
+					statuses, err := inspectRequiredSecrets(verifyCtx, compose, platformFiles, m, files)
+					if err != nil {
+						verifyErr = err
+					} else {
+						verifyErr = requireReadySecrets(statuses)
+					}
 				}
 				if verifyErr == nil {
 					printRuntimeReady(out, m)
