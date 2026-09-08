@@ -2,7 +2,10 @@ module github.com/mcpdev80/baseharbor
 
 go 1.25.0
 
-require github.com/jackc/pgx/v5 v5.11.0
+require (
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/jackc/pgx/v5 v5.11.0
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
