@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -22,35 +23,19 @@ func appCommand(store application.Store) *cli.Command {
 		Name:    "app",
 		Summary: "Manage declarative application backend runtimes",
 		Usage:   "baha app <command> [options]",
-		Long:    "Applications are independent consumers of BaseHarbor. Their manifests contain desired backend services and required secret names, never application business logic or plaintext credentials.",
+		Long:    "Applications are independent consumers of BaseHarbor. Put baseharbor.yaml in the application repository and run app commands without NAME, or pass NAME explicitly for compatibility with stored application state. Manifests contain desired backend services and required secret names, never plaintext credentials.",
 	}
 
 	app.Children = []*cli.Command{
+		appInitCommand(),
 		{
 			Name:    "create",
-			Summary: "Create an application manifest",
+			Summary: "Create an application manifest in BaseHarbor state",
 			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
-			Long:    "Creates declarative application state only; it does not start containers. If no service flag is supplied, one default PostgreSQL instance is enabled. Use repeatable --postgres-instance and --redis-instance flags only when an application needs multiple stable named instances. Required secret declarations automatically enable managed secrets.\n\nOptions:\n  --environment ENV          Application environment (default: dev)\n  --postgres                 Enable the default PostgreSQL instance\n  --postgres-instance NAME   Add a named PostgreSQL instance; repeat as needed\n  --redis                    Enable the default Redis/Valkey instance\n  --redis-instance NAME      Add a named Redis/Valkey instance; repeat as needed\n  --secrets                  Enable managed application secrets\n  --require-secret NAME      Declare a required secret; repeat for multiple names",
+			Long:    "Creates legacy/BaseHarbor-managed declarative application state only; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default PostgreSQL instance is enabled.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs(args)
+				m, err := manifestFromCreateArgs(args)
 				if err != nil {
-					return err
-				}
-				m := application.New(name, environment, postgres || len(postgresInstances) > 0, redis || len(redisInstances) > 0, secrets)
-				if len(postgresInstances) > 0 {
-					if postgres {
-						postgresInstances = append(postgresInstances, "default")
-					}
-					m = application.WithPostgresInstances(m, postgresInstances...)
-				}
-				if len(redisInstances) > 0 {
-					if redis {
-						redisInstances = append(redisInstances, "default")
-					}
-					m = application.WithRedisInstances(m, redisInstances...)
-				}
-				m = application.WithRequiredSecrets(m, required...)
-				if err := m.Validate(); err != nil {
 					return err
 				}
 				path, err := store.Create(m)
@@ -88,34 +73,28 @@ func appCommand(store application.Store) *cli.Command {
 		},
 		{
 			Name:    "show",
-			Summary: "Show an application manifest",
-			Usage:   "baha app show NAME",
+			Summary: "Show the resolved application manifest",
+			Usage:   "baha app show [NAME]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 1 {
-					return usageError("baha app show requires exactly one NAME", "Example: baha app show demo")
-				}
-				m, _, err := store.Load(args[0])
+				resolved, err := resolveApplication(store, args, "show")
 				if err != nil {
 					return err
 				}
-				fmt.Fprint(out, m.YAML())
+				fmt.Fprint(out, resolved.Manifest.YAML())
 				return nil
 			},
 		},
 		{
 			Name:    "plan",
 			Summary: "Show desired resources without changing anything",
-			Usage:   "baha app plan NAME",
-			Long:    "Builds a deterministic desired-state plan, including required secret readiness gates. This command is read-only and is the basis for the apply/convergence engine.",
+			Usage:   "baha app plan [NAME]",
+			Long:    "Builds a deterministic desired-state plan, including required secret readiness gates. Without NAME it resolves the nearest baseharbor.yaml from the current repository.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 1 {
-					return usageError("baha app plan requires exactly one NAME", "Example: baha app plan demo")
-				}
-				m, _, err := store.Load(args[0])
+				resolved, err := resolveApplication(store, args, "plan")
 				if err != nil {
 					return err
 				}
-				plan, err := application.BuildPlan(m)
+				plan, err := application.BuildPlan(resolved.Manifest)
 				if err != nil {
 					return err
 				}
@@ -130,16 +109,14 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "preflight",
 			Summary: "Validate an application before mutation",
-			Usage:   "baha app preflight NAME",
-			Long:    "Checks manifest integrity, supported desired services, secure local state, the container runtime, OpenBao application-provisioning prerequisites and required-secret readiness when a managed secret scope already exists. It never mutates application resources.",
+			Usage:   "baha app preflight [NAME]",
+			Long:    "Checks manifest integrity, supported desired services, local state, the container runtime, OpenBao application-provisioning prerequisites and required-secret readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 1 {
-					return usageError("baha app preflight requires exactly one NAME", "Example: baha app preflight demo")
-				}
-				m, path, err := store.Load(args[0])
+				resolved, err := resolveApplication(store, args, "preflight")
 				if err != nil {
 					return err
 				}
+				m := resolved.Manifest
 				checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
 				var compose bhruntime.Compose
@@ -149,16 +126,7 @@ func appCommand(store application.Store) *cli.Command {
 				checks := []preflight.Check{
 					{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 					{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-					{Name: "application state permissions", Run: func(context.Context) error {
-						info, err := os.Stat(path)
-						if err != nil {
-							return err
-						}
-						if info.Mode().Perm()&0o077 != 0 {
-							return fmt.Errorf("%s is accessible by group or others (%o)", path, info.Mode().Perm())
-						}
-						return nil
-					}},
+					{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
 					{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 						var err error
 						compose, err = bhruntime.DetectCompose(ctx)
@@ -226,6 +194,94 @@ func appCommand(store application.Store) *cli.Command {
 	return app
 }
 
+func appInitCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "init",
+		Summary: "Create a repository-owned baseharbor.yaml",
+		Usage:   "baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
+		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			prepared := append([]string(nil), args...)
+			if !hasCreateName(prepared) {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				prepared = append([]string{filepath.Base(cwd)}, prepared...)
+			}
+			m, err := manifestFromCreateArgs(prepared)
+			if err != nil {
+				return err
+			}
+			path := application.RepositoryManifestName
+			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+			if err != nil {
+				if errors.Is(err, os.ErrExist) {
+					return fmt.Errorf("%s already exists; edit the existing application contract instead", path)
+				}
+				return err
+			}
+			if _, err := file.WriteString(m.YAML()); err != nil {
+				_ = file.Close()
+				_ = os.Remove(path)
+				return err
+			}
+			if err := file.Close(); err != nil {
+				return err
+			}
+			absolute, _ := filepath.Abs(path)
+			fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
+			fmt.Fprintf(out, "manifest: %s\n", absolute)
+			fmt.Fprintln(out, "next: review baseharbor.yaml, commit it, then run 'baha app apply'")
+			return nil
+		},
+	}
+}
+
+func hasCreateName(args []string) bool {
+	skipNext := false
+	for _, arg := range args {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		switch arg {
+		case "--environment", "--postgres-instance", "--redis-instance", "--require-secret":
+			skipNext = true
+			continue
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestFromCreateArgs(args []string) (application.Manifest, error) {
+	name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs(args)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	m := application.New(name, environment, postgres || len(postgresInstances) > 0, redis || len(redisInstances) > 0, secrets)
+	if len(postgresInstances) > 0 {
+		if postgres {
+			postgresInstances = append(postgresInstances, "default")
+		}
+		m = application.WithPostgresInstances(m, postgresInstances...)
+	}
+	if len(redisInstances) > 0 {
+		if redis {
+			redisInstances = append(redisInstances, "default")
+		}
+		m = application.WithRedisInstances(m, redisInstances...)
+	}
+	m = application.WithRequiredSecrets(m, required...)
+	if err := m.Validate(); err != nil {
+		return application.Manifest{}, err
+	}
+	return m, nil
+}
+
 func parseCreateArgs(args []string) (name, environment string, postgres, redis, secrets bool, postgresInstances, redisInstances, required []string, err error) {
 	environment = "dev"
 	for i := 0; i < len(args); i++ {
@@ -275,13 +331,13 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			return "", "", false, false, false, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
 		default:
 			if name != "" {
-				return "", "", false, false, false, nil, nil, nil, usageError("baha app create accepts exactly one NAME", "Example: baha app create demo --postgres")
+				return "", "", false, false, false, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --postgres")
 			}
 			name = arg
 		}
 	}
 	if name == "" {
-		return "", "", false, false, false, nil, nil, nil, usageError("baha app create requires NAME", "Example: baha app create demo --postgres")
+		return "", "", false, false, false, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
 	}
 	return name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, nil
 }
