@@ -102,13 +102,13 @@ func composeYAML(m application.Manifest, appFiles application.RuntimeFiles, mtls
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	credPath := openbao.ApplicationCredentialsPath(appFiles.Dir)
 	paths := map[string]string{
-		"runtime token":          tokenPath,
-		"OpenBao credentials":    credPath,
-		"runtime CA":             mtls.CA,
-		"broker certificate":     mtls.BrokerCert,
-		"broker private key":     mtls.BrokerKey,
+		"runtime token":            tokenPath,
+		"OpenBao credentials":      credPath,
+		"runtime CA":               mtls.CA,
+		"broker certificate":       mtls.BrokerCert,
+		"broker private key":       mtls.BrokerKey,
 		"probe client certificate": mtls.ClientCert,
-		"probe client private key":  mtls.ClientKey,
+		"probe client private key": mtls.ClientKey,
 	}
 	for label, path := range paths {
 		absolute, err := filepath.Abs(path)
