@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -16,9 +17,11 @@ import (
 var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
 
 type RuntimeFiles struct {
-	Dir     string
-	Compose string
-	Env     string
+	Dir            string
+	Compose        string
+	Env            string
+	ApplicationEnv string
+	Bindings       string
 }
 
 func RuntimeProjectName(m Manifest) string {
@@ -47,18 +50,14 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
 	}
-	files := RuntimeFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}
-	if _, err := os.Stat(files.Env); errors.Is(err, os.ErrNotExist) {
-		content, err := newRuntimeEnv(m)
-		if err != nil {
-			return RuntimeFiles{}, err
-		}
-		if err := os.WriteFile(files.Env, []byte(content), 0o600); err != nil {
-			return RuntimeFiles{}, fmt.Errorf("write application runtime environment: %w", err)
-		}
-	} else if err != nil {
-		return RuntimeFiles{}, fmt.Errorf("inspect application runtime environment: %w", err)
-	} else if err := validateRuntimeEnv(files.Env, m); err != nil {
+	files := RuntimeFiles{
+		Dir:            dir,
+		Compose:        filepath.Join(dir, "compose.yaml"),
+		Env:            filepath.Join(dir, "runtime.env"),
+		ApplicationEnv: filepath.Join(dir, "application.env"),
+		Bindings:       filepath.Join(dir, "bindings"),
+	}
+	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
 
@@ -69,6 +68,12 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
 	}
+	contract, err := EnsureRuntimeContract(m, files)
+	if err != nil {
+		return RuntimeFiles{}, err
+	}
+	files.ApplicationEnv = contract.Env
+	files.Bindings = contract.BindingsDir
 	return files, nil
 }
 
@@ -112,51 +117,145 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	return postgresValkeyComposeYAML, nil
 }
 
+func ensureRuntimeEnv(path string, m Manifest) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		content, err := newRuntimeEnv(m)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			return fmt.Errorf("write application runtime environment: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect application runtime environment: %w", err)
+	}
+
+	values, err := readRuntimeEnv(path)
+	if err != nil {
+		return err
+	}
+	changed := false
+	excluded := map[int]struct{}{}
+	for _, key := range []string{"POSTGRES_HOST_PORT", "VALKEY_HOST_PORT"} {
+		if value := values[key]; value != "" {
+			if err := validatePortValue(value, key); err != nil {
+				return err
+			}
+			port, _ := strconv.Atoi(value)
+			excluded[port] = struct{}{}
+		}
+	}
+	if m.Services.Postgres && values["POSTGRES_HOST_PORT"] == "" {
+		port, err := allocateLoopbackPort(excluded)
+		if err != nil {
+			return err
+		}
+		values["POSTGRES_HOST_PORT"] = strconv.Itoa(port)
+		excluded[port] = struct{}{}
+		changed = true
+	}
+	if m.Services.Redis && values["VALKEY_HOST_PORT"] == "" {
+		port, err := allocateLoopbackPort(excluded)
+		if err != nil {
+			return err
+		}
+		values["VALKEY_HOST_PORT"] = strconv.Itoa(port)
+		excluded[port] = struct{}{}
+		changed = true
+	}
+	if err := validateRuntimeValues(values, m); err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	return writeRuntimeEnv(path, m, values)
+}
+
 func newRuntimeEnv(m Manifest) (string, error) {
-	var b strings.Builder
+	values := map[string]string{}
+	excluded := map[int]struct{}{}
 	if m.Services.Postgres {
 		password, err := randomApplicationSecret(32)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "POSTGRES_DB=%s\nPOSTGRES_USER=baseharbor\nPOSTGRES_PASSWORD=%s\n", postgresDatabaseName(m), password)
+		port, err := allocateLoopbackPort(excluded)
+		if err != nil {
+			return "", err
+		}
+		excluded[port] = struct{}{}
+		values["POSTGRES_DB"] = postgresDatabaseName(m)
+		values["POSTGRES_USER"] = "baseharbor"
+		values["POSTGRES_PASSWORD"] = password
+		values["POSTGRES_HOST_PORT"] = strconv.Itoa(port)
 	}
 	if m.Services.Redis {
 		password, err := randomApplicationSecret(32)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "VALKEY_PASSWORD=%s\n", password)
+		port, err := allocateLoopbackPort(excluded)
+		if err != nil {
+			return "", err
+		}
+		values["VALKEY_PASSWORD"] = password
+		values["VALKEY_HOST_PORT"] = strconv.Itoa(port)
 	}
-	return b.String(), nil
+	return runtimeEnvContent(m, values), nil
+}
+
+func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
+	if err := writeOwnerOnlyFile(path, []byte(runtimeEnvContent(m, values))); err != nil {
+		return fmt.Errorf("write application runtime environment: %w", err)
+	}
+	return nil
+}
+
+func runtimeEnvContent(m Manifest, values map[string]string) string {
+	var b strings.Builder
+	if m.Services.Postgres {
+		fmt.Fprintf(&b, "POSTGRES_DB=%s\n", values["POSTGRES_DB"])
+		fmt.Fprintf(&b, "POSTGRES_USER=%s\n", values["POSTGRES_USER"])
+		fmt.Fprintf(&b, "POSTGRES_PASSWORD=%s\n", values["POSTGRES_PASSWORD"])
+		fmt.Fprintf(&b, "POSTGRES_HOST_PORT=%s\n", values["POSTGRES_HOST_PORT"])
+	}
+	if m.Services.Redis {
+		fmt.Fprintf(&b, "VALKEY_PASSWORD=%s\n", values["VALKEY_PASSWORD"])
+		fmt.Fprintf(&b, "VALKEY_HOST_PORT=%s\n", values["VALKEY_HOST_PORT"])
+	}
+	return b.String()
 }
 
 func validateRuntimeEnv(path string, m Manifest) error {
-	data, err := os.ReadFile(path)
+	values, err := readRuntimeEnv(path)
 	if err != nil {
-		return fmt.Errorf("read application runtime environment: %w", err)
+		return err
 	}
-	values := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(value) == "" {
-			return errors.New("application runtime environment contains an invalid entry")
-		}
-		values[key] = value
-	}
+	return validateRuntimeValues(values, m)
+}
+
+func validateRuntimeValues(values map[string]string, m Manifest) error {
 	if m.Services.Postgres {
-		for _, key := range []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"} {
+		for _, key := range []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_HOST_PORT"} {
 			if values[key] == "" {
 				return fmt.Errorf("application runtime environment is missing %s", key)
 			}
 		}
+		if err := validatePortValue(values["POSTGRES_HOST_PORT"], "POSTGRES_HOST_PORT"); err != nil {
+			return err
+		}
 	}
-	if m.Services.Redis && values["VALKEY_PASSWORD"] == "" {
-		return errors.New("application runtime environment is missing VALKEY_PASSWORD")
+	if m.Services.Redis {
+		for _, key := range []string{"VALKEY_PASSWORD", "VALKEY_HOST_PORT"} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values["VALKEY_HOST_PORT"], "VALKEY_HOST_PORT"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -185,6 +284,8 @@ const postgresComposeYAML = `services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -209,6 +310,8 @@ const valkeyServiceYAML = `  valkey:
       - |
         printf 'requirepass %s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
         exec valkey-server /tmp/valkey.conf
+    ports:
+      - "127.0.0.1:${VALKEY_HOST_PORT}:6379"
     volumes:
       - valkey-data:/data
     healthcheck:
@@ -233,6 +336,8 @@ const postgresValkeyComposeYAML = `services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
