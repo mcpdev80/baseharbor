@@ -115,11 +115,27 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	}
 }
 
-func TestEnsureRuntimeRejectsSecretsUntilImplemented(t *testing.T) {
+func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, true)
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compose), "postgres:18-alpine") {
+		t.Fatal("managed secrets changed the PostgreSQL runtime definition")
+	}
+}
+
+func TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("secret-only", "dev", false, false, true)
 	if _, err := EnsureRuntime(store, m); err == nil {
-		t.Fatal("expected managed secrets to fail closed")
+		t.Fatal("expected secrets-only runtime to fail closed")
 	}
 }
 

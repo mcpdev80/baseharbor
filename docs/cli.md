@@ -59,6 +59,7 @@ Examples:
 baha app create postgres-app --postgres
 baha app create cache-app --redis
 baha app create full-app --postgres --redis
+baha app create secure-app --postgres --secrets
 ```
 
 With no service flag, PostgreSQL remains the minimal default. The manifest field is named `redis` for protocol/API compatibility; BaseHarbor provisions Valkey as the managed implementation.
@@ -91,7 +92,22 @@ Manifests contain desired configuration, never plaintext service credentials.
 - no host port by default
 - readiness: authenticated `PING` must return `PONG`
 
-Managed application secrets are still unsupported by app convergence and fail closed when requested. The platform OpenBao bootstrap exists first so application-secret convergence can build on an initialized, policy-managed trust plane.
+### Managed secrets
+
+Managed secrets use the BaseHarbor OpenBao trust plane and currently require PostgreSQL and/or Valkey so the application has a materialized runtime.
+
+For `NAME` in environment `ENV`, `app apply` provisions:
+
+```text
+KV document:  baseharbor/apps/NAME/ENV
+Policy:       baseharbor-app-NAME-ENV
+AppRole:      baseharbor-app-NAME-ENV
+Credentials:  .baseharbor/apps/NAME/runtime/openbao.env
+```
+
+The application credential file is owner-only and contains only RoleID/SecretID. Application secret payloads are not written to local runtime files.
+
+The current milestone establishes server-side scope isolation and application identity. It does not yet inject OpenBao credentials into workload containers or expose direct workload connectivity to the loopback-only bundled OpenBao listener.
 
 ## Plan, preflight, apply and verify
 
@@ -101,7 +117,7 @@ baha app preflight demo
 baha app apply demo
 ```
 
-`plan` and `preflight` are read-only. `apply` validates desired state, materializes the runtime, converges Compose, and returns success only after every enabled service passes verification.
+`plan` and `preflight` are read-only. `apply` validates desired state, materializes the runtime, converges Compose and optional OpenBao application identity, and returns success only after every enabled service passes verification.
 
 The stable lifecycle contract is:
 
@@ -109,7 +125,7 @@ The stable lifecycle contract is:
 plan -> preflight -> apply -> verify
 ```
 
-Each application/environment uses its own Compose project, private default network, service containers and persistent volumes. Generated runtime credentials live in an owner-only `runtime.env` and are preserved across repeated apply operations.
+Each application/environment uses its own Compose project, private default network, service containers and persistent volumes. Generated PostgreSQL/Valkey runtime credentials live in an owner-only `runtime.env` and are preserved across repeated apply operations. Managed OpenBao bootstrap credentials live separately in owner-only `openbao.env`.
 
 ## Status and doctor
 
@@ -126,15 +142,16 @@ baha app doctor demo
 - supported desired services
 - manifest permissions
 - materialized runtime state
-- runtime file permissions
+- runtime file permissions, including `openbao.env` when present
 - managed runtime definition integrity
 - Docker/Podman + Compose availability
 - Compose configuration validity
 - service running state
 - PostgreSQL authenticated query readiness when enabled
 - Valkey authenticated PING readiness when enabled
+- OpenBao application AppRole, capabilities and managed-policy ownership when managed secrets are enabled
 
-Neither command mutates application state or prints credentials.
+Neither command writes application secrets or prints credentials.
 
 ## Stop and resume without deleting data
 
@@ -143,9 +160,9 @@ baha app down demo
 baha app up demo
 ```
 
-`app down` performs ownership and runtime-definition preflight first. It removes service containers and the transient network while preserving every managed persistent volume, the application manifest, runtime definition and credentials. Post-verification checks that existing persistent volumes were retained.
+`app down` performs ownership and runtime-definition preflight first. It removes service containers and the transient network while preserving every managed persistent volume, the application manifest, runtime definition, credentials and managed OpenBao scope.
 
-`app up` is deliberately different from `app apply`. It never materializes fresh runtime state. Every expected persistent volume must already exist; if one is missing, `app up` fails closed rather than silently creating an empty replacement. After start, all enabled services must pass authenticated protocol verification.
+`app up` is deliberately different from `app apply`. It never materializes fresh runtime state. Every expected persistent volume must already exist; if one is missing, `app up` fails closed rather than silently creating an empty replacement. Existing managed OpenBao identity is inspected before start and verified again afterward.
 
 ## Permanent destruction
 
@@ -161,9 +178,9 @@ Permanent deletion:
 baha app destroy demo --yes
 ```
 
-Before deletion BaseHarbor verifies the manifest, local file permissions, generated runtime definition, Compose configuration, exact expected resource names, and `com.docker.compose.project` ownership labels. Ambiguous ownership fails closed.
+Before deletion BaseHarbor verifies the manifest, local file permissions, generated runtime definition, Compose configuration, exact expected resource names, `com.docker.compose.project` ownership labels and, when enabled, the exact OpenBao AppRole/policy ownership definition. Ambiguous or modified ownership fails closed.
 
-With `--yes`, owned service containers, network and all managed persistent volumes are removed. BaseHarbor verifies runtime-resource absence before deleting local application state, then verifies state deletion as well.
+With `--yes`, owned service containers, network and all managed persistent volumes are removed. Managed OpenBao secret/probe metadata, AppRole and policy are then removed before local application state is deleted.
 
 ## OpenBao trust-plane lifecycle
 
@@ -197,6 +214,7 @@ Bootstrap:
 - enables `baseharbor/` as KV v2
 - enables AppRole authentication
 - creates a restricted BaseHarbor manager policy and AppRole
+- permits that manager to provision only BaseHarbor-named application policies/AppRoles
 - stores only RoleID/SecretID in owner-only control-plane state
 - verifies manager authentication and KV access
 - revokes the initial root token
@@ -222,6 +240,8 @@ Current manager bootstrap credentials are stored at:
 ```
 
 This owner-only file is BaseHarbor bootstrap state, not application configuration. It must never be exposed through normal CLI output or committed.
+
+A trust plane bootstrapped before the manager gained application-identity provisioning permissions must be explicitly rebuilt/re-bootstrapped or operator-reconciled during the current pre-release phase. BaseHarbor fails closed rather than silently attempting privilege escalation.
 
 See [secrets-and-openbao.md](secrets-and-openbao.md) for the trust and recovery model.
 

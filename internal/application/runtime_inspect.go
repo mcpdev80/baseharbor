@@ -31,7 +31,14 @@ func ExistingRuntimeFiles(store Store, m Manifest) (RuntimeFiles, error) {
 }
 
 func CheckRuntimePermissions(files RuntimeFiles) error {
-	for _, path := range []string{files.Dir, files.Compose, files.Env} {
+	paths := []string{files.Dir, files.Compose, files.Env}
+	openBaoCredentials := filepath.Join(files.Dir, "openbao.env")
+	if _, err := os.Stat(openBaoCredentials); err == nil {
+		paths = append(paths, openBaoCredentials)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
 			return err

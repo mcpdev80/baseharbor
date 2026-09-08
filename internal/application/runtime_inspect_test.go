@@ -38,3 +38,19 @@ func TestCheckRuntimePermissionsRejectsBroadAccess(t *testing.T) {
 		t.Fatal("expected broad runtime permissions to fail")
 	}
 }
+
+func TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, false, true)
+	files, err := EnsureRuntime(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openBaoCredentials := filepath.Join(files.Dir, "openbao.env")
+	if err := os.WriteFile(openBaoCredentials, []byte("OPENBAO_ROLE_ID=role\nOPENBAO_SECRET_ID=secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckRuntimePermissions(files); err == nil {
+		t.Fatal("expected broad OpenBao application credential permissions to fail")
+	}
+}
