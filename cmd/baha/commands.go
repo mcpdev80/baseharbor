@@ -72,6 +72,7 @@ func rootCommand() *cli.Command {
 				return nil
 			},
 		},
+		serveCommand(store),
 		appCmd,
 		openBaoCommand(),
 		{
