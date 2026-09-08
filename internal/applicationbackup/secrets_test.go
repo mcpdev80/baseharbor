@@ -43,7 +43,7 @@ func TestOpenBaoSecretPayloadRoundTrip(t *testing.T) {
 func TestOpenBaoBackupFromPayloadRejectsCrossApplicationRestore(t *testing.T) {
 	backup := openbao.ApplicationSecretBackup{
 		Identity: openbao.ApplicationIdentity{Name: "mailflow", Environment: "dev"},
-		Secrets: []openbao.ApplicationSecretBackupEntry{{Key: "API_TOKEN", Value: []byte("secret")}},
+		Secrets:   []openbao.ApplicationSecretBackupEntry{{Key: "API_TOKEN", Value: []byte("secret")}},
 	}
 	entry, err := OpenBaoPayloadEntry(backup)
 	if err != nil {
