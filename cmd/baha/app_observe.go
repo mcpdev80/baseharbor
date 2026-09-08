@@ -21,7 +21,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
 		Usage:   "baha app status NAME",
-		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Running containers are not considered ready unless each enabled service passes its authenticated verification; managed secrets also require a working isolated OpenBao AppRole scope.",
+		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Running containers are not considered ready unless each enabled service passes its authenticated verification; managed secrets also require a working isolated OpenBao AppRole scope and every declared required secret.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app status requires exactly one NAME", "Example: baha app status demo")
@@ -91,12 +91,15 @@ func appStatusCommand(store application.Store) *cli.Command {
 					checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 					err := openbao.InspectApplicationScope(checkCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					if err == nil {
+						err = checkRequiredApplicationSecrets(checkCtx, compose, platformFiles, m, files)
+					}
 					cancel()
 					if err != nil {
-						fmt.Fprintln(out, "[FAIL] secrets           isolated OpenBao application scope is not ready")
+						fmt.Fprintln(out, "[FAIL] secrets           application secret requirements are not satisfied")
 						ready = false
 					} else {
-						fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole authentication succeeded")
+						fmt.Fprintln(out, "[OK] secrets           isolated OpenBao scope and required secrets verified")
 					}
 				}
 			}
@@ -113,7 +116,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor NAME",
-		Long:    "Checks desired state, secure local runtime files, Compose configuration, service state, authenticated protocol readiness and managed OpenBao secret scope health without mutating the application.",
+		Long:    "Checks desired state, secure local runtime files, Compose configuration, service state, authenticated protocol readiness, managed OpenBao secret scope health and required application secrets without mutating the application.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app doctor requires exactly one NAME", "Example: baha app doctor demo")
@@ -213,6 +216,12 @@ func appDoctorCommand(store application.Store) *cli.Command {
 						}
 						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+					}},
+					preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+						if runtimeErr != nil {
+							return runtimeErr
+						}
+						return checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
 					}},
 				)
 			}
