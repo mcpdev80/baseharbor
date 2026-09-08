@@ -29,7 +29,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			files, err := application.ExistingRuntimeFiles(store, m)
+			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
 			}
@@ -41,7 +41,9 @@ func appDownCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
@@ -110,7 +112,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return err
 			}
 
-			files, runtimeErr := application.ExistingRuntimeFiles(store, m)
+			files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 			if runtimeErr != nil && !errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
 				return runtimeErr
 			}
@@ -125,7 +127,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 			}
 			if runtimeErr == nil {
 				checks = append(checks,
@@ -179,7 +183,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if m.Services.Secrets {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
 			}
-			appDir := filepath.Join(store.Root, m.Name)
+			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
@@ -207,7 +211,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
 			}
-			if err := store.Delete(m.Name); err != nil {
+			if err := resolved.Store.Delete(m.Name); err != nil {
 				return err
 			}
 			if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
