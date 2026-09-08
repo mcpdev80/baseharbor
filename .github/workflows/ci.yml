@@ -60,13 +60,15 @@ jobs:
           grep -q "down" /tmp/baha-app-help.txt
           grep -q "up" /tmp/baha-app-help.txt
           grep -q "destroy" /tmp/baha-app-help.txt
+          grep -q "secret" /tmp/baha-app-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--redis" /tmp/baha-app-create-help.txt
-          /tmp/baha app apply --help | grep -q "PostgreSQL and Valkey"
-          /tmp/baha app status --help | grep -q "protocol-level readiness"
-          /tmp/baha app doctor --help | grep -q "protocol readiness"
+          grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
+          /tmp/baha app apply --help | grep -q "secrets.required"
+          /tmp/baha app status --help | grep -q "present and readable"
+          /tmp/baha app doctor --help | grep -q "presence/usability"
           /tmp/baha app down --help | grep -q "preserving persistent data"
-          /tmp/baha app up --help | grep -q "existing runtime definition"
+          /tmp/baha app up --help | grep -q "required application secrets"
           /tmp/baha app destroy --help | grep -q -- "--yes"
           /tmp/baha openbao --help | grep -q "Bootstrap and operate"
           /tmp/baha openbao bootstrap --help | grep -q -- "--recovery-file"
@@ -120,7 +122,7 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-      - name: Verify OpenBao bootstrap and manual unseal lifecycle
+      - name: Verify OpenBao bootstrap, required secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
@@ -151,6 +153,46 @@ jobs:
           ! grep -q 'root_token' "$recovery"
           ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
+          /tmp/baha app show required-demo | grep -q -- '- name: API_TOKEN'
+          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
+          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
+          grep -q $'API_TOKEN\tunknown\tunknown' /tmp/required-preflight.out
+
+          set +e
+          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
+          required_code=$?
+          set -e
+          test "$required_code" -eq 1
+          grep -q "required secrets check failed" /tmp/required-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
+          grep -q $'API_TOKEN\tno\tno' /tmp/required-preflight-missing.out
+
+          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app apply required-demo | grep -q "Application required-demo is ready"
+          /tmp/baha app status required-demo | tee /tmp/required-status.out
+          grep -q $'API_TOKEN\tyes\tyes' /tmp/required-status.out
+          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
+          grep -q $'API_TOKEN\tyes\tyes' /tmp/required-doctor.out
+          grep -q "Application runtime is healthy" /tmp/required-doctor.out
+
+          /tmp/baha app down required-demo | grep -q "Persistent data is preserved"
+          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
+          set +e
+          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
+          required_up_code=$?
+          set -e
+          test "$required_up_code" -eq 1
+          grep -q "required application secrets" /tmp/required-up-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app up required-demo | grep -q "running and ready"
+          /tmp/baha app destroy required-demo --yes | grep -q "permanently destroyed"
 
           docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
           for i in $(seq 1 20); do

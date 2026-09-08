@@ -4,18 +4,48 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestManifestRoundTrip(t *testing.T) {
-	want := New("mailflow", "prod", true, true, true)
+	want := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "SMTP_PASSWORD", "OPENAI_API_KEY")
 	got, err := ParseYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
-		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
+	expected := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "OPENAI_API_KEY", "SMTP_PASSWORD")
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("round trip mismatch: got %#v want %#v", got, expected)
+	}
+	if !strings.Contains(want.YAML(), "    - name: OPENAI_API_KEY\n") {
+		t.Fatalf("canonical YAML does not use explicit required secret objects:\n%s", want.YAML())
+	}
+}
+
+func TestManifestParsesLegacyScalarRequiredSecrets(t *testing.T) {
+	input := `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+  redis:
+    enabled: false
+  secrets:
+    enabled: true
+secrets:
+  required:
+    - API_TOKEN
+`
+	m, err := ParseYAML(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RequiredSecretNames(m); !reflect.DeepEqual(got, []string{"API_TOKEN"}) {
+		t.Fatalf("unexpected legacy required secrets %#v", got)
 	}
 }
 
@@ -26,11 +56,21 @@ func TestManifestDefaultsToPostgres(t *testing.T) {
 	}
 }
 
+func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
+	m := WithRequiredSecrets(New("demo", "dev", true, false, false), "API_TOKEN")
+	if !m.Services.Secrets {
+		t.Fatal("required secret declaration must enable managed secrets")
+	}
+}
+
 func TestManifestValidationFailsClosed(t *testing.T) {
 	cases := []Manifest{
 		New("UPPER", "dev", true, false, false),
 		{Version: 99, Name: "demo", Environment: "dev", Services: Services{Postgres: true}},
 		{Version: 1, Name: "demo", Environment: "dev"},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {

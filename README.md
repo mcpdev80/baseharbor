@@ -4,6 +4,8 @@ Secure, modular, self-hosted application backend runtime managed through the `ba
 
 BaseHarbor provides reusable backend infrastructure for independent applications without forcing those applications into one monolith or a proprietary data-access SDK.
 
+> BaseHarbor should hide operational complexity without hiding standard interfaces.
+
 ## Status
 
 Early development. Identity, authorization, tenancy, secrets foundations, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
@@ -12,7 +14,9 @@ Per-application runtime convergence supports dedicated PostgreSQL and Valkey ser
 
 PostgreSQL readiness requires an authenticated `SELECT 1`. Valkey readiness requires an authenticated `PING` returning `PONG`. Valkey uses the official `valkey/valkey:9.1.2-alpine` image with AOF persistence enabled.
 
-Managed secrets use one exact KV document per application/environment at `baseharbor/apps/<app>/<environment>` plus an application-specific `baseharbor-app-<app>-<environment>` policy/AppRole. Application RoleID/SecretID bootstrap state is owner-only; application secret payloads are not stored in the manifest or local runtime environment files.
+Managed secrets use an isolated application/environment namespace plus an application-specific `baseharbor-app-<app>-<environment>` policy/AppRole. Application RoleID/SecretID bootstrap state is owner-only; application secret payloads are not stored in the manifest or local runtime environment files.
+
+Applications can declare required secret names as part of their manifest contract. `baha app apply` and `baha app up` fail closed before workload start when a required secret is missing or unreadable. `preflight`, `status` and `doctor` report only presence/usability metadata and never reveal secret values.
 
 The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data or the OpenBao scope with `baha app down NAME`, resumed from existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
@@ -45,13 +49,25 @@ Create a PostgreSQL + Valkey application runtime:
 ./baha app doctor demo
 ```
 
-Create an application with a managed OpenBao scope:
+Create an application with required managed secrets:
 
 ```bash
-./baha app create secure-demo --postgres --secrets
+./baha app create secure-demo \
+  --postgres \
+  --require-secret OPENAI_API_KEY \
+  --require-secret SMTP_PASSWORD
+
+./baha app plan secure-demo
+./baha app preflight secure-demo
 ./baha app apply secure-demo
-./baha app status secure-demo
-./baha app doctor secure-demo
+```
+
+The first `apply` may materialize the runtime definition and isolated OpenBao scope, but it will not start the workload while required secret values are missing or unusable. Configure them without exposing values on the command line:
+
+```bash
+printf '%s' "$OPENAI_API_KEY" | ./baha app secret set secure-demo OPENAI_API_KEY --stdin
+printf '%s' "$SMTP_PASSWORD" | ./baha app secret set secure-demo SMTP_PASSWORD --stdin
+./baha app apply secure-demo
 ```
 
 The manifest retains the `redis` service name for compatibility with Redis-protocol consumers, while the managed implementation is Valkey.
@@ -67,7 +83,7 @@ Lifecycle operations:
 
 `baha app down` removes managed containers and the transient network while preserving all managed data volumes, runtime state, credentials and optional OpenBao application scope.
 
-`baha app up` resumes only an already-materialized runtime. It validates ownership and the managed runtime definition, requires every expected persistent volume instead of silently recreating missing state, and verifies any managed OpenBao identity before and after start.
+`baha app up` resumes only an already-materialized runtime. It validates ownership and the managed runtime definition, requires every expected persistent volume instead of silently recreating missing state, verifies any managed OpenBao identity, and refuses workload start when a required secret is missing or unusable.
 
 `baha app destroy` is destructive by design. Without `--yes` it performs the safety preflight and prints the managed resources that would be removed, but makes no changes. With `--yes`, BaseHarbor verifies the generated runtime definition, exact Compose ownership and optional OpenBao AppRole/policy ownership before permanent deletion.
 
@@ -105,16 +121,17 @@ After an OpenBao restart, the Shamir-sealed single-node profile requires explici
 
 The recovery file should be stored separately from the host/application data it protects. Automatic KMS/HSM/transit unseal remains a later deployment profile; the current implementation deliberately follows the roadmap requirement to support an explicit manual unseal workflow first.
 
-Managed application scopes are now provisioned server-side, but workload credential injection and direct workload connectivity to the bundled loopback-only OpenBao listener are not yet claimed as complete. The existing network credential adapter remains HTTPS-only; local bootstrap/convergence uses the container-runtime boundary and does not weaken that contract.
+Managed application scopes and operator secret management are implemented. Runtime delivery remains a separate provider concern: BaseHarbor may later use in-memory files, explicit environment injection, workload identity/OpenBao, or Kubernetes-native secret projection without changing the `secrets.required` application contract.
 
-See [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
+See [docs/application-contract.md](docs/application-contract.md), [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Design goals
 
 - one dependable binary for setup and lifecycle management
 - secure defaults, least privilege and fail-closed behavior
 - isolated backend service stacks for independent applications
-- native protocols for application consumption
+- native protocols and standard interfaces for application consumption
+- applications remain runnable without BaseHarbor when equivalent standard interfaces are supplied elsewhere
 - self-hosted first, cloud-native where useful
 - Docker/Podman first; Kubernetes optional
 - mature open-source components instead of unnecessary reinvention
