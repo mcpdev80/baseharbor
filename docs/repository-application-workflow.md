@@ -9,6 +9,7 @@ The repository contains only declarative requirements. Secret values, generated 
 ```text
 myapp/
 ├── baseharbor.yaml
+├── compose.yaml              # optional existing application workload
 ├── backend/
 ├── frontend/
 └── .baseharbor/
@@ -66,6 +67,73 @@ Runtime state is always anchored next to the discovered manifest:
 
 BaseHarbor does not create another `.baseharbor` tree in a nested working directory.
 
+## Existing Compose workloads
+
+A repository may keep its normal Docker/Podman Compose application topology. BaseHarbor does not replace application-owned networks or require BaseHarbor-specific application code.
+
+When exactly one conventional Compose file is present, BaseHarbor can detect it automatically. Recognized conventions include root-level `compose.yaml`, `compose.yml`, `docker-compose.yml`, `docker-compose.yaml` and the same names below `infrastructure/`.
+
+If more than one plausible Compose file exists, BaseHarbor fails closed instead of guessing. The repository can then add only the disambiguation it needs:
+
+```yaml
+workload:
+  compose: infrastructure/docker-compose.yml
+```
+
+Complex applications can additionally limit which services are required to be running and receive the BaseHarbor backend attachment:
+
+```yaml
+workload:
+  compose: docker-compose.yml
+  services:
+    - coordinator
+```
+
+The workload path must be relative, normalized and remain inside the application repository.
+
+During `baha app apply`, BaseHarbor:
+
+1. provisions and verifies the requested backend services first;
+2. creates the stable per-app/per-environment Application Backend Network;
+3. generates an owner-only `.baseharbor/.../workload.override.yaml`;
+4. adds that network to the selected application Compose services without removing their existing networks;
+5. injects container-routable standard service URLs; and
+6. starts and verifies the repository workload.
+
+Application-owned Compose files are never rewritten.
+
+### Host versus container service URLs
+
+A host-run process continues to receive loopback-only endpoints through `baha app env`:
+
+```text
+DATABASE_URL=postgresql://...@127.0.0.1:<allocated-port>/...
+REDIS_URL=redis://...@127.0.0.1:<allocated-port>/0
+```
+
+A containerized workload receives the same logical variables, but with service DNS on the isolated Application Backend Network:
+
+```text
+DATABASE_URL=postgresql://...@postgres:5432/...
+REDIS_URL=redis://...@valkey:6379/0
+```
+
+Named instances follow the same alias rules, for example `DATABASE_ANALYTICS_URL` and `REDIS_SESSIONS_URL`.
+
+The application code therefore continues to consume normal ecosystem variables and does not need to know whether it is running on the host or in Compose.
+
+### Lifecycle order
+
+To keep the shared network safe and deterministic:
+
+```text
+apply/up:   BaseHarbor backend -> repository workload
+down:       repository workload -> BaseHarbor backend
+destroy:    stop workload -> delete BaseHarbor-owned backend state
+```
+
+`down` and `destroy` preserve application-owned Compose volumes. `destroy` also preserves the committed `baseharbor.yaml`.
+
 ## Normal developer flow
 
 ```bash
@@ -75,7 +143,7 @@ baha app plan
 baha app apply
 ```
 
-After apply, normal application tooling consumes the generated standard runtime contract:
+After apply, normal host-side application tooling can consume the generated standard runtime contract:
 
 ```bash
 baha app env --path
@@ -128,8 +196,10 @@ desired state
 protected internal runtime state
       ↓
 PostgreSQL / Valkey / secrets / future services
+      ↓
+optional existing application Compose workload
 ```
 
-The repository manifest is authoritative. BaseHarbor may keep a protected internal copy to support its runtime services, but changing the repository manifest and applying it again converges toward the new desired state without rotating unrelated existing credentials or state.
+The repository manifest is authoritative. BaseHarbor may keep protected generated files to support its runtime services, but changing the repository manifest and applying it again converges toward the new desired state without rotating unrelated existing credentials or state.
 
-`baha app destroy --yes` deletes BaseHarbor-managed runtime resources and `.baseharbor` application state, but preserves the repository `baseharbor.yaml`. Running `baha app apply` can therefore recreate the backend from the committed contract.
+`baha app destroy --yes` deletes BaseHarbor-managed runtime resources and `.baseharbor` application state, but preserves the repository `baseharbor.yaml` and application-owned Compose volumes. Running `baha app apply` can therefore recreate the BaseHarbor backend from the committed contract.
