@@ -1,0 +1,21 @@
+name: openbao-backup-acceptance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  openbao-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Prove application secret destroy recreate restore
+        env:
+          BASEHARBOR_OPENBAO_BACKUP_ACCEPTANCE: "true"
+        run: go test ./internal/openbao -run '^TestApplicationSecretBackupRestoreRealOpenBao$' -count=1 -v
