@@ -27,18 +27,28 @@ func (s *Service) CreateDynamic(ctx context.Context, name string, value []byte) 
 	if err := validateDynamicValue(value); err != nil {
 		return "", err
 	}
-	resolved, err := s.resolve(ctx, name)
-	if err != nil {
-		return "", err
-	}
 	key, err := newDynamicKey()
 	if err != nil {
 		return "", err
 	}
 	mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := openbao.SetApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key, value); err != nil {
-		return "", err
+	if s.runtimeClient != nil {
+		resolved, err := s.resolveRuntime(name)
+		if err != nil {
+			return "", err
+		}
+		if err := s.runtimeClient.SetApplicationSecret(mutationCtx, resolved.identity, resolved.credentialsPath, key, value); err != nil {
+			return "", err
+		}
+	} else {
+		resolved, err := s.resolve(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if err := openbao.SetApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key, value); err != nil {
+			return "", err
+		}
 	}
 	return Reference(dynamicReferencePrefix + key), nil
 }
@@ -48,12 +58,19 @@ func (s *Service) ReadDynamic(ctx context.Context, name string, ref Reference) (
 	if err != nil {
 		return nil, err
 	}
+	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if s.runtimeClient != nil {
+		resolved, err := s.resolveRuntime(name)
+		if err != nil {
+			return nil, err
+		}
+		return s.runtimeClient.GetApplicationSecret(readCtx, resolved.identity, resolved.credentialsPath, key)
+	}
 	resolved, err := s.resolve(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
 	return openbao.GetApplicationSecret(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
 }
 
@@ -65,12 +82,22 @@ func (s *Service) RotateDynamic(ctx context.Context, name string, ref Reference,
 	if err != nil {
 		return err
 	}
+	mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if s.runtimeClient != nil {
+		resolved, err := s.resolveRuntime(name)
+		if err != nil {
+			return err
+		}
+		if _, err := s.runtimeClient.GetApplicationSecret(mutationCtx, resolved.identity, resolved.credentialsPath, key); err != nil {
+			return err
+		}
+		return s.runtimeClient.SetApplicationSecret(mutationCtx, resolved.identity, resolved.credentialsPath, key, value)
+	}
 	resolved, err := s.resolve(ctx, name)
 	if err != nil {
 		return err
 	}
-	mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	if _, err := openbao.GetApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key); err != nil {
 		return err
 	}
@@ -82,12 +109,19 @@ func (s *Service) DeleteDynamic(ctx context.Context, name string, ref Reference)
 	if err != nil {
 		return err
 	}
+	mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if s.runtimeClient != nil {
+		resolved, err := s.resolveRuntime(name)
+		if err != nil {
+			return err
+		}
+		return s.runtimeClient.DeleteApplicationSecret(mutationCtx, resolved.identity, resolved.credentialsPath, key)
+	}
 	resolved, err := s.resolve(ctx, name)
 	if err != nil {
 		return err
 	}
-	mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	return openbao.DeleteApplicationSecret(mutationCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
 }
 
