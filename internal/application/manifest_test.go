@@ -4,17 +4,19 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestManifestRoundTrip(t *testing.T) {
 	want := New("mailflow", "prod", true, true, true)
+	want.Secrets.Required = []string{"SMTP_PASSWORD", "OPENAI_API_KEY"}
 	got, err := ParseYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, Manifest{Version: want.Version, Name: want.Name, Environment: want.Environment, Services: want.Services, Secrets: SecretRequirements{Required: []string{"OPENAI_API_KEY", "SMTP_PASSWORD"}}}) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, want)
 	}
 }
@@ -31,6 +33,9 @@ func TestManifestValidationFailsClosed(t *testing.T) {
 		New("UPPER", "dev", true, false, false),
 		{Version: 99, Name: "demo", Environment: "dev", Services: Services{Postgres: true}},
 		{Version: 1, Name: "demo", Environment: "dev"},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []string{"API_TOKEN"}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []string{"bad/key"}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []string{"API_TOKEN", "API_TOKEN"}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
