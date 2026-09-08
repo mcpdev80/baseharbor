@@ -280,11 +280,10 @@ func postgresContainerConnectionURL(values map[string]string, instance string) (
 		return "", err
 	}
 	u := &url.URL{
-		Scheme:   "postgresql",
-		User:     url.UserPassword(username, password),
-		Host:     net.JoinHostPort(runtimeServiceName("postgres", instance), "5432"),
-		Path:     "/" + database,
-		RawQuery: "sslmode=disable",
+		Scheme: "postgresql",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(runtimeServiceName("postgres", instance), "5432"),
+		Path:   "/" + database,
 	}
 	return u.String(), nil
 }
