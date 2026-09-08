@@ -10,6 +10,12 @@ import (
 )
 
 var ErrRuntimeNotFound = errors.New("docker compose or podman compose not found")
+var ErrResourceOwnership = errors.New("runtime resource ownership does not match the application project")
+
+type ProjectResource struct {
+	Kind string
+	Name string
+}
 
 // Compose provides the small lifecycle surface BaseHarbor needs from a
 // container runtime. Application code should not shell out to Docker/Podman
@@ -61,19 +67,12 @@ func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile 
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
-func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
-	return c.outputProject(ctx, project, composeFile, envFile, "ps")
+func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes")
 }
 
-func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
-	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--status", "running", "--services")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return nil, nil
-	}
-	return strings.Fields(out), nil
+func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
+	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
@@ -83,6 +82,88 @@ func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFil
 func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
+}
+
+func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
+	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--services", "--status", "running")
+	if err != nil {
+		return nil, err
+	}
+	var services []string
+	for _, line := range strings.Split(out, "\n") {
+		if value := strings.TrimSpace(line); value != "" {
+			services = append(services, value)
+		}
+	}
+	return services, nil
+}
+
+// InspectProjectResource verifies an exact runtime resource name before a
+// destructive operation. A resource with the expected name but a different
+// Compose project label is an ownership conflict, never an implicit match.
+func (c Compose) InspectProjectResource(ctx context.Context, project string, resource ProjectResource) (bool, error) {
+	if c.command == "" {
+		return false, ErrRuntimeNotFound
+	}
+	if strings.TrimSpace(project) == "" || strings.TrimSpace(resource.Name) == "" {
+		return false, errors.New("project and resource name are required")
+	}
+
+	listArgs, inspectArgs, err := resourceCommands(resource)
+	if err != nil {
+		return false, err
+	}
+	out, err := c.directOutput(ctx, listArgs...)
+	if err != nil {
+		return false, err
+	}
+	exists := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == resource.Name {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		return false, nil
+	}
+
+	label, err := c.directOutput(ctx, inspectArgs...)
+	if err != nil {
+		return false, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
+	}
+	if strings.TrimSpace(label) != project {
+		return true, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, resource.Name, project)
+	}
+	return true, nil
+}
+
+func resourceCommands(resource ProjectResource) ([]string, []string, error) {
+	switch resource.Kind {
+	case "container":
+		return []string{"container", "ls", "-a", "--format", "{{.Names}}"}, []string{"container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}`, resource.Name}, nil
+	case "network":
+		return []string{"network", "ls", "--format", "{{.Name}}"}, []string{"network", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
+	case "volume":
+		return []string{"volume", "ls", "--format", "{{.Name}}"}, []string{"volume", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
+	}
+}
+
+func (c Compose) directOutput(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, c.command, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return stdout.String(), fmt.Errorf("runtime %s: %s", strings.Join(args, " "), message)
+	}
+	return stdout.String(), nil
 }
 
 func (c Compose) runProject(ctx context.Context, project, composeFile, envFile string, args ...string) error {

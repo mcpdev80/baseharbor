@@ -12,6 +12,7 @@
 - Secrets are not printed unless a future command explicitly requires and documents reveal behavior.
 - Commands must report actual readiness, not just process/container state.
 - Preflight comes before mutation; verification comes after mutation.
+- Destructive commands verify exact resource ownership and fail closed on ambiguity.
 
 ## Current command tree
 
@@ -30,7 +31,9 @@ baha
 │   ├── preflight
 │   ├── apply
 │   ├── status
-│   └── doctor
+│   ├── doctor
+│   ├── down
+│   └── destroy
 └── version
 ```
 
@@ -43,6 +46,8 @@ baha app create --help
 baha app apply --help
 baha app status --help
 baha app doctor --help
+baha app down --help
+baha app destroy --help
 ```
 
 ## Exit codes
@@ -120,16 +125,59 @@ baha app doctor demo
 
 Neither command changes application state or prints runtime credentials.
 
+## Stop without deleting data
+
+```bash
+baha app down demo
+```
+
+`app down` performs a read-only safety preflight first. It verifies the manifest and runtime permissions, verifies that the Compose file still exactly matches the BaseHarbor-managed definition, validates the Compose configuration and checks ownership labels for the expected project resources.
+
+After the preflight succeeds, it removes the application container and transient Compose network while preserving:
+
+- the dedicated PostgreSQL volume
+- the application manifest
+- the generated runtime environment and credentials
+- the BaseHarbor runtime definition
+
+Post-verification confirms that the container and network are gone and that an existing PostgreSQL volume was not removed. `baha app apply demo` can then converge the same application again with its existing data.
+
+## Permanent destruction
+
+Preview first:
+
+```bash
+baha app destroy demo
+```
+
+This command is non-mutating without `--yes`. It runs the ownership and safety preflight and prints the exact currently present BaseHarbor-managed runtime resources plus the local application-state directory that would be deleted.
+
+Permanent deletion requires explicit confirmation:
+
+```bash
+baha app destroy demo --yes
+```
+
+Before deletion BaseHarbor verifies:
+
+- the manifest and local file permissions
+- the generated runtime definition has not been modified
+- Compose configuration validity
+- exact expected container, network and volume names
+- the `com.docker.compose.project` ownership label for every expected resource that exists
+
+If an expected resource name exists but its ownership label does not match the application project, destruction fails closed and nothing is intentionally deleted by BaseHarbor.
+
+After the preflight, `--yes` removes the owned Compose runtime including persistent volumes, then verifies that the managed runtime resources are absent before deleting the local application state. The final state deletion is also verified.
+
 ## Planned command evolution
 
 ```text
 baha app up NAME
-baha app down NAME
 baha app env NAME
 baha app backup NAME
 baha app restore NAME
 baha app upgrade NAME
-baha app destroy NAME
 ```
 
 Future certificate and platform lifecycle command families follow the same rules:
