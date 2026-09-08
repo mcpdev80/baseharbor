@@ -1,0 +1,21 @@
+name: postgres-backup-acceptance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASEHARBOR_POSTGRES_BACKUP_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Prove multi-instance PostgreSQL destroy recreate restore
+        run: go test ./internal/application -run '^TestPostgresBackupDisasterRecovery$' -count=1 -v
