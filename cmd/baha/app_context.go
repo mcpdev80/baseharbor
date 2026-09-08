@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
@@ -10,6 +11,7 @@ import (
 type resolvedApplication struct {
 	Manifest       application.Manifest
 	ManifestPath   string
+	Store          application.Store
 	FromRepository bool
 }
 
@@ -22,7 +24,7 @@ func resolveApplication(store application.Store, args []string, command string) 
 		if err != nil {
 			return resolvedApplication{}, err
 		}
-		return resolvedApplication{Manifest: m, ManifestPath: path}, nil
+		return resolvedApplication{Manifest: m, ManifestPath: path, Store: store}, nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -36,10 +38,12 @@ func resolveApplication(store application.Store, args []string, command string) 
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	if _, err := store.Sync(m); err != nil {
+	repoRoot := filepath.Dir(path)
+	repoStore := application.Store{Root: filepath.Join(repoRoot, ".baseharbor", "apps")}
+	if _, err := repoStore.Sync(m); err != nil {
 		return resolvedApplication{}, fmt.Errorf("synchronize repository manifest: %w", err)
 	}
-	return resolvedApplication{Manifest: m, ManifestPath: path, FromRepository: true}, nil
+	return resolvedApplication{Manifest: m, ManifestPath: path, Store: repoStore, FromRepository: true}, nil
 }
 
 func checkManifestPermissions(path string, fromRepository bool) error {
