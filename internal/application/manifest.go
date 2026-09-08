@@ -10,6 +10,8 @@ import (
 
 const CurrentVersion = 1
 
+const defaultServiceInstance = "default"
+
 // Manifest is the declarative application backend request understood by BaseHarbor.
 type Manifest struct {
 	Version     int
@@ -20,10 +22,17 @@ type Manifest struct {
 }
 
 type Services struct {
-	Postgres bool
-	Redis    bool
-	Secrets  bool
+	Postgres          bool
+	Redis             bool
+	Secrets           bool
+	PostgresInstances map[string]ServiceInstance
+	RedisInstances    map[string]ServiceInstance
 }
+
+// ServiceInstance is the stable logical identity of one requested backend
+// service. The empty v1 shape is intentional: topology remains a BaseHarbor
+// implementation detail and future intent such as availability can evolve here.
+type ServiceInstance struct{}
 
 // SecretRequirements declares application-owned secret requirements. Values
 // never belong in the manifest, and the contract intentionally does not encode
@@ -44,6 +53,57 @@ func New(name, environment string, postgres, redis, secrets bool) Manifest {
 		postgres = true
 	}
 	return Manifest{Version: CurrentVersion, Name: name, Environment: environment, Services: Services{Postgres: postgres, Redis: redis, Secrets: secrets}}
+}
+
+func WithPostgresInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.PostgresInstances == nil {
+		m.Services.PostgresInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.PostgresInstances[name] = ServiceInstance{}
+	}
+	m.Services.Postgres = true
+	return m
+}
+
+func WithRedisInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.RedisInstances == nil {
+		m.Services.RedisInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.RedisInstances[name] = ServiceInstance{}
+	}
+	m.Services.Redis = true
+	return m
+}
+
+func PostgresInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.Postgres, m.Services.PostgresInstances)
+}
+
+func RedisInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.Redis, m.Services.RedisInstances)
+}
+
+func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {
+	if len(instances) == 0 {
+		if enabled {
+			return []string{defaultServiceInstance}
+		}
+		return nil
+	}
+	names := make([]string, 0, len(instances))
+	for name := range instances {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func WithRequiredSecrets(m Manifest, names ...string) Manifest {
@@ -74,8 +134,20 @@ func (m Manifest) Validate() error {
 	if err := validateSlug("environment", m.Environment); err != nil {
 		return err
 	}
-	if !m.Services.Postgres && !m.Services.Redis && !m.Services.Secrets {
+	postgres := PostgresInstanceNames(m)
+	redis := RedisInstanceNames(m)
+	if len(postgres) == 0 && len(redis) == 0 && !m.Services.Secrets {
 		return fmt.Errorf("at least one backend service must be enabled")
+	}
+	for _, name := range postgres {
+		if err := validateSlug("PostgreSQL instance name", name); err != nil {
+			return err
+		}
+	}
+	for _, name := range redis {
+		if err := validateSlug("Redis/Valkey instance name", name); err != nil {
+			return err
+		}
 	}
 	if len(m.Secrets.Required) > 0 && !m.Services.Secrets {
 		return fmt.Errorf("secrets.required needs services.secrets enabled")
@@ -133,7 +205,10 @@ func validateSecretKey(key string) error {
 
 func (m Manifest) YAML() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\nservices:\n  postgres:\n    enabled: %t\n  redis:\n    enabled: %t\n  secrets:\n    enabled: %t\n", m.Version, m.Name, m.Environment, m.Services.Postgres, m.Services.Redis, m.Services.Secrets)
+	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\nservices:\n", m.Version, m.Name, m.Environment)
+	writeServiceYAML(&b, "postgres", m.Services.Postgres, m.Services.PostgresInstances)
+	writeServiceYAML(&b, "redis", m.Services.Redis, m.Services.RedisInstances)
+	fmt.Fprintf(&b, "  secrets:\n    enabled: %t\n", m.Services.Secrets)
 	if len(m.Secrets.Required) > 0 {
 		requirements := append([]SecretRequirement(nil), m.Secrets.Required...)
 		sort.Slice(requirements, func(i, j int) bool { return requirements[i].Name < requirements[j].Name })
@@ -145,11 +220,24 @@ func (m Manifest) YAML() string {
 	return b.String()
 }
 
+func writeServiceYAML(b *strings.Builder, service string, enabled bool, instances map[string]ServiceInstance) {
+	fmt.Fprintf(b, "  %s:\n", service)
+	if len(instances) == 0 {
+		fmt.Fprintf(b, "    enabled: %t\n", enabled)
+		return
+	}
+	b.WriteString("    instances:\n")
+	for _, name := range serviceInstanceNames(true, instances) {
+		fmt.Fprintf(b, "      %s: {}\n", name)
+	}
+}
+
 // ParseYAML parses the intentionally small v1 manifest grammar without adding a runtime dependency.
 func ParseYAML(input string) (Manifest, error) {
 	var m Manifest
 	section := ""
 	service := ""
+	serviceField := ""
 	secretField := ""
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
@@ -164,6 +252,7 @@ func ParseYAML(input string) (Manifest, error) {
 		switch indent {
 		case 0:
 			service = ""
+			serviceField = ""
 			secretField = ""
 			switch {
 			case strings.HasPrefix(trim, "version:"):
@@ -183,6 +272,7 @@ func ParseYAML(input string) (Manifest, error) {
 				return Manifest{}, fmt.Errorf("line %d: unsupported top-level field %q", lineNo, trim)
 			}
 		case 2:
+			serviceField = ""
 			if section == "app" {
 				key, value, ok := strings.Cut(trim, ":")
 				if !ok {
@@ -212,9 +302,13 @@ func ParseYAML(input string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 4:
 			if section == "services" && service != "" {
+				if trim == "instances:" && service != "secrets" {
+					serviceField = "instances"
+					continue
+				}
 				key, value, ok := strings.Cut(trim, ":")
 				if !ok || key != "enabled" {
-					return Manifest{}, fmt.Errorf("line %d: expected enabled: true|false", lineNo)
+					return Manifest{}, fmt.Errorf("line %d: expected enabled: true|false or instances:", lineNo)
 				}
 				enabled, err := strconv.ParseBool(strings.TrimSpace(value))
 				if err != nil {
@@ -243,8 +337,33 @@ func ParseYAML(input string) (Manifest, error) {
 				continue
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
+		case 6:
+			if section != "services" || serviceField != "instances" || (service != "postgres" && service != "redis") {
+				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
+			}
+			name, value, ok := strings.Cut(trim, ":")
+			if !ok || (strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "{}") {
+				return Manifest{}, fmt.Errorf("line %d: service instance must use NAME: {}", lineNo)
+			}
+			name = strings.TrimSpace(name)
+			if err := validateSlug("service instance name", name); err != nil {
+				return Manifest{}, fmt.Errorf("line %d: %w", lineNo, err)
+			}
+			if service == "postgres" {
+				if m.Services.PostgresInstances == nil {
+					m.Services.PostgresInstances = map[string]ServiceInstance{}
+				}
+				m.Services.PostgresInstances[name] = ServiceInstance{}
+				m.Services.Postgres = true
+			} else {
+				if m.Services.RedisInstances == nil {
+					m.Services.RedisInstances = map[string]ServiceInstance{}
+				}
+				m.Services.RedisInstances[name] = ServiceInstance{}
+				m.Services.Redis = true
+			}
 		default:
-			return Manifest{}, fmt.Errorf("line %d: indentation must use 0, 2 or 4 spaces", lineNo)
+			return Manifest{}, fmt.Errorf("line %d: indentation must use 0, 2, 4 or 6 spaces", lineNo)
 		}
 	}
 	if err := s.Err(); err != nil {
