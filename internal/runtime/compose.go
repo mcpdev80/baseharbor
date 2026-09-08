@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -92,6 +93,15 @@ func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, env
 	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
 }
 
+// ExecProjectStream executes a command inside a Compose service while
+// connecting the supplied streams directly to the child process. This keeps
+// large backup/restore payloads out of memory and avoids placing payload data
+// in command arguments.
+func (c Compose) ExecProjectStream(ctx context.Context, project, composeFile, envFile string, stdin io.Reader, stdout io.Writer, service string, args ...string) error {
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.streamProject(ctx, project, composeFile, envFile, stdin, stdout, cmdArgs...)
+}
+
 func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
 	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--services", "--status", "running")
 	if err != nil {
@@ -138,7 +148,7 @@ func (c Compose) InspectProjectResource(ctx context.Context, project string, res
 
 	label, err := c.directOutput(ctx, inspectArgs...)
 	if err != nil {
-		return false, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
+		return true, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
 	}
 	if strings.TrimSpace(label) != project {
 		return true, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, resource.Name, project)
@@ -184,11 +194,23 @@ func (c Compose) outputProject(ctx context.Context, project, composeFile, envFil
 }
 
 func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
+	var stdout bytes.Buffer
+	var stdin io.Reader
+	if input != nil {
+		stdin = bytes.NewReader(input)
+	}
+	if err := c.streamProject(ctx, project, composeFile, envFile, stdin, &stdout, args...); err != nil {
+		return stdout.String(), err
+	}
+	return stdout.String(), nil
+}
+
+func (c Compose) streamProject(ctx context.Context, project, composeFile, envFile string, stdin io.Reader, stdout io.Writer, args ...string) error {
 	if c.command == "" {
-		return "", ErrRuntimeNotFound
+		return ErrRuntimeNotFound
 	}
 	if strings.TrimSpace(project) == "" {
-		return "", errors.New("compose project name is required")
+		return errors.New("compose project name is required")
 	}
 
 	fullArgs := append([]string{}, c.prefix...)
@@ -196,18 +218,16 @@ func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, e
 	fullArgs = append(fullArgs, args...)
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-	if input != nil {
-		cmd.Stdin = bytes.NewReader(input)
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
+		return fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
 	}
-	return stdout.String(), nil
+	return nil
 }
