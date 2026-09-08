@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ func repositoryWorkloadComposeFiles(resolved resolvedApplication, workload appli
 	return composeFiles, nil
 }
 
-func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication) (map[string]string, error) {
+func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
 	if len(resolved.Manifest.Secrets.Required) == 0 {
 		return environment, nil
@@ -56,12 +57,48 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 		if err != nil {
 			return nil, fmt.Errorf("resolve required workload secret %s: %w", requirement.Name, err)
 		}
+		if application.RequiredSecretUsesFileBinding(requirement.Name) {
+			path := application.SecretFileHostPath(files, requirement.Name)
+			if err := writeWorkloadSecretFile(path, value); err != nil {
+				return nil, fmt.Errorf("materialize required workload secret file %s: %w", requirement.Name, err)
+			}
+			environment[requirement.Name] = application.SecretFileContainerPath(requirement.Name)
+			continue
+		}
 		if strings.IndexByte(string(value), 0) >= 0 {
 			return nil, fmt.Errorf("required secret %q contains a NUL byte and cannot be projected to a process environment", requirement.Name)
 		}
 		environment[requirement.Name] = string(value)
 	}
 	return environment, nil
+}
+
+func writeWorkloadSecretFile(path string, value []byte) error {
+	if len(value) == 0 {
+		return fmt.Errorf("secret value is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(value)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func validWorkloadEnvironmentName(name string) bool {
@@ -105,7 +142,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if err != nil {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return false, err
 	}
@@ -158,7 +195,7 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err != nil {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return false, err
 	}
@@ -200,7 +237,7 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 	if err != nil {
 		return workload, nil, true, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return workload, nil, true, err
 	}
@@ -220,7 +257,7 @@ func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose
 	if err != nil {
 		return len(running), true, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
 		return len(running), true, err
 	}
