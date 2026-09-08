@@ -19,7 +19,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply [NAME]",
-		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth.",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. Declared secrets.required entries are readiness gates: missing or unreadable required secrets stop apply before the workload is considered ready.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
