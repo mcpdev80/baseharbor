@@ -12,7 +12,6 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-// Metadata describes a managed application secret without exposing its value.
 type Metadata struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required"`
@@ -20,8 +19,6 @@ type Metadata struct {
 	Usable   bool   `json:"usable"`
 }
 
-// Service owns application-secret orchestration. Transports such as baha and
-// HTTP must use this boundary instead of calling OpenBao directly.
 type Service struct {
 	store application.Store
 }
@@ -73,14 +70,22 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	for _, key := range ordered {
 		_, isRequired := required[key]
 		status := statusByName[key]
-		result = append(result, Metadata{
-			Name:     key,
-			Required: isRequired,
-			Present:  status.Present,
-			Usable:   status.Usable,
-		})
+		result = append(result, Metadata{Name: key, Required: isRequired, Present: status.Present, Usable: status.Usable})
 	}
 	return result, nil
+}
+
+func (s *Service) Get(ctx context.Context, name, key string) ([]byte, error) {
+	if strings.HasPrefix(key, dynamicKeyPrefix) {
+		return nil, errors.New("dynamic application secrets must be resolved through a secret reference")
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	return openbao.GetApplicationSecret(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
 }
 
 func (s *Service) Set(ctx context.Context, name, key string, value []byte) error {
@@ -149,11 +154,5 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if err != nil {
 		return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
 	}
-	return resolvedApplication{
-		manifest:        m,
-		compose:         compose,
-		platformFiles:   platformFiles,
-		identity:        openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment},
-		credentialsPath: openbao.ApplicationCredentialsPath(files.Dir),
-	}, nil
+	return resolvedApplication{manifest: m, compose: compose, platformFiles: platformFiles, identity: openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}, credentialsPath: openbao.ApplicationCredentialsPath(files.Dir)}, nil
 }
