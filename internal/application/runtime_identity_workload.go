@@ -11,8 +11,14 @@ import (
 	"strings"
 )
 
-const RuntimeIdentityContainerTokenPath = "/run/baseharbor/runtime/token"
-const SecretFileBindingContainerDir = "/run/baseharbor/bindings/secrets"
+const (
+	DefaultRuntimeAPIURL                    = "https://baseharbor-secrets:8443"
+	RuntimeIdentityContainerTokenPath      = "/run/secrets/baseharbor-runtime-token"
+	RuntimeIdentityContainerCAPath         = "/run/secrets/baseharbor-runtime-ca"
+	RuntimeIdentityContainerClientCertPath = "/run/secrets/baseharbor-runtime-client-cert"
+	RuntimeIdentityContainerClientKeyPath  = "/run/secrets/baseharbor-runtime-client-key"
+	SecretFileBindingContainerDir          = "/run/baseharbor/bindings/secrets"
+)
 
 var ErrRuntimeAPIURL = errors.New("application runtime API URL is invalid")
 
@@ -58,10 +64,14 @@ func SecretFileContainerPath(name string) string {
 	return SecretFileBindingContainerDir + "/" + name
 }
 
+func RuntimeMTLSHostDir(files RuntimeFiles) string {
+	return filepath.Join(files.Bindings, "runtime-identity")
+}
+
 func ConfiguredRuntimeAPIURL() (string, bool, error) {
 	raw := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL"))
 	if raw == "" {
-		return "", false, nil
+		return DefaultRuntimeAPIURL, true, nil
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -71,15 +81,15 @@ func ConfiguredRuntimeAPIURL() (string, bool, error) {
 }
 
 // MaterializeRuntimeIdentityWorkloadOverride adds only the protected bindings
-// that selected application services actually consume. Sharing a Compose
-// project does not grant access to another service's secret files or runtime
-// identity token.
+// that selected application services actually consume. Runtime identity is
+// injected through ordinary environment file paths plus Compose secret mounts;
+// applications do not configure certificates, keys or broker topology.
 func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFiles, files RuntimeFiles, plan WorkloadBindingPlan) (string, bool, error) {
 	if !m.Services.Secrets || len(workload.Services) == 0 || plan.Empty() {
 		return "", false, nil
 	}
 	path := filepath.Join(files.Dir, "workload.runtime-identity.override.yaml")
-	apiURL, apiConfigured, err := ConfiguredRuntimeAPIURL()
+	apiURL, _, err := ConfiguredRuntimeAPIURL()
 	if err != nil {
 		return "", false, err
 	}
@@ -88,19 +98,25 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 	for _, service := range plan.RuntimeIdentityServices {
 		runtimeServices[service] = struct{}{}
 	}
-	if len(runtimeServices) > 0 && !apiConfigured {
-		return "", false, fmt.Errorf("%w: a workload consumes BASEHARBOR_RUNTIME_TOKEN_FILE but BASEHARBOR_RUNTIME_API_URL is not configured", ErrRuntimeAPIURL)
-	}
 
-	absoluteToken := ""
+	var runtimeSecretFiles map[string]string
 	if len(runtimeServices) > 0 {
 		tokenPath, err := EnsureRuntimeIdentity(m, files)
 		if err != nil {
 			return "", false, err
 		}
-		absoluteToken, err = filepath.Abs(tokenPath)
-		if err != nil {
-			return "", false, fmt.Errorf("resolve application runtime identity token: %w", err)
+		identityDir := RuntimeMTLSHostDir(files)
+		runtimeSecretFiles = map[string]string{
+			"baseharbor-runtime-token":       tokenPath,
+			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
+			"baseharbor-runtime-client-cert": filepath.Join(identityDir, "client-cert.pem"),
+			"baseharbor-runtime-client-key":  filepath.Join(identityDir, "client-key.pem"),
+		}
+		for name, hostPath := range runtimeSecretFiles {
+			info, err := os.Stat(hostPath)
+			if err != nil || !info.Mode().IsRegular() {
+				return "", false, fmt.Errorf("runtime identity binding %s is not materialized; run 'baha app apply' to reconcile the broker identity", name)
+			}
 		}
 	}
 
@@ -127,20 +143,19 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			b.WriteString("    environment:\n")
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_API_URL: %s\n", strconv.Quote(apiURL))
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_TOKEN_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerTokenPath))
+			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CA_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerCAPath))
+			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_CERT_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientCertPath))
+			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_KEY_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientKeyPath))
+			b.WriteString("    secrets:\n")
+			for _, name := range []string{"baseharbor-runtime-token", "baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"} {
+				fmt.Fprintf(&b, "      - %s\n", name)
+			}
 		}
 		var mounts []string
-		if _, ok := runtimeServices[service]; ok {
-			mounts = append(mounts, absoluteToken+":"+RuntimeIdentityContainerTokenPath+":ro")
-		}
 		secretNames := append([]string(nil), plan.FileSecretsByService[service]...)
 		sort.Strings(secretNames)
 		for _, name := range secretNames {
 			hostSecretPath := SecretFileHostPath(files, name)
-			// The containing BaseHarbor state directory stays owner-only (0700),
-			// preventing other host users from traversing to the projection. The
-			// projection itself stays owner-writable and world-readable (0644) so
-			// BaseHarbor can refresh it and an arbitrary non-root container user can
-			// read it after the explicit read-only bind mount.
 			if err := os.Chmod(filepath.Dir(hostSecretPath), 0o700); err != nil {
 				return "", false, fmt.Errorf("secure application secret binding directory: %w", err)
 			}
@@ -158,6 +173,17 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			for _, mount := range mounts {
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mount))
 			}
+		}
+	}
+	if len(runtimeServices) > 0 {
+		b.WriteString("\nsecrets:\n")
+		ordered := []string{"baseharbor-runtime-token", "baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"}
+		for _, name := range ordered {
+			absolute, err := filepath.Abs(runtimeSecretFiles[name])
+			if err != nil {
+				return "", false, fmt.Errorf("resolve runtime identity binding %s: %w", name, err)
+			}
+			fmt.Fprintf(&b, "  %s:\n    file: %s\n", name, strconv.Quote(absolute))
 		}
 	}
 	if err := writeOwnerOnlyFile(path, []byte(b.String())); err != nil {
