@@ -33,14 +33,14 @@ func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
 	m = WithRedisInstances(m, "cache", "sessions")
 	resources := ExpectedRuntimeResources(m)
 	want := map[string]bool{
-		"baseharbor-mailflow-prod-postgres-primary-1":     false,
-		"baseharbor-mailflow-prod_postgres-primary-data": false,
-		"baseharbor-mailflow-prod-postgres-analytics-1":   false,
+		"baseharbor-mailflow-prod-postgres-primary-1":      false,
+		"baseharbor-mailflow-prod_postgres-primary-data":   false,
+		"baseharbor-mailflow-prod-postgres-analytics-1":    false,
 		"baseharbor-mailflow-prod_postgres-analytics-data": false,
-		"baseharbor-mailflow-prod-valkey-cache-1":         false,
-		"baseharbor-mailflow-prod_valkey-cache-data":      false,
-		"baseharbor-mailflow-prod-valkey-sessions-1":      false,
-		"baseharbor-mailflow-prod_valkey-sessions-data":   false,
+		"baseharbor-mailflow-prod-valkey-cache-1":          false,
+		"baseharbor-mailflow-prod_valkey-cache-data":       false,
+		"baseharbor-mailflow-prod-valkey-sessions-1":       false,
+		"baseharbor-mailflow-prod_valkey-sessions-data":    false,
 	}
 	for _, resource := range resources {
 		if _, ok := want[resource.Name]; ok {
