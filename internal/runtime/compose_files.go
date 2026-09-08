@@ -40,8 +40,11 @@ func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, 
 	return err
 }
 
-func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
-	args := []string{"stop"}
+func (c Compose) RemoveProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+	if len(services) == 0 {
+		return nil
+	}
+	args := []string{"rm", "-f", "-s"}
 	args = append(args, services...)
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
 	return err
