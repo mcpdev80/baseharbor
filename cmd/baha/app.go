@@ -126,7 +126,9 @@ func appCommand(store application.Store) *cli.Command {
 				checks := []preflight.Check{
 					{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 					{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-					{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+					{Name: "manifest permissions", Run: func(context.Context) error {
+						return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+					}},
 					{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 						var err error
 						compose, err = bhruntime.DetectCompose(ctx)
@@ -154,7 +156,7 @@ func appCommand(store application.Store) *cli.Command {
 					)
 					if len(application.RequiredSecretNames(m)) > 0 {
 						checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
-							files, err := application.ExistingRuntimeFiles(store, m)
+							files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 							if errors.Is(err, application.ErrRuntimeNotApplied) {
 								return nil
 							}
