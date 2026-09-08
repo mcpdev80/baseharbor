@@ -139,6 +139,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	operatorSecretService := applicationsecret.New(store)
 	var runtimeSecrets applicationruntimeapi.SecretService = operatorSecretService
 	var runtimeVerifier applicationruntimeapi.RuntimeVerifier = applicationruntimeauth.New(store)
+	var boundRuntimeClient *openbao.ApplicationRuntimeClient
 	if cfg.boundRuntimeEnabled() {
 		client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
 		if err != nil {
@@ -152,6 +153,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		if err != nil {
 			return err
 		}
+		boundRuntimeClient = client
 		runtimeSecrets = bound
 		runtimeVerifier = verifier
 	} else if strings.TrimSpace(cfg.RuntimeOpenBaoURL) != "" {
@@ -173,13 +175,17 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
 		if pool != nil {
-			checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-			defer cancel()
 			if err := database.Ping(checkCtx, pool); err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
+				writeNotReady(w)
+				return
+			}
+		}
+		if boundRuntimeClient != nil {
+			if err := boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
+				writeNotReady(w)
 				return
 			}
 		}
@@ -290,4 +296,10 @@ func loadClientCAPool(path string) (*x509.CertPool, error) {
 		return nil, errors.New("runtime client CA certificate is invalid")
 	}
 	return pool, nil
+}
+
+func writeNotReady(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
 }
