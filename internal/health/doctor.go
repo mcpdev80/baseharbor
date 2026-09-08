@@ -117,10 +117,10 @@ func checkOpenBao(port int) Check {
 		return Check{Name: "openbao", OK: false, Message: "health response is invalid"}
 	}
 	if !state.Initialized {
-		return Check{Name: "openbao", OK: false, Message: "reachable but not initialized"}
+		return Check{Name: "openbao", OK: false, Message: "reachable but not initialized; run 'baha openbao bootstrap --recovery-file PATH'"}
 	}
 	if state.Sealed {
-		return Check{Name: "openbao", OK: false, Message: "initialized but sealed"}
+		return Check{Name: "openbao", OK: false, Message: "initialized but sealed; run 'baha openbao unseal --recovery-file PATH'"}
 	}
 	return Check{Name: "openbao", OK: true, Message: "initialized and unsealed"}
 }

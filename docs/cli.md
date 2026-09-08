@@ -9,10 +9,11 @@
 - Every command has useful `--help` output.
 - Read-only inspection is distinct from mutation.
 - Usage errors and operational failures have different exit codes.
-- Secrets are not printed unless a future command explicitly requires and documents reveal behavior.
+- Secrets are not printed unless a command explicitly requires and documents reveal behavior.
 - Commands report actual protocol readiness, not just process/container state.
 - Preflight comes before mutation; verification comes after mutation.
 - Destructive commands verify exact resource ownership and fail closed on ambiguity.
+- Security bootstrap material is supplied through explicit operator workflows, not hidden defaults.
 
 ## Current command tree
 
@@ -35,6 +36,10 @@ baha
 │   ├── down
 │   ├── up
 │   └── destroy
+├── openbao
+│   ├── status
+│   ├── bootstrap
+│   └── unseal
 └── version
 ```
 
@@ -86,7 +91,7 @@ Manifests contain desired configuration, never plaintext service credentials.
 - no host port by default
 - readiness: authenticated `PING` must return `PONG`
 
-Managed secrets are still unsupported by app convergence and fail closed when requested.
+Managed application secrets are still unsupported by app convergence and fail closed when requested. The platform OpenBao bootstrap exists first so application-secret convergence can build on an initialized, policy-managed trust plane.
 
 ## Plan, preflight, apply and verify
 
@@ -159,6 +164,66 @@ baha app destroy demo --yes
 Before deletion BaseHarbor verifies the manifest, local file permissions, generated runtime definition, Compose configuration, exact expected resource names, and `com.docker.compose.project` ownership labels. Ambiguous ownership fails closed.
 
 With `--yes`, owned service containers, network and all managed persistent volumes are removed. BaseHarbor verifies runtime-resource absence before deleting local application state, then verifies state deletion as well.
+
+## OpenBao trust-plane lifecycle
+
+The bundled OpenBao service is intentionally not initialized with a static development token. Start the control-plane runtime first:
+
+```bash
+baha up
+```
+
+A fresh OpenBao instance reports not initialized:
+
+```bash
+baha openbao status
+```
+
+Bootstrap requires an explicit recovery destination:
+
+```bash
+baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
+```
+
+Bootstrap:
+
+- refuses an already initialized OpenBao instance
+- refuses a recovery path inside `.baseharbor`
+- refuses to overwrite an existing recovery file
+- creates the recovery file owner-only
+- initializes the current single-node profile with one Shamir key share / threshold one
+- does not print the unseal key
+- does not intentionally persist or print the initial root token
+- enables `baseharbor/` as KV v2
+- enables AppRole authentication
+- creates a restricted BaseHarbor manager policy and AppRole
+- stores only RoleID/SecretID in owner-only control-plane state
+- verifies manager authentication and KV access
+- revokes the initial root token
+
+Inspect the resulting trust plane with:
+
+```bash
+baha openbao status
+```
+
+After a restart, the manual Shamir profile is sealed. Unseal it explicitly:
+
+```bash
+baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+```
+
+The unseal key is passed through stdin to the local container-runtime boundary and is not placed in the host command argument list.
+
+Current manager bootstrap credentials are stored at:
+
+```text
+.baseharbor/runtime/openbao-admin.env
+```
+
+This owner-only file is BaseHarbor bootstrap state, not application configuration. It must never be exposed through normal CLI output or committed.
+
+See [secrets-and-openbao.md](secrets-and-openbao.md) for the trust and recovery model.
 
 ## Planned command evolution
 
