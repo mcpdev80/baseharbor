@@ -104,6 +104,22 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 	return workload, running, true, err
 }
 
+func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (int, bool, error) {
+	workload, running, found, err := inspectRepositoryWorkload(ctx, compose, resolved, files)
+	if err != nil || !found {
+		return len(running), found, err
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+	active, err := compose.ServicesProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...)
+	if err != nil {
+		return len(running), true, err
+	}
+	if !workloadRunningEnough(active, running, resolved.Manifest.Workload.Services) {
+		return len(running), true, fmt.Errorf("application workload is not ready; active=%v running=%v", active, running)
+	}
+	return len(running), true, nil
+}
+
 func workloadRunningEnough(active, running, requested []string) bool {
 	runningSet := make(map[string]struct{}, len(running))
 	for _, service := range running {
