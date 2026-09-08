@@ -29,7 +29,7 @@ func (v *Verifier) Verify(_ context.Context, app, token string) error {
 		return ErrUnauthorized
 	}
 	files, err := application.ExistingRuntimeFiles(v.store, m)
-	if err != nil {
+	if err != nil || application.RuntimeIdentityRevoked(files) {
 		return ErrUnauthorized
 	}
 	path := application.RuntimeIdentityTokenPath(files)
