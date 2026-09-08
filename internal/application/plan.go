@@ -27,7 +27,10 @@ func BuildPlan(m Manifest) (Plan, error) {
 		)
 	}
 	if m.Services.Redis {
-		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "redis", Description: "ensure dedicated Redis/Valkey service"})
+		p.Actions = append(p.Actions,
+			Action{Kind: "ensure", Resource: "valkey-volume", Description: "ensure dedicated Valkey data volume"},
+			Action{Kind: "ensure", Resource: "valkey", Description: "ensure dedicated authenticated Valkey service"},
+		)
 	}
 	if m.Services.Secrets {
 		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "secrets-scope", Description: "ensure isolated application secret scope"})

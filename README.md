@@ -6,11 +6,13 @@ BaseHarbor provides reusable backend infrastructure for independent applications
 
 ## Status
 
-Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
+Early development. Identity, authorization, tenancy, secrets foundations, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
 
-The first per-application convergence slice is PostgreSQL: `baha app apply NAME` creates an isolated Compose project with a dedicated PostgreSQL volume and network, does not publish a host port by default, preserves generated credentials across repeated apply operations, and reports ready only after an authenticated `SELECT 1` succeeds.
+Per-application runtime convergence now supports dedicated PostgreSQL and Valkey services. `baha app apply NAME` creates an isolated Compose project with private networking, dedicated persistent volumes, generated credentials, no published database/cache ports by default, and protocol-level verification before reporting readiness.
 
-The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, resumed from its existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
+PostgreSQL readiness requires an authenticated `SELECT 1`. Valkey readiness requires an authenticated `PING` returning `PONG`. Valkey uses the official `valkey/valkey:9.1.2-alpine` image with AOF persistence enabled.
+
+The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, resumed from existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
 ## CLI
 
@@ -25,6 +27,7 @@ Discover commands at every level:
 ```bash
 ./baha --help
 ./baha app --help
+./baha app create --help
 ./baha app apply --help
 ./baha app status --help
 ./baha app doctor --help
@@ -33,41 +36,33 @@ Discover commands at every level:
 ./baha app destroy --help
 ```
 
-Control-plane commands:
+Create a PostgreSQL + Valkey application runtime:
 
 ```bash
-./baha version
-./baha init
-./baha doctor
-./baha up
-./baha status
-./baha down
-```
-
-Application commands:
-
-```bash
-./baha app create demo
-./baha app list
-./baha app show demo
+./baha app create demo --postgres --redis
 ./baha app plan demo
 ./baha app preflight demo
 ./baha app apply demo
 ./baha app status demo
 ./baha app doctor demo
+```
+
+The manifest retains the `redis` service name for compatibility with Redis-protocol consumers, while the managed implementation is Valkey.
+
+Lifecycle operations:
+
+```bash
 ./baha app down demo
 ./baha app up demo
 ./baha app destroy demo
 ./baha app destroy demo --yes
 ```
 
-`baha app down` removes the managed container and transient network but preserves the PostgreSQL volume, runtime state and credentials.
+`baha app down` removes managed containers and the transient network while preserving all managed data volumes, runtime state and credentials.
 
-`baha app up` resumes only an already-materialized runtime. It validates ownership and the managed runtime definition, requires the existing PostgreSQL volume instead of silently recreating missing persistent state, and reports success only after an authenticated PostgreSQL query succeeds.
+`baha app up` resumes only an already-materialized runtime. It validates ownership and the managed runtime definition, requires every expected persistent volume instead of silently recreating missing state, and reports success only after every enabled service passes protocol verification.
 
-`baha app destroy` is destructive by design. Without `--yes` it performs the safety preflight and prints the exact managed resources that would be removed, but makes no changes. With `--yes`, BaseHarbor first verifies the generated runtime definition and exact Compose ownership labels. Ambiguous or mismatched ownership fails closed before deletion. Persistent volumes and local application state are then removed and absence is verified.
-
-`baha doctor`, `baha status`, `baha app status`, and `baha app doctor` verify actual service readiness rather than only process/container state.
+`baha app destroy` is destructive by design. Without `--yes` it performs the safety preflight and prints the exact managed resources that would be removed, but makes no changes. With `--yes`, BaseHarbor verifies the generated runtime definition and exact Compose ownership labels before deleting persistent volumes and local application state.
 
 Application convergence follows the stable contract:
 
@@ -77,9 +72,9 @@ plan -> preflight -> apply -> verify
 
 Lifecycle resume and destructive operations add explicit ownership/state verification before mutation and post-verification after mutation.
 
-The current application runtime milestone intentionally supports PostgreSQL-only desired state. Manifests that also enable Redis/Valkey or managed secrets fail closed until those convergence modules are implemented.
+Managed secrets remain fail-closed until the OpenBao application-secret convergence module is implemented.
 
-See [docs/cli.md](docs/cli.md) and [docs/runtime-compose.md](docs/runtime-compose.md).
+See [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Design goals
 
@@ -93,8 +88,6 @@ See [docs/cli.md](docs/cli.md) and [docs/runtime-compose.md](docs/runtime-compos
 - observable health, backup/restore, certificates and lifecycle operations
 - AI, MCP and RAG as optional first-class platform capabilities
 
-See [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
-
 ## Planned platform capabilities
 
 ```text
@@ -104,7 +97,7 @@ BaseHarbor
 ├── isolated application service stacks
 ├── auth / authorization
 ├── PostgreSQL
-├── Redis / Valkey
+├── Valkey (Redis protocol)
 ├── secrets / OpenBao
 ├── certificates / PKI
 ├── object storage

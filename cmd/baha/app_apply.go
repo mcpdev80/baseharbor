@@ -19,7 +19,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply NAME",
-		Long:    "Runs plan, preflight, apply and verification for the requested application. The current milestone supports PostgreSQL-only application runtimes and fails closed when an enabled service is not yet converged.",
+		Long:    "Runs plan, preflight, apply and verification for the requested application. PostgreSQL and Valkey are supported; managed secrets still fail closed until their convergence module is implemented.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 1 {
 				return usageError("baha app apply requires exactly one NAME", "Example: baha app apply demo")
@@ -39,12 +39,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "supported services", Run: func(context.Context) error {
-					if !m.Services.Postgres || m.Services.Redis || m.Services.Secrets {
-						return application.ErrUnsupportedService
-					}
-					return nil
-				}},
+				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "application state permissions", Run: func(context.Context) error {
 					info, err := os.Stat(manifestPath)
 					if err != nil {
@@ -67,7 +62,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return errors.New("application preflight failed")
 			}
 
-			files, err := application.EnsurePostgresRuntime(store, m)
+			files, err := application.EnsureRuntime(store, m)
 			if err != nil {
 				return err
 			}
@@ -83,9 +78,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			defer verifyCancel()
 			var verifyErr error
 			for verifyCtx.Err() == nil {
-				verifyErr = application.VerifyPostgresRuntime(verifyCtx, compose, m, files)
+				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
 				if verifyErr == nil {
-					fmt.Fprintln(out, "[OK] postgres          authenticated SELECT 1 succeeded")
+					printRuntimeReady(out, m)
 					fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
 					return nil
 				}
@@ -96,5 +91,28 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			return fmt.Errorf("application verification failed: %w", verifyErr)
 		},
+	}
+}
+
+func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	if m.Services.Postgres {
+		if err := application.VerifyPostgresRuntime(ctx, compose, m, files); err != nil {
+			return err
+		}
+	}
+	if m.Services.Redis {
+		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printRuntimeReady(out io.Writer, m application.Manifest) {
+	if m.Services.Postgres {
+		fmt.Fprintln(out, "[OK] postgres          authenticated SELECT 1 succeeded")
+	}
+	if m.Services.Redis {
+		fmt.Fprintln(out, "[OK] valkey            authenticated PING returned PONG")
 	}
 }
