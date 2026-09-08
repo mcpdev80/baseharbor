@@ -57,6 +57,7 @@ jobs:
           /tmp/baha app --help >/tmp/baha-app-help.txt
           grep -q "apply" /tmp/baha-app-help.txt
           grep -q "down" /tmp/baha-app-help.txt
+          grep -q "up" /tmp/baha-app-help.txt
           grep -q "destroy" /tmp/baha-app-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--environment" /tmp/baha-app-create-help.txt
@@ -65,6 +66,7 @@ jobs:
           /tmp/baha app status --help | grep -q "authenticated"
           /tmp/baha app doctor --help | grep -q "without mutating"
           /tmp/baha app down --help | grep -q "preserving persistent data"
+          /tmp/baha app up --help | grep -q "existing runtime definition"
           /tmp/baha app destroy --help | grep -q -- "--yes"
           /tmp/baha version | grep -q '^baha '
           set +e
@@ -86,12 +88,18 @@ jobs:
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
 
+          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
+          env_hash_before=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
+
           /tmp/baha app down ci-demo | grep -q "Persistent data is preserved"
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
 
-          /tmp/baha app apply ci-demo | grep -q "Application ci-demo is ready"
+          /tmp/baha app up ci-demo | grep -q "running and ready"
+          env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
+          test "$env_hash_before" = "$env_hash_after"
           /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
+          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
 
           /tmp/baha app destroy ci-demo | grep -q "No changes were made"
           test -d .baseharbor/apps/ci-demo

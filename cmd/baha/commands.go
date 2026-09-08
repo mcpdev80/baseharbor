@@ -19,6 +19,7 @@ func rootCommand() *cli.Command {
 		appStatusCommand(store),
 		appDoctorCommand(store),
 		appDownCommand(store),
+		appUpCommand(store),
 		appDestroyCommand(store),
 	)
 
