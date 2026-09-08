@@ -39,8 +39,14 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err != nil {
 		return Files{}, err
 	}
-	composePath := filepath.Join(appFiles.Dir, "broker.compose.yaml")
-	content := composeYAML(m, appFiles, mtls, tokenPath, image)
+	composePath, err := filepath.Abs(filepath.Join(appFiles.Dir, "broker.compose.yaml"))
+	if err != nil {
+		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
+	}
+	content, err := composeYAML(m, appFiles, mtls, tokenPath, image)
+	if err != nil {
+		return Files{}, err
+	}
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime broker compose file: %w", err)
 	}
@@ -51,7 +57,10 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 }
 
 func Existing(appFiles application.RuntimeFiles) (Files, error) {
-	composePath := filepath.Join(appFiles.Dir, "broker.compose.yaml")
+	composePath, err := filepath.Abs(filepath.Join(appFiles.Dir, "broker.compose.yaml"))
+	if err != nil {
+		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
+	}
 	imagePath := filepath.Join(appFiles.Dir, "broker-image")
 	for _, path := range []string{composePath, imagePath} {
 		if _, err := os.Stat(path); err != nil {
@@ -89,9 +98,40 @@ func ensureImage(dir string) (string, error) {
 	return image, nil
 }
 
-func composeYAML(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, image string) string {
+func composeYAML(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, image string) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	credPath := openbao.ApplicationCredentialsPath(appFiles.Dir)
+	paths := map[string]string{
+		"runtime token":          tokenPath,
+		"OpenBao credentials":    credPath,
+		"runtime CA":             mtls.CA,
+		"broker certificate":     mtls.BrokerCert,
+		"broker private key":     mtls.BrokerKey,
+		"probe client certificate": mtls.ClientCert,
+		"probe client private key":  mtls.ClientKey,
+	}
+	for label, path := range paths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s path: %w", label, err)
+		}
+		info, err := os.Stat(absolute)
+		if err != nil {
+			return "", fmt.Errorf("inspect %s path: %w", label, err)
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("%s path is not a regular file", label)
+		}
+		paths[label] = absolute
+	}
+	tokenPath = paths["runtime token"]
+	credPath = paths["OpenBao credentials"]
+	mtls.CA = paths["runtime CA"]
+	mtls.BrokerCert = paths["broker certificate"]
+	mtls.BrokerKey = paths["broker private key"]
+	mtls.ClientCert = paths["probe client certificate"]
+	mtls.ClientKey = paths["probe client private key"]
+
 	var b strings.Builder
 	b.WriteString("services:\n")
 	b.WriteString("  broker:\n")
@@ -153,5 +193,5 @@ func composeYAML(m application.Manifest, appFiles application.RuntimeFiles, mtls
 	b.WriteString("  secrets:\n")
 	b.WriteString("    external: true\n")
 	b.WriteString("    name: baseharbor-secrets\n")
-	return b.String()
+	return b.String(), nil
 }
