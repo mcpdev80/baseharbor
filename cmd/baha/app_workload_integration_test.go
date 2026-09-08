@@ -95,14 +95,14 @@ networks:
 	}
 	composeFiles := []string{workload.Compose, workload.Override}
 
-	pg, err := compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql "$DATABASE_URL" -tAc 'SELECT 1'`)
+	pg, err := compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
 	if err != nil {
 		t.Fatalf("postgres from workload container: %v", err)
 	}
 	if strings.TrimSpace(pg) != "1" {
 		t.Fatalf("unexpected postgres probe result %q", pg)
 	}
-	pong, err := compose.ExecProjectFiles(ctx, workload.Project, root, "valkey-probe", composeFiles, "sh", "-ec", `valkey-cli -u "$REDIS_URL" ping`)
+	pong, err := compose.ExecProjectFiles(ctx, workload.Project, root, "valkey-probe", composeFiles, "sh", "-ec", `valkey-cli -u ${REDIS_URL} ping`)
 	if err != nil {
 		t.Fatalf("valkey from workload container: %v", err)
 	}
@@ -136,7 +136,7 @@ networks:
 	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
 		t.Fatalf("up workload application: %v\n%s", err, out.String())
 	}
-	pg, err = compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql "$DATABASE_URL" -tAc 'SELECT 1'`)
+	pg, err = compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
 	if err != nil || strings.TrimSpace(pg) != "1" {
 		t.Fatalf("postgres probe after up: result=%q err=%v", pg, err)
 	}
