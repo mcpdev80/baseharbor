@@ -31,7 +31,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 			if err := application.CheckSupportedRuntimeServices(m); err != nil {
 				return err
 			}
-			files, err := application.ExistingRuntimeFiles(store, m)
+			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
 			}
@@ -136,7 +136,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			files, runtimeErr := application.ExistingRuntimeFiles(store, m)
+			files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 			var compose bhruntime.Compose
 			var running []string
 			var platformFiles bhruntime.Files
@@ -146,7 +146,9 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error { return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository) }},
+				{Name: "manifest permissions", Run: func(context.Context) error {
+					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+				}},
 				{Name: "runtime state", Run: func(context.Context) error { return runtimeErr }},
 				{Name: "runtime permissions", Run: func(context.Context) error {
 					if runtimeErr != nil {
