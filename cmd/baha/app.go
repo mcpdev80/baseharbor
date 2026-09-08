@@ -29,14 +29,27 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "create",
 			Summary: "Create an application manifest",
-			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--redis] [--secrets] [--require-secret NAME]...",
-			Long:    "Creates declarative application state only; it does not start containers. If no service flag is supplied, PostgreSQL is enabled by default. Required secret declarations automatically enable managed secrets.\n\nOptions:\n  --environment ENV      Application environment (default: dev)\n  --postgres             Enable PostgreSQL\n  --redis                Enable Redis/Valkey\n  --secrets              Enable managed application secrets\n  --require-secret NAME  Declare a required secret; repeat for multiple names",
+			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
+			Long:    "Creates declarative application state only; it does not start containers. If no service flag is supplied, one default PostgreSQL instance is enabled. Use repeatable --postgres-instance and --redis-instance flags only when an application needs multiple stable named instances. Required secret declarations automatically enable managed secrets.\n\nOptions:\n  --environment ENV          Application environment (default: dev)\n  --postgres                 Enable the default PostgreSQL instance\n  --postgres-instance NAME   Add a named PostgreSQL instance; repeat as needed\n  --redis                    Enable the default Redis/Valkey instance\n  --redis-instance NAME      Add a named Redis/Valkey instance; repeat as needed\n  --secrets                  Enable managed application secrets\n  --require-secret NAME      Declare a required secret; repeat for multiple names",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				name, environment, postgres, redis, secrets, required, err := parseCreateArgs(args)
+				name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs(args)
 				if err != nil {
 					return err
 				}
-				m := application.WithRequiredSecrets(application.New(name, environment, postgres, redis, secrets), required...)
+				m := application.New(name, environment, postgres || len(postgresInstances) > 0, redis || len(redisInstances) > 0, secrets)
+				if len(postgresInstances) > 0 {
+					if postgres {
+						postgresInstances = append(postgresInstances, "default")
+					}
+					m = application.WithPostgresInstances(m, postgresInstances...)
+				}
+				if len(redisInstances) > 0 {
+					if redis {
+						redisInstances = append(redisInstances, "default")
+					}
+					m = application.WithRedisInstances(m, redisInstances...)
+				}
+				m = application.WithRequiredSecrets(m, required...)
 				if err := m.Validate(); err != nil {
 					return err
 				}
@@ -213,20 +226,36 @@ func appCommand(store application.Store) *cli.Command {
 	return app
 }
 
-func parseCreateArgs(args []string) (name, environment string, postgres, redis, secrets bool, required []string, err error) {
+func parseCreateArgs(args []string) (name, environment string, postgres, redis, secrets bool, postgresInstances, redisInstances, required []string, err error) {
 	environment = "dev"
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--postgres":
 			postgres = true
+		case arg == "--postgres-instance":
+			if i+1 >= len(args) {
+				return "", "", false, false, false, nil, nil, nil, usageError("--postgres-instance requires a name", "Example: --postgres-instance analytics")
+			}
+			i++
+			postgresInstances = append(postgresInstances, args[i])
+		case strings.HasPrefix(arg, "--postgres-instance="):
+			postgresInstances = append(postgresInstances, strings.TrimPrefix(arg, "--postgres-instance="))
 		case arg == "--redis":
 			redis = true
+		case arg == "--redis-instance":
+			if i+1 >= len(args) {
+				return "", "", false, false, false, nil, nil, nil, usageError("--redis-instance requires a name", "Example: --redis-instance sessions")
+			}
+			i++
+			redisInstances = append(redisInstances, args[i])
+		case strings.HasPrefix(arg, "--redis-instance="):
+			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--redis-instance="))
 		case arg == "--secrets":
 			secrets = true
 		case arg == "--require-secret":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, usageError("--require-secret requires a name", "Example: --require-secret OPENAI_API_KEY")
+				return "", "", false, false, false, nil, nil, nil, usageError("--require-secret requires a name", "Example: --require-secret OPENAI_API_KEY")
 			}
 			i++
 			required = append(required, args[i])
@@ -236,34 +265,42 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			secrets = true
 		case arg == "--environment":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, usageError("--environment requires a value", "Example: --environment prod")
+				return "", "", false, false, false, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
 			}
 			i++
 			environment = args[i]
 		case strings.HasPrefix(arg, "--environment="):
 			environment = strings.TrimPrefix(arg, "--environment=")
 		case strings.HasPrefix(arg, "-"):
-			return "", "", false, false, false, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
+			return "", "", false, false, false, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
 		default:
 			if name != "" {
-				return "", "", false, false, false, nil, usageError("baha app create accepts exactly one NAME", "Example: baha app create demo --postgres")
+				return "", "", false, false, false, nil, nil, nil, usageError("baha app create accepts exactly one NAME", "Example: baha app create demo --postgres")
 			}
 			name = arg
 		}
 	}
 	if name == "" {
-		return "", "", false, false, false, nil, usageError("baha app create requires NAME", "Example: baha app create demo --postgres")
+		return "", "", false, false, false, nil, nil, nil, usageError("baha app create requires NAME", "Example: baha app create demo --postgres")
 	}
-	return name, environment, postgres, redis, secrets, required, nil
+	return name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, nil
 }
 
 func serviceNames(m application.Manifest) string {
 	var names []string
-	if m.Services.Postgres {
-		names = append(names, "postgres")
+	if count := len(application.PostgresInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "postgres")
+		} else {
+			names = append(names, fmt.Sprintf("postgres(%d)", count))
+		}
 	}
-	if m.Services.Redis {
-		names = append(names, "redis")
+	if count := len(application.RedisInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "redis")
+		} else {
+			names = append(names, fmt.Sprintf("redis(%d)", count))
+		}
 	}
 	if m.Services.Secrets {
 		names = append(names, "secrets")

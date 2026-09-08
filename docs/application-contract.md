@@ -48,6 +48,91 @@ baha app create mailflow \
 
 Declaring a required secret automatically enables managed secrets.
 
+## Multiple instances of the same service
+
+The common case stays deliberately small:
+
+```yaml
+services:
+  postgres:
+    enabled: true
+  redis:
+    enabled: true
+```
+
+Each enabled service above resolves to one logical instance named `default`.
+
+When an application actually needs several independent services of the same type, it uses stable logical names instead of a numeric count:
+
+```yaml
+services:
+  postgres:
+    instances:
+      primary: {}
+      analytics: {}
+
+  redis:
+    instances:
+      cache: {}
+      sessions: {}
+
+  secrets:
+    enabled: false
+```
+
+The CLI can create the same declaration without editing YAML by hand:
+
+```bash
+baha app create mailflow \
+  --postgres-instance primary \
+  --postgres-instance analytics \
+  --redis-instance cache \
+  --redis-instance sessions
+```
+
+Every named instance gets its own credentials, loopback port, volume, lifecycle identity and binding directory. Adding a second instance does not rotate an existing instance.
+
+Named PostgreSQL instances expose variables such as:
+
+```text
+DATABASE_PRIMARY_URL=postgresql://...
+DATABASE_ANALYTICS_URL=postgresql://...
+```
+
+Named Redis/Valkey instances expose variables such as:
+
+```text
+REDIS_CACHE_URL=redis://...
+REDIS_SESSIONS_URL=redis://...
+VALKEY_CACHE_URL=redis://...
+VALKEY_SESSIONS_URL=redis://...
+```
+
+A single instance still receives the conventional generic aliases. With multiple instances, `default` is preferred for the generic alias. For PostgreSQL, `primary` is also accepted as the preferred generic target when no `default` instance exists. If there is no unambiguous preferred instance, BaseHarbor emits only named variables instead of guessing.
+
+Bindings for multiple named instances are nested by stable instance identity:
+
+```text
+bindings/
+├── postgres/
+│   ├── primary/
+│   │   ├── host
+│   │   ├── port
+│   │   ├── database
+│   │   ├── username
+│   │   ├── password
+│   │   └── uri
+│   └── analytics/
+│       └── ...
+└── valkey/
+    ├── cache/
+    │   └── ...
+    └── sessions/
+        └── ...
+```
+
+Multiple logical instances are not an HA mechanism. A `primary` PostgreSQL instance with future high availability remains one logical service with one stable application-facing endpoint while BaseHarbor manages the replicated topology behind it. See `docs/decisions/0001-service-instances-and-ha-intent.md`.
+
 ## Native runtime contract
 
 Applications do not log in to BaseHarbor and do not require the `baha` process, a BaseHarbor SDK or a proprietary protocol at runtime.
@@ -65,7 +150,7 @@ For PostgreSQL and Valkey it contains standard variables such as:
 ```text
 BASEHARBOR_APP_NAME=mailflow
 BASEHARBOR_ENVIRONMENT=dev
-BASEHARBOR_BINDINGS=.baseharbor/apps/mailflow/runtime/bindings
+BASEHARBOR_BINDINGS=/absolute/path/to/.baseharbor/apps/mailflow/runtime/bindings
 DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 VALKEY_URL=redis://...

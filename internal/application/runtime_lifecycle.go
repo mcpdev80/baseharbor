@@ -16,16 +16,18 @@ var ErrRuntimeDefinitionChanged = errors.New("application runtime definition dif
 func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 	project := RuntimeProjectName(m)
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: project + "_default"}}
-	if m.Services.Postgres {
+	for _, instance := range PostgresInstanceNames(m) {
+		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-postgres-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: project + "_postgres-data"},
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
-	if m.Services.Redis {
+	for _, instance := range RedisInstanceNames(m) {
+		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-valkey-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: project + "_valkey-data"},
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
 	return resources

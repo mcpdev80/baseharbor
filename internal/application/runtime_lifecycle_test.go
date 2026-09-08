@@ -27,6 +27,33 @@ func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
 	}
 }
 
+func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
+	m := New("mailflow", "prod", false, false, false)
+	m = WithPostgresInstances(m, "primary", "analytics")
+	m = WithRedisInstances(m, "cache", "sessions")
+	resources := ExpectedRuntimeResources(m)
+	want := map[string]bool{
+		"baseharbor-mailflow-prod-postgres-primary-1":      false,
+		"baseharbor-mailflow-prod_postgres-primary-data":   false,
+		"baseharbor-mailflow-prod-postgres-analytics-1":    false,
+		"baseharbor-mailflow-prod_postgres-analytics-data": false,
+		"baseharbor-mailflow-prod-valkey-cache-1":          false,
+		"baseharbor-mailflow-prod_valkey-cache-data":       false,
+		"baseharbor-mailflow-prod-valkey-sessions-1":       false,
+		"baseharbor-mailflow-prod_valkey-sessions-data":    false,
+	}
+	for _, resource := range resources {
+		if _, ok := want[resource.Name]; ok {
+			want[resource.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Fatalf("expected named runtime resource %s", name)
+		}
+	}
+}
+
 func TestCheckManagedRuntimeDefinitionRejectsModifiedCompose(t *testing.T) {
 	dir := t.TempDir()
 	files := RuntimeFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}

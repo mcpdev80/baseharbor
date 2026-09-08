@@ -29,7 +29,7 @@ func RuntimeProjectName(m Manifest) string {
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
-	if !m.Services.Postgres && !m.Services.Redis {
+	if len(PostgresInstanceNames(m)) == 0 && len(RedisInstanceNames(m)) == 0 {
 		if m.Services.Secrets {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
 		}
@@ -83,23 +83,29 @@ func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 }
 
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, "postgres", "psql", "-U", "baseharbor", "-d", postgresDatabaseName(m), "-tAc", "SELECT 1")
-	if err != nil {
-		return fmt.Errorf("verify postgres: %w", err)
-	}
-	if strings.TrimSpace(out) != "1" {
-		return fmt.Errorf("verify postgres: unexpected query result %q", strings.TrimSpace(out))
+	for _, instance := range PostgresInstanceNames(m) {
+		service := runtimeServiceName("postgres", instance)
+		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", postgresDatabaseName(m, instance), "-tAc", "SELECT 1")
+		if err != nil {
+			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "1" {
+			return fmt.Errorf("verify postgres instance %s: unexpected query result %q", instance, strings.TrimSpace(out))
+		}
 	}
 	return nil
 }
 
 func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, "valkey", "sh", "-ec", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping`)
-	if err != nil {
-		return fmt.Errorf("verify valkey: %w", err)
-	}
-	if strings.TrimSpace(out) != "PONG" {
-		return fmt.Errorf("verify valkey: unexpected PING result %q", strings.TrimSpace(out))
+	for _, instance := range RedisInstanceNames(m) {
+		service := runtimeServiceName("valkey", instance)
+		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping`)
+		if err != nil {
+			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify valkey instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
 	}
 	return nil
 }
@@ -108,102 +114,169 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
 	}
-	if m.Services.Postgres && !m.Services.Redis {
-		return postgresComposeYAML, nil
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, instance := range PostgresInstanceNames(m) {
+		writePostgresComposeService(&b, instance)
 	}
-	if !m.Services.Postgres && m.Services.Redis {
-		return valkeyComposeYAML, nil
+	for _, instance := range RedisInstanceNames(m) {
+		writeValkeyComposeService(&b, instance)
 	}
-	return postgresValkeyComposeYAML, nil
+	b.WriteString("\nvolumes:\n")
+	for _, instance := range PostgresInstanceNames(m) {
+		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("postgres", instance))
+	}
+	for _, instance := range RedisInstanceNames(m) {
+		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
+	}
+	return b.String(), nil
+}
+
+func writePostgresComposeService(b *strings.Builder, instance string) {
+	service := runtimeServiceName("postgres", instance)
+	dbKey := postgresRuntimeKey(instance, "DB")
+	userKey := postgresRuntimeKey(instance, "USER")
+	passwordKey := postgresRuntimeKey(instance, "PASSWORD")
+	portKey := postgresRuntimeKey(instance, "HOST_PORT")
+	fmt.Fprintf(b, `  %s:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${%s}
+      POSTGRES_USER: ${%s}
+      POSTGRES_PASSWORD: ${%s}
+    ports:
+      - "127.0.0.1:${%s}:5432"
+    volumes:
+      - %s-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${%s} -d ${%s}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+`, service, dbKey, userKey, passwordKey, portKey, service, userKey, dbKey)
+}
+
+func writeValkeyComposeService(b *strings.Builder, instance string) {
+	service := runtimeServiceName("valkey", instance)
+	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
+	portKey := valkeyRuntimeKey(instance, "HOST_PORT")
+	fmt.Fprintf(b, `  %s:
+    image: valkey/valkey:9.1.2-alpine
+    restart: unless-stopped
+    environment:
+      VALKEY_PASSWORD: ${%s}
+    command:
+      - sh
+      - -ec
+      - |
+        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
+        exec valkey-server /tmp/valkey.conf
+    ports:
+      - "127.0.0.1:${%s}:6379"
+    volumes:
+      - %s-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+`, service, passwordKey, portKey, service)
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		content, err := newRuntimeEnv(m)
-		if err != nil {
-			return err
+	values := map[string]string{}
+	if data, err := os.ReadFile(path); err == nil {
+		var readErr error
+		values, readErr = readRuntimeEnvBytes(data)
+		if readErr != nil {
+			return readErr
 		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			return fmt.Errorf("write application runtime environment: %w", err)
-		}
-		return nil
-	} else if err != nil {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect application runtime environment: %w", err)
 	}
 
-	values, err := readRuntimeEnv(path)
-	if err != nil {
+	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return err
-	}
-	changed := false
-	excluded := map[int]struct{}{}
-	for _, key := range []string{"POSTGRES_HOST_PORT", "VALKEY_HOST_PORT"} {
-		if value := values[key]; value != "" {
-			if err := validatePortValue(value, key); err != nil {
-				return err
-			}
-			port, _ := strconv.Atoi(value)
-			excluded[port] = struct{}{}
-		}
-	}
-	if m.Services.Postgres && values["POSTGRES_HOST_PORT"] == "" {
-		port, err := allocateLoopbackPort(excluded)
-		if err != nil {
-			return err
-		}
-		values["POSTGRES_HOST_PORT"] = strconv.Itoa(port)
-		excluded[port] = struct{}{}
-		changed = true
-	}
-	if m.Services.Redis && values["VALKEY_HOST_PORT"] == "" {
-		port, err := allocateLoopbackPort(excluded)
-		if err != nil {
-			return err
-		}
-		values["VALKEY_HOST_PORT"] = strconv.Itoa(port)
-		excluded[port] = struct{}{}
-		changed = true
 	}
 	if err := validateRuntimeValues(values, m); err != nil {
 		return err
-	}
-	if !changed {
-		return nil
 	}
 	return writeRuntimeEnv(path, m, values)
 }
 
 func newRuntimeEnv(m Manifest) (string, error) {
 	values := map[string]string{}
-	excluded := map[int]struct{}{}
-	if m.Services.Postgres {
-		password, err := randomApplicationSecret(32)
-		if err != nil {
-			return "", err
-		}
-		port, err := allocateLoopbackPort(excluded)
-		if err != nil {
-			return "", err
-		}
-		excluded[port] = struct{}{}
-		values["POSTGRES_DB"] = postgresDatabaseName(m)
-		values["POSTGRES_USER"] = "baseharbor"
-		values["POSTGRES_PASSWORD"] = password
-		values["POSTGRES_HOST_PORT"] = strconv.Itoa(port)
-	}
-	if m.Services.Redis {
-		password, err := randomApplicationSecret(32)
-		if err != nil {
-			return "", err
-		}
-		port, err := allocateLoopbackPort(excluded)
-		if err != nil {
-			return "", err
-		}
-		values["VALKEY_PASSWORD"] = password
-		values["VALKEY_HOST_PORT"] = strconv.Itoa(port)
+	if err := ensureDesiredRuntimeValues(values, m); err != nil {
+		return "", err
 	}
 	return runtimeEnvContent(m, values), nil
+}
+
+func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
+	excluded := map[int]struct{}{}
+	for key, value := range values {
+		if !strings.HasSuffix(key, "_HOST_PORT") || strings.TrimSpace(value) == "" {
+			continue
+		}
+		if err := validatePortValue(value, key); err != nil {
+			return err
+		}
+		port, _ := strconv.Atoi(value)
+		excluded[port] = struct{}{}
+	}
+
+	for _, instance := range PostgresInstanceNames(m) {
+		dbKey := postgresRuntimeKey(instance, "DB")
+		userKey := postgresRuntimeKey(instance, "USER")
+		passwordKey := postgresRuntimeKey(instance, "PASSWORD")
+		portKey := postgresRuntimeKey(instance, "HOST_PORT")
+		if values[dbKey] == "" {
+			values[dbKey] = postgresDatabaseName(m, instance)
+		}
+		if values[userKey] == "" {
+			values[userKey] = "baseharbor"
+		}
+		if values[passwordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[passwordKey] = password
+		}
+		if values[portKey] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[portKey] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
+	for _, instance := range RedisInstanceNames(m) {
+		passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
+		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
+		if values[passwordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[passwordKey] = password
+		}
+		if values[portKey] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[portKey] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
@@ -215,15 +288,17 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
-	if m.Services.Postgres {
-		fmt.Fprintf(&b, "POSTGRES_DB=%s\n", values["POSTGRES_DB"])
-		fmt.Fprintf(&b, "POSTGRES_USER=%s\n", values["POSTGRES_USER"])
-		fmt.Fprintf(&b, "POSTGRES_PASSWORD=%s\n", values["POSTGRES_PASSWORD"])
-		fmt.Fprintf(&b, "POSTGRES_HOST_PORT=%s\n", values["POSTGRES_HOST_PORT"])
+	for _, instance := range PostgresInstanceNames(m) {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
+			key := postgresRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
 	}
-	if m.Services.Redis {
-		fmt.Fprintf(&b, "VALKEY_PASSWORD=%s\n", values["VALKEY_PASSWORD"])
-		fmt.Fprintf(&b, "VALKEY_HOST_PORT=%s\n", values["VALKEY_HOST_PORT"])
+	for _, instance := range RedisInstanceNames(m) {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
+			key := valkeyRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
 	}
 	return b.String()
 }
@@ -237,35 +312,70 @@ func validateRuntimeEnv(path string, m Manifest) error {
 }
 
 func validateRuntimeValues(values map[string]string, m Manifest) error {
-	if m.Services.Postgres {
-		for _, key := range []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_HOST_PORT"} {
+	for _, instance := range PostgresInstanceNames(m) {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
+			key := postgresRuntimeKey(instance, suffix)
 			if values[key] == "" {
 				return fmt.Errorf("application runtime environment is missing %s", key)
 			}
 		}
-		if err := validatePortValue(values["POSTGRES_HOST_PORT"], "POSTGRES_HOST_PORT"); err != nil {
+		portKey := postgresRuntimeKey(instance, "HOST_PORT")
+		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
 	}
-	if m.Services.Redis {
-		for _, key := range []string{"VALKEY_PASSWORD", "VALKEY_HOST_PORT"} {
+	for _, instance := range RedisInstanceNames(m) {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
+			key := valkeyRuntimeKey(instance, suffix)
 			if values[key] == "" {
 				return fmt.Errorf("application runtime environment is missing %s", key)
 			}
 		}
-		if err := validatePortValue(values["VALKEY_HOST_PORT"], "VALKEY_HOST_PORT"); err != nil {
+		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
+		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func postgresDatabaseName(m Manifest) string {
-	name := strings.ReplaceAll(m.Name+"_"+m.Environment, "-", "_")
-	if len(name) > 63 {
-		name = name[:63]
+func postgresDatabaseName(m Manifest, instance string) string {
+	base := strings.ReplaceAll(m.Name+"_"+m.Environment, "-", "_")
+	if instance == defaultServiceInstance {
+		if len(base) > 63 {
+			base = base[:63]
+		}
+		return base
 	}
-	return name
+	suffix := "_" + strings.ReplaceAll(instance, "-", "_")
+	maxBase := 63 - len(suffix)
+	if len(base) > maxBase {
+		base = base[:maxBase]
+	}
+	return base + suffix
+}
+
+func runtimeServiceName(kind, instance string) string {
+	if instance == defaultServiceInstance {
+		return kind
+	}
+	return kind + "-" + instance
+}
+
+func postgresRuntimeKey(instance, suffix string) string {
+	return runtimeInstanceKey("POSTGRES", instance, suffix)
+}
+
+func valkeyRuntimeKey(instance, suffix string) string {
+	return runtimeInstanceKey("VALKEY", instance, suffix)
+}
+
+func runtimeInstanceKey(prefix, instance, suffix string) string {
+	if instance == defaultServiceInstance {
+		return prefix + "_" + suffix
+	}
+	name := strings.ToUpper(strings.ReplaceAll(instance, "-", "_"))
+	return prefix + "_" + name + "_" + suffix
 }
 
 func randomApplicationSecret(size int) (string, error) {
@@ -275,80 +385,3 @@ func randomApplicationSecret(size int) (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
-
-const postgresComposeYAML = `services:
-  postgres:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-
-volumes:
-  postgres-data:
-`
-
-const valkeyServiceYAML = `  valkey:
-    image: valkey/valkey:9.1.2-alpine
-    restart: unless-stopped
-    environment:
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
-    command:
-      - sh
-      - -ec
-      - |
-        printf 'requirepass %s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
-        exec valkey-server /tmp/valkey.conf
-    ports:
-      - "127.0.0.1:${VALKEY_HOST_PORT}:6379"
-    volumes:
-      - valkey-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-`
-
-const valkeyComposeYAML = `services:
-` + valkeyServiceYAML + `
-volumes:
-  valkey-data:
-`
-
-const postgresValkeyComposeYAML = `services:
-  postgres:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-
-` + valkeyServiceYAML + `
-volumes:
-  postgres-data:
-  valkey-data:
-`

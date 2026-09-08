@@ -54,59 +54,67 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	fmt.Fprintf(&env, "BASEHARBOR_ENVIRONMENT=%s\n", m.Environment)
 	fmt.Fprintf(&env, "BASEHARBOR_BINDINGS=%s\n", bindingsAbs)
 
-	if m.Services.Postgres {
-		binding := filepath.Join(bindingsDir, "postgres")
-		bindingRef := filepath.Join(bindingsAbs, "postgres")
-		if err := os.MkdirAll(binding, 0o700); err != nil {
-			return RuntimeContract{}, fmt.Errorf("create PostgreSQL binding: %w", err)
+	postgresInstances := PostgresInstanceNames(m)
+	preferredPostgres := preferredServiceInstance(postgresInstances)
+	for _, instance := range postgresInstances {
+		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "postgres", instance, len(postgresInstances))
+		if err != nil {
+			return RuntimeContract{}, err
 		}
-		if err := os.Chmod(binding, 0o700); err != nil {
-			return RuntimeContract{}, fmt.Errorf("secure PostgreSQL binding: %w", err)
-		}
-		uri, err := postgresConnectionURL(values)
+		uri, err := postgresConnectionURL(values, instance)
 		if err != nil {
 			return RuntimeContract{}, err
 		}
 		entries := map[string]string{
 			"host":     loopbackHost,
-			"port":     values["POSTGRES_HOST_PORT"],
-			"database": values["POSTGRES_DB"],
-			"username": values["POSTGRES_USER"],
-			"password": values["POSTGRES_PASSWORD"],
+			"port":     values[postgresRuntimeKey(instance, "HOST_PORT")],
+			"database": values[postgresRuntimeKey(instance, "DB")],
+			"username": values[postgresRuntimeKey(instance, "USER")],
+			"password": values[postgresRuntimeKey(instance, "PASSWORD")],
 			"uri":      uri,
 		}
 		if err := writeBinding(binding, entries); err != nil {
 			return RuntimeContract{}, err
 		}
-		fmt.Fprintf(&env, "DATABASE_URL=%s\n", uri)
-		serviceRefs["postgres"] = runtimeServiceRef{Binding: bindingRef}
+		if instance == preferredPostgres {
+			fmt.Fprintf(&env, "DATABASE_URL=%s\n", uri)
+		}
+		if instance != defaultServiceInstance {
+			fmt.Fprintf(&env, "DATABASE_%s_URL=%s\n", envInstanceToken(instance), uri)
+		}
+		serviceRefs[serviceReferenceKey("postgres", instance, len(postgresInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
-	if m.Services.Redis {
-		binding := filepath.Join(bindingsDir, "valkey")
-		bindingRef := filepath.Join(bindingsAbs, "valkey")
-		if err := os.MkdirAll(binding, 0o700); err != nil {
-			return RuntimeContract{}, fmt.Errorf("create Valkey binding: %w", err)
+	redisInstances := RedisInstanceNames(m)
+	preferredRedis := preferredServiceInstance(redisInstances)
+	for _, instance := range redisInstances {
+		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "valkey", instance, len(redisInstances))
+		if err != nil {
+			return RuntimeContract{}, err
 		}
-		if err := os.Chmod(binding, 0o700); err != nil {
-			return RuntimeContract{}, fmt.Errorf("secure Valkey binding: %w", err)
-		}
-		uri, err := valkeyConnectionURL(values)
+		uri, err := valkeyConnectionURL(values, instance)
 		if err != nil {
 			return RuntimeContract{}, err
 		}
 		entries := map[string]string{
 			"host":     loopbackHost,
-			"port":     values["VALKEY_HOST_PORT"],
-			"password": values["VALKEY_PASSWORD"],
+			"port":     values[valkeyRuntimeKey(instance, "HOST_PORT")],
+			"password": values[valkeyRuntimeKey(instance, "PASSWORD")],
 			"uri":      uri,
 		}
 		if err := writeBinding(binding, entries); err != nil {
 			return RuntimeContract{}, err
 		}
-		fmt.Fprintf(&env, "REDIS_URL=%s\n", uri)
-		fmt.Fprintf(&env, "VALKEY_URL=%s\n", uri)
-		serviceRefs["valkey"] = runtimeServiceRef{Binding: bindingRef}
+		if instance == preferredRedis {
+			fmt.Fprintf(&env, "REDIS_URL=%s\n", uri)
+			fmt.Fprintf(&env, "VALKEY_URL=%s\n", uri)
+		}
+		if instance != defaultServiceInstance {
+			token := envInstanceToken(instance)
+			fmt.Fprintf(&env, "REDIS_%s_URL=%s\n", token, uri)
+			fmt.Fprintf(&env, "VALKEY_%s_URL=%s\n", token, uri)
+		}
+		serviceRefs[serviceReferenceKey("valkey", instance, len(redisInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
 	applicationEnv := filepath.Join(files.Dir, "application.env")
@@ -132,20 +140,65 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	return RuntimeContract{Env: applicationEnv, BindingsDir: bindingsDir, Metadata: metadataPath}, nil
 }
 
-func postgresConnectionURL(values map[string]string) (string, error) {
-	port, err := requireRuntimeValue(values, "POSTGRES_HOST_PORT")
+func ensureInstanceBindingDirs(bindingsDir, bindingsAbs, kind, instance string, count int) (string, string, error) {
+	kindDir := filepath.Join(bindingsDir, kind)
+	kindRef := filepath.Join(bindingsAbs, kind)
+	binding := kindDir
+	bindingRef := kindRef
+	if count != 1 || instance != defaultServiceInstance {
+		binding = filepath.Join(kindDir, instance)
+		bindingRef = filepath.Join(kindRef, instance)
+	}
+	if err := os.MkdirAll(binding, 0o700); err != nil {
+		return "", "", fmt.Errorf("create %s binding for %s: %w", kind, instance, err)
+	}
+	for _, path := range []string{kindDir, binding} {
+		if err := os.Chmod(path, 0o700); err != nil {
+			return "", "", fmt.Errorf("secure %s binding for %s: %w", kind, instance, err)
+		}
+	}
+	return binding, bindingRef, nil
+}
+
+func serviceReferenceKey(kind, instance string, count int) string {
+	if count == 1 && instance == defaultServiceInstance {
+		return kind
+	}
+	return kind + "." + instance
+}
+
+func preferredServiceInstance(instances []string) string {
+	if len(instances) == 1 {
+		return instances[0]
+	}
+	for _, preferred := range []string{defaultServiceInstance, "primary"} {
+		for _, instance := range instances {
+			if instance == preferred {
+				return instance
+			}
+		}
+	}
+	return ""
+}
+
+func envInstanceToken(instance string) string {
+	return strings.ToUpper(strings.ReplaceAll(instance, "-", "_"))
+}
+
+func postgresConnectionURL(values map[string]string, instance string) (string, error) {
+	port, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "HOST_PORT"))
 	if err != nil {
 		return "", err
 	}
-	database, err := requireRuntimeValue(values, "POSTGRES_DB")
+	database, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "DB"))
 	if err != nil {
 		return "", err
 	}
-	username, err := requireRuntimeValue(values, "POSTGRES_USER")
+	username, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "USER"))
 	if err != nil {
 		return "", err
 	}
-	password, err := requireRuntimeValue(values, "POSTGRES_PASSWORD")
+	password, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "PASSWORD"))
 	if err != nil {
 		return "", err
 	}
@@ -159,12 +212,12 @@ func postgresConnectionURL(values map[string]string) (string, error) {
 	return u.String(), nil
 }
 
-func valkeyConnectionURL(values map[string]string) (string, error) {
-	port, err := requireRuntimeValue(values, "VALKEY_HOST_PORT")
+func valkeyConnectionURL(values map[string]string, instance string) (string, error) {
+	port, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "HOST_PORT"))
 	if err != nil {
 		return "", err
 	}
-	password, err := requireRuntimeValue(values, "VALKEY_PASSWORD")
+	password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
 	if err != nil {
 		return "", err
 	}
@@ -210,6 +263,10 @@ func readRuntimeEnv(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read application runtime environment: %w", err)
 	}
+	return readRuntimeEnvBytes(data)
+}
+
+func readRuntimeEnvBytes(data []byte) (map[string]string, error) {
 	values := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
