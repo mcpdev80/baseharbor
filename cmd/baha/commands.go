@@ -23,6 +23,7 @@ func rootCommand() *cli.Command {
 		appUpCommand(store),
 		appDestroyCommand(store),
 		appSecretCommand(store),
+		appRuntimeIdentityCommand(store),
 	)
 
 	root := &cli.Command{
