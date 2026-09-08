@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/jackc/pgx/v5 v5.11.0
-	golang.org/x/crypto v0.56.0
+	golang.org/x/crypto v0.55.0
 )
 
 require (
