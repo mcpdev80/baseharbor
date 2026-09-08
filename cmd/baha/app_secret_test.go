@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestParseSecretSetArgsRequiresStdin(t *testing.T) {
+func TestParseSecretSetArgsRequiresOneInputSource(t *testing.T) {
 	name, key, err := parseSecretSetArgs([]string{"demo", "API_TOKEN", "--stdin"})
 	if err != nil {
 		t.Fatal(err)
@@ -15,10 +17,26 @@ func TestParseSecretSetArgsRequiresStdin(t *testing.T) {
 		t.Fatalf("unexpected parsed values %q %q", name, key)
 	}
 	if _, _, err := parseSecretSetArgs([]string{"demo", "API_TOKEN"}); err == nil {
-		t.Fatal("expected missing --stdin to fail")
+		t.Fatal("expected missing input source to fail")
+	}
+	if _, _, err := parseSecretSetArgs([]string{"demo", "API_TOKEN", "--stdin", "--file", "secret.txt"}); err == nil {
+		t.Fatal("expected multiple input sources to fail")
 	}
 	if _, _, err := parseSecretSetArgs([]string{"demo", "API_TOKEN", "secret-on-command-line"}); err == nil {
 		t.Fatal("expected an extra positional secret value to fail")
+	}
+}
+
+func TestParseSecretSetArgsSupportsFileInput(t *testing.T) {
+	name, key, err := parseSecretSetArgs([]string{"demo", "TLS_KEY_FILE", "--file", "/tmp/key.pem"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "demo" || key != "TLS_KEY_FILE" {
+		t.Fatalf("unexpected parsed values %q %q", name, key)
+	}
+	if got := secretSetFilePath([]string{"TLS_KEY_FILE", "--file=/tmp/key.pem"}); got != "/tmp/key.pem" {
+		t.Fatalf("unexpected file path %q", got)
 	}
 }
 
@@ -67,6 +85,22 @@ func TestReadSecretValuePreservesInputExactly(t *testing.T) {
 	}
 	if !bytes.Equal(got, input) {
 		t.Fatalf("secret input changed: got %q want %q", got, input)
+	}
+}
+
+func TestReadSecretSetValueReadsFileExactly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secret.pem")
+	want := []byte("-----BEGIN TEST-----\nabc\n-----END TEST-----\n")
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readSecretSetValue([]string{"TLS_CERT_FILE", "--file", path}, strings.NewReader("ignored"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("file secret input changed: got %q want %q", got, want)
 	}
 }
 
