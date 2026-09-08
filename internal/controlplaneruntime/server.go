@@ -71,6 +71,9 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		return fmt.Errorf("open control-plane database: %w", err)
 	}
 	defer pool.Close()
+	if err := database.VerifySchemaReady(ctx, pool); err != nil {
+		return fmt.Errorf("verify control-plane schema: %w", err)
+	}
 
 	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
 	if err != nil {
@@ -99,6 +102,19 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := database.Ping(checkCtx, pool); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
 	})
 	mux.Handle("/api/", protected)
 
