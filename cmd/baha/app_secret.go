@@ -7,27 +7,27 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func appSecretCommand(store application.Store) *cli.Command {
+	service := applicationsecret.New(store)
 	command := &cli.Command{
 		Name:    "secret",
 		Summary: "Manage application secret values without printing them",
 		Usage:   "baha app secret <command> [options]",
-		Long:    "Stores application secret values in the application's isolated OpenBao KV v2 namespace. Secret values are accepted only through stdin and are never rendered by this command group.",
+		Long:    "Stores application secret values in the application's isolated managed secret namespace. Secret values are accepted only through stdin and are never rendered by this command group.",
 	}
 	command.Children = []*cli.Command{
 		{
 			Name:    "set",
 			Summary: "Create or replace one secret value from stdin",
 			Usage:   "baha app secret set NAME KEY --stdin",
-			Long:    "Reads one UTF-8 secret value from stdin and stores it as an isolated KV v2 document. The value is never accepted as a command-line argument and is not printed. Input is preserved exactly, including trailing newlines.\n\nExample:\n  printf '%s' 'secret-value' | baha app secret set demo API_TOKEN --stdin",
+			Long:    "Reads one UTF-8 secret value from stdin and stores it through the application secret service. The value is never accepted as a command-line argument and is not printed. Input is preserved exactly, including trailing newlines.\n\nExample:\n  printf '%s' 'secret-value' | baha app secret set demo API_TOKEN --stdin",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, err := parseSecretSetArgs(args)
 				if err != nil {
@@ -37,16 +37,14 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				compose, platformFiles, identity, credentialsPath, err := applicationSecretContext(ctx, store, name)
+				if err := service.Set(ctx, name, key, value); err != nil {
+					return err
+				}
+				m, _, err := store.Load(name)
 				if err != nil {
 					return err
 				}
-				mutationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				defer cancel()
-				if err := openbao.SetApplicationSecret(mutationCtx, compose, platformFiles, identity, credentialsPath, key, value); err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "Secret %s updated for application %s (%s).\n", key, identity.Name, identity.Environment)
+				fmt.Fprintf(out, "Secret %s updated for application %s (%s).\n", key, m.Name, m.Environment)
 				return nil
 			},
 		},
@@ -59,23 +57,23 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if len(args) != 1 {
 					return usageError("baha app secret list requires exactly one NAME", "Example: baha app secret list demo")
 				}
-				compose, platformFiles, identity, credentialsPath, err := applicationSecretContext(ctx, store, args[0])
+				items, err := service.List(ctx, args[0])
 				if err != nil {
 					return err
 				}
-				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-				defer cancel()
-				keys, err := openbao.ListApplicationSecretKeys(checkCtx, compose, platformFiles, identity, credentialsPath)
-				if err != nil {
-					return err
+				configured := make([]applicationsecret.Metadata, 0, len(items))
+				for _, item := range items {
+					if item.Present {
+						configured = append(configured, item)
+					}
 				}
-				if len(keys) == 0 {
+				if len(configured) == 0 {
 					fmt.Fprintln(out, "No application secrets configured.")
 					return nil
 				}
 				fmt.Fprintln(out, "KEY")
-				for _, key := range keys {
-					fmt.Fprintln(out, key)
+				for _, item := range configured {
+					fmt.Fprintln(out, item.Name)
 				}
 				return nil
 			},
@@ -84,25 +82,19 @@ func appSecretCommand(store application.Store) *cli.Command {
 			Name:    "delete",
 			Summary: "Permanently delete one secret and all of its KV versions",
 			Usage:   "baha app secret delete NAME KEY [--yes]",
-			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. With --yes, permanently removes the selected secret document and all of its KV v2 versions/metadata.",
+			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. With --yes, permanently removes the selected secret document and all of its managed versions/metadata.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, yes, err := parseSecretDeleteArgs(args)
 				if err != nil {
 					return err
 				}
-				compose, platformFiles, identity, credentialsPath, err := applicationSecretContext(ctx, store, name)
-				if err != nil {
-					return err
-				}
-				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-				keys, err := openbao.ListApplicationSecretKeys(checkCtx, compose, platformFiles, identity, credentialsPath)
-				cancel()
+				items, err := service.List(ctx, name)
 				if err != nil {
 					return err
 				}
 				found := false
-				for _, existing := range keys {
-					if existing == key {
+				for _, item := range items {
+					if item.Name == key && item.Present {
 						found = true
 						break
 					}
@@ -110,53 +102,24 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if !found {
 					return openbao.ErrApplicationSecretNotFound
 				}
+				m, _, err := store.Load(name)
+				if err != nil {
+					return err
+				}
 				if !yes {
-					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all KV versions.\n", key, identity.Name, identity.Environment)
+					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all managed versions.\n", key, m.Name, m.Environment)
 					fmt.Fprintln(out, "No changes were made. Re-run with --yes to confirm.")
 					return nil
 				}
-				mutationCtx, mutationCancel := context.WithTimeout(ctx, 30*time.Second)
-				defer mutationCancel()
-				if err := openbao.DeleteApplicationSecret(mutationCtx, compose, platformFiles, identity, credentialsPath, key); err != nil {
+				if err := service.Delete(ctx, name, key); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "Secret %s permanently deleted from application %s (%s).\n", key, identity.Name, identity.Environment)
+				fmt.Fprintf(out, "Secret %s permanently deleted from application %s (%s).\n", key, m.Name, m.Environment)
 				return nil
 			},
 		},
 	}
 	return command
-}
-
-func applicationSecretContext(ctx context.Context, store application.Store, name string) (bhruntime.Compose, bhruntime.Files, openbao.ApplicationIdentity, string, error) {
-	m, _, err := store.Load(name)
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", err
-	}
-	if !m.Services.Secrets {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", errors.New("application does not enable managed secrets; recreate or update its manifest with services.secrets enabled")
-	}
-	if err := application.CheckSupportedRuntimeServices(m); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", err
-	}
-	files, err := application.ExistingRuntimeFiles(store, m)
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", err
-	}
-	if err := application.CheckRuntimePermissions(files); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", err
-	}
-	compose, err := bhruntime.DetectCompose(ctx)
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", err
-	}
-	platformFiles, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, openbao.ApplicationIdentity{}, "", errors.New("BaseHarbor OpenBao runtime is not materialized; run 'baha up' first")
-	}
-	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-	credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
-	return compose, platformFiles, identity, credentialsPath, nil
 }
 
 func parseSecretSetArgs(args []string) (string, string, error) {
