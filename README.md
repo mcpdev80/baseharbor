@@ -10,7 +10,7 @@ Early development. Identity, authorization, tenancy, secrets, PostgreSQL migrati
 
 The first per-application convergence slice is PostgreSQL: `baha app apply NAME` creates an isolated Compose project with a dedicated PostgreSQL volume and network, does not publish a host port by default, preserves generated credentials across repeated apply operations, and reports ready only after an authenticated `SELECT 1` succeeds.
 
-The same application runtime can now be inspected with `baha app status NAME` and diagnosed with `baha app doctor NAME`; both distinguish container state from real PostgreSQL readiness.
+The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data with `baha app down NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
 ## CLI
 
@@ -28,6 +28,8 @@ Discover commands at every level:
 ./baha app apply --help
 ./baha app status --help
 ./baha app doctor --help
+./baha app down --help
+./baha app destroy --help
 ```
 
 Control-plane commands:
@@ -52,15 +54,24 @@ Application commands:
 ./baha app apply demo
 ./baha app status demo
 ./baha app doctor demo
+./baha app down demo
+./baha app destroy demo
+./baha app destroy demo --yes
 ```
+
+`baha app down` removes the managed container and transient network but preserves the PostgreSQL volume, runtime state and credentials. A later `baha app apply` converges the same application again using the preserved data.
+
+`baha app destroy` is destructive by design. Without `--yes` it performs the safety preflight and prints the exact managed resources that would be removed, but makes no changes. With `--yes`, BaseHarbor first verifies the generated runtime definition and exact Compose ownership labels. Ambiguous or mismatched ownership fails closed before deletion. Persistent volumes and local application state are then removed and absence is verified.
 
 `baha doctor`, `baha status`, `baha app status`, and `baha app doctor` verify actual service readiness rather than only process/container state.
 
-Application lifecycle follows the stable contract:
+Application convergence follows the stable contract:
 
 ```text
 plan -> preflight -> apply -> verify
 ```
+
+Destructive lifecycle operations add explicit ownership verification before mutation and post-verification after mutation.
 
 The current `app apply` milestone intentionally supports PostgreSQL-only desired state. Manifests that also enable Redis/Valkey or managed secrets fail closed until those convergence modules are implemented.
 

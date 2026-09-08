@@ -18,6 +18,8 @@ func rootCommand() *cli.Command {
 		appApplyCommand(store),
 		appStatusCommand(store),
 		appDoctorCommand(store),
+		appDownCommand(store),
+		appDestroyCommand(store),
 	)
 
 	root := &cli.Command{

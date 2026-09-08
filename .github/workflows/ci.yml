@@ -56,14 +56,16 @@ jobs:
           grep -q "Usage:" /tmp/baha-help.txt
           /tmp/baha app --help >/tmp/baha-app-help.txt
           grep -q "apply" /tmp/baha-app-help.txt
-          grep -q "status" /tmp/baha-app-help.txt
-          grep -q "doctor" /tmp/baha-app-help.txt
+          grep -q "down" /tmp/baha-app-help.txt
+          grep -q "destroy" /tmp/baha-app-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--environment" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help >/tmp/baha-app-apply-help.txt
           grep -q "plan, preflight, apply and verification" /tmp/baha-app-apply-help.txt
-          /tmp/baha app status --help | grep -q "actual PostgreSQL readiness"
+          /tmp/baha app status --help | grep -q "authenticated"
           /tmp/baha app doctor --help | grep -q "without mutating"
+          /tmp/baha app down --help | grep -q "preserving persistent data"
+          /tmp/baha app destroy --help | grep -q -- "--yes"
           /tmp/baha version | grep -q '^baha '
           set +e
           /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
@@ -71,7 +73,7 @@ jobs:
           set -e
           test "$code" -eq 2
           grep -q "unknown command" /tmp/baha-invalid.err
-      - name: Verify application PostgreSQL vertical slice
+      - name: Verify application PostgreSQL lifecycle
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
@@ -83,4 +85,20 @@ jobs:
           /tmp/baha app doctor ci-demo | grep -q "Application runtime is healthy"
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env down -v
+
+          /tmp/baha app down ci-demo | grep -q "Persistent data is preserved"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
+
+          /tmp/baha app apply ci-demo | grep -q "Application ci-demo is ready"
+          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
+
+          /tmp/baha app destroy ci-demo | grep -q "No changes were made"
+          test -d .baseharbor/apps/ci-demo
+          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
+
+          /tmp/baha app destroy ci-demo --yes | grep -q "permanently destroyed"
+          test ! -e .baseharbor/apps/ci-demo
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+          test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
