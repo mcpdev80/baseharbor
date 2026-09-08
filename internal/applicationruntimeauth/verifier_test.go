@@ -50,6 +50,30 @@ func TestVerifierAcceptsOnlyOwningApplicationToken(t *testing.T) {
 	if err := verifier.Verify(context.Background(), "alpha", token+"x"); err == nil {
 		t.Fatal("wrong token authenticated")
 	}
+
+	if err := application.RevokeRuntimeIdentity(alpha, alphaFiles); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifier.Verify(context.Background(), "alpha", token); err == nil {
+		t.Fatal("revoked runtime token authenticated")
+	}
+	if err := application.RotateRuntimeIdentity(alpha, alphaFiles); err != nil {
+		t.Fatal(err)
+	}
+	rotatedRaw, err := os.ReadFile(application.RuntimeIdentityTokenPath(alphaFiles))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated := strings.TrimSpace(string(rotatedRaw))
+	if rotated == token {
+		t.Fatal("rotation did not replace runtime token")
+	}
+	if err := verifier.Verify(context.Background(), "alpha", token); err == nil {
+		t.Fatal("old runtime token authenticated after rotation")
+	}
+	if err := verifier.Verify(context.Background(), "alpha", rotated); err != nil {
+		t.Fatalf("rotated runtime token rejected: %v", err)
+	}
 }
 
 func TestVerifierRejectsInsecureCredentialPermissions(t *testing.T) {
