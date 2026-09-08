@@ -56,13 +56,27 @@ Missing, ambiguous or negative ownership never falls back to application-name ac
 
 Knowing an application name is therefore not sufficient authorization to inspect or mutate its secret metadata.
 
+## Authoritative application ownership
+
+Application-to-Tenant ownership is persisted in PostgreSQL in `application_ownerships`.
+
+The invariant is intentionally small and strict:
+
+```text
+application_name  -> exactly one tenant_id
+```
+
+`application_name` is the primary key and `tenant_id` references `tenants(id)`. PostgreSQL row-level security scopes reads and writes to the current BaseHarbor tenant context.
+
+`ApplicationOwnershipStore.Claim` is idempotent for the same tenant and application. A different tenant cannot claim an application name that is already owned. Ownership is never reassigned implicitly or with last-write-wins behavior.
+
+`ApplicationOwnershipStore.OwnedByTenant` performs the read inside the existing tenant-scoped transaction boundary, so the HTTP handler can use the database-backed store directly as its `OwnershipResolver`.
+
 ## Current exposure status
 
-This change defines and tests the HTTP handler contract but does **not** start a public HTTP listener.
+The ownership relation now exists and is tested, but this document still does **not** claim that the secret API is publicly listening.
 
-BaseHarbor does not yet have an authoritative persisted Application-to-Tenant ownership relation that can safely back `OwnershipResolver`. Wiring a public server before that relation exists would weaken the tenant isolation model, so the handler remains unexposed until that ownership boundary is implemented and tested.
-
-This is intentional, not a missing authentication shortcut.
+The next control-plane HTTP-server slice must wire authentication, tenant resolution, the database-backed ownership resolver and the application-secret handler together before opening a listener. Public exposure without that complete chain remains unsupported.
 
 ## Secret non-disclosure
 
