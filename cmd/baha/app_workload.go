@@ -82,6 +82,20 @@ func validWorkloadEnvironmentName(name string) bool {
 	return true
 }
 
+func activeSelectedWorkloadServices(active, selected []string) []string {
+	activeSet := make(map[string]struct{}, len(active))
+	for _, service := range active {
+		activeSet[service] = struct{}{}
+	}
+	result := make([]string, 0, len(selected))
+	for _, service := range selected {
+		if _, ok := activeSet[service]; ok {
+			result = append(result, service)
+		}
+	}
+	return result
+}
+
 func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
@@ -102,12 +116,13 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if err != nil {
 		return false, fmt.Errorf("resolve application workload services: %w", err)
 	}
-	if len(activeServices) == 0 {
-		return false, fmt.Errorf("application workload has no active Compose services")
+	expectedServices := activeSelectedWorkloadServices(activeServices, workload.Services)
+	if len(expectedServices) == 0 {
+		return false, fmt.Errorf("application workload has no active selected Compose services")
 	}
 	startServices := []string(nil)
 	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
-		startServices = workload.Services
+		startServices = expectedServices
 	}
 	if err := compose.UpProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, composeFiles...); err != nil {
 		return false, fmt.Errorf("start application workload: %w", err)
@@ -118,8 +133,8 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	var running []string
 	for verifyCtx.Err() == nil {
 		running, err = compose.RunningServicesProjectFilesEnv(verifyCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-		if err == nil && workloadRunningEnough(activeServices, running, workload.Services) {
-			fmt.Fprintf(out, "[OK] workload          %d Compose service(s) running on BaseHarbor backend network\n", len(workload.Services))
+		if err == nil && workloadRunningEnough(activeServices, running, expectedServices) {
+			fmt.Fprintf(out, "[OK] workload          %d Compose service(s) running on BaseHarbor backend network\n", len(expectedServices))
 			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
 			return true, nil
 		}
@@ -131,7 +146,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if err != nil {
 		return false, fmt.Errorf("verify application workload: %w", err)
 	}
-	return false, fmt.Errorf("application workload did not reach the expected running service set; expected=%v running=%v", workload.Services, running)
+	return false, fmt.Errorf("application workload did not reach the expected running service set; expected=%v running=%v", expectedServices, running)
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
@@ -150,8 +165,13 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...); err != nil {
 		return false, fmt.Errorf("validate application workload before stop: %w", err)
 	}
+	activeServices, err := compose.ServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return false, fmt.Errorf("resolve active application workload services before stop: %w", err)
+	}
+	expectedServices := activeSelectedWorkloadServices(activeServices, workload.Services)
 	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
-		if err := compose.StopProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, workload.Services, composeFiles...); err != nil {
+		if err := compose.StopProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, expectedServices, composeFiles...); err != nil {
 			return false, fmt.Errorf("stop selected application workload services: %w", err)
 		}
 	} else if err := compose.DownProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
@@ -161,7 +181,7 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err != nil {
 		return false, fmt.Errorf("verify application workload stopped: %w", err)
 	}
-	for _, service := range workload.Services {
+	for _, service := range expectedServices {
 		for _, active := range running {
 			if service == active {
 				return false, fmt.Errorf("verify application workload stopped: selected service %s is still running", service)
@@ -208,8 +228,9 @@ func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose
 	if err != nil {
 		return len(running), true, err
 	}
-	if !workloadRunningEnough(active, running, workload.Services) {
-		return len(running), true, fmt.Errorf("application workload is not ready; expected=%v running=%v", workload.Services, running)
+	expected := activeSelectedWorkloadServices(active, workload.Services)
+	if !workloadRunningEnough(active, running, expected) {
+		return len(running), true, fmt.Errorf("application workload is not ready; expected=%v running=%v", expected, running)
 	}
 	return len(running), true, nil
 }
