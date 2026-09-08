@@ -30,14 +30,44 @@
       "automerge": true
     },
     {
-      "description": "Group routine non-major updates into one daily PR",
+      "description": "Group routine Go dependency updates",
+      "matchManagers": [
+        "gomod"
+      ],
       "matchUpdateTypes": [
         "patch",
         "minor",
         "pin",
         "digest"
       ],
-      "groupName": "daily non-major dependencies"
+      "groupName": "Go dependencies"
+    },
+    {
+      "description": "Group routine GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "pin",
+        "digest"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Group routine container image updates",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "pin",
+        "digest"
+      ],
+      "groupName": "container images"
     },
     {
       "description": "Keep major updates separate but still allow green-CI automerge",
