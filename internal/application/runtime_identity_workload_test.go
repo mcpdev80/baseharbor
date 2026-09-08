@@ -8,16 +8,31 @@ import (
 	"testing"
 )
 
-func TestRuntimeIdentityWorkloadOverrideRequiresHTTPSAPIURL(t *testing.T) {
+func TestRuntimeIdentityWorkloadOverrideIsOptionalWithoutAPIURL(t *testing.T) {
 	m := New("demo", "dev", true, false, true)
 	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
 	files.Bindings = filepath.Join(files.Dir, "bindings")
 	workload := WorkloadFiles{Services: []string{"api"}}
 
 	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "")
-	if _, _, err := MaterializeRuntimeIdentityWorkloadOverride(m, workload, files); !errors.Is(err, ErrRuntimeAPIURL) {
-		t.Fatalf("missing runtime API URL error = %v", err)
+	path, enabled, err := MaterializeRuntimeIdentityWorkloadOverride(m, workload, files)
+	if err != nil {
+		t.Fatalf("missing runtime API URL should keep runtime identity optional: %v", err)
 	}
+	if enabled || path != "" {
+		t.Fatalf("runtime identity path=%q enabled=%v, want disabled without configured API", path, enabled)
+	}
+	if _, err := os.Stat(RuntimeIdentityTokenPath(files)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("runtime token should not be materialized without configured API: %v", err)
+	}
+}
+
+func TestRuntimeIdentityWorkloadOverrideRejectsInsecureAPIURL(t *testing.T) {
+	m := New("demo", "dev", true, false, true)
+	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
+	files.Bindings = filepath.Join(files.Dir, "bindings")
+	workload := WorkloadFiles{Services: []string{"api"}}
+
 	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "http://baseharbor.example")
 	if _, _, err := MaterializeRuntimeIdentityWorkloadOverride(m, workload, files); !errors.Is(err, ErrRuntimeAPIURL) {
 		t.Fatalf("insecure runtime API URL error = %v", err)
