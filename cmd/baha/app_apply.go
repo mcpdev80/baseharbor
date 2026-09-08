@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
 func appApplyCommand(store application.Store) *cli.Command {
@@ -84,6 +85,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
+
+			var brokerFiles runtimebroker.Files
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
@@ -93,7 +96,19 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if err := checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files); err != nil {
 					return fmt.Errorf("required secrets check failed: %w", err)
 				}
+				mtlsFiles, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files)
+				if err != nil {
+					return fmt.Errorf("converge runtime mTLS identity: %w", err)
+				}
+				brokerFiles, err = runtimebroker.Ensure(m, files, mtlsFiles)
+				if err != nil {
+					return fmt.Errorf("materialize runtime secret broker: %w", err)
+				}
+				if err := compose.ConfigProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); err != nil {
+					return fmt.Errorf("validate runtime secret broker: %w", err)
+				}
 			}
+
 			if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
@@ -120,6 +135,12 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			if verifyErr != nil {
 				return fmt.Errorf("application verification failed: %w", verifyErr)
+			}
+
+			if m.Services.Secrets {
+				if err := compose.UpProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); err != nil {
+					return fmt.Errorf("start runtime secret broker: %w", err)
+				}
 			}
 
 			printRuntimeReady(out, m)
@@ -156,6 +177,7 @@ func printRuntimeReady(out io.Writer, m application.Manifest) {
 	}
 	if m.Services.Secrets {
 		fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole and secret scope verified")
+		fmt.Fprintln(out, "[OK] secret-broker     per-application mTLS runtime broker started")
 		if len(m.Secrets.Required) > 0 {
 			fmt.Fprintf(out, "[OK] required-secrets  %d declared secret(s) present\n", len(m.Secrets.Required))
 		}
