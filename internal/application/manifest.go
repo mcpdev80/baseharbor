@@ -3,6 +3,7 @@ package application
 import (
 	"bufio"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ type Manifest struct {
 	Environment string
 	Services    Services
 	Secrets     SecretRequirements
+	Workload    WorkloadConfig
 }
 
 type Services struct {
@@ -27,6 +29,14 @@ type Services struct {
 	Secrets           bool
 	PostgresInstances map[string]ServiceInstance
 	RedisInstances    map[string]ServiceInstance
+}
+
+// WorkloadConfig optionally disambiguates an existing application Compose
+// workload. Empty values keep the common case convention-based: BaseHarbor may
+// detect one unambiguous Compose file and attach all of its services.
+type WorkloadConfig struct {
+	Compose  string
+	Services []string
 }
 
 // ServiceInstance is the stable logical identity of one requested backend
@@ -80,6 +90,12 @@ func WithRedisInstances(m Manifest, names ...string) Manifest {
 		m.Services.RedisInstances[name] = ServiceInstance{}
 	}
 	m.Services.Redis = true
+	return m
+}
+
+func WithWorkload(m Manifest, compose string, services ...string) Manifest {
+	m.Workload.Compose = compose
+	m.Workload.Services = append([]string(nil), services...)
 	return m
 }
 
@@ -162,6 +178,44 @@ func (m Manifest) Validate() error {
 		}
 		seen[requirement.Name] = struct{}{}
 	}
+	if err := validateWorkload(m.Workload); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateWorkload(workload WorkloadConfig) error {
+	if workload.Compose != "" {
+		clean := filepath.Clean(workload.Compose)
+		if filepath.IsAbs(workload.Compose) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("workload compose path %q must stay inside the application repository", workload.Compose)
+		}
+		if clean != workload.Compose {
+			return fmt.Errorf("workload compose path %q must be normalized", workload.Compose)
+		}
+	}
+	seen := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		if err := validateComposeServiceName(service); err != nil {
+			return err
+		}
+		if _, exists := seen[service]; exists {
+			return fmt.Errorf("duplicate workload service %q", service)
+		}
+		seen[service] = struct{}{}
+	}
+	return nil
+}
+
+func validateComposeServiceName(name string) error {
+	if name == "" || len(name) > 128 {
+		return fmt.Errorf("invalid workload service name %q", name)
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.') {
+			return fmt.Errorf("invalid workload service name %q", name)
+		}
+	}
 	return nil
 }
 
@@ -217,6 +271,20 @@ func (m Manifest) YAML() string {
 			fmt.Fprintf(&b, "    - name: %s\n", requirement.Name)
 		}
 	}
+	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
+		b.WriteString("workload:\n")
+		if m.Workload.Compose != "" {
+			fmt.Fprintf(&b, "  compose: %s\n", m.Workload.Compose)
+		}
+		if len(m.Workload.Services) > 0 {
+			services := append([]string(nil), m.Workload.Services...)
+			sort.Strings(services)
+			b.WriteString("  services:\n")
+			for _, service := range services {
+				fmt.Fprintf(&b, "    - %s\n", service)
+			}
+		}
+	}
 	return b.String()
 }
 
@@ -239,6 +307,7 @@ func ParseYAML(input string) (Manifest, error) {
 	service := ""
 	serviceField := ""
 	secretField := ""
+	workloadField := ""
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
 	for s.Scan() {
@@ -254,6 +323,7 @@ func ParseYAML(input string) (Manifest, error) {
 			service = ""
 			serviceField = ""
 			secretField = ""
+			workloadField = ""
 			switch {
 			case strings.HasPrefix(trim, "version:"):
 				v, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trim, "version:")))
@@ -268,6 +338,8 @@ func ParseYAML(input string) (Manifest, error) {
 				section = "services"
 			case trim == "secrets:":
 				section = "secrets"
+			case trim == "workload:":
+				section = "workload"
 			default:
 				return Manifest{}, fmt.Errorf("line %d: unsupported top-level field %q", lineNo, trim)
 			}
@@ -297,6 +369,18 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "secrets" && trim == "required:" {
 				secretField = "required"
+				continue
+			}
+			if section == "workload" {
+				if trim == "services:" {
+					workloadField = "services"
+					continue
+				}
+				key, value, ok := strings.Cut(trim, ":")
+				if !ok || key != "compose" {
+					return Manifest{}, fmt.Errorf("line %d: expected compose: PATH or services:", lineNo)
+				}
+				m.Workload.Compose = strings.TrimSpace(value)
 				continue
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
@@ -334,6 +418,10 @@ func ParseYAML(input string) (Manifest, error) {
 					return Manifest{}, fmt.Errorf("line %d: required secret key is empty", lineNo)
 				}
 				m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
+				continue
+			}
+			if section == "workload" && workloadField == "services" && strings.HasPrefix(trim, "- ") {
+				m.Workload.Services = append(m.Workload.Services, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
 				continue
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)

@@ -21,7 +21,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 		Name:    "status",
 		Summary: "Show application runtime and readiness status",
 		Usage:   "baha app status [NAME]",
-		Long:    "Reports materialized runtime state, running services and protocol-level readiness. Managed required secrets are considered ready only when their values are present and readable. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Reports materialized backend state, repository workload state and protocol-level readiness. Managed required secrets are considered ready only when their values are present and readable. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "status")
 			if err != nil {
@@ -116,6 +116,17 @@ func appStatusCommand(store application.Store) *cli.Command {
 					cancel()
 				}
 			}
+			if count, found, workloadErr := checkRepositoryWorkloadReady(ctx, compose, resolved, files); found {
+				if workloadErr != nil {
+					fmt.Fprintln(out, "[FAIL] workload          repository Compose workload is not ready")
+					ready = false
+				} else {
+					fmt.Fprintf(out, "[OK] workload          %d Compose service(s) running with BaseHarbor backend connectivity\n", count)
+				}
+			} else if workloadErr != nil {
+				fmt.Fprintln(out, "[FAIL] workload          repository Compose integration could not be resolved")
+				ready = false
+			}
 			if !ready {
 				return errors.New("application is not ready")
 			}
@@ -129,7 +140,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor [NAME]",
-		Long:    "Checks desired state, local runtime files, Compose configuration, service state, authenticated protocol readiness, managed OpenBao secret scope health and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Checks desired state, local runtime files, Compose configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "doctor")
 			if err != nil {
@@ -149,6 +160,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
+				{Name: "workload discovery", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 				{Name: "runtime state", Run: func(context.Context) error { return runtimeErr }},
 				{Name: "runtime permissions", Run: func(context.Context) error {
 					if runtimeErr != nil {
@@ -179,6 +191,13 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					}
 					var err error
 					running, err = compose.RunningServicesProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+					return err
+				}},
+				{Name: "repository workload", Run: func(ctx context.Context) error {
+					if runtimeErr != nil {
+						return runtimeErr
+					}
+					_, _, err := checkRepositoryWorkloadReady(ctx, compose, resolved, files)
 					return err
 				}},
 			}

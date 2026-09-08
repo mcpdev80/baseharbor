@@ -22,7 +22,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down [NAME]",
-		Long:    "Stops and removes managed containers and transient network while preserving persistent data volumes, runtime credentials and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Stops a repository application workload first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "down")
 			if err != nil {
@@ -44,6 +44,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
+				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
@@ -64,6 +65,12 @@ func appDownCommand(store application.Store) *cli.Command {
 			preflight.Format(out, results)
 			if !ok {
 				return errors.New("application down preflight failed")
+			}
+
+			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
+				return err
+			} else if stopped {
+				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
 			}
 
 			project := application.RuntimeProjectName(m)
@@ -93,7 +100,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
 		Usage:   "baha app destroy [NAME] [--yes]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. A repository-owned baseharbor.yaml is never deleted; it remains the application contract.",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. Application-owned Compose volumes and a repository-owned baseharbor.yaml are preserved.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, err := parseDestroyArgs(args)
 			if err != nil {
@@ -130,6 +137,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
+				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 			}
 			if runtimeErr == nil {
 				checks = append(checks,
@@ -180,6 +188,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					fmt.Fprintf(out, "  %-10s %s\n", resource.Kind+":", resource.Name)
 				}
 			}
+			if resolved.FromRepository {
+				if workload, found, err := materializeRepositoryWorkload(resolved, files); err == nil && found {
+					fmt.Fprintf(out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", workload.Compose)
+				}
+			}
 			if m.Services.Secrets {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
 			}
@@ -194,6 +207,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 
 			if runtimeErr == nil {
+				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
+					return err
+				}
 				if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
 					return err
 				}
@@ -222,7 +238,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			fmt.Fprintf(out, "Application %s was permanently destroyed.\n", m.Name)
 			if resolved.FromRepository {
-				fmt.Fprintln(out, "Repository baseharbor.yaml was preserved; run 'baha app apply' to recreate the backend.")
+				fmt.Fprintln(out, "Repository baseharbor.yaml and application-owned Compose data were preserved; run 'baha app apply' to recreate the backend.")
 			}
 			return nil
 		},
