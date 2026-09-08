@@ -41,7 +41,7 @@ BEGIN
 END
 $$;
 GRANT USAGE ON SCHEMA public TO baseharbor_runtime_ci;
-GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, memberships TO baseharbor_runtime_ci;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, memberships, application_ownerships TO baseharbor_runtime_ci;
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +122,28 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 		t.Fatal("tenant A was allowed to insert a tenant B membership")
 	}
 
+	ownership := NewApplicationOwnershipStore(runtime)
+	if err := ownership.Claim(ctx, tenantA, "mailflow"); err != nil {
+		t.Fatalf("claim application ownership: %v", err)
+	}
+	if err := ownership.Claim(ctx, tenantA, "mailflow"); err != nil {
+		t.Fatalf("idempotent ownership claim failed: %v", err)
+	}
+	owned, err := ownership.OwnedByTenant(ctx, tenantA, "mailflow")
+	if err != nil || !owned {
+		t.Fatalf("tenant A ownership lookup = %v, %v", owned, err)
+	}
+	owned, err = ownership.OwnedByTenant(ctx, tenantB, "mailflow")
+	if err != nil {
+		t.Fatalf("tenant B ownership lookup: %v", err)
+	}
+	if owned {
+		t.Fatal("tenant B can see tenant A application ownership")
+	}
+	if err := ownership.Claim(ctx, tenantB, "mailflow"); !errors.Is(err, ErrApplicationOwnershipConflict) {
+		t.Fatalf("cross-tenant claim error = %v, want ownership conflict", err)
+	}
+
 	if !errors.Is(WithTenantTx(ctx, runtime, "not-a-uuid", func(pgx.Tx) error { return nil }), ErrInvalidTenantID) {
 		t.Fatal("invalid tenant id was not rejected before opening tenant scope")
 	}
@@ -129,6 +151,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 
 func resetTestDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
+DROP TABLE IF EXISTS application_ownerships CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS external_identities CASCADE;
 DROP TABLE IF EXISTS tenants CASCADE;

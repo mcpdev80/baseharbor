@@ -27,10 +27,16 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback latest migration: %v", err)
+		t.Fatalf("rollback application ownership migration: %v", err)
 	}
 
-	var tenantsExists, membershipsExists bool
+	var ownershipExists, tenantsExists, membershipsExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.application_ownerships') IS NOT NULL").Scan(&ownershipExists); err != nil {
+		t.Fatal(err)
+	}
+	if ownershipExists {
+		t.Fatal("application ownership schema still exists after rolling back its owning migration")
+	}
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.tenants') IS NOT NULL").Scan(&tenantsExists); err != nil {
 		t.Fatal(err)
 	}
@@ -38,10 +44,20 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !tenantsExists || !membershipsExists {
-		t.Fatal("rolling back RLS migration removed core identity schema")
+		t.Fatal("rolling back application ownership removed earlier identity schema")
 	}
 
 	var rlsEnabled bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if !rlsEnabled {
+		t.Fatal("rolling back application ownership unexpectedly disabled membership RLS")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback RLS migration: %v", err)
+	}
 	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
 		t.Fatal(err)
 	}
