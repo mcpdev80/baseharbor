@@ -37,7 +37,7 @@ func NewApplicationRuntimeClient(rawURL string) (*ApplicationRuntimeClient, erro
 	parsed.Path = ""
 	return &ApplicationRuntimeClient{
 		baseURL: parsed,
-		client: &http.Client{Timeout: 15 * time.Second},
+		client:  &http.Client{Timeout: 15 * time.Second},
 	}, nil
 }
 
