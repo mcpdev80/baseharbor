@@ -274,27 +274,6 @@ baha version
 
 The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 
-## Project documentation
-
-The repository Markdown under [`docs/`](docs/index.md) is the canonical documentation source and feeds the bilingual GitHub Pages site.
-
-- English (default): <https://mcpdev80.github.io/baseharbor/>
-- Deutsch: <https://mcpdev80.github.io/baseharbor/de/>
-
-Start with:
-
-- [documentation index](docs/index.md)
-- [application contract](docs/application-contract.md)
-- [repository workflow](docs/repository-application-workflow.md)
-- [`baha` CLI](docs/cli.md)
-- [control-plane runtime](docs/runtime-compose.md)
-- [secrets and OpenBao](docs/secrets-and-openbao.md)
-- [backup and restore](docs/backup-and-restore.md)
-- [release policy](docs/releases.md)
-- [architecture](docs/architecture.md)
-- [roadmap](docs/roadmap.md)
-- [development guidelines](docs/DEVELOPMENT_GUIDELINES.md)
-
 ## Design goals
 
 - one dependable CLI for setup and lifecycle management;
