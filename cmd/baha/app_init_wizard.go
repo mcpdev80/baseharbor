@@ -34,12 +34,12 @@ type appProjectDetection struct {
 }
 
 type composeServiceDetection struct {
-	Name       string
-	Postgres   bool
-	Redis      bool
-	HasBuild   bool
-	HasImage   bool
-	HasPorts   bool
+	Name     string
+	Postgres bool
+	Redis    bool
+	HasBuild bool
+	HasImage bool
+	HasPorts bool
 }
 
 func appGuidedInitCommand() *cli.Command {
