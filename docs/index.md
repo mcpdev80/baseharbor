@@ -12,6 +12,7 @@ The README is a product overview and quick entry point. Detailed behavior, opera
 - [Local control-plane runtime](runtime-compose.md)
 - [Secrets and OpenBao](secrets-and-openbao.md)
 - [Backup and restore](backup-and-restore.md)
+- [Releases and versioning](releases.md)
 
 ## Architecture and security
 
