@@ -14,6 +14,12 @@ import (
 func rootCommand() *cli.Command {
 	store := application.DefaultStore()
 	appCmd := appCommand(store)
+	for i, child := range appCmd.Children {
+		if child.Name == "init" {
+			appCmd.Children[i] = appGuidedInitCommand()
+			break
+		}
+	}
 	appCmd.Children = append(appCmd.Children,
 		appApplyCommand(store),
 		appBackupCommand(store),
