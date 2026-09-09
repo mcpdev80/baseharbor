@@ -3,6 +3,7 @@ package application
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // ReallocateRuntimePorts replaces only the generated host-port assignments for
@@ -16,7 +17,20 @@ func ReallocateRuntimePorts(m Manifest, files RuntimeFiles) error {
 		return err
 	}
 
+	// Never immediately hand the same failed assignments back to Compose. Keep
+	// all old host ports excluded while selecting the replacement set.
 	excluded := map[int]struct{}{}
+	for key, value := range values {
+		if !strings.HasSuffix(key, "_HOST_PORT") || strings.TrimSpace(value) == "" {
+			continue
+		}
+		if err := validatePortValue(value, key); err != nil {
+			return err
+		}
+		port, _ := strconv.Atoi(value)
+		excluded[port] = struct{}{}
+	}
+
 	for _, instance := range PostgresInstanceNames(m) {
 		port, err := allocateLoopbackPort(excluded)
 		if err != nil {
