@@ -1,0 +1,55 @@
+name: release-check
+
+on:
+  pull_request:
+    paths:
+      - '.goreleaser.yaml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-check.yml'
+      - 'cmd/baha/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'CHANGELOG.md'
+      - 'scripts/install.sh'
+      - 'docs/releases.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          install-only: true
+
+      - name: Validate GoReleaser configuration
+        run: goreleaser check
+
+      - name: Build release snapshot
+        run: goreleaser release --snapshot --clean --skip=publish
+
+      - name: Verify release archives and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/checksums.txt
+          test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+          grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+          grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
