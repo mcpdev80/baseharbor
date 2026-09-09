@@ -26,8 +26,10 @@ type appProjectDetection struct {
 	WorkloadServices  []string
 	Postgres          bool
 	PostgresSource    string
+	PostgresInstances []string
 	Redis             bool
 	RedisSource       string
+	RedisInstances    []string
 	SecretCandidates  []string
 	SecretSources     map[string]string
 	EnvFiles          []string
@@ -128,12 +130,14 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		for _, service := range services {
 			if service.Postgres {
 				d.Postgres = true
+				d.PostgresInstances = append(d.PostgresInstances, detectedLogicalInstanceName(service.Name, "postgres"))
 				if d.PostgresSource == "" {
 					d.PostgresSource = rel + " service " + service.Name
 				}
 			}
 			if service.Redis {
 				d.Redis = true
+				d.RedisInstances = append(d.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
 				if d.RedisSource == "" {
 					d.RedisSource = rel + " service " + service.Name
 				}
@@ -144,6 +148,8 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 	}
 	d.WorkloadServices = uniqueSorted(d.WorkloadServices)
+	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
+	d.RedisInstances = uniqueSorted(d.RedisInstances)
 
 	envCandidates := []string{".env.example", ".env.template", ".env.sample", ".env"}
 	for _, rel := range envCandidates {
@@ -320,6 +326,29 @@ func slugifyAppName(value string) string {
 	return result
 }
 
+func detectedLogicalInstanceName(serviceName, kind string) string {
+	name := slugifyAppName(serviceName)
+	prefixes := []string{kind + "-"}
+	suffixes := []string{"-" + kind}
+	if kind == "postgres" {
+		prefixes = append(prefixes, "postgresql-", "pg-")
+		suffixes = append(suffixes, "-postgresql", "-pg")
+	} else {
+		prefixes = append(prefixes, "valkey-", "redis-")
+		suffixes = append(suffixes, "-valkey", "-redis")
+	}
+	for _, prefix := range prefixes {
+		name = strings.TrimPrefix(name, prefix)
+	}
+	for _, suffix := range suffixes {
+		name = strings.TrimSuffix(name, suffix)
+	}
+	if name == "" {
+		return slugifyAppName(serviceName)
+	}
+	return name
+}
+
 func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	reader := bufio.NewReader(appInitInput)
 	fmt.Fprintln(out, "Analyzing repository...")
@@ -372,6 +401,20 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		return err
 	}
 
+	var postgresInstances, redisInstances []string
+	if selected[0] {
+		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.PostgresInstances)
+		if err != nil {
+			return err
+		}
+	}
+	if selected[1] {
+		redisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.RedisInstances)
+		if err != nil {
+			return err
+		}
+	}
+
 	required := []string(nil)
 	if selected[2] {
 		required, err = promptSecretCandidates(reader, out, d.SecretCandidates, d.SecretSources)
@@ -392,6 +435,12 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	}
 
 	m := application.New(name, environment, selected[0], selected[1], selected[2])
+	if len(postgresInstances) > 0 {
+		m = application.WithPostgresInstances(m, postgresInstances...)
+	}
+	if len(redisInstances) > 0 {
+		m = application.WithRedisInstances(m, redisInstances...)
+	}
 	m = application.WithRequiredSecrets(m, required...)
 	if compose != "" && len(workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(compose), workloadServices...)
@@ -424,6 +473,12 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 		postgres = true
 	}
 	m := application.New(d.Name, "dev", postgres, redis, secrets)
+	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
+		m = application.WithPostgresInstances(m, postgresNamed...)
+	}
+	if redisNamed := quickNamedInstances(d.RedisInstances); len(redisNamed) > 0 {
+		m = application.WithRedisInstances(m, redisNamed...)
+	}
 	m = application.WithRequiredSecrets(m, d.SecretCandidates...)
 	if d.Compose != "" && len(d.WorkloadServices) > 0 {
 		m = application.WithWorkload(m, d.Compose, d.WorkloadServices...)
@@ -448,11 +503,17 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	}
 	if d.Postgres {
 		fmt.Fprintf(out, "✓ PostgreSQL detected from %s\n", d.PostgresSource)
+		if len(d.PostgresInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.PostgresInstances, ", "))
+		}
 	} else {
 		fmt.Fprintln(out, "- PostgreSQL not detected")
 	}
 	if d.Redis {
 		fmt.Fprintf(out, "✓ Redis/Valkey detected from %s\n", d.RedisSource)
+		if len(d.RedisInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.RedisInstances, ", "))
+		}
 	} else {
 		fmt.Fprintln(out, "- Redis/Valkey not detected")
 	}
@@ -495,6 +556,39 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) 
 		return nil, errors.New("select at least one backend capability")
 	}
 	return selected, nil
+}
+
+func promptServiceInstances(reader *bufio.Reader, out io.Writer, label string, detected []string) ([]string, error) {
+	detected = uniqueSorted(detected)
+	defaultValue := "default"
+	if len(detected) > 1 {
+		defaultValue = strings.Join(detected, ",")
+	}
+	line, err := promptLine(reader, out, label+" instances (comma-separated)", defaultValue)
+	if err != nil {
+		return nil, err
+	}
+	line = strings.TrimSpace(line)
+	if line == "" || line == "default" {
+		return nil, nil
+	}
+	var names []string
+	for _, raw := range strings.Split(line, ",") {
+		name := slugifyAppName(raw)
+		if name == "" {
+			return nil, fmt.Errorf("invalid %s instance name %q", label, raw)
+		}
+		names = append(names, name)
+	}
+	return uniqueSorted(names), nil
+}
+
+func quickNamedInstances(detected []string) []string {
+	detected = uniqueSorted(detected)
+	if len(detected) > 1 {
+		return detected
+	}
+	return nil
 }
 
 func promptSecretCandidates(reader *bufio.Reader, out io.Writer, candidates []string, sources map[string]string) ([]string, error) {
