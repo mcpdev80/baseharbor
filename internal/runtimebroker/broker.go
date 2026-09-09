@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:latest"
+	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:edge"
 	ServiceName  = "broker"
 	RuntimeURL   = "https://baseharbor-secrets:8443"
 )
