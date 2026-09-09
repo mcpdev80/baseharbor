@@ -50,9 +50,9 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "up",
-			Summary: "Start the local BaseHarbor control-plane runtime",
-			Usage:   "baha up [--yes] [--postgres-port PORT] [--openbao-port PORT]",
-			Long:    "On first initialization, checks the default PostgreSQL and OpenBao host ports before writing runtime state. Interactive terminals can accept or change the proposed ports. --yes accepts safe proposals non-interactively. Explicit port flags override the proposal and still fail closed when occupied.",
+			Summary: "Start BaseHarbor and, inside an application repository, converge the application",
+			Usage:   "baha up [--yes] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Long:    "Starts or reuses the local BaseHarbor control plane. When run inside a repository containing baseharbor.yaml, the same command also verifies managed secrets, bootstraps or unseals OpenBao when required, provisions declared backend capabilities, starts the repository workload and verifies readiness. A fresh managed-secret setup requires an operator-selected recovery-file path outside .baseharbor; interactive terminals ask for it, while non-interactive use supplies --recovery-file PATH. Outside an application repository, baha up keeps the control-plane-only behavior.",
 			Run:     runtimeUpCommand,
 		},
 		{
