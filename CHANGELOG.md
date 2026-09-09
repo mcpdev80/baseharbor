@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0-rc.1] - 2026-09-09
+
 ### Added
 
 - Formal Semantic Versioning and GitHub Release process for the `baha` CLI.
@@ -20,9 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The moving development container tag is `edge`; `latest` is reserved for stable releases.
 - Control-plane runtime state is user-global by default instead of repository-relative.
 - Renovate automation is restricted to low-risk updates; platform, major and security-sensitive changes require review.
+- Application runtime startup now retries transient loopback host-port bind races without changing credentials, database names, or persisted volumes.
 
-## Release history
+### Release candidate scope
 
-The first public release will be `v0.1.0` after the release pipeline and real-product acceptance gates are verified.
+- This release candidate validates the real GitHub publishing path before `v0.1.0`.
+- It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...HEAD
+[0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1
