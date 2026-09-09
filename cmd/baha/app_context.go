@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
@@ -39,11 +41,35 @@ func resolveApplication(store application.Store, args []string, command string) 
 		return resolvedApplication{}, err
 	}
 	repoRoot := filepath.Dir(path)
+	if err := configureRepositoryComposeEnvironment(repoRoot); err != nil {
+		return resolvedApplication{}, err
+	}
 	repoStore := application.Store{Root: filepath.Join(repoRoot, ".baseharbor", "apps")}
 	if _, err := repoStore.Sync(m); err != nil {
 		return resolvedApplication{}, fmt.Errorf("synchronize repository manifest: %w", err)
 	}
 	return resolvedApplication{Manifest: m, ManifestPath: path, Store: repoStore, FromRepository: true}, nil
+}
+
+func configureRepositoryComposeEnvironment(repoRoot string) error {
+	if strings.TrimSpace(os.Getenv("COMPOSE_ENV_FILES")) != "" {
+		return nil
+	}
+	path := filepath.Join(repoRoot, ".env")
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect repository Compose environment file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("repository Compose environment file %s is not a regular file", path)
+	}
+	if err := os.Setenv("COMPOSE_ENV_FILES", path); err != nil {
+		return fmt.Errorf("configure repository Compose environment file: %w", err)
+	}
+	return nil
 }
 
 func checkManifestPermissions(path string, fromRepository bool) error {
@@ -52,8 +78,8 @@ func checkManifestPermissions(path string, fromRepository bool) error {
 		return err
 	}
 	if fromRepository {
-		if info.Mode().Perm()&0o022 != 0 {
-			return fmt.Errorf("repository manifest %s is writable by group or others (%o)", path, info.Mode().Perm())
+		if info.Mode().Perm()&0o002 != 0 {
+			return fmt.Errorf("repository manifest %s is writable by others (%o)", path, info.Mode().Perm())
 		}
 		return nil
 	}
