@@ -1,5 +1,9 @@
 # BaseHarbor
 
+[![CI](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver)](https://github.com/mcpdev80/baseharbor/releases)
+[![License](https://img.shields.io/github/license/mcpdev80/baseharbor)](LICENSE)
+
 Secure, modular, self-hosted application backend runtime managed through the `baha` CLI.
 
 BaseHarbor provides reusable backend infrastructure for independent applications without forcing those applications into one monolith or a proprietary data-access SDK.
@@ -8,7 +12,9 @@ BaseHarbor provides reusable backend infrastructure for independent applications
 
 ## Status
 
-Early development. Identity, authorization, tenancy, secrets foundations, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
+BaseHarbor is under active development and currently follows the `0.x` Semantic Versioning policy. Real products should consume published releases, not the moving `main` branch.
+
+Identity, authorization, tenancy, secrets foundations, PostgreSQL migrations, database-enforced tenant isolation, the single-node control-plane runtime, and the declarative application resource model are in place.
 
 Per-application runtime convergence supports dedicated PostgreSQL and Valkey services. Applications can also request an isolated managed OpenBao secret scope alongside PostgreSQL and/or Valkey. `baha app apply NAME` creates the isolated Compose runtime, provisions the application OpenBao policy/AppRole when requested, and reports success only after protocol/authentication verification.
 
@@ -22,54 +28,85 @@ Application secret operations share one internal service boundary across the CLI
 
 The runtime can be inspected with `baha app status NAME`, diagnosed with `baha app doctor NAME`, stopped without deleting persistent data or the OpenBao scope with `baha app down NAME`, resumed from existing materialized state with `baha app up NAME`, and permanently removed through the ownership-verified `baha app destroy NAME --yes` path.
 
-The bundled OpenBao control-plane runtime has an explicit manual bootstrap and unseal workflow. BaseHarbor initializes OpenBao without persisting or printing the initial root token, creates the `baseharbor/` KV v2 mount, establishes a restricted manager AppRole, verifies it, and revokes the initial root token. Shamir unseal material is written only to an operator-selected recovery file outside `.baseharbor` state.
+The bundled OpenBao control-plane runtime has an explicit bootstrap and unseal workflow. BaseHarbor initializes OpenBao without persisting or printing the initial root token, creates the `baseharbor/` KV v2 mount, establishes a restricted manager AppRole, verifies it, and revokes the initial root token. Shamir unseal material is written only to an operator-selected recovery file outside managed runtime state.
 
-## CLI
+## Install `baha`
 
-Build the single operator binary:
+### Recommended: install a released binary
+
+Stable releases publish Linux amd64 and arm64 archives with SHA-256 checksums and GitHub build-provenance attestations.
+
+Install the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
+```
+
+For production automation, pin the installer and the BaseHarbor version to an immutable release tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.1.0/scripts/install.sh \
+  | bash -s -- v0.1.0
+```
+
+The installer verifies the release archive against the published SHA-256 checksum before installing `baha` to `~/.local/bin/baha` by default.
+
+Verify the installed binary:
+
+```bash
+baha version
+```
+
+### Development: build from source
+
+Building from `main` is for contributors and development environments:
 
 ```bash
 go build -o baha ./cmd/baha
 ```
 
+A source build without release linker metadata reports itself as a development build and should not be treated as a production release.
+
+## CLI
+
 Discover commands at every level:
 
 ```bash
-./baha --help
-./baha app --help
-./baha openbao --help
+baha --help
+baha app --help
+baha openbao --help
 ```
 
 Create a PostgreSQL + Valkey application runtime:
 
 ```bash
-./baha app create demo --postgres --redis
-./baha app plan demo
-./baha app preflight demo
-./baha app apply demo
-./baha app status demo
-./baha app doctor demo
+baha app create demo --postgres --redis
+baha app plan demo
+baha app preflight demo
+baha app apply demo
+baha app status demo
+baha app doctor demo
 ```
 
 Create an application with required managed secrets:
 
 ```bash
-./baha app create secure-demo \
+baha app create secure-demo \
   --postgres \
   --require-secret OPENAI_API_KEY \
   --require-secret SMTP_PASSWORD
 
-./baha app plan secure-demo
-./baha app preflight secure-demo
-./baha app apply secure-demo
+baha app plan secure-demo
+baha app preflight secure-demo
+baha app apply secure-demo
 ```
 
 The first `apply` may materialize the runtime definition and isolated OpenBao scope, but it will not start the workload while required secret values are missing or unusable. Configure them without exposing values on the command line:
 
 ```bash
-printf '%s' "$OPENAI_API_KEY" | ./baha app secret set secure-demo OPENAI_API_KEY --stdin
-printf '%s' "$SMTP_PASSWORD" | ./baha app secret set secure-demo SMTP_PASSWORD --stdin
-./baha app apply secure-demo
+printf '%s' "$OPENAI_API_KEY" | baha app secret set secure-demo OPENAI_API_KEY --stdin
+printf '%s' "$SMTP_PASSWORD" | baha app secret set secure-demo SMTP_PASSWORD --stdin
+baha app apply secure-demo
 ```
 
 The manifest retains the `redis` service name for compatibility with Redis-protocol consumers, while the managed implementation is Valkey.
@@ -77,10 +114,10 @@ The manifest retains the `redis` service name for compatibility with Redis-proto
 Lifecycle operations:
 
 ```bash
-./baha app down demo
-./baha app up demo
-./baha app destroy demo
-./baha app destroy demo --yes
+baha app down demo
+baha app up demo
+baha app destroy demo
+baha app destroy demo --yes
 ```
 
 `baha app down` removes managed containers and the transient network while preserving all managed data volumes, runtime state, credentials and optional OpenBao application scope.
@@ -102,30 +139,38 @@ Lifecycle resume and destructive operations add explicit ownership/state verific
 Start the control-plane runtime first:
 
 ```bash
-./baha up
+baha up
 ```
 
 On a fresh single-node installation, initialize the bundled OpenBao instance with an explicitly selected recovery file:
 
 ```bash
-./baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
-./baha openbao status
+baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
+baha openbao status
 ```
 
-The recovery destination is mandatory, is created owner-only, and must be outside `.baseharbor`. BaseHarbor does not print the unseal key. The initial root token is used only in-memory during bootstrap, then revoked after the restricted manager AppRole has been verified.
+The recovery destination is mandatory, is created owner-only, and must be outside managed runtime state. BaseHarbor does not print the unseal key. The initial root token is used only in-memory during bootstrap, then revoked after the restricted manager AppRole has been verified.
 
 After an OpenBao restart, the Shamir-sealed single-node profile requires explicit unseal:
 
 ```bash
-./baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
-./baha openbao status
+baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+baha openbao status
 ```
 
 The recovery file should be stored separately from the host/application data it protects. Automatic KMS/HSM/transit unseal remains a later deployment profile; the current implementation deliberately follows the roadmap requirement to support an explicit manual unseal workflow first.
 
 Managed application scopes and operator secret management are implemented. Runtime delivery remains a separate provider concern: BaseHarbor may later use in-memory files, explicit environment injection, workload identity/OpenBao, or Kubernetes-native secret projection without changing the `secrets.required` application contract.
 
-See [docs/application-contract.md](docs/application-contract.md), [docs/application-secret-api.md](docs/application-secret-api.md), [docs/authentication.md](docs/authentication.md), [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
+## Releases and compatibility
+
+BaseHarbor follows Semantic Versioning. While the project is in the `0.x` series, patch releases stay backward-compatible within a minor line while a new minor line may contain explicitly documented breaking changes.
+
+Production consumers should pin a compatible release range and must not silently follow `main`.
+
+See [CHANGELOG.md](CHANGELOG.md) and [docs/releases.md](docs/releases.md) for the complete release, compatibility and verification policy.
+
+See also [docs/application-contract.md](docs/application-contract.md), [docs/application-secret-api.md](docs/application-secret-api.md), [docs/authentication.md](docs/authentication.md), [docs/cli.md](docs/cli.md), [docs/runtime-compose.md](docs/runtime-compose.md), [docs/secrets-and-openbao.md](docs/secrets-and-openbao.md), [docs/architecture.md](docs/architecture.md), [docs/roadmap.md](docs/roadmap.md), and the mandatory [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
 
 ## Design goals
 
