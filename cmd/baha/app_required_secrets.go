@@ -47,7 +47,7 @@ func checkRequiredApplicationSecrets(
 		return err
 	}
 	if err := openbao.RequireApplicationSecrets(statuses); err != nil {
-		return fmt.Errorf("%w; set missing values with: printf '%%s' \"$VALUE\" | baha app secret set %s KEY --stdin", err, m.Name)
+		return fmt.Errorf("%w; run 'baha app preflight' for the exact safe remediation command for each secret", err)
 	}
 	return nil
 }
@@ -56,9 +56,26 @@ func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretS
 	if len(statuses) == 0 {
 		return
 	}
-	fmt.Fprintln(out, "REQUIRED SECRET\tPRESENT\tUSABLE")
+	configured := false
 	for _, status := range statuses {
-		fmt.Fprintf(out, "%s\t%s\t%s\n", status.Name, yesNo(status.Present), yesNo(status.Usable))
+		configured = configured || status.Present
+	}
+	if !configured {
+		fmt.Fprintln(out, "No application secrets have been configured yet.")
+	}
+	fmt.Fprintln(out, "REQUIRED SECRET\tSTATUS\tACTION")
+	for _, status := range statuses {
+		state := "present"
+		action := "-"
+		switch {
+		case !status.Present:
+			state = "missing - user input required"
+			action = "baha app secret set " + status.Name + " --stdin"
+		case !status.Usable:
+			state = "present but unusable"
+			action = "baha app secret set " + status.Name + " --stdin"
+		}
+		fmt.Fprintf(out, "%s\t%s\t%s\n", status.Name, state, action)
 	}
 }
 
