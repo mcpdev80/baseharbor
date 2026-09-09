@@ -40,8 +40,59 @@ Beim ersten Start werden Ports geprüft. Belegte Standardports werden nicht blin
 
 ## Anwendung
 
+Der normale Entwicklerweg beginnt im bestehenden Projektverzeichnis:
+
 ```bash
-baha app init mailflow --postgres --redis --require-secret SECRET_KEY
+baha app init
+```
+
+`baha` analysiert das Repository zuerst read-only und erkennt, soweit eindeutig:
+
+- gängige Compose-Dateien im Projektwurzelverzeichnis sowie unter `deploy/` und `docker/`;
+- PostgreSQL- und Redis/Valkey-Abhängigkeiten;
+- wahrscheinliche Workload-Services;
+- Infrastrukturvariablen aus `.env.example`, `.env.template`, `.env.sample` oder `.env`;
+- wahrscheinliche Namen benötigter Secrets.
+
+Secret-Werte werden dabei weder angezeigt noch in `baseharbor.yaml` übernommen. Die Regel lautet: **zuerst erkennen, nur Unklares nachfragen**.
+
+Beispiel:
+
+```text
+Analyzing repository...
+✓ Application name: mailflow
+✓ Compose file: deploy/docker-compose.yml
+✓ PostgreSQL detected
+✓ Redis/Valkey detected
+✓ Potential required secret names:
+    OPENAI_API_KEY
+    SMTP_PASSWORD
+```
+
+Anschließend zeigt der Wizard eine kompakte Auswahl der erkannten Capabilities. Die vorausgewählten Werte können geändert werden. Bei mehreren möglichen Compose-Dateien rät `baha` nicht, sondern fragt explizit nach.
+
+Vor dem Schreiben wird das erzeugte `baseharbor.yaml` als Vorschau angezeigt. Eine vorhandene Datei wird niemals still überschrieben.
+
+Für einen nicht-interaktiven, erkennungsbasierten Pfad gibt es:
+
+```bash
+baha app init --quick
+```
+
+`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab und verweist auf den interaktiven Wizard.
+
+Für CI, Skripte oder bewusst vollständig deklarative Aufrufe bleibt der bestehende Flag-Pfad erhalten:
+
+```bash
+baha app init mailflow \
+  --postgres \
+  --redis \
+  --require-secret SECRET_KEY
+```
+
+Danach:
+
+```bash
 baha app plan
 baha app preflight
 baha app apply

@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - End-to-end developer-journey acceptance that validates a clean MailFlow checkout against the exact BaseHarbor CLI/runtime under test.
 - Release-facing CI coverage for occupied default control-plane ports, fail-closed missing application secrets, workload startup, health checks and restart behavior.
 - Developer-journey documentation defining the product-level acceptance promise for future reference applications.
+- Project-aware guided `baha app init` that detects common Compose files, PostgreSQL, Redis/Valkey, workload services and likely required secret names before asking setup questions.
+- `baha app init --quick` for non-interactive manifest generation from unambiguous detections and safe defaults.
+
+### Changed
+
+- Interactive application initialization now follows the rule "detect first, ask only what is unclear" while the existing explicit flags remain the deterministic CI/automation path.
+- Application initialization previews the generated manifest and never copies detected secret values into `baseharbor.yaml`.
 
 ## [0.1.0-rc.1] - 2026-09-09
 
