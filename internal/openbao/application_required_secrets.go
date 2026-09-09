@@ -9,11 +9,13 @@ import (
 )
 
 // RequiredSecretStatus contains readiness metadata only. It never exposes the
-// secret value that was read to prove usability.
+// secret value that was read to prove usability. Generated is caller-supplied
+// declaration metadata and is intentionally not inferred from the stored value.
 type RequiredSecretStatus struct {
-	Name    string
-	Present bool
-	Usable  bool
+	Name      string
+	Present   bool
+	Usable    bool
+	Generated bool
 }
 
 func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity, credentialsPath string, required []string) ([]RequiredSecretStatus, error) {
