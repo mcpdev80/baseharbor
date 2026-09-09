@@ -45,14 +45,21 @@ type WorkloadConfig struct {
 type ServiceInstance struct{}
 
 // SecretRequirements declares application-owned secret requirements. Values
-// never belong in the manifest, and the contract intentionally does not encode
-// a runtime delivery mechanism.
+// never belong in the manifest. Generate only expresses explicit intent for
+// BaseHarbor to create a missing value directly in the managed secret backend.
 type SecretRequirements struct {
 	Required []SecretRequirement
 }
 
 type SecretRequirement struct {
-	Name string
+	Name     string
+	Generate *SecretGeneration
+}
+
+type SecretGeneration struct {
+	Type   string
+	Length int
+	Bytes  int
 }
 
 func New(name, environment string, postgres, redis, secrets bool) Manifest {
@@ -132,12 +139,45 @@ func WithRequiredSecrets(m Manifest, names ...string) Manifest {
 	return m
 }
 
+func WithGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	generation := &SecretGeneration{Type: generationType}
+	switch generationType {
+	case "random":
+		generation.Length = size
+	case "hex":
+		generation.Bytes = size
+	}
+	m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name, Generate: generation})
+	m.Services.Secrets = true
+	return m
+}
+
 func RequiredSecretNames(m Manifest) []string {
 	names := make([]string, 0, len(m.Secrets.Required))
 	for _, requirement := range m.Secrets.Required {
 		names = append(names, requirement.Name)
 	}
 	return names
+}
+
+func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
+	var generated []SecretRequirement
+	for _, requirement := range m.Secrets.Required {
+		if requirement.Generate != nil {
+			generated = append(generated, requirement)
+		}
+	}
+	sort.Slice(generated, func(i, j int) bool { return generated[i].Name < generated[j].Name })
+	return generated
+}
+
+func SecretRequirementByName(m Manifest, name string) (SecretRequirement, bool) {
+	for _, requirement := range m.Secrets.Required {
+		if requirement.Name == name {
+			return requirement, true
+		}
+	}
+	return SecretRequirement{}, false
 }
 
 func (m Manifest) Validate() error {
@@ -177,9 +217,37 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("duplicate required secret %q", requirement.Name)
 		}
 		seen[requirement.Name] = struct{}{}
+		if err := validateSecretGeneration(requirement.Name, requirement.Generate); err != nil {
+			return err
+		}
 	}
 	if err := validateWorkload(m.Workload); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateSecretGeneration(name string, generation *SecretGeneration) error {
+	if generation == nil {
+		return nil
+	}
+	switch generation.Type {
+	case "random":
+		if generation.Length < 16 || generation.Length > 4096 {
+			return fmt.Errorf("generated secret %q random length must be between 16 and 4096", name)
+		}
+		if generation.Bytes != 0 {
+			return fmt.Errorf("generated secret %q random generator must use length, not bytes", name)
+		}
+	case "hex":
+		if generation.Bytes < 16 || generation.Bytes > 1024 {
+			return fmt.Errorf("generated secret %q hex bytes must be between 16 and 1024", name)
+		}
+		if generation.Length != 0 {
+			return fmt.Errorf("generated secret %q hex generator must use bytes, not length", name)
+		}
+	default:
+		return fmt.Errorf("generated secret %q uses unsupported generator type %q", name, generation.Type)
 	}
 	return nil
 }
@@ -269,6 +337,15 @@ func (m Manifest) YAML() string {
 		b.WriteString("secrets:\n  required:\n")
 		for _, requirement := range requirements {
 			fmt.Fprintf(&b, "    - name: %s\n", requirement.Name)
+			if requirement.Generate != nil {
+				fmt.Fprintf(&b, "      generate:\n        type: %s\n", requirement.Generate.Type)
+				switch requirement.Generate.Type {
+				case "random":
+					fmt.Fprintf(&b, "        length: %d\n", requirement.Generate.Length)
+				case "hex":
+					fmt.Fprintf(&b, "        bytes: %d\n", requirement.Generate.Bytes)
+				}
+			}
 		}
 	}
 	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
@@ -307,6 +384,8 @@ func ParseYAML(input string) (Manifest, error) {
 	service := ""
 	serviceField := ""
 	secretField := ""
+	secretIndex := -1
+	secretGenerate := false
 	workloadField := ""
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
@@ -323,6 +402,8 @@ func ParseYAML(input string) (Manifest, error) {
 			service = ""
 			serviceField = ""
 			secretField = ""
+			secretIndex = -1
+			secretGenerate = false
 			workloadField = ""
 			switch {
 			case strings.HasPrefix(trim, "version:"):
@@ -345,6 +426,8 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 		case 2:
 			serviceField = ""
+			secretIndex = -1
+			secretGenerate = false
 			if section == "app" {
 				key, value, ok := strings.Cut(trim, ":")
 				if !ok {
@@ -385,6 +468,7 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 4:
+			secretGenerate = false
 			if section == "services" && service != "" {
 				if trim == "instances:" && service != "secrets" {
 					serviceField = "instances"
@@ -418,6 +502,7 @@ func ParseYAML(input string) (Manifest, error) {
 					return Manifest{}, fmt.Errorf("line %d: required secret key is empty", lineNo)
 				}
 				m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
+				secretIndex = len(m.Secrets.Required) - 1
 				continue
 			}
 			if section == "workload" && workloadField == "services" && strings.HasPrefix(trim, "- ") {
@@ -426,6 +511,11 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 6:
+			if section == "secrets" && secretField == "required" && secretIndex >= 0 && trim == "generate:" {
+				m.Secrets.Required[secretIndex].Generate = &SecretGeneration{}
+				secretGenerate = true
+				continue
+			}
 			if section != "services" || serviceField != "instances" || (service != "postgres" && service != "redis") {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
@@ -450,8 +540,36 @@ func ParseYAML(input string) (Manifest, error) {
 				m.Services.RedisInstances[name] = ServiceInstance{}
 				m.Services.Redis = true
 			}
+		case 8:
+			if section != "secrets" || secretField != "required" || secretIndex < 0 || !secretGenerate || m.Secrets.Required[secretIndex].Generate == nil {
+				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
+			}
+			key, value, ok := strings.Cut(trim, ":")
+			if !ok {
+				return Manifest{}, fmt.Errorf("line %d: expected generated secret key: value", lineNo)
+			}
+			value = strings.TrimSpace(value)
+			generation := m.Secrets.Required[secretIndex].Generate
+			switch key {
+			case "type":
+				generation.Type = value
+			case "length":
+				n, err := strconv.Atoi(value)
+				if err != nil {
+					return Manifest{}, fmt.Errorf("line %d: invalid generated secret length", lineNo)
+				}
+				generation.Length = n
+			case "bytes":
+				n, err := strconv.Atoi(value)
+				if err != nil {
+					return Manifest{}, fmt.Errorf("line %d: invalid generated secret bytes", lineNo)
+				}
+				generation.Bytes = n
+			default:
+				return Manifest{}, fmt.Errorf("line %d: unsupported generated secret field %q", lineNo, key)
+			}
 		default:
-			return Manifest{}, fmt.Errorf("line %d: indentation must use 0, 2, 4 or 6 spaces", lineNo)
+			return Manifest{}, fmt.Errorf("line %d: indentation must use 0, 2, 4, 6 or 8 spaces", lineNo)
 		}
 	}
 	if err := s.Err(); err != nil {

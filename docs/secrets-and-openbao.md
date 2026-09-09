@@ -36,6 +36,47 @@ Each application receives its own OpenBao policy and AppRole. That identity can 
 
 `baha app down` preserves the secret scope. `baha app destroy --yes` removes the managed application secrets, policy, AppRole and BaseHarbor-owned application state while preserving the repository manifest and application-owned data.
 
+## Generated application secrets
+
+BaseHarbor can generate values that are internal to the application and do not need to come from an external provider or human operator. Generation is always explicit in the manifest:
+
+```yaml
+secrets:
+  required:
+    - name: SECRET_KEY
+      generate:
+        type: random
+        length: 64
+
+    - name: ENCRYPTION_KEY
+      generate:
+        type: hex
+        bytes: 32
+
+    - name: OPENAI_API_KEY
+```
+
+The first two values are safe for BaseHarbor to create. `OPENAI_API_KEY` is external and therefore still requires user input.
+
+Supported generators are intentionally small and bounded:
+
+- `random` uses a cryptographically secure URL-safe 64-character alphabet and requires `length` between 16 and 4096.
+- `hex` generates cryptographically secure random bytes and hex-encodes them; `bytes` must be between 16 and 1024.
+
+`baha app apply` generates only explicitly declared values that are currently absent, writes them directly through the verified OpenBao application-secret path, and then runs the normal required-secret readiness gate. Generated values are never printed, written into `baseharbor.yaml`, or exported as a special BaseHarbor metadata file.
+
+Generation is idempotent. If a generated secret already exists, BaseHarbor leaves it unchanged. If an existing value is present but unusable, BaseHarbor also does not replace it automatically; remediation remains an explicit operator action. Automatic rotation is deliberately out of scope for `apply`.
+
+Readiness output distinguishes the cases:
+
+```text
+REQUIRED SECRET    STATUS                                      ACTION
+SECRET_KEY         missing - will be generated automatically   baha app apply
+OPENAI_API_KEY     missing - user input required                baha app secret set OPENAI_API_KEY --stdin
+```
+
+This follows the developer rule: provide only values BaseHarbor cannot safely know or generate.
+
 ## Operator secret input
 
 Secret values are never accepted as positional command-line arguments and are never printed back.
@@ -166,6 +207,8 @@ A configured runtime URL must be absolute HTTPS. Network reachability alone is n
 - secret values are not printed by normal CLI commands
 - list/status/doctor expose metadata only
 - mutation responses do not echo submitted values
+- generated values are created with `crypto/rand` and written directly to the application OpenBao scope
+- existing generated-secret values are never replaced implicitly by `apply`
 - dynamic resolve responses use `Cache-Control: no-store`
 - OpenBao manager/root credentials are never projected into applications
 - runtime credentials are app/environment scoped
@@ -179,6 +222,7 @@ BaseHarbor does not own application configuration such as LLM provider, endpoint
 
 Still outside this MVP slice:
 
+- automatic rotation schedules for generated application secrets
 - dynamic PostgreSQL credentials
 - moving all BaseHarbor-generated PostgreSQL/Valkey credentials into OpenBao
 - OpenBao token renewal/agent integration

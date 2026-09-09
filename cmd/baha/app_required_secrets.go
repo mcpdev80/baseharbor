@@ -25,7 +25,7 @@ func inspectRequiredApplicationSecrets(
 		return nil, fmt.Errorf("required secrets are declared but managed secrets are disabled")
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-	return openbao.InspectRequiredApplicationSecrets(
+	statuses, err := openbao.InspectRequiredApplicationSecrets(
 		ctx,
 		compose,
 		platformFiles,
@@ -33,6 +33,14 @@ func inspectRequiredApplicationSecrets(
 		openbao.ApplicationCredentialsPath(files.Dir),
 		required,
 	)
+	if err != nil {
+		return nil, err
+	}
+	for i := range statuses {
+		requirement, ok := application.SecretRequirementByName(m, statuses[i].Name)
+		statuses[i].Generated = ok && requirement.Generate != nil
+	}
+	return statuses, nil
 }
 
 func checkRequiredApplicationSecrets(
@@ -68,6 +76,9 @@ func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretS
 		state := "present"
 		action := "-"
 		switch {
+		case !status.Present && status.Generated:
+			state = "missing - will be generated automatically"
+			action = "baha app apply"
 		case !status.Present:
 			state = "missing - user input required"
 			action = "baha app secret set " + status.Name + " --stdin"
