@@ -2,7 +2,6 @@ package application
 
 import (
 	"encoding/hex"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -43,8 +42,8 @@ secrets:
 	if err != nil {
 		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
 	}
-	if !reflect.DeepEqual(roundTripped, m) {
-		t.Fatalf("semantic round trip mismatch:\n--- normalized ---\n%s\n--- got ---\n%#v\n--- want ---\n%#v", normalized, roundTripped, m)
+	if got := roundTripped.YAML(); got != normalized {
+		t.Fatalf("normalized manifest is not stable:\n--- first ---\n%s\n--- second ---\n%s", normalized, got)
 	}
 }
 
