@@ -96,7 +96,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}
 			}
 
-			if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
+			if err := startManagedRuntime(ctx, out, compose, m, files); err != nil {
 				return err
 			}
 
@@ -139,6 +139,36 @@ func appApplyCommand(store application.Store) *cli.Command {
 			return nil
 		},
 	}
+}
+
+func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	const maxAttempts = 3
+	project := application.RuntimeProjectName(m)
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := compose.UpProject(ctx, project, files.Compose, files.Env)
+		if err == nil {
+			return nil
+		}
+		if !bhruntime.IsPortBindingConflict(err) || attempt == maxAttempts {
+			return err
+		}
+
+		// Compose can leave services that bound successfully running when a sibling
+		// service loses the host-port race. Tear down only containers/network; all
+		// persistent volumes and credentials remain owned and intact.
+		if downErr := compose.DownProject(ctx, project, files.Compose, files.Env); downErr != nil {
+			return errors.Join(err, fmt.Errorf("clean up partially started runtime before host-port retry: %w", downErr))
+		}
+		if reallocErr := application.ReallocateRuntimePorts(m, files); reallocErr != nil {
+			return errors.Join(err, fmt.Errorf("reallocate application host ports: %w", reallocErr))
+		}
+		if configErr := compose.ConfigProject(ctx, project, files.Compose, files.Env); configErr != nil {
+			return errors.Join(err, fmt.Errorf("validate runtime after host-port reallocation: %w", configErr))
+		}
+		fmt.Fprintf(out, "[RETRY] host-port conflict detected; reassigned loopback ports (attempt %d/%d)\n", attempt+1, maxAttempts)
+	}
+	return errors.New("application runtime start exhausted host-port retries")
 }
 
 func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
