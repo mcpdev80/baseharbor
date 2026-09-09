@@ -25,6 +25,7 @@ func GenerateSecretValue(generation SecretGeneration) ([]byte, error) {
 		}
 		encoded := make([]byte, hex.EncodedLen(len(raw)))
 		hex.Encode(encoded, raw)
+		clear(raw)
 		return encoded, nil
 	default:
 		return nil, errors.New("unsupported generated secret type")
@@ -40,5 +41,6 @@ func generateRandomText(length int) ([]byte, error) {
 	for i, value := range random {
 		result[i] = generatedSecretAlphabet[int(value)%len(generatedSecretAlphabet)]
 	}
+	clear(random)
 	return result, nil
 }
