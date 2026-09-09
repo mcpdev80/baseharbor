@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Required-secret checks now distinguish configured, missing and unusable values and explicitly report when no application secrets have been configured yet.
 - `baha app apply` now generates only explicitly declared missing generated secrets before the normal required-secret gate; existing values are never automatically overwritten or rotated, and external secrets remain fail-closed user input.
 - A fresh managed-secret repository startup through `baha up` now asks for an operator-held recovery path interactively or requires `--recovery-file PATH` in non-interactive mode instead of requiring a separate OpenBao bootstrap command.
+- `baha up` now routes detected application projects without `baseharbor.yaml` into the existing guided app-init flow; `--yes` uses only unambiguous detections and safe `app init --quick` defaults, while ambiguous projects remain fail-closed.
 
 ## [0.1.0-rc.1] - 2026-09-09
 
