@@ -1,6 +1,8 @@
 name: developer-journey
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
