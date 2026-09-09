@@ -136,7 +136,7 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-      - name: Verify OpenBao bootstrap, required secrets and manual unseal lifecycle
+      - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
@@ -208,6 +208,60 @@ jobs:
           printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app up required-demo | grep -q "running and ready"
           /tmp/baha app destroy required-demo --yes | grep -q "permanently destroyed"
+
+          mkdir generated-app
+          cd generated-app
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: generated-demo
+            environment: dev
+          services:
+            postgres:
+              enabled: true
+            redis:
+              enabled: false
+            secrets:
+              enabled: true
+          secrets:
+            required:
+              - name: SECRET_KEY
+                generate:
+                  type: random
+                  length: 64
+              - name: EXTERNAL_TOKEN
+          EOF
+
+          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
+          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
+          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
+
+          set +e
+          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
+          generated_code=$?
+          set -e
+          test "$generated_code" -eq 1
+          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -q "required secrets check failed" /tmp/generated-first-apply.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
+
+          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
+          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+
+          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
+          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
+          /tmp/baha app apply | tee /tmp/generated-second-apply.out
+          grep -q "Application generated-demo is ready" /tmp/generated-second-apply.out
+          ! grep -q "generated-secret" /tmp/generated-second-apply.out
+          /tmp/baha app status | tee /tmp/generated-status.out
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
+          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          /tmp/baha app doctor | grep -q "Application runtime is healthy"
+          /tmp/baha app destroy --yes | grep -q "permanently destroyed"
+          cd "$workdir"
+          unset BASEHARBOR_STATE_DIR
 
           docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
           for i in $(seq 1 20); do
