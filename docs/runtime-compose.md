@@ -1,29 +1,64 @@
-# Local Compose runtime
+# Local control-plane runtime
 
-BaseHarbor's first operational runtime is intentionally small and single-node.
+BaseHarbor's current operational control plane is intentionally single-node and local-first.
 
 ## Services
 
 `baha up` materializes an embedded Compose definition and starts:
 
-- PostgreSQL 18
-- OpenBao 2.6.x
+- PostgreSQL 18;
+- OpenBao 2.6.x.
 
-Both services bind to loopback by default. They are not exposed on all host interfaces.
+Both services bind to loopback by default.
 
-## Generated state
+## First-run port selection
 
-Runtime files live below:
+The default host ports are PostgreSQL `5432` and OpenBao `8200`, but BaseHarbor checks them before first initialization.
 
-```text
-.baseharbor/runtime/
-├── compose.yaml
-└── runtime.env
+```bash
+baha up
 ```
 
-The directory is ignored by Git. Files are written with owner-only permissions. The PostgreSQL password is generated from cryptographically secure random bytes on the first `baha up` and preserved on subsequent runs.
+If a default port is occupied, `baha` proposes a free alternative. Non-interactive setup can accept safe proposals:
 
-The embedded Compose definition is rewritten from the current `baha` binary so runtime definitions can evolve with BaseHarbor upgrades without overwriting the generated secret environment.
+```bash
+baha up --yes
+```
+
+Explicit ports are supported and still fail closed when occupied:
+
+```bash
+baha up --postgres-port 15432 --openbao-port 18200
+```
+
+After initialization, `baha up` does not silently rewrite configured ports.
+
+## Runtime state
+
+The control plane is machine/user scoped, so its runtime files are user-global by default:
+
+```text
+$XDG_DATA_HOME/baseharbor/runtime/
+```
+
+or, when `XDG_DATA_HOME` is unset:
+
+```text
+~/.local/share/baseharbor/runtime/
+```
+
+Typical files include:
+
+```text
+runtime/
+├── compose.yaml
+├── runtime.env
+└── openbao-admin.env
+```
+
+`BASEHARBOR_STATE_DIR` remains an explicit operator/CI override. For compatibility, a legacy repository-local `.baseharbor/runtime` is reused only when no global state exists yet.
+
+Credential-bearing files are owner-only. Generated PostgreSQL credentials and selected ports are preserved across subsequent starts.
 
 ## Commands
 
@@ -34,36 +69,29 @@ baha doctor
 baha down
 ```
 
-`baha up` validates the Compose configuration before starting containers.
-
-`baha status` shows both container state and service readiness. A container being alive is not considered sufficient.
-
-`baha doctor` verifies:
-
-- supported host OS
-- reachable Docker or Podman daemon
-- working Compose integration
-- PostgreSQL reachability once runtime state exists
-- OpenBao initialization/seal state once runtime state exists
+`baha status` reports actual readiness, not only whether containers are alive.
 
 ## OpenBao lifecycle
 
-OpenBao deliberately does not run in development mode and BaseHarbor does not inject a static root token.
+OpenBao does not run with a static development root token.
 
-The first `baha up` therefore starts a persistent but uninitialized OpenBao server. Until initialization and unseal lifecycle commands are added, `baha status` and `baha doctor` will report OpenBao as not ready.
+```bash
+baha openbao status
+baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
+baha openbao status
+```
 
-This is intentional: BaseHarbor must not claim a secrets service is healthy merely because its container process is running.
+Bootstrap initializes and unseals the current single-node Shamir profile, enables the `baseharbor/` KV v2 mount and AppRole auth, creates and verifies the restricted BaseHarbor manager identity, then revokes the initial root token.
 
-A following lifecycle change will add guided OpenBao initialization/unseal handling and connect generated application credentials to the existing credential broker.
+After a restart:
+
+```bash
+baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+baha openbao status
+```
+
+Automatic KMS/HSM/transit unseal is a future deployment profile, not current single-node behavior.
 
 ## Scope
 
-This runtime is the first single-node operational layer. It does not yet include:
-
-- bundled OIDC provider
-- automatic OpenBao initialization/unseal
-- PostgreSQL schema/bootstrap execution from `baha up`
-- TLS termination
-- Kubernetes deployment
-
-Those concerns remain separate so each security boundary can be tested before it becomes part of the default bootstrap path.
+The current control plane does not imply high availability, public network exposure, Kubernetes deployment or KMS/HSM automatic unseal. Those are separate deployment/architecture concerns.

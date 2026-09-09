@@ -1,19 +1,18 @@
 # `baha` CLI
 
-`baha` is the primary operator interface for BaseHarbor. The goal is a single dependable binary that can initialize, inspect, provision, verify, repair and operate BaseHarbor without requiring developers to understand the underlying container or service wiring.
+`baha` is the primary operator and developer interface for BaseHarbor. The CLI owns setup, inspection, provisioning, verification, backup/restore and controlled lifecycle operations while applications continue to consume standard protocols, environment variables and files.
 
 ## Design rules
 
-- One binary with no required language runtime.
-- Hierarchical, discoverable commands.
-- Every command has useful `--help` output.
-- Read-only inspection is distinct from mutation.
-- Usage errors and operational failures have different exit codes.
-- Secret values are never accepted as normal command-line arguments or printed by current commands.
-- Commands report actual protocol readiness, not just process/container state.
-- Preflight comes before mutation; verification comes after mutation.
-- Destructive commands verify exact resource ownership and fail closed on ambiguity.
-- Security bootstrap material is supplied through explicit operator workflows, not hidden defaults.
+- one binary with no required language runtime for released builds;
+- hierarchical, discoverable commands with `--help`;
+- repository-owned `baseharbor.yaml` is the preferred application source of truth;
+- read-only inspection is distinct from mutation;
+- usage errors and operational failures use different exit semantics;
+- secret values are not accepted as normal positional arguments and are not printed by status/doctor/list operations;
+- readiness means authenticated protocol/application verification, not merely a running container;
+- mutation follows preflight and is followed by verification;
+- destructive operations verify exact ownership and fail closed on ambiguity.
 
 ## Current command tree
 
@@ -24,27 +23,45 @@ baha
 ├── down
 ├── status
 ├── doctor
+├── serve
 ├── app
+│   ├── init
 │   ├── create
 │   ├── list
 │   ├── show
 │   ├── plan
 │   ├── preflight
 │   ├── apply
+│   ├── env
 │   ├── status
 │   ├── doctor
+│   ├── backup
+│   ├── restore
 │   ├── down
 │   ├── up
 │   ├── destroy
+│   ├── runtime-identity
+│   │   ├── rotate
+│   │   └── revoke
 │   └── secret
 │       ├── set
 │       ├── list
-│       └── delete
+│       ├── delete
+│       └── tls-set
 ├── openbao
 │   ├── status
 │   ├── bootstrap
 │   └── unseal
 └── version
+```
+
+Use executable help output for precise syntax:
+
+```bash
+baha --help
+baha app --help
+baha app backup --help
+baha openbao --help
 ```
 
 ## Exit codes
@@ -55,257 +72,178 @@ baha
 | `1` | operational/runtime failure |
 | `2` | invalid command or arguments |
 
-## Application manifests
+## Control-plane startup
 
-Examples:
-
-```bash
-baha app create postgres-app --postgres
-baha app create cache-app --redis
-baha app create full-app --postgres --redis
-baha app create secure-app --postgres --secrets
-```
-
-With no service flag, PostgreSQL remains the minimal default. The manifest field is named `redis` for protocol/API compatibility; BaseHarbor provisions Valkey as the managed implementation.
-
-Application state is stored under:
-
-```text
-.baseharbor/apps/<name>/baseharbor.yaml
-```
-
-Manifests contain desired configuration, never plaintext service credentials.
-
-## Supported application services
-
-### PostgreSQL
-
-- `postgres:18-alpine`
-- dedicated application volume
-- no host port by default
-- generated application password
-- readiness: authenticated `SELECT 1`
-
-### Valkey
-
-- `valkey/valkey:9.1.2-alpine`
-- Redis-compatible protocol
-- dedicated application volume mounted at `/data`
-- AOF persistence enabled
-- generated application password
-- no host port by default
-- readiness: authenticated `PING` must return `PONG`
-
-### Managed secrets
-
-Managed secrets use the BaseHarbor OpenBao trust plane and currently require PostgreSQL and/or Valkey so the application has a materialized runtime.
-
-For `NAME` in environment `ENV`, `app apply` provisions:
-
-```text
-KV namespace:  baseharbor/apps/NAME/ENV/
-Policy:        baseharbor-app-NAME-ENV
-AppRole:       baseharbor-app-NAME-ENV
-Credentials:   .baseharbor/apps/NAME/runtime/openbao.env
-```
-
-The application credential file is owner-only and contains only RoleID/SecretID. Application secret payloads are not written to local runtime files.
-
-Each operator-managed key is stored as its own KV v2 document below the exact application/environment namespace. The application policy can wildcard only below that namespace and cannot cross into another application or environment.
-
-The current milestone establishes server-side scope isolation, application identity and safe operator secret management. It does not yet inject OpenBao credentials or resolved values into workload containers or expose direct workload connectivity to the loopback-only bundled OpenBao listener.
-
-## Plan, preflight, apply and verify
-
-```bash
-baha app plan demo
-baha app preflight demo
-baha app apply demo
-```
-
-`plan` and `preflight` are read-only. `apply` validates desired state, materializes the runtime, converges Compose and optional OpenBao application identity, and returns success only after every enabled service passes verification.
-
-The stable lifecycle contract is:
-
-```text
-plan -> preflight -> apply -> verify
-```
-
-Each application/environment uses its own Compose project, private default network, service containers and persistent volumes. Generated PostgreSQL/Valkey runtime credentials live in an owner-only `runtime.env` and are preserved across repeated apply operations. Managed OpenBao bootstrap credentials live separately in owner-only `openbao.env`.
-
-## Application secret values
-
-Create or replace one value from stdin:
-
-```bash
-printf '%s' 'secret-value' | baha app secret set demo API_TOKEN --stdin
-```
-
-`secret set` never accepts the value as a positional argument or option value. Input is limited to 1 MiB, must be non-empty UTF-8 text and is stored without being printed. BaseHarbor reads the stored value internally after the write and compares it byte-for-byte before reporting success.
-
-List key names only:
-
-```bash
-baha app secret list demo
-```
-
-The output contains only the configured key names. There is intentionally no current CLI command that reveals secret values.
-
-Preview deletion:
-
-```bash
-baha app secret delete demo API_TOKEN
-```
-
-Confirm permanent deletion:
-
-```bash
-baha app secret delete demo API_TOKEN --yes
-```
-
-Without `--yes`, deletion is read-only. Confirmed deletion removes the selected KV v2 document's metadata and all historical versions, then verifies that the key is no longer present.
-
-Secret key names accept ASCII letters, digits, `_`, `-` and `.`, are limited to 128 characters and may not start with `-` or `.`. BaseHarbor-reserved names are rejected.
-
-An application scope created before per-key secret namespaces were introduced must first be reconciled with:
-
-```bash
-baha app apply demo
-```
-
-## Status and doctor
-
-```bash
-baha app status demo
-baha app doctor demo
-```
-
-`app status` is compact and automation-friendly. It checks running state plus protocol readiness for every enabled service.
-
-`app doctor` reports each boundary independently, including:
-
-- manifest validity
-- supported desired services
-- manifest permissions
-- materialized runtime state
-- runtime file permissions, including `openbao.env` when present
-- managed runtime definition integrity
-- Docker/Podman + Compose availability
-- Compose configuration validity
-- service running state
-- PostgreSQL authenticated query readiness when enabled
-- Valkey authenticated PING readiness when enabled
-- OpenBao application AppRole authentication and managed-policy ownership when managed secrets are enabled
-
-Neither command writes application secrets or prints credentials.
-
-## Stop and resume without deleting data
-
-```bash
-baha app down demo
-baha app up demo
-```
-
-`app down` performs ownership and runtime-definition preflight first. It removes service containers and the transient network while preserving every managed persistent volume, the application manifest, runtime definition, credentials and managed OpenBao scope.
-
-`app up` is deliberately different from `app apply`. It never materializes fresh runtime state. Every expected persistent volume must already exist; if one is missing, `app up` fails closed rather than silently creating an empty replacement. Existing managed OpenBao identity is inspected before start and verified again afterward.
-
-## Permanent destruction
-
-Preview:
-
-```bash
-baha app destroy demo
-```
-
-Permanent deletion:
-
-```bash
-baha app destroy demo --yes
-```
-
-Before deletion BaseHarbor verifies the manifest, local file permissions, generated runtime definition, Compose configuration, exact expected resource names, `com.docker.compose.project` ownership labels and, when enabled, the exact OpenBao AppRole/policy ownership definition. Ambiguous or modified ownership fails closed.
-
-With `--yes`, owned service containers, network and all managed persistent volumes are removed. Every managed OpenBao secret document, the namespace marker, probe metadata, AppRole and policy are then removed before local application state is deleted.
-
-## OpenBao trust-plane lifecycle
-
-The bundled OpenBao service is intentionally not initialized with a static development token. Start the control-plane runtime first:
+Interactive first run:
 
 ```bash
 baha up
 ```
 
-A fresh OpenBao instance reports not initialized:
+Automation accepts BaseHarbor's safe free-port proposals:
 
 ```bash
-baha openbao status
+baha up --yes
 ```
 
-Bootstrap requires an explicit recovery destination:
+Explicit first-run ports:
 
 ```bash
+baha up --postgres-port 15432 --openbao-port 18200
+```
+
+The default ports are checked before first initialization. An occupied default port is not blindly bound.
+
+Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/runtime` or `~/.local/share/baseharbor/runtime` when XDG is unset. `BASEHARBOR_STATE_DIR` is the explicit override.
+
+## Repository-first application workflow
+
+Create `baseharbor.yaml` in the application repository:
+
+```bash
+baha app init mailflow \
+  --environment production \
+  --postgres \
+  --redis \
+  --require-secret SECRET_KEY
+```
+
+If the name is omitted, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
+
+Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
+
+```bash
+baha app show
+baha app plan
+baha app preflight
+baha app apply
+baha app status
+baha app doctor
+```
+
+`baha app create NAME ...` remains for legacy/BaseHarbor-managed stored application state. New application repositories should prefer `baha app init`.
+
+## Multiple PostgreSQL and Valkey instances
+
+```bash
+baha app init demo --postgres --redis
+```
+
+Named logical instances:
+
+```bash
+baha app init demo \
+  --postgres-instance primary \
+  --postgres-instance analytics \
+  --redis-instance cache \
+  --redis-instance sessions
+```
+
+Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
+
+## Plan, preflight, apply and verify
+
+```text
+plan -> preflight -> apply -> verify
+```
+
+`plan` and `preflight` are read-only. `apply` validates desired state, materializes owned runtime state, converges managed services, secret scope, runtime identity/broker and repository workload where applicable, then returns success only after verification.
+
+Required secrets are a startup gate. Missing or unusable required secrets prevent the workload from starting.
+
+## Application environment and bindings
+
+BaseHarbor publishes normal connection information and protected file bindings rather than requiring an SDK.
+
+```bash
+baha app env
+baha app env --format json
+baha app env --format yaml
+baha app env --format shell
+baha app env --path
+```
+
+Credential-bearing values are masked by default. Revealing them is an explicit operation.
+
+See [application-contract.md](application-contract.md).
+
+## Managed secrets
+
+```bash
+printf '%s' "$API_TOKEN" | baha app secret set API_TOKEN --stdin
+baha app secret set TLS_KEY_FILE --file ./private-key.pem
+baha app secret list
+baha app secret delete API_TOKEN --yes
+```
+
+Validate and import a certificate/key pair:
+
+```bash
+baha app secret tls-set \
+  --cert-file ./certificate.pem \
+  --key-file ./private-key.pem \
+  --chain-file ./intermediate.pem
+```
+
+The CLI never uses status/list operations to reveal secret values.
+
+## Dynamic runtime identity
+
+```bash
+baha app runtime-identity rotate --yes
+baha app runtime-identity revoke --yes
+```
+
+Stored opaque `baseharbor://` secret references remain stable across runtime-identity rotation.
+
+## Status and doctor
+
+```bash
+baha app status
+baha app doctor
+```
+
+`app doctor` diagnoses manifest integrity, permissions, Compose ownership/configuration, PostgreSQL/Valkey protocol readiness, OpenBao application scope, required-secret usability, repository workload and runtime broker/mTLS readiness when enabled.
+
+## Stop, resume and destroy
+
+```bash
+baha app down
+baha app up
+baha app destroy
+baha app destroy --yes
+```
+
+`app up` resumes only already-materialized state. Missing expected persistent state causes a fail-closed error instead of silently creating an empty replacement.
+
+## Backup and restore
+
+```bash
+baha app backup --password-file ./backup-password.txt
+baha app backup --password-file ./backup-password.txt --output ./demo-production.bhbackup
+baha app restore ./demo-production.bhbackup --password-file ./backup-password.txt
+```
+
+See [backup-and-restore.md](backup-and-restore.md).
+
+## OpenBao trust-plane lifecycle
+
+```bash
+baha up
+baha openbao status
 baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
-```
-
-Bootstrap:
-
-- refuses an already initialized OpenBao instance
-- refuses a recovery path inside `.baseharbor`
-- refuses to overwrite an existing recovery file
-- creates the recovery file owner-only
-- initializes the current single-node profile with one Shamir key share / threshold one
-- does not print the unseal key
-- does not intentionally persist or print the initial root token
-- enables `baseharbor/` as KV v2
-- enables AppRole authentication
-- creates a restricted BaseHarbor manager policy and AppRole
-- permits that manager to provision only BaseHarbor-named application policies/AppRoles
-- stores only RoleID/SecretID in owner-only control-plane state
-- verifies manager authentication and KV access
-- revokes the initial root token
-
-Inspect the resulting trust plane with:
-
-```bash
 baha openbao status
-```
-
-After a restart, the manual Shamir profile is sealed. Unseal it explicitly:
-
-```bash
 baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
 ```
 
-The unseal key is passed through stdin to the local container-runtime boundary and is not placed in the host command argument list.
+Bootstrap creates the restricted manager identity, verifies it and revokes the initial root token. Recovery material is kept outside normal application state.
 
-Current manager bootstrap credentials are stored at:
+See [secrets-and-openbao.md](secrets-and-openbao.md).
 
-```text
-.baseharbor/runtime/openbao-admin.env
+## Version
+
+```bash
+baha version
 ```
 
-This owner-only file is BaseHarbor bootstrap state, not application configuration. It must never be exposed through normal CLI output or committed.
-
-A trust plane bootstrapped before the manager gained application-identity provisioning permissions must be explicitly rebuilt/re-bootstrapped or operator-reconciled during the current pre-release phase. BaseHarbor fails closed rather than silently attempting privilege escalation.
-
-See [secrets-and-openbao.md](secrets-and-openbao.md) for the trust and recovery model.
-
-## Planned command evolution
-
-```text
-baha app env NAME
-baha app backup NAME
-baha app restore NAME
-baha app upgrade NAME
-```
-
-Future certificate and platform lifecycle command families follow the same rules:
-
-```text
-baha cert ...
-baha pki ...
-baha backup ...
-baha restore ...
-baha upgrade ...
-```
+Official releases embed semantic version, commit and build date as part of the release contract.
