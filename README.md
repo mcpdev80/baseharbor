@@ -274,7 +274,7 @@ baha version
 
 The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 
-## Documentation
+## Project documentation
 
 The repository Markdown under [`docs/`](docs/index.md) is the canonical documentation source and feeds the bilingual GitHub Pages site.
 
