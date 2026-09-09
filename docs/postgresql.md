@@ -31,4 +31,4 @@ RLS is intentionally not enabled yet. BaseHarbor first needs a trustworthy contr
 
 ## Dependency maintenance
 
-PostgreSQL driver and related Go dependencies are maintained by the repository-wide Renovate policy. Renovate checks dependencies daily and only merges dependency updates after the BaseHarbor CI checks are green.
+PostgreSQL driver and related Go dependencies are maintained by the repository-wide Renovate policy. Renovate checks dependencies daily, but only low-risk patch/pin/digest updates are eligible for automerge after the release-age buffer and green required checks. Minor/major updates plus security-sensitive authentication and cryptography changes require explicit human review.
