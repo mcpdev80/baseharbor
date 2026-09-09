@@ -42,47 +42,42 @@ jobs:
       - name: Clone reference application from main
         run: git clone --depth 1 --branch main https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
 
-      - name: Start BaseHarbor with safe port fallback
-        working-directory: /tmp/mailflow
-        run: |
-          /tmp/baha up --yes | tee /tmp/developer-journey-up.out
-          test -f "$BASEHARBOR_STATE_DIR/runtime.env"
-          test -f "$BASEHARBOR_STATE_DIR/compose.yaml"
-          ! grep -q '^BASEHARBOR_POSTGRES_PORT=5432$' "$BASEHARBOR_STATE_DIR/runtime.env"
-          ! grep -q '^BASEHARBOR_OPENBAO_PORT=8200$' "$BASEHARBOR_STATE_DIR/runtime.env"
-
-      - name: Bootstrap managed secrets
+      - name: Prove one-command startup is actionable and fail-closed
         working-directory: /tmp/mailflow
         run: |
           umask 077
-          /tmp/baha openbao bootstrap --recovery-file /tmp/developer-journey-openbao-recovery.json
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-      - name: Prove missing external secret is actionable and fail-closed
-        working-directory: /tmp/mailflow
-        run: |
           /tmp/baha app plan | tee /tmp/developer-journey-plan.out
           grep -q 'SECRET_KEY' /tmp/developer-journey-plan.out
 
           set +e
-          /tmp/baha app apply >/tmp/developer-journey-missing-secret.out 2>&1
+          /tmp/baha up --yes --recovery-file /tmp/developer-journey-openbao-recovery.json >/tmp/developer-journey-missing-secret.out 2>&1
           code=$?
           set -e
 
           test "$code" -eq 1
+          grep -q 'Application repository detected: mailflow' /tmp/developer-journey-missing-secret.out
+          grep -q 'OpenBao is not initialized; bootstrapping managed secrets' /tmp/developer-journey-missing-secret.out
           grep -q 'SECRET_KEY' /tmp/developer-journey-missing-secret.out
           grep -Eq 'required secrets|required application secrets|required secrets check failed' /tmp/developer-journey-missing-secret.out
+          test -f /tmp/developer-journey-openbao-recovery.json
+          test -f "$BASEHARBOR_STATE_DIR/runtime.env"
+          test -f "$BASEHARBOR_STATE_DIR/compose.yaml"
+          ! grep -q '^BASEHARBOR_POSTGRES_PORT=5432$' "$BASEHARBOR_STATE_DIR/runtime.env"
+          ! grep -q '^BASEHARBOR_OPENBAO_PORT=8200$' "$BASEHARBOR_STATE_DIR/runtime.env"
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production)"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
       - name: Supply only information BaseHarbor cannot derive
         working-directory: /tmp/mailflow
         run: printf '%s' 'developer-journey-secret' | /tmp/baha app secret set SECRET_KEY --stdin
 
-      - name: Apply reference application
+      - name: Start complete reference application with one command
         working-directory: /tmp/mailflow
         run: |
-          /tmp/baha app apply | tee /tmp/developer-journey-apply.out
-          grep -q 'Application mailflow is ready' /tmp/developer-journey-apply.out
+          /tmp/baha up --yes | tee /tmp/developer-journey-up.out
+          grep -q 'Application repository detected: mailflow' /tmp/developer-journey-up.out
+          grep -q 'Converging application backend and workload' /tmp/developer-journey-up.out
+          grep -q 'Application mailflow is ready' /tmp/developer-journey-up.out
 
           /tmp/baha app status | tee /tmp/developer-journey-status.out
           /tmp/baha app doctor | tee /tmp/developer-journey-doctor.out
@@ -110,8 +105,8 @@ jobs:
           grep -q 'Persistent data is preserved' /tmp/developer-journey-down.out
           test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production)"
 
-          /tmp/baha app up | tee /tmp/developer-journey-restart.out
-          grep -q 'running and ready' /tmp/developer-journey-restart.out
+          /tmp/baha up --yes | tee /tmp/developer-journey-restart.out
+          grep -q 'Application mailflow is ready' /tmp/developer-journey-restart.out
           /tmp/baha app doctor | grep -q 'Application runtime is healthy'
 
       - name: Diagnostics on failure
