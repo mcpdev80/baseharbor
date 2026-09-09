@@ -20,10 +20,11 @@ import (
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
-	Yes          bool
-	PostgresPort int
-	OpenBaoPort  int
-	RecoveryFile string
+	Yes              bool
+	ControlPlaneOnly bool
+	PostgresPort     int
+	OpenBaoPort      int
+	RecoveryFile     string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -34,6 +35,9 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
+	if opts.ControlPlaneOnly {
+		return nil
+	}
 	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
 }
 
@@ -43,6 +47,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 		switch args[i] {
 		case "--yes", "-y":
 			opts.Yes = true
+		case "--control-plane-only":
+			opts.ControlPlaneOnly = true
 		case "--postgres-port":
 			if i+1 >= len(args) {
 				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
