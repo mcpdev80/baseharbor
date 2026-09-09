@@ -20,10 +20,16 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 		return fmt.Errorf("resolve current directory: %w", err)
 	}
 	if _, err := application.FindRepositoryManifest(cwd); err != nil {
-		if strings.Contains(err.Error(), application.RepositoryManifestName+" not found") {
+		if !strings.Contains(err.Error(), application.RepositoryManifestName+" not found") {
+			return err
+		}
+		initialized, err := initializeRepositoryManifestForUp(ctx, in, out, errOut, opts)
+		if err != nil {
+			return err
+		}
+		if !initialized {
 			return nil
 		}
-		return err
 	}
 
 	store := application.DefaultStore()
@@ -41,6 +47,44 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 
 	fmt.Fprintln(out, "Converging application backend and workload...")
 	return appApplyCommand(store).Run(ctx, nil, out, errOut)
+}
+
+func initializeRepositoryManifestForUp(ctx context.Context, in io.Reader, out, errOut io.Writer, opts runtimeUpOptions) (bool, error) {
+	detected, err := detectAppProject(".")
+	if err != nil {
+		return false, err
+	}
+	if !detectedApplicationProject(detected) {
+		return false, nil
+	}
+
+	fmt.Fprintf(out, "Application project detected: %s\n", detected.Name)
+	fmt.Fprintln(out, "No baseharbor.yaml exists yet.")
+
+	if opts.Yes {
+		fmt.Fprintln(out, "Creating the application contract from detected safe defaults...")
+		if err := appGuidedInitCommand().Run(ctx, []string{"--quick"}, out, errOut); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
+
+	if !readerIsTerminal(in) {
+		return true, usageError(
+			"an application project was detected but baseharbor.yaml is missing",
+			"Run 'baha up --yes' to use unambiguous detected defaults, or run 'baha app init' interactively to review the application contract.",
+		)
+	}
+
+	fmt.Fprintln(out, "Starting guided application setup before application startup...")
+	if err := appGuidedInitCommand().Run(ctx, nil, out, errOut); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func detectedApplicationProject(d appProjectDetection) bool {
+	return len(d.ComposeCandidates) > 0 || len(d.EnvFiles) > 0
 }
 
 func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut io.Writer, opts runtimeUpOptions) error {
