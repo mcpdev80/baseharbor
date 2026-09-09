@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:best-practices",
+    ":separateMultipleMajorReleases"
   ],
   "timezone": "Europe/Berlin",
   "schedule": [
@@ -9,79 +10,133 @@
   ],
   "dependencyDashboard": true,
   "rebaseWhen": "behind-base-branch",
-  "automerge": true,
+  "automerge": false,
   "automergeType": "pr",
   "platformAutomerge": false,
   "ignoreTests": false,
-  "prConcurrentLimit": 10,
-  "branchConcurrentLimit": 10,
+  "minimumReleaseAge": "14 days",
+  "prConcurrentLimit": 5,
+  "branchConcurrentLimit": 5,
   "labels": [
     "dependencies"
   ],
   "packageRules": [
     {
-      "description": "Keep all supported dependency sources current and merge only after green checks",
+      "description": "Automerge low-risk patch, pin and digest updates after the release-age buffer and green CI",
       "matchManagers": [
         "gomod",
         "github-actions",
         "dockerfile",
         "docker-compose"
       ],
+      "matchUpdateTypes": [
+        "patch",
+        "pin",
+        "digest"
+      ],
       "automerge": true
     },
     {
-      "description": "Group routine Go dependency updates",
+      "description": "Minor and major dependency changes always require human review",
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Go language and toolchain changes are explicit platform decisions",
+      "matchManagers": [
+        "gomod",
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "go",
+        "golang"
+      ],
+      "automerge": false,
+      "groupName": null
+    },
+    {
+      "description": "Authentication and cryptography dependencies always require review",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "github.com/coreos/go-oidc/v3",
+        "github.com/go-jose/go-jose/v4",
+        "golang.org/x/crypto",
+        "golang.org/x/oauth2"
+      ],
+      "automerge": false,
+      "groupName": null
+    },
+    {
+      "description": "Group routine non-sensitive Go dependency updates",
       "matchManagers": [
         "gomod"
       ],
       "matchUpdateTypes": [
         "patch",
-        "minor",
         "pin",
         "digest"
       ],
       "groupName": "Go dependencies"
     },
     {
-      "description": "Group routine GitHub Actions updates",
+      "description": "Group routine GitHub Actions updates; best-practices pins actions to immutable SHAs",
       "matchManagers": [
         "github-actions"
       ],
       "matchUpdateTypes": [
         "patch",
-        "minor",
         "pin",
         "digest"
       ],
       "groupName": "GitHub Actions"
     },
     {
-      "description": "Group routine container image updates",
+      "description": "Group routine container patch and digest updates",
       "matchManagers": [
         "dockerfile",
         "docker-compose"
       ],
       "matchUpdateTypes": [
         "patch",
-        "minor",
         "pin",
         "digest"
       ],
       "groupName": "container images"
     },
     {
-      "description": "Keep major updates separate but still allow green-CI automerge",
+      "description": "Keep container minor and major updates separate for explicit runtime review",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
       "matchUpdateTypes": [
+        "minor",
         "major"
       ],
-      "groupName": null
+      "groupName": null,
+      "automerge": false
     }
   ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
-      "* 2-5 * * *"
+      "* 3-5 * * 1"
     ],
     "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null,
+    "prConcurrentLimit": 5,
+    "labels": [
+      "dependencies",
+      "security"
+    ],
+    "automerge": false
   }
 }
