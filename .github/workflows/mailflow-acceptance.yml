@@ -53,7 +53,7 @@ jobs:
           BASEHARBOR_OPENBAO_PORT=18200
           EOF
           chmod 600 .baseharbor/runtime/runtime.env
-          /tmp/baha up
+          /tmp/baha up --control-plane-only
           /tmp/baha openbao bootstrap --recovery-file /tmp/mailflow-openbao-recovery.json
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
       - name: Prove required secret gate and import sensitive files
