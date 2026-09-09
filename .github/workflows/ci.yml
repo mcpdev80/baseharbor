@@ -172,7 +172,7 @@ jobs:
           /tmp/baha app show required-demo | grep -q -- '- name: API_TOKEN'
           /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
           /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
-          grep -q $'API_TOKEN\tunknown\tunknown' /tmp/required-preflight.out
+          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
 
           set +e
           /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
@@ -183,15 +183,16 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
 
           /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
-          grep -q $'API_TOKEN\tno\tno' /tmp/required-preflight-missing.out
+          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
 
           printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app apply required-demo | grep -q "Application required-demo is ready"
           /tmp/baha app status required-demo | tee /tmp/required-status.out
-          grep -q $'API_TOKEN\tyes\tyes' /tmp/required-status.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
           grep -q "all required secret values are present and readable" /tmp/required-status.out
           /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -q $'API_TOKEN\tyes\tyes' /tmp/required-doctor.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
           grep -q "Application runtime is healthy" /tmp/required-doctor.out
 
           /tmp/baha app down required-demo | grep -q "Persistent data is preserved"
