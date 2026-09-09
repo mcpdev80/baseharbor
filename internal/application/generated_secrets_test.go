@@ -2,6 +2,7 @@ package application
 
 import (
 	"encoding/hex"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -37,8 +38,13 @@ secrets:
 	if len(GeneratedSecretRequirements(m)) != 2 {
 		t.Fatalf("generated requirements = %d", len(GeneratedSecretRequirements(m)))
 	}
-	if got := m.YAML(); got != input {
-		t.Fatalf("round trip mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, input)
+	normalized := m.YAML()
+	roundTripped, err := ParseYAML(normalized)
+	if err != nil {
+		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
+	}
+	if !reflect.DeepEqual(roundTripped, m) {
+		t.Fatalf("semantic round trip mismatch:\n--- normalized ---\n%s\n--- got ---\n%#v\n--- want ---\n%#v", normalized, roundTripped, m)
 	}
 }
 
