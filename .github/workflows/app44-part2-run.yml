@@ -1,0 +1,35 @@
+name: app44-part2-run
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'feat/app-init-instances-secret-generation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feat/app-init-instances-secret-generation
+          fetch-depth: 0
+
+      - name: Execute one-shot patch and remove helpers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/app44-part2-patch.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(text) if line.strip() == 'run: |') + 1
+          lines = text[start:]
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          script = script.replace(
+              'git rm .github/workflows/app44-part2-patch.yml',
+              'git rm .github/workflows/app44-part2-patch.yml .github/workflows/app44-part2-run.yml',
+          )
+          Path('/tmp/app44-patch.sh').write_text(script)
+          PY
+          bash /tmp/app44-patch.sh
