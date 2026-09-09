@@ -45,8 +45,9 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Start the local BaseHarbor control-plane runtime",
-			Usage:   "baha up",
-			Run:     noArgsCtx("baha up", runtimeUp),
+			Usage:   "baha up [--yes] [--postgres-port PORT] [--openbao-port PORT]",
+			Long:    "On first initialization, checks the default PostgreSQL and OpenBao host ports before writing runtime state. Interactive terminals can accept or change the proposed ports. --yes accepts safe proposals non-interactively. Explicit port flags override the proposal and still fail closed when occupied.",
+			Run:     runtimeUpCommand,
 		},
 		{
 			Name:    "down",

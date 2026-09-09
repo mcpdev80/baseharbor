@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/config"
@@ -13,7 +17,190 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+var runtimeInput io.Reader = os.Stdin
+
+type runtimeUpOptions struct {
+	Yes          bool
+	PostgresPort int
+	OpenBaoPort  int
+}
+
+func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	opts, err := parseRuntimeUpOptions(args)
+	if err != nil {
+		return err
+	}
+	return runtimeUpGuided(ctx, runtimeInput, out, opts)
+}
+
+func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
+	opts := runtimeUpOptions{}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			opts.Yes = true
+		case "--postgres-port":
+			if i+1 >= len(args) {
+				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
+			}
+			i++
+			port, err := parsePort(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.PostgresPort = port
+		case "--openbao-port":
+			if i+1 >= len(args) {
+				return opts, usageError("--openbao-port requires PORT", "Example: baha up --openbao-port 18200")
+			}
+			i++
+			port, err := parsePort(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.OpenBaoPort = port
+		default:
+			return opts, usageError("unknown argument "+args[i], "Run 'baha up --help' for usage.")
+		}
+	}
+	return opts, nil
+}
+
+func parsePort(value string) (int, error) {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, usageError("invalid port "+value, "Choose a TCP port between 1 and 65535.")
+	}
+	return port, nil
+}
+
+func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if _, err := bhruntime.ExistingFiles(""); err == nil {
+		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
+			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
+		}
+		return runtimeUp(parent, out)
+	}
+
+	postgresPort := opts.PostgresPort
+	if postgresPort == 0 {
+		postgresPort = bhruntime.DefaultPostgresPort
+		if !portAvailable(postgresPort) {
+			postgresPort = firstAvailablePort(15432)
+		}
+	}
+	openBaoPort := opts.OpenBaoPort
+	if openBaoPort == 0 {
+		openBaoPort = bhruntime.DefaultOpenBaoPort
+		if !portAvailable(openBaoPort) {
+			openBaoPort = firstAvailablePort(18200)
+		}
+	}
+	if postgresPort == 0 || openBaoPort == 0 {
+		return errors.New("could not find available control-plane ports")
+	}
+	if postgresPort == openBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+	if !portAvailable(postgresPort) {
+		return fmt.Errorf("PostgreSQL host port %d is already in use", postgresPort)
+	}
+	if !portAvailable(openBaoPort) {
+		return fmt.Errorf("OpenBao host port %d is already in use", openBaoPort)
+	}
+
+	interactive := !opts.Yes && readerIsTerminal(in)
+	if interactive {
+		reader := bufio.NewReader(in)
+		fmt.Fprintln(out, "BaseHarbor control-plane setup")
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "PostgreSQL host port [%d]: ", postgresPort)
+		selected, err := readPortChoice(reader, postgresPort)
+		if err != nil {
+			return err
+		}
+		postgresPort = selected
+		fmt.Fprintf(out, "OpenBao host port [%d]: ", openBaoPort)
+		selected, err = readPortChoice(reader, openBaoPort)
+		if err != nil {
+			return err
+		}
+		openBaoPort = selected
+		if postgresPort == openBaoPort {
+			return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+		}
+		if !portAvailable(postgresPort) {
+			return fmt.Errorf("PostgreSQL host port %d is already in use", postgresPort)
+		}
+		if !portAvailable(openBaoPort) {
+			return fmt.Errorf("OpenBao host port %d is already in use", openBaoPort)
+		}
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Configuration:")
+		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
+		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
+		fmt.Fprint(out, "Accept? [Y/n]: ")
+		answer, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "" && answer != "y" && answer != "yes" && answer != "j" && answer != "ja" {
+			return errors.New("control-plane setup cancelled")
+		}
+	} else {
+		fmt.Fprintln(out, "BaseHarbor control-plane ports:")
+		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
+		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
+	}
+
+	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort})
+}
+
+func readPortChoice(reader *bufio.Reader, fallback int) (int, error) {
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+	return parsePort(value)
+}
+
+func readerIsTerminal(in io.Reader) bool {
+	file, ok := in.(*os.File)
+	if !ok {
+		return true
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func portAvailable(port int) bool {
+	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
+}
+
+func firstAvailablePort(start int) int {
+	for port := start; port <= 65535; port++ {
+		if portAvailable(port) {
+			return port
+		}
+	}
+	return 0
+}
+
 func runtimeUp(parent context.Context, out io.Writer) error {
+	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
+}
+
+func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports) error {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
@@ -21,7 +208,7 @@ func runtimeUp(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.EnsureFiles("")
+	files, err := bhruntime.EnsureFilesWithPorts("", ports)
 	if err != nil {
 		return err
 	}

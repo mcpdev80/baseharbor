@@ -16,6 +16,11 @@ const (
 	envName         = "runtime.env"
 )
 
+const (
+	DefaultPostgresPort = 5432
+	DefaultOpenBaoPort  = 8200
+)
+
 //go:embed assets/compose.yaml
 var composeYAML []byte
 
@@ -24,9 +29,27 @@ type Files struct {
 	Env     string
 }
 
+type Ports struct {
+	Postgres int
+	OpenBao  int
+}
+
 func EnsureFiles(stateDir string) (Files, error) {
+	return EnsureFilesWithPorts(stateDir, Ports{Postgres: DefaultPostgresPort, OpenBao: DefaultOpenBaoPort})
+}
+
+func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 	if stateDir == "" {
 		stateDir = DefaultStateDir
+	}
+	if ports.Postgres <= 0 || ports.Postgres > 65535 {
+		return Files{}, fmt.Errorf("invalid postgres port %d", ports.Postgres)
+	}
+	if ports.OpenBao <= 0 || ports.OpenBao > 65535 {
+		return Files{}, fmt.Errorf("invalid OpenBao port %d", ports.OpenBao)
+	}
+	if ports.Postgres == ports.OpenBao {
+		return Files{}, fmt.Errorf("postgres and OpenBao cannot share host port %d", ports.Postgres)
 	}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
@@ -43,7 +66,7 @@ func EnsureFiles(stateDir string) (Files, error) {
 		if err != nil {
 			return Files{}, err
 		}
-		content := fmt.Sprintf("BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=%s\nBASEHARBOR_POSTGRES_PORT=5432\nBASEHARBOR_OPENBAO_PORT=8200\n", password)
+		content := fmt.Sprintf("BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=%s\nBASEHARBOR_POSTGRES_PORT=%d\nBASEHARBOR_OPENBAO_PORT=%d\n", password, ports.Postgres, ports.OpenBao)
 		if err := os.WriteFile(envPath, []byte(content), 0o600); err != nil {
 			return Files{}, fmt.Errorf("write runtime environment: %w", err)
 		}

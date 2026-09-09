@@ -59,6 +59,31 @@ func TestEnsureFilesPreservesExistingSecret(t *testing.T) {
 	}
 }
 
+func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := os.ReadFile(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(env)
+	if !strings.Contains(text, "BASEHARBOR_POSTGRES_PORT=15432\n") {
+		t.Fatal("selected PostgreSQL port was not persisted")
+	}
+	if !strings.Contains(text, "BASEHARBOR_OPENBAO_PORT=18200\n") {
+		t.Fatal("selected OpenBao port was not persisted")
+	}
+}
+
+func TestEnsureFilesWithPortsRejectsDuplicatePort(t *testing.T) {
+	if _, err := EnsureFilesWithPorts(filepath.Join(t.TempDir(), "runtime"), Ports{Postgres: 15432, OpenBao: 15432}); err == nil {
+		t.Fatal("expected duplicate host port rejection")
+	}
+}
+
 func TestEmbeddedComposeUsesLoopbackBindings(t *testing.T) {
 	text := string(composeYAML)
 	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432") {
