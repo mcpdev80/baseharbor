@@ -71,6 +71,20 @@ Analyzing repository...
 
 Anschließend zeigt der Wizard eine kompakte Auswahl der erkannten Capabilities. Die vorausgewählten Werte können geändert werden. Bei mehreren möglichen Compose-Dateien rät `baha` nicht, sondern fragt explizit nach.
 
+Sind mehrere PostgreSQL- oder Redis/Valkey-Backends sichtbar, schlägt der Wizard automatisch logische Instanznamen vor. Ein einzelner erkannter Backend-Service bleibt die einfache `default`-Instanz.
+
+Beispiel:
+
+```text
+✓ PostgreSQL detected from compose.yaml service postgres-primary
+  logical instances proposed: analytics, primary
+✓ Redis/Valkey detected from compose.yaml service redis-cache
+  logical instances proposed: cache, sessions
+
+PostgreSQL instances (comma-separated) [analytics,primary]:
+Valkey / Redis instances (comma-separated) [cache,sessions]:
+```
+
 Vor dem Schreiben wird das erzeugte `baseharbor.yaml` als Vorschau angezeigt. Eine vorhandene Datei wird niemals still überschrieben.
 
 Für einen nicht-interaktiven, erkennungsbasierten Pfad gibt es:
@@ -79,7 +93,7 @@ Für einen nicht-interaktiven, erkennungsbasierten Pfad gibt es:
 baha app init --quick
 ```
 
-`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab und verweist auf den interaktiven Wizard.
+`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab und verweist auf den interaktiven Wizard. Mehrere erkannte logische PostgreSQL- oder Redis/Valkey-Instanzen bleiben dabei erhalten.
 
 Für CI, Skripte oder bewusst vollständig deklarative Aufrufe bleibt der bestehende Flag-Pfad erhalten:
 
@@ -90,6 +104,18 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
+Benannte Instanzen können weiterhin deterministisch angegeben werden:
+
+```bash
+baha app init mailflow \
+  --postgres-instance primary \
+  --postgres-instance analytics \
+  --redis-instance cache \
+  --redis-instance sessions
+```
+
+Wizard, `--quick` und Flag-Pfad erzeugen denselben Manifest-Vertrag. Mehrere Instanzen sind mehrere logische Services und keine HA-Replikate.
+
 Danach:
 
 ```bash
@@ -99,6 +125,17 @@ baha app apply
 baha app status
 baha app doctor
 ```
+
+Fehlende Pflicht-Secrets blockieren `apply`/`up`. Sobald der App-Secret-Scope materialisiert ist, zeigt `baha app preflight` den Zustand und eine direkte sichere Abhilfe:
+
+```text
+No application secrets have been configured yet.
+REQUIRED SECRET       STATUS                         ACTION
+OPENAI_API_KEY        missing - user input required  baha app secret set OPENAI_API_KEY --stdin
+SMTP_PASSWORD         missing - user input required  baha app secret set SMTP_PASSWORD --stdin
+```
+
+Vorhandene Werte werden als `present` gemeldet. Nicht lesbare Werte erscheinen als `present but unusable` und erhalten ebenfalls den sicheren Ersetzungsbefehl. Secret-Werte selbst werden nie ausgegeben.
 
 ## Environment und Bindings
 
