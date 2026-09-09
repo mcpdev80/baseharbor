@@ -84,6 +84,93 @@ func TestEnsureFilesWithPortsRejectsDuplicatePort(t *testing.T) {
 	}
 }
 
+func TestDefaultStateDirUsesUserDataDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	dir, err := resolveStateDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".local", "share", "baseharbor", "runtime")
+	if dir != want {
+		t.Fatalf("state dir = %q, want %q", dir, want)
+	}
+}
+
+func TestDefaultStateDirUsesXDGDataHome(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	old, _ := os.Getwd()
+	work := t.TempDir()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	dir, err := resolveStateDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(xdg, "baseharbor", "runtime")
+	if dir != want {
+		t.Fatalf("state dir = %q, want %q", dir, want)
+	}
+}
+
+func TestStateDirOverrideWins(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "runtime")
+	t.Setenv("BASEHARBOR_STATE_DIR", override)
+	dir, err := resolveStateDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != override {
+		t.Fatalf("state dir = %q, want override %q", dir, override)
+	}
+}
+
+func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	old, _ := os.Getwd()
+	work := t.TempDir()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	legacy := filepath.Join(work, legacyStateDir)
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, envName), []byte("legacy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := resolveStateDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != legacyStateDir {
+		t.Fatalf("state dir = %q, want legacy %q", dir, legacyStateDir)
+	}
+}
+
 func TestEmbeddedComposeUsesLoopbackBindings(t *testing.T) {
 	text := string(composeYAML)
 	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432") {
