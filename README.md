@@ -1,5 +1,9 @@
 # BaseHarbor
 
+[![CI](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver)](https://github.com/mcpdev80/baseharbor/releases)
+[![License](https://img.shields.io/github/license/mcpdev80/baseharbor)](LICENSE)
+
 Secure, modular, self-hosted backend infrastructure for independent applications, operated through the `baha` CLI.
 
 BaseHarbor provides common backend capabilities such as PostgreSQL, Valkey, managed secrets, runtime identity, backup/restore and lifecycle management without forcing applications into a proprietary SDK or monolith.
@@ -30,6 +34,35 @@ The current default branch includes:
 - encrypted application backup/restore covering metadata, PostgreSQL and the application OpenBao scope.
 
 The public compatibility contract is still allowed to evolve during `0.x`. Patch releases are expected to remain compatible; minor releases may contain documented breaking changes until `v1.0.0`.
+
+## Install `baha`
+
+Released Linux binaries are the normal installation path. Releases are published for amd64 and arm64 together with SHA-256 checksums and GitHub build-provenance attestations.
+
+Install the latest stable release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
+```
+
+For production automation, pin both installer and requested version to the immutable release tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.1.0/scripts/install.sh \
+  | bash -s -- v0.1.0
+```
+
+The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
+
+```bash
+baha version
+```
+
+Building from source is a development/contributor path, not the production install contract:
+
+```bash
+go build -o baha ./cmd/baha
+```
 
 ## Preferred application workflow
 
@@ -243,7 +276,10 @@ The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 
 ## Documentation
 
-The repository Markdown under [`docs/`](docs/index.md) is the canonical documentation source and will also feed the bilingual GitHub Pages site.
+The repository Markdown under [`docs/`](docs/index.md) is the canonical documentation source and feeds the bilingual GitHub Pages site.
+
+- English (default): <https://mcpdev80.github.io/baseharbor/>
+- Deutsch: <https://mcpdev80.github.io/baseharbor/de/>
 
 Start with:
 
@@ -254,6 +290,7 @@ Start with:
 - [control-plane runtime](docs/runtime-compose.md)
 - [secrets and OpenBao](docs/secrets-and-openbao.md)
 - [backup and restore](docs/backup-and-restore.md)
+- [release policy](docs/releases.md)
 - [architecture](docs/architecture.md)
 - [roadmap](docs/roadmap.md)
 - [development guidelines](docs/DEVELOPMENT_GUIDELINES.md)
@@ -271,9 +308,9 @@ Start with:
 - observable health, backup/restore, certificates and lifecycle operations;
 - optional first-class AI, MCP and RAG capabilities where they add value.
 
-## Release note
+## Release policy
 
-Do not treat an untagged `main` build as a stable compatibility contract. Official consumers should use published releases once `v0.1.0` is cut.
+`main` is development state. Real products should consume published releases. During `0.x`, patch releases remain compatible within a minor line; minor releases may contain explicitly documented breaking changes. See [`docs/releases.md`](docs/releases.md).
 
 ## License
 
