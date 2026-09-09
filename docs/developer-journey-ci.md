@@ -23,22 +23,23 @@ occupy common ports 5432 / 8200
 clone MailFlow main
         |
         v
+baha up --yes --recovery-file <secure-path>
+        |
+        +--> safe control-plane port fallback
+        +--> OpenBao bootstrap
+        +--> repository detection
+        +--> required-secret failure is visible and fail-closed
+        |
+        v
+supply only SECRET_KEY securely via stdin
+        |
+        v
 baha up --yes
         |
-        v
-safe control-plane port fallback
-        |
-        v
-OpenBao bootstrap
-        |
-        v
-required-secret failure is visible and fail-closed
-        |
-        v
-supply SECRET_KEY securely via stdin
-        |
-        v
-baha app apply
+        +--> reuse control plane + OpenBao
+        +--> converge managed backends
+        +--> start MailFlow workload
+        +--> verify readiness
         |
         v
 status + doctor
@@ -47,11 +48,13 @@ status + doctor
 verify real MailFlow workload and native backend URLs
         |
         v
-down + up + doctor
+app down + baha up --yes + doctor
         |
         v
 READY
 ```
+
+The normal repository happy path is therefore `baha up`. Advanced commands such as `baha app plan`, `baha app apply` and `baha app doctor` remain available for CI, automation and troubleshooting, but they are not required knowledge for the basic developer path.
 
 ## Why this is separate from unit and integration tests
 
@@ -67,21 +70,32 @@ A change can pass isolated tests while accidentally requiring an undocumented co
 
 The workflow intentionally creates port conflicts on the default PostgreSQL and OpenBao ports. `baha up --yes` must select safe alternatives without modifying or destroying the unrelated containers occupying those ports.
 
-A required external application secret is intentionally absent during the first apply. BaseHarbor must:
+On a fresh managed-secret installation, BaseHarbor cannot safely invent where the operator wants OpenBao recovery material stored. Interactive use asks for that path. Non-interactive use supplies `--recovery-file PATH`; the path remains outside BaseHarbor application state.
 
+A required external application secret is intentionally absent during the first `baha up`. BaseHarbor must:
+
+- start/reuse only the infrastructure needed to reach the readiness decision;
 - refuse workload startup;
 - identify the missing secret by name;
 - keep the workload stopped;
 - allow the developer to provide the value securely;
-- continue successfully on the next apply without manual state repair.
+- continue successfully on the next `baha up` without manual state repair.
 
-After apply, the workflow verifies that MailFlow receives standard application-facing interfaces such as `DATABASE_URL` and `REDIS_URL`. The application does not need a BaseHarbor SDK or runtime login.
+After successful startup, the workflow verifies that MailFlow receives standard application-facing interfaces such as `DATABASE_URL` and `REDIS_URL`. The application does not need a BaseHarbor SDK or runtime login.
 
-The restart portion validates that `baha app down` preserves durable state and that `baha app up` returns the application to a healthy state.
+The restart portion validates that `baha app down` preserves durable state and that the recommended repository command `baha up --yes` returns the application to a healthy state.
+
+Focused operator or CI workflows that intentionally need only the BaseHarbor platform can use the explicit advanced mode:
+
+```bash
+baha up --control-plane-only
+```
+
+That flag is not the normal developer path.
 
 ## Relationship to the MVP reference matrix
 
-This workflow establishes the reusable developer-journey pattern for issue #80. MailFlow is the first consumer because it already exercises PostgreSQL, Valkey, managed secrets and a multi-service workload.
+This workflow establishes the reusable developer-journey pattern for issue #80 and the one-command application lifecycle from #81. MailFlow is the first consumer because it already exercises PostgreSQL, Valkey, managed secrets and a multi-service workload.
 
 AWC and AI-Coding-System remain tracked in the final reference-app matrix (#45). Their acceptance should reuse the same principles instead of creating different operator workflows for each application.
 
@@ -91,4 +105,4 @@ Before the next stable release, the developer-facing happy path must be green to
 
 The intended product rule is:
 
-> Clone the application, run BaseHarbor, provide only what cannot be derived or generated safely, and get a verified working application.
+> Clone the application, run `baha up`, provide only what cannot be derived or generated safely, and get a verified working application.

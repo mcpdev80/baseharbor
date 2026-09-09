@@ -20,9 +20,11 @@ import (
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
-	Yes          bool
-	PostgresPort int
-	OpenBaoPort  int
+	Yes              bool
+	ControlPlaneOnly bool
+	PostgresPort     int
+	OpenBaoPort      int
+	RecoveryFile     string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -30,7 +32,13 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	if err != nil {
 		return err
 	}
-	return runtimeUpGuided(ctx, runtimeInput, out, opts)
+	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+		return err
+	}
+	if opts.ControlPlaneOnly {
+		return nil
+	}
+	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
 }
 
 func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
@@ -39,6 +47,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 		switch args[i] {
 		case "--yes", "-y":
 			opts.Yes = true
+		case "--control-plane-only":
+			opts.ControlPlaneOnly = true
 		case "--postgres-port":
 			if i+1 >= len(args) {
 				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
@@ -59,7 +69,20 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				return opts, err
 			}
 			opts.OpenBaoPort = port
+		case "--recovery-file":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+			}
+			i++
+			opts.RecoveryFile = args[i]
 		default:
+			if strings.HasPrefix(args[i], "--recovery-file=") {
+				opts.RecoveryFile = strings.TrimPrefix(args[i], "--recovery-file=")
+				if strings.TrimSpace(opts.RecoveryFile) == "" {
+					return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+				}
+				continue
+			}
 			return opts, usageError("unknown argument "+args[i], "Run 'baha up --help' for usage.")
 		}
 	}

@@ -12,18 +12,46 @@ import (
 )
 
 func TestParseRuntimeUpOptions(t *testing.T) {
-	opts, err := parseRuntimeUpOptions([]string{"--yes", "--postgres-port", "15432", "--openbao-port", "18200"})
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only", "--postgres-port", "15432", "--openbao-port", "18200", "--recovery-file", "/secure/recovery.json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Yes || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 {
+	if !opts.Yes || !opts.ControlPlaneOnly || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 || opts.RecoveryFile != "/secure/recovery.json" {
 		t.Fatalf("unexpected options: %+v", opts)
+	}
+}
+
+func TestParseRuntimeUpOptionsAcceptsRecoveryFileEqualsForm(t *testing.T) {
+	opts, err := parseRuntimeUpOptions([]string{"--recovery-file=/secure/recovery.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.RecoveryFile != "/secure/recovery.json" {
+		t.Fatalf("recovery file = %q", opts.RecoveryFile)
 	}
 }
 
 func TestParseRuntimeUpOptionsRejectsInvalidPort(t *testing.T) {
 	if _, err := parseRuntimeUpOptions([]string{"--postgres-port", "70000"}); err == nil {
 		t.Fatal("expected invalid port error")
+	}
+}
+
+func TestRecoveryFileForRepositoryUpRequiresExplicitPathNonInteractive(t *testing.T) {
+	var out bytes.Buffer
+	_, err := recoveryFileForRepositoryUp(strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
+	if err == nil || !strings.Contains(err.Error(), "recovery file") {
+		t.Fatalf("error = %v, want actionable recovery-file failure", err)
+	}
+}
+
+func TestRecoveryFileForRepositoryUpUsesExplicitPath(t *testing.T) {
+	path, err := recoveryFileForRepositoryUp(strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true, RecoveryFile: "/secure/recovery.json"}, "initialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/secure/recovery.json" {
+		t.Fatalf("path = %q", path)
 	}
 }
 
