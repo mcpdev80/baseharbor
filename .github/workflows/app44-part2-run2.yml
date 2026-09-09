@@ -1,0 +1,269 @@
+name: app44-part2-run2
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'feat/app-init-instances-secret-generation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feat/app-init-instances-secret-generation
+          fetch-depth: 0
+
+      - name: Apply product patch fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'marker not found: {label}')
+              return text.replace(old, new, 1)
+
+          p = Path('cmd/baha/app_init_wizard.go')
+          s = p.read_text()
+
+          s = replace_once(s,
+              'PostgresSource    string\n',
+              'PostgresSource    string\n\tPostgresInstances []string\n',
+              'postgres instance field')
+          s = replace_once(s,
+              'RedisSource       string\n',
+              'RedisSource       string\n\tRedisInstances    []string\n',
+              'redis instance field')
+
+          s = replace_once(s,
+              'd.Postgres = true\n',
+              'd.Postgres = true\n\t\t\t\td.PostgresInstances = append(d.PostgresInstances, detectedLogicalInstanceName(service.Name, "postgres"))\n',
+              'postgres compose detection')
+          s = replace_once(s,
+              'd.Redis = true\n',
+              'd.Redis = true\n\t\t\t\td.RedisInstances = append(d.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))\n',
+              'redis compose detection')
+          s = replace_once(s,
+              'd.WorkloadServices = uniqueSorted(d.WorkloadServices)\n',
+              'd.WorkloadServices = uniqueSorted(d.WorkloadServices)\n\td.PostgresInstances = uniqueSorted(d.PostgresInstances)\n\td.RedisInstances = uniqueSorted(d.RedisInstances)\n',
+              'instance normalization')
+
+          marker = '\trequired := []string(nil)\n'
+          instance_prompts = '''\tvar postgresInstances, redisInstances []string
+\tif selected[0] {
+\t\tpostgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.PostgresInstances)
+\t\tif err != nil {
+\t\t\treturn err
+\t\t}
+\t}
+\tif selected[1] {
+\t\tredisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.RedisInstances)
+\t\tif err != nil {
+\t\t\treturn err
+\t\t}
+\t}
+
+'''
+          s = replace_once(s, marker, instance_prompts + marker, 'interactive instance prompts')
+
+          old = '\tm := application.New(name, environment, selected[0], selected[1], selected[2])\n\tm = application.WithRequiredSecrets(m, required...)\n'
+          new = '''\tm := application.New(name, environment, selected[0], selected[1], selected[2])
+\tif len(postgresInstances) > 0 {
+\t\tm = application.WithPostgresInstances(m, postgresInstances...)
+\t}
+\tif len(redisInstances) > 0 {
+\t\tm = application.WithRedisInstances(m, redisInstances...)
+\t}
+\tm = application.WithRequiredSecrets(m, required...)
+'''
+          s = replace_once(s, old, new, 'interactive manifest instances')
+
+          old = '\tm := application.New(d.Name, "dev", postgres, redis, secrets)\n\tm = application.WithRequiredSecrets(m, d.SecretCandidates...)\n'
+          new = '''\tm := application.New(d.Name, "dev", postgres, redis, secrets)
+\tif postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
+\t\tm = application.WithPostgresInstances(m, postgresNamed...)
+\t}
+\tif redisNamed := quickNamedInstances(d.RedisInstances); len(redisNamed) > 0 {
+\t\tm = application.WithRedisInstances(m, redisNamed...)
+\t}
+\tm = application.WithRequiredSecrets(m, d.SecretCandidates...)
+'''
+          s = replace_once(s, old, new, 'quick manifest instances')
+
+          helper_marker = 'func promptSecretCandidates(reader *bufio.Reader, out io.Writer, candidates []string, sources map[string]string) ([]string, error) {'
+          helpers = '''func promptServiceInstances(reader *bufio.Reader, out io.Writer, label string, detected []string) ([]string, error) {
+\tdetected = uniqueSorted(detected)
+\tdefaultValue := "default"
+\tif len(detected) > 1 {
+\t\tdefaultValue = strings.Join(detected, ",")
+\t}
+\tline, err := promptLine(reader, out, label+" instances (comma-separated)", defaultValue)
+\tif err != nil {
+\t\treturn nil, err
+\t}
+\tline = strings.TrimSpace(line)
+\tif line == "" || line == "default" {
+\t\treturn nil, nil
+\t}
+\tvar names []string
+\tfor _, raw := range strings.Split(line, ",") {
+\t\tname := slugifyAppName(raw)
+\t\tif name == "" {
+\t\t\treturn nil, fmt.Errorf("invalid %s instance name %q", label, raw)
+\t\t}
+\t\tnames = append(names, name)
+\t}
+\treturn uniqueSorted(names), nil
+}
+
+func quickNamedInstances(detected []string) []string {
+\tdetected = uniqueSorted(detected)
+\tif len(detected) > 1 {
+\t\treturn detected
+\t}
+\treturn nil
+}
+
+func detectedLogicalInstanceName(serviceName, kind string) string {
+\tname := slugifyAppName(serviceName)
+\tprefixes := []string{kind + "-"}
+\tsuffixes := []string{"-" + kind}
+\tif kind == "postgres" {
+\t\tprefixes = append(prefixes, "postgresql-", "pg-")
+\t\tsuffixes = append(suffixes, "-postgresql", "-pg")
+\t} else {
+\t\tprefixes = append(prefixes, "valkey-", "redis-")
+\t\tsuffixes = append(suffixes, "-valkey", "-redis")
+\t}
+\tfor _, prefix := range prefixes {
+\t\tname = strings.TrimPrefix(name, prefix)
+\t}
+\tfor _, suffix := range suffixes {
+\t\tname = strings.TrimSuffix(name, suffix)
+\t}
+\tif name == "" {
+\t\treturn slugifyAppName(serviceName)
+\t}
+\treturn name
+}
+
+'''
+          s = replace_once(s, helper_marker, helpers + helper_marker, 'instance helpers')
+
+          s = replace_once(s,
+              'fmt.Fprintf(out, "✓ PostgreSQL detected from %s\\n", d.PostgresSource)\n',
+              'fmt.Fprintf(out, "✓ PostgreSQL detected from %s\\n", d.PostgresSource)\n\t\tif len(d.PostgresInstances) > 1 {\n\t\t\tfmt.Fprintf(out, "  logical instances proposed: %s\\n", strings.Join(d.PostgresInstances, ", "))\n\t\t}\n',
+              'postgres detection output')
+          s = replace_once(s,
+              'fmt.Fprintf(out, "✓ Redis/Valkey detected from %s\\n", d.RedisSource)\n',
+              'fmt.Fprintf(out, "✓ Redis/Valkey detected from %s\\n", d.RedisSource)\n\t\tif len(d.RedisInstances) > 1 {\n\t\t\tfmt.Fprintf(out, "  logical instances proposed: %s\\n", strings.Join(d.RedisInstances, ", "))\n\t\t}\n',
+              'redis detection output')
+          p.write_text(s)
+
+          p = Path('cmd/baha/app_required_secrets.go')
+          s = p.read_text()
+          start = s.index('func printRequiredSecretStatus(')
+          end = s.index('\nfunc yesNo(', start)
+          replacement = '''func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretStatus) {
+\tif len(statuses) == 0 {
+\t\treturn
+\t}
+\tconfigured := false
+\tfor _, status := range statuses {
+\t\tconfigured = configured || status.Present
+\t}
+\tif !configured {
+\t\tfmt.Fprintln(out, "No application secrets have been configured yet.")
+\t}
+\tfmt.Fprintln(out, "REQUIRED SECRET\\tSTATUS\\tACTION")
+\tfor _, status := range statuses {
+\t\tstate := "present"
+\t\taction := "-"
+\t\tswitch {
+\t\tcase !status.Present:
+\t\t\tstate = "missing - user input required"
+\t\t\taction = "baha app secret set " + status.Name + " --stdin"
+\t\tcase !status.Usable:
+\t\t\tstate = "present but unusable"
+\t\t\taction = "baha app secret set " + status.Name + " --stdin"
+\t\t}
+\t\tfmt.Fprintf(out, "%s\\t%s\\t%s\\n", status.Name, state, action)
+\t}
+}
+'''
+          s = s[:start] + replacement + s[end:]
+          old = 'return fmt.Errorf("%w; set missing values with: printf \'%%s\' \\"$VALUE\\" | baha app secret set %s KEY --stdin", err, m.Name)'
+          new = 'return fmt.Errorf("%w; run \'baha app preflight\' for the exact safe remediation command for each secret", err)'
+          s = replace_once(s, old, new, 'required secret remediation error')
+          p.write_text(s)
+
+          p = Path('cmd/baha/app.go')
+          s = p.read_text()
+          old = '''\t\t\t\t\tfmt.Fprintln(out, "REQUIRED SECRET\\tPRESENT\\tUSABLE")
+\t\t\t\t\tfor _, name := range application.RequiredSecretNames(m) {
+\t\t\t\t\t\tfmt.Fprintf(out, "%s\\tunknown\\tunknown\\n", name)
+\t\t\t\t\t}
+\t\t\t\t\tfmt.Fprintln(out, "Presence will be checked after the managed secret scope is materialized by 'baha app apply'.")
+'''
+          new = '''\t\t\t\t\tfmt.Fprintln(out, "REQUIRED SECRET\\tSTATUS\\tACTION")
+\t\t\t\t\tfor _, name := range application.RequiredSecretNames(m) {
+\t\t\t\t\t\tfmt.Fprintf(out, "%s\\tunknown - secret scope not materialized yet\\tbaha app secret set %s --stdin\\n", name, name)
+\t\t\t\t\t}
+\t\t\t\t\tfmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
+'''
+          s = replace_once(s, old, new, 'preflight unknown secret status')
+          p.write_text(s)
+
+          Path('cmd/baha/app_init_instances_test.go').write_text('''package main
+
+import (
+\t"bytes"
+\t"strings"
+\t"testing"
+
+\t"github.com/mcpdev80/baseharbor/internal/application"
+\t"github.com/mcpdev80/baseharbor/internal/openbao"
+)
+
+func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing.T) {
+\td := appProjectDetection{Name: "mailflow", Postgres: true, PostgresInstances: []string{"primary", "analytics"}, Redis: true, RedisInstances: []string{"cache", "sessions"}}
+\tm, err := manifestFromDetectedProject(d, true)
+\tif err != nil { t.Fatal(err) }
+\tif got := strings.Join(application.PostgresInstanceNames(m), ","); got != "analytics,primary" { t.Fatalf("postgres instances = %q", got) }
+\tif got := strings.Join(application.RedisInstanceNames(m), ","); got != "cache,sessions" { t.Fatalf("redis instances = %q", got) }
+}
+
+func TestQuickNamedInstancesKeepsSingleServiceAsDefault(t *testing.T) {
+\tif got := quickNamedInstances([]string{"postgres"}); got != nil { t.Fatalf("single detected service should remain default: %#v", got) }
+}
+
+func TestDetectedLogicalInstanceNameRemovesBackendPrefix(t *testing.T) {
+\tif got := detectedLogicalInstanceName("postgres-analytics", "postgres"); got != "analytics" { t.Fatalf("got %q", got) }
+\tif got := detectedLogicalInstanceName("redis-sessions", "redis"); got != "sessions" { t.Fatalf("got %q", got) }
+}
+
+func TestRequiredSecretStatusIsActionable(t *testing.T) {
+\tvar out bytes.Buffer
+\tprintRequiredSecretStatus(&out, []openbao.RequiredSecretStatus{{Name: "OPENAI_API_KEY"}})
+\ttext := out.String()
+\tfor _, want := range []string{"No application secrets have been configured yet.", "missing - user input required", "baha app secret set OPENAI_API_KEY --stdin"} {
+\t\tif !strings.Contains(text, want) { t.Fatalf("output missing %q:\\n%s", want, text) }
+\t}
+}
+''')
+          PY
+
+          gofmt -w cmd/baha/app_init_wizard.go cmd/baha/app_required_secrets.go cmd/baha/app.go cmd/baha/app_init_instances_test.go
+          go test ./cmd/baha
+          git rm .github/workflows/app44-part2-run2.yml
+          git add cmd/baha/app_init_wizard.go cmd/baha/app_required_secrets.go cmd/baha/app.go cmd/baha/app_init_instances_test.go
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'feat: support guided service instances and actionable secret readiness'
+          git push origin HEAD:feat/app-init-instances-secret-generation
