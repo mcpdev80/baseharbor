@@ -12,11 +12,11 @@ import (
 )
 
 func TestParseRuntimeUpOptions(t *testing.T) {
-	opts, err := parseRuntimeUpOptions([]string{"--yes", "--postgres-port", "15432", "--openbao-port", "18200", "--recovery-file", "/secure/recovery.json"})
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only", "--postgres-port", "15432", "--openbao-port", "18200", "--recovery-file", "/secure/recovery.json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Yes || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 || opts.RecoveryFile != "/secure/recovery.json" {
+	if !opts.Yes || !opts.ControlPlaneOnly || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 || opts.RecoveryFile != "/secure/recovery.json" {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
 }
