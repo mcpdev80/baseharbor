@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `baha app init --quick` for non-interactive manifest generation from unambiguous detections and safe defaults.
 - Guided PostgreSQL and Redis/Valkey instance selection, including automatic proposals when multiple backend services are visible in the repository.
 - Actionable required-secret readiness output with exact safe `baha app secret set <NAME> --stdin` remediation commands.
+- Explicit generated application secrets in `secrets.required`, with bounded cryptographically secure `random` and `hex` generators persisted directly to managed OpenBao storage.
 
 ### Changed
 
@@ -22,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Application initialization previews the generated manifest and never copies detected secret values into `baseharbor.yaml`.
 - `baha app init --quick` now preserves multiple detected logical PostgreSQL and Redis/Valkey instances instead of collapsing them into one default service.
 - Required-secret checks now distinguish configured, missing and unusable values and explicitly report when no application secrets have been configured yet.
+- `baha app apply` now generates only explicitly declared missing generated secrets before the normal required-secret gate; existing values are never automatically overwritten or rotated, and external secrets remain fail-closed user input.
 
 ## [0.1.0-rc.1] - 2026-09-09
 
