@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:best-practices"
+    "config:best-practices",
+    ":separateMultipleMajorReleases"
   ],
   "timezone": "Europe/Berlin",
   "schedule": [
@@ -13,7 +14,7 @@
   "automergeType": "pr",
   "platformAutomerge": false,
   "ignoreTests": false,
-  "minimumReleaseAge": "3 days",
+  "minimumReleaseAge": "14 days",
   "prConcurrentLimit": 5,
   "branchConcurrentLimit": 5,
   "labels": [
@@ -130,9 +131,8 @@
   },
   "vulnerabilityAlerts": {
     "enabled": true,
-    "schedule": [
-      "at any time"
-    ],
+    "minimumReleaseAge": null,
+    "prConcurrentLimit": 5,
     "labels": [
       "dependencies",
       "security"
