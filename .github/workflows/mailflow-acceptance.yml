@@ -9,7 +9,7 @@ permissions:
 jobs:
   mailflow:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
     steps:
@@ -25,7 +25,7 @@ jobs:
           cp /tmp/baha /tmp/baseharbor-runtime-image/baha
           cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
           docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
-      - name: Checkout MailFlow BaseHarbor readiness branch
+      - name: Checkout MailFlow readiness branch
         run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
       - name: Extend MailFlow acceptance with TLS file bindings
         working-directory: /tmp/mailflow
@@ -75,24 +75,6 @@ jobs:
           /tmp/baha app status | tee /tmp/mailflow-status.out
           /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
           grep -q "Application runtime is healthy" /tmp/mailflow-doctor.out
-      - name: Diagnose MailFlow workload failure
-        if: failure()
-        working-directory: /tmp/mailflow
-        run: |
-          project=baseharbor-workload-mailflow-production
-          docker ps -a --filter "label=com.docker.compose.project=$project" --format 'table {{.Names}}\t{{.Status}}' || true
-          api_id=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q | head -1)
-          if [ -n "$api_id" ]; then
-            docker inspect "$api_id" --format '{{json .State.Health}}' || true
-            docker logs "$api_id" || true
-          fi
-          broker_project=baseharbor-broker-mailflow-production
-          docker ps -a --filter "label=com.docker.compose.project=$broker_project" --format 'table {{.Names}}\t{{.Status}}' || true
-          broker_id=$(docker ps -a --filter "label=com.docker.compose.project=$broker_project" -q | head -1)
-          if [ -n "$broker_id" ]; then
-            docker inspect "$broker_id" --format '{{json .State.Health}}' || true
-            docker logs "$broker_id" || true
-          fi
       - name: Verify managed backends, env secret and TLS file bindings
         working-directory: /tmp/mailflow
         run: |
@@ -118,9 +100,187 @@ jobs:
           test "$(stat -c '%a' "$key_host")" = 644
           grep -q 'BEGIN CERTIFICATE' "$cert_host"
           grep -q 'PRIVATE KEY' "$key_host"
+      - name: Create MailFlow provider data backed by a dynamic secret reference
+        working-directory: /tmp/mailflow
+        run: |
+          broker_project=baseharbor-broker-mailflow-production
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=$broker_project" --filter 'label=com.docker.compose.service=broker' -q)
+          test -n "$broker_id"
+          ref=$(docker exec "$broker_id" sh -ec '
+            token=$(cat /run/secrets/runtime-token)
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/mailflow/secret-refs
+            create=$(curl --fail --silent --show-error \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert \
+              --key /run/secrets/probe-client-key \
+              -H "Authorization: Bearer $token" \
+              -H "Content-Type: application/json" \
+              -d "{\"value\":\"mailflow-provider-key-v1\"}" "$base")
+            printf "%s" "$create" | sed -n "s/.*\"ref\":\"\([^\"]*\)\".*/\1/p"
+          ')
+          test -n "$ref"
+          printf '%s' "$ref" > /tmp/mailflow-provider-ref
+
+          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
+          test -n "$api_id"
+          docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
+          import asyncio
+          import os
+          import uuid
+          from sqlalchemy import text
+          from app.database import async_session_factory
+
+          async def main():
+              async with async_session_factory() as session:
+                  await session.execute(
+                      text("""
+                          INSERT INTO llm_providers (
+                              id, org_id, label, type, base_url,
+                              encrypted_api_key, api_key_secret_ref,
+                              default_classification_model,
+                              default_generation_model, is_active
+                          ) VALUES (
+                              :id, NULL, :label, :type, :base_url,
+                              NULL, :secret_ref, :classification_model,
+                              :generation_model, true
+                          )
+                      """),
+                      {
+                          "id": uuid.UUID("11111111-2222-3333-4444-555555555555"),
+                          "label": "BaseHarbor DR Provider",
+                          "type": "openai-compatible",
+                          "base_url": "https://provider.invalid/v1",
+                          "secret_ref": os.environ["SECRET_REF"],
+                          "classification_model": "mailflow-ci-fast",
+                          "generation_model": "mailflow-ci-generation",
+                      },
+                  )
+                  await session.commit()
+
+                  row = (
+                      await session.execute(
+                          text("""
+                              SELECT label, base_url, encrypted_api_key, api_key_secret_ref,
+                                     default_classification_model, default_generation_model
+                              FROM llm_providers
+                              WHERE id = '11111111-2222-3333-4444-555555555555'
+                          """)
+                      )
+                  ).one()
+                  assert row.label == "BaseHarbor DR Provider"
+                  assert row.base_url == "https://provider.invalid/v1"
+                  assert row.encrypted_api_key is None
+                  assert row.api_key_secret_ref == os.environ["SECRET_REF"]
+                  assert row.default_classification_model == "mailflow-ci-fast"
+                  assert row.default_generation_model == "mailflow-ci-generation"
+
+          asyncio.run(main())
+          PY
+      - name: Backup destroy restore real MailFlow state
+        working-directory: /tmp/mailflow
+        run: |
+          umask 077
+          printf '%s' 'mailflow-backup-ci-password' > /tmp/mailflow-backup.pass
+          chmod 600 /tmp/mailflow-backup.pass
+          /tmp/baha app backup --password-file /tmp/mailflow-backup.pass --output /tmp/mailflow.baha
+          test -s /tmp/mailflow.baha
+
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-production" --filter 'label=com.docker.compose.service=broker' -q)
+          test -n "$broker_id"
+          token_before=$(docker exec "$broker_id" sha256sum /run/secrets/runtime-token | awk '{print $1}')
+          identity_path=.baseharbor/apps/mailflow/runtime/bindings/runtime-identity/client-cert.pem
+          test -s "$identity_path"
+          cert_before=$(sha256sum "$identity_path" | awk '{print $1}')
+          printf '%s\n' "$token_before" > /tmp/mailflow-token-before
+          printf '%s\n' "$cert_before" > /tmp/mailflow-cert-before
+
+          /tmp/baha app destroy --yes
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-broker-mailflow-production)"
+
+          /tmp/baha app restore /tmp/mailflow.baha --password-file /tmp/mailflow-backup.pass | tee /tmp/mailflow-restore.out
+          /tmp/baha app status | tee /tmp/mailflow-restored-status.out
+          /tmp/baha app doctor | tee /tmp/mailflow-restored-doctor.out
+          grep -q "Application runtime is healthy" /tmp/mailflow-restored-doctor.out
+      - name: Verify MailFlow data secret reference and fresh runtime identity
+        working-directory: /tmp/mailflow
+        run: |
+          ref=$(cat /tmp/mailflow-provider-ref)
+          test -n "$ref"
+          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
+          test -n "$api_id"
+          docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
+          import asyncio
+          import os
+          from sqlalchemy import text
+          from app.database import async_session_factory
+
+          async def main():
+              async with async_session_factory() as session:
+                  row = (
+                      await session.execute(
+                          text("""
+                              SELECT label, type, base_url, encrypted_api_key, api_key_secret_ref,
+                                     default_classification_model, default_generation_model
+                              FROM llm_providers
+                              WHERE id = '11111111-2222-3333-4444-555555555555'
+                          """)
+                      )
+                  ).one()
+                  assert row.label == "BaseHarbor DR Provider"
+                  assert row.type == "openai-compatible"
+                  assert row.base_url == "https://provider.invalid/v1"
+                  assert row.encrypted_api_key is None
+                  assert row.api_key_secret_ref == os.environ["SECRET_REF"]
+                  assert row.default_classification_model == "mailflow-ci-fast"
+                  assert row.default_generation_model == "mailflow-ci-generation"
+
+          asyncio.run(main())
+          PY
+
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-production" --filter 'label=com.docker.compose.service=broker' -q)
+          test -n "$broker_id"
+          docker exec -e REF="$ref" "$broker_id" sh -ec '
+            token=$(cat /run/secrets/runtime-token)
+            base=https://baseharbor-secrets:8443/runtime/v1/apps/mailflow/secret-refs
+            resolved=$(curl --fail --silent --show-error \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert \
+              --key /run/secrets/probe-client-key \
+              -H "Authorization: Bearer $token" \
+              -H "Content-Type: application/json" \
+              -d "{\"ref\":\"$REF\"}" "$base/resolve")
+            printf "%s" "$resolved" | grep -q "\"value\":\"mailflow-provider-key-v1\""
+          '
+
+          token_after=$(docker exec "$broker_id" sha256sum /run/secrets/runtime-token | awk '{print $1}')
+          cert_after=$(sha256sum .baseharbor/apps/mailflow/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
+          test "$(cat /tmp/mailflow-token-before)" != "$token_after"
+          test "$(cat /tmp/mailflow-cert-before)" != "$cert_after"
+
+          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
+      - name: Diagnose MailFlow workload failure
+        if: failure()
+        working-directory: /tmp/mailflow
+        run: |
+          project=baseharbor-workload-mailflow-production
+          docker ps -a --filter "label=com.docker.compose.project=$project" --format 'table {{.Names}}\t{{.Status}}' || true
+          api_id=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q | head -1)
+          if [ -n "$api_id" ]; then
+            docker inspect "$api_id" --format '{{json .State.Health}}' || true
+            docker logs "$api_id" || true
+          fi
+          broker_project=baseharbor-broker-mailflow-production
+          docker ps -a --filter "label=com.docker.compose.project=$broker_project" --format 'table {{.Names}}\t{{.Status}}' || true
+          broker_id=$(docker ps -a --filter "label=com.docker.compose.project=$broker_project" -q | head -1)
+          if [ -n "$broker_id" ]; then
+            docker inspect "$broker_id" --format '{{json .State.Health}}' || true
+            docker logs "$broker_id" || true
+          fi
       - name: Cleanup
         if: always()
         working-directory: /tmp/mailflow
         run: |
+          rm -f /tmp/mailflow-backup.pass /tmp/mailflow.baha /tmp/mailflow-provider-ref /tmp/mailflow-token-before /tmp/mailflow-cert-before
           /tmp/baha app destroy --yes || true
           docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v || true
