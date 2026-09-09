@@ -1,0 +1,62 @@
+site_name: BaseHarbor
+site_description: Secure, modular, self-hosted backend infrastructure for independent applications.
+site_url: https://mcpdev80.github.io/baseharbor/
+repo_url: https://github.com/mcpdev80/baseharbor
+repo_name: mcpdev80/baseharbor
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  de/**
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+
+extra:
+  alternate:
+    - name: English
+      link: /baseharbor/
+      lang: en
+    - name: Deutsch
+      link: /baseharbor/de/
+      lang: de
+
+nav:
+  - Home: index.md
+  - Getting Started: repository-application-workflow.md
+  - Application Contract: application-contract.md
+  - CLI: cli.md
+  - Control Plane: runtime-compose.md
+  - Secrets: secrets-and-openbao.md
+  - Backup & Restore: backup-and-restore.md
+  - Releases: releases.md
+  - Architecture: architecture.md
+  - Roadmap: roadmap.md
