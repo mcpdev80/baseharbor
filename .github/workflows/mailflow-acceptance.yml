@@ -25,8 +25,8 @@ jobs:
           cp /tmp/baha /tmp/baseharbor-runtime-image/baha
           cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
           docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
-      - name: Checkout MailFlow external-secret reference branch
-        run: git clone --depth 1 --branch feature/external-llm-secret-refs https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
+      - name: Checkout MailFlow readiness branch
+        run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
       - name: Extend MailFlow acceptance with TLS file bindings
         working-directory: /tmp/mailflow
         run: |
