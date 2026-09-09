@@ -19,7 +19,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
 		Usage:   "baha app apply [NAME]",
-		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network and injects container-routable native service URLs. Declared secrets.required entries are readiness gates. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network and injects container-routable native service URLs. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
@@ -91,6 +91,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if err := openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
 					return fmt.Errorf("converge OpenBao application secret scope: %w", err)
 				}
+				generated, err := reconcileGeneratedApplicationSecrets(ctx, compose, platformFiles, m, files)
+				if err != nil {
+					return fmt.Errorf("generated secrets reconciliation failed: %w", err)
+				}
+				for _, name := range generated {
+					fmt.Fprintf(out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
+				}
 				if err := checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files); err != nil {
 					return fmt.Errorf("required secrets check failed: %w", err)
 				}
@@ -154,9 +161,6 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 			return err
 		}
 
-		// Compose can leave services that bound successfully running when a sibling
-		// service loses the host-port race. Tear down only containers/network; all
-		// persistent volumes and credentials remain owned and intact.
 		if downErr := compose.DownProject(ctx, project, files.Compose, files.Env); downErr != nil {
 			return errors.Join(err, fmt.Errorf("clean up partially started runtime before host-port retry: %w", downErr))
 		}
