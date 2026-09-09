@@ -121,6 +121,20 @@ Analyzing repository...
 
 The wizard then shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
 
+When more than one PostgreSQL or Redis/Valkey backend is visible, the wizard proposes logical instance names automatically. A single detected backend stays the simple `default` instance.
+
+Example:
+
+```text
+✓ PostgreSQL detected from compose.yaml service postgres-primary
+  logical instances proposed: analytics, primary
+✓ Redis/Valkey detected from compose.yaml service redis-cache
+  logical instances proposed: cache, sessions
+
+PostgreSQL instances (comma-separated) [analytics,primary]:
+Valkey / Redis instances (comma-separated) [cache,sessions]:
+```
+
 Before writing anything, the generated `baseharbor.yaml` is shown as a preview. An existing manifest is never silently overwritten.
 
 For a non-interactive detection-based path:
@@ -129,7 +143,7 @@ For a non-interactive detection-based path:
 baha app init --quick
 ```
 
-`--quick` accepts only unambiguous detections plus safe defaults. Ambiguous project structure fails closed and points back to the interactive flow.
+`--quick` accepts only unambiguous detections plus safe defaults. Ambiguous project structure fails closed and points back to the interactive flow. Multiple detected logical PostgreSQL or Redis/Valkey instances are preserved automatically.
 
 The explicit flag-based path remains available and deterministic for CI, scripts and developers who already know the desired contract:
 
@@ -172,7 +186,7 @@ baha app init demo \
   --redis-instance sessions
 ```
 
-Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
+The interactive wizard and `--quick` path generate the same logical-instance contract as these deterministic flags. Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
 
 ## Plan, preflight, apply and verify
 
@@ -183,6 +197,17 @@ plan -> preflight -> apply -> verify
 `plan` and `preflight` are read-only. `apply` validates desired state, materializes owned runtime state, converges managed services, secret scope, runtime identity/broker and repository workload where applicable, then returns success only after verification.
 
 Required secrets are a startup gate. Missing or unusable required secrets prevent the workload from starting.
+
+Once the application secret scope exists, `baha app preflight` reports required-secret readiness directly:
+
+```text
+No application secrets have been configured yet.
+REQUIRED SECRET       STATUS                         ACTION
+OPENAI_API_KEY        missing - user input required  baha app secret set OPENAI_API_KEY --stdin
+SMTP_PASSWORD         missing - user input required  baha app secret set SMTP_PASSWORD --stdin
+```
+
+Present values are reported as `present`; unreadable values are reported as `present but unusable` with the same safe replacement command. Secret values are never printed.
 
 ## Application environment and bindings
 
