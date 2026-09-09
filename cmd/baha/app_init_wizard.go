@@ -83,7 +83,7 @@ func appGuidedInitCommand() *cli.Command {
 				return writeRepositoryManifest(m, out)
 			}
 
-			if !readerIsTerminal(appInitInput) {
+			if !appInitReaderIsTerminal(appInitInput) {
 				return usageError("interactive app init requires a terminal", "Use 'baha app init --quick' for detected safe defaults or explicit flags for CI/scripts.")
 			}
 			return runAppInitWizard(detected, out)
@@ -619,7 +619,7 @@ func writeRepositoryManifest(m application.Manifest, out io.Writer) error {
 	return nil
 }
 
-func readerIsTerminal(r io.Reader) bool {
+func appInitReaderIsTerminal(r io.Reader) bool {
 	file, ok := r.(*os.File)
 	if !ok {
 		return true
