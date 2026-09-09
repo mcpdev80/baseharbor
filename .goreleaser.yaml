@@ -53,4 +53,4 @@ changelog:
 release:
   name_template: "BaseHarbor {{ .Tag }}"
   prerelease: auto
-  make_latest: true
+  make_latest: '{{ if .Prerelease }}false{{ else }}true{{ end }}'
