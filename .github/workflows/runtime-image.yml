@@ -13,7 +13,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*'
+      - 'v*.*.*'
     paths:
       - 'cmd/**'
       - 'internal/**'
@@ -26,6 +26,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -33,6 +35,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: buildmeta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="edge"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -53,12 +68,17 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/mcpdev80/baseharbor-runtime
+          flavor: |
+            latest=auto
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=ref,event=tag
+            type=sha,prefix=sha-
 
       - name: Build runtime image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -67,3 +87,15 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.buildmeta.outputs.date }}
+
+      - name: Attest runtime image
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/mcpdev80/baseharbor-runtime
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
