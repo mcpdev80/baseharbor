@@ -64,14 +64,6 @@ baha app backup --help
 baha openbao --help
 ```
 
-## Exit codes
-
-| Code | Meaning |
-| --- | --- |
-| `0` | command completed successfully |
-| `1` | operational/runtime failure |
-| `2` | invalid command or arguments |
-
 ## Control-plane startup
 
 Interactive first run:
@@ -98,7 +90,48 @@ Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/r
 
 ## Repository-first application workflow
 
-Create `baseharbor.yaml` in the application repository:
+The normal developer path can start inside an existing application repository with:
+
+```bash
+baha app init
+```
+
+Before asking setup questions, `baha` analyzes the repository read-only and detects as much as it can safely derive, including:
+
+- common Compose files in the repository root and under `deploy/` or `docker/`;
+- PostgreSQL and Redis/Valkey usage;
+- likely application workload services;
+- infrastructure variables from `.env.example`, `.env.template`, `.env.sample` and `.env`;
+- likely required application secret names.
+
+Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
+
+Example detection summary:
+
+```text
+Analyzing repository...
+✓ Application name: mailflow
+✓ Compose file: deploy/docker-compose.yml
+✓ PostgreSQL detected
+✓ Redis/Valkey detected
+✓ Potential required secret names:
+    OPENAI_API_KEY
+    SMTP_PASSWORD
+```
+
+The wizard then shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
+
+Before writing anything, the generated `baseharbor.yaml` is shown as a preview. An existing manifest is never silently overwritten.
+
+For a non-interactive detection-based path:
+
+```bash
+baha app init --quick
+```
+
+`--quick` accepts only unambiguous detections plus safe defaults. Ambiguous project structure fails closed and points back to the interactive flow.
+
+The explicit flag-based path remains available and deterministic for CI, scripts and developers who already know the desired contract:
 
 ```bash
 baha app init mailflow \
@@ -108,7 +141,7 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
-If the name is omitted, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
+If the name is omitted from the explicit path, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
 
 Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
 
