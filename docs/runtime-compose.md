@@ -1,29 +1,56 @@
-# Local Compose runtime
+# Local control-plane runtime
 
-BaseHarbor's first operational runtime is intentionally small and single-node.
+BaseHarbor's current operational control plane is intentionally single-node and local-first.
 
 ## Services
 
 `baha up` materializes an embedded Compose definition and starts:
 
-- PostgreSQL 18
-- OpenBao 2.6.x
+- PostgreSQL 18;
+- OpenBao 2.6.x.
 
 Both services bind to loopback by default. They are not exposed on all host interfaces.
 
-## Generated state
+## First-run port selection
 
-Runtime files live below:
+The default host ports are PostgreSQL `5432` and OpenBao `8200`, but BaseHarbor checks them before first initialization.
+
+Interactive setup:
+
+```bash
+baha up
+```
+
+If a default port is occupied, `baha` proposes a free alternative. The operator can accept the proposal or enter another port.
+
+Non-interactive setup accepts BaseHarbor's safe proposals:
+
+```bash
+baha up --yes
+```
+
+Explicit ports are supported and still fail closed when occupied:
+
+```bash
+baha up --postgres-port 15432 --openbao-port 18200
+```
+
+After control-plane state has been initialized, `baha up` does not silently rewrite configured ports.
+
+## Runtime state
+
+On the current default branch, control-plane runtime files are still resolved through the legacy local state location:
 
 ```text
 .baseharbor/runtime/
 ├── compose.yaml
-└── runtime.env
+├── runtime.env
+└── openbao-admin.env     # after OpenBao bootstrap
 ```
 
-The directory is ignored by Git. Files are written with owner-only permissions. The PostgreSQL password is generated from cryptographically secure random bytes on the first `baha up` and preserved on subsequent runs.
+Files are owner-only where credentials are present. The PostgreSQL password is generated from cryptographically secure random bytes on first materialization and preserved across subsequent starts.
 
-The embedded Compose definition is rewritten from the current `baha` binary so runtime definitions can evolve with BaseHarbor upgrades without overwriting the generated secret environment.
+**Pre-v0.1 release blocker:** the Docker control plane and named volumes are machine/user scoped, so the default runtime state must also be machine/user scoped. PR #72 moves the default to XDG/Home global state while preserving explicit overrides and legacy compatibility. Public release documentation must be updated to the merged final path before `v0.1.0` is tagged.
 
 ## Commands
 
@@ -34,36 +61,62 @@ baha doctor
 baha down
 ```
 
-`baha up` validates the Compose configuration before starting containers.
+`baha up` validates the generated Compose configuration before starting containers.
 
-`baha status` shows both container state and service readiness. A container being alive is not considered sufficient.
+`baha status` reports actual readiness, not only whether containers are alive.
 
-`baha doctor` verifies:
-
-- supported host OS
-- reachable Docker or Podman daemon
-- working Compose integration
-- PostgreSQL reachability once runtime state exists
-- OpenBao initialization/seal state once runtime state exists
+`baha doctor` verifies host/runtime prerequisites and reports control-plane failures independently.
 
 ## OpenBao lifecycle
 
-OpenBao deliberately does not run in development mode and BaseHarbor does not inject a static root token.
+OpenBao does not run with a static development root token.
 
-The first `baha up` therefore starts a persistent but uninitialized OpenBao server. Until initialization and unseal lifecycle commands are added, `baha status` and `baha doctor` will report OpenBao as not ready.
+Start the runtime:
 
-This is intentional: BaseHarbor must not claim a secrets service is healthy merely because its container process is running.
+```bash
+baha up
+```
 
-A following lifecycle change will add guided OpenBao initialization/unseal handling and connect generated application credentials to the existing credential broker.
+Inspect initialization/seal state:
+
+```bash
+baha openbao status
+```
+
+Bootstrap a fresh OpenBao instance with an explicit recovery destination:
+
+```bash
+baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
+```
+
+Bootstrap:
+
+- initializes and unseals the current single-node Shamir profile;
+- creates the `baseharbor/` KV v2 mount;
+- enables AppRole authentication;
+- creates and verifies the restricted BaseHarbor manager identity;
+- stores manager RoleID/SecretID only in protected control-plane state;
+- does not persist or print the initial root token;
+- revokes the initial root token after manager verification;
+- writes recovery material only to the explicit owner-controlled recovery file.
+
+After a restart, explicitly unseal the current manual profile:
+
+```bash
+baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+baha openbao status
+```
+
+Automatic KMS/HSM/transit unseal is a future deployment profile, not current single-node behavior.
 
 ## Scope
 
-This runtime is the first single-node operational layer. It does not yet include:
+The current control plane intentionally does not yet imply:
 
-- bundled OIDC provider
-- automatic OpenBao initialization/unseal
-- PostgreSQL schema/bootstrap execution from `baha up`
-- TLS termination
-- Kubernetes deployment
+- high availability;
+- bundled OIDC provider;
+- public network exposure;
+- Kubernetes deployment;
+- KMS/HSM automatic unseal.
 
-Those concerns remain separate so each security boundary can be tested before it becomes part of the default bootstrap path.
+Those are separate deployment/architecture concerns so BaseHarbor can preserve a small, testable default profile.
