@@ -254,9 +254,9 @@ func reserveRecoveryFile(files bhruntime.Files, requested string) (string, *os.F
 		return "", nil, fmt.Errorf("create OpenBao recovery directory: %w", err)
 	}
 
-	stateRoot, err := filepath.Abs(filepath.Dir(filepath.Dir(files.Compose)))
+	stateRoot, err := recoveryProtectedStateRoot(files)
 	if err != nil {
-		return "", nil, fmt.Errorf("resolve BaseHarbor state path: %w", err)
+		return "", nil, err
 	}
 	stateRoot, err = filepath.EvalSymlinks(stateRoot)
 	if err != nil {
@@ -272,7 +272,7 @@ func reserveRecoveryFile(files bhruntime.Files, requested string) (string, *os.F
 		return "", nil, fmt.Errorf("compare OpenBao recovery file path: %w", err)
 	}
 	if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))) {
-		return "", nil, errors.New("OpenBao recovery file must be stored outside .baseharbor state")
+		return "", nil, errors.New("OpenBao recovery file must be stored outside BaseHarbor state")
 	}
 
 	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -280,6 +280,22 @@ func reserveRecoveryFile(files bhruntime.Files, requested string) (string, *os.F
 		return "", nil, fmt.Errorf("reserve OpenBao recovery file: %w", err)
 	}
 	return abs, f, nil
+}
+
+func recoveryProtectedStateRoot(files bhruntime.Files) (string, error) {
+	runtimeDir, err := filepath.Abs(filepath.Dir(files.Compose))
+	if err != nil {
+		return "", fmt.Errorf("resolve BaseHarbor runtime state path: %w", err)
+	}
+	base := filepath.Base(runtimeDir)
+	parent := filepath.Dir(runtimeDir)
+	if base == "runtime" {
+		parentBase := filepath.Base(parent)
+		if parentBase == ".baseharbor" || parentBase == "baseharbor" {
+			return parent, nil
+		}
+	}
+	return runtimeDir, nil
 }
 
 func loadRecoveryFile(path string) (recoveryBundle, error) {
