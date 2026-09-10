@@ -13,9 +13,11 @@ func rootCommand() *cli.Command {
 	store := application.DefaultStore()
 	appCmd := appCommand(store)
 	for i, child := range appCmd.Children {
-		if child.Name == "init" {
+		switch child.Name {
+		case "init":
 			appCmd.Children[i] = appGuidedInitCommand()
-			break
+		case "show":
+			appCmd.Children[i] = appShowCommand(store)
 		}
 	}
 	appCmd.Children = append(appCmd.Children,
@@ -30,7 +32,6 @@ func rootCommand() *cli.Command {
 		appShellCommand(store),
 		appExecCommand(store),
 		appStatusCommand(store),
-		appShowCommand(store),
 		appDoctorRepairCommand(store),
 		appDownCommand(store),
 		appUpCommand(store),
@@ -89,7 +90,7 @@ func rootCommand() *cli.Command {
 			Usage:   "baha version",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if len(args) != 0 {
-					return usageError("baha version does not accept arguments", "Run 'baha version --help' for usage.")
+					return usageError("baha version does not accept arguments", "Run '"+"baha version --help' for usage.")
 				}
 				fmt.Fprintf(out, "baha %s (commit %s, built %s)\n", version, commit, date)
 				return nil
