@@ -1,5 +1,6 @@
 name: mailflow-acceptance
 
+# Temporary v0.2.0 cross-repository release validation against MailFlow PR #89.
 on:
   pull_request:
 
