@@ -76,8 +76,11 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "show", "demo"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "environment: test") {
-		t.Fatalf("unexpected show: %s", out.String())
+	show := out.String()
+	for _, wanted := range []string{"Application: demo", "Environment: test", "Status: NOT READY", "PostgreSQL default", "Valkey     default", "not applied"} {
+		if !strings.Contains(show, wanted) {
+			t.Fatalf("unexpected show, missing %q: %s", wanted, show)
+		}
 	}
 
 	out.Reset()

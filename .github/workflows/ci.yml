@@ -169,7 +169,12 @@ jobs:
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
-          /tmp/baha app show required-demo | grep -q -- '- name: API_TOKEN'
+          /tmp/baha app show required-demo | tee /tmp/required-show.out
+          grep -q 'Application: required-demo' /tmp/required-show.out
+          grep -q 'Status: NOT READY' /tmp/required-show.out
+          grep -Eq '^  required +1$' /tmp/required-show.out
+          ! grep -q 'API_TOKEN' /tmp/required-show.out
+          ! grep -q 'postgres://' /tmp/required-show.out
           /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
           /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
           grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out

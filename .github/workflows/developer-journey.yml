@@ -74,6 +74,20 @@ jobs:
           grep -Eq '^\[OK\] api +running health=healthy$' /tmp/developer-journey-doctor.out
           grep -Eq '^\[OK\] edge +running$' /tmp/developer-journey-doctor.out
 
+          /tmp/baha app show | tee /tmp/developer-journey-show.out
+          grep -Fq 'Application: mailflow' /tmp/developer-journey-show.out
+          grep -Fq 'Environment: production' /tmp/developer-journey-show.out
+          grep -Fq 'Status: READY' /tmp/developer-journey-show.out
+          grep -Eq '^  PostgreSQL +default +healthy$' /tmp/developer-journey-show.out
+          grep -Eq '^  Valkey +default +healthy$' /tmp/developer-journey-show.out
+          grep -Eq '^  api +running health=healthy$' /tmp/developer-journey-show.out
+          grep -Eq '^  edge +running$' /tmp/developer-journey-show.out
+          grep -Eq '^  required +1$' /tmp/developer-journey-show.out
+          grep -Eq '^  ready +1$' /tmp/developer-journey-show.out
+          ! grep -Fq 'SECRET_KEY' /tmp/developer-journey-show.out
+          ! grep -Fq 'postgres://' /tmp/developer-journey-show.out
+          ! grep -Fq 'redis://' /tmp/developer-journey-show.out
+
       - name: Verify real repository workload and managed backends
         working-directory: /tmp/mailflow
         run: |
@@ -121,6 +135,7 @@ jobs:
           docker ps -a --filter label=com.docker.compose.project=baseharbor-mailflow-production || true
           /tmp/baha app status || true
           /tmp/baha app doctor || true
+          /tmp/baha app show || true
 
       - name: Cleanup
         if: always()
