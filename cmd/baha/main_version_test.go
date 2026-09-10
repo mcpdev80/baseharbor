@@ -19,7 +19,7 @@ func TestDefaultRuntimeImageTrimsVPrefix(t *testing.T) {
 }
 
 func TestDefaultRuntimeImageUsesEdgeForDevelopment(t *testing.T) {
-	for _, version := range []string{"", "dev", "dev-dirty"} {
+	for _, version := range []string{"", "dev", "dev-local", "dev-snapshot", "dev-dirty", "0.2.0-dirty"} {
 		t.Run(version, func(t *testing.T) {
 			got := defaultRuntimeImage(version)
 			want := "ghcr.io/mcpdev80/baseharbor-runtime:edge"

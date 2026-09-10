@@ -130,21 +130,30 @@ func projectOwnerOnlyFile(appFiles application.RuntimeFiles, source, targetName,
 
 func ensureImage(dir string) (string, error) {
 	path := filepath.Join(dir, "broker-image")
+	requested := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	if strings.ContainsAny(requested, "\r\n\x00") {
+		return "", errors.New("BASEHARBOR_RUNTIME_IMAGE is invalid")
+	}
+
 	if data, err := os.ReadFile(path); err == nil {
-		image := strings.TrimSpace(string(data))
-		if image == "" || strings.ContainsAny(image, "\r\n\x00") {
+		existing := strings.TrimSpace(string(data))
+		if existing == "" || strings.ContainsAny(existing, "\r\n\x00") {
 			return "", errors.New("runtime broker image state is invalid")
 		}
-		return image, nil
+		if requested == "" || requested == existing {
+			return existing, nil
+		}
+		if err := os.WriteFile(path, []byte(requested+"\n"), 0o600); err != nil {
+			return "", fmt.Errorf("update runtime broker image state: %w", err)
+		}
+		return requested, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("read runtime broker image state: %w", err)
 	}
-	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+
+	image := requested
 	if image == "" {
 		image = DefaultImage
-	}
-	if strings.ContainsAny(image, "\r\n\x00") {
-		return "", errors.New("BASEHARBOR_RUNTIME_IMAGE is invalid")
 	}
 	if err := os.WriteFile(path, []byte(image+"\n"), 0o600); err != nil {
 		return "", fmt.Errorf("write runtime broker image state: %w", err)
