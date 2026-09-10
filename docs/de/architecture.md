@@ -46,7 +46,7 @@ Eine App soll beispielsweise SQL-Datenbank, Key-Value-Cache, S3-Object-Storage, 
 
 Ein lokales Environment kann diese Capabilities mit den BaseHarbor-Defaults erfüllen. Ein Enterprise-Environment kann stattdessen Kundendienste wie externes PostgreSQL, Managed Redis, Ceph RGW, Vault oder OpenShift Routes verwenden. Die Application-YAML soll dafür nicht neu geschrieben werden müssen.
 
-Die vollständige Matrix steht unter [Capability- und Provider-Modell](capability-provider-model.md). Die verbindliche Architekturentscheidung ist ADR [0005](../decisions/0005-capabilities-not-products.md).
+Die vollständige Matrix steht unter [Capability- und Provider-Modell](capability-provider-model.md). Die verbindliche Architekturentscheidung ist ADR [0005](decisions/0005-capabilities-not-products.md).
 
 ## Mehrere Instanzen und HA
 
