@@ -1,5 +1,6 @@
 name: mailflow-acceptance
 
+# Temporary v0.2.0 cross-repository release validation against MailFlow PR #89.
 on:
   pull_request:
 
@@ -12,6 +13,7 @@ jobs:
     timeout-minutes: 40
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
+      BASEHARBOR_STATE_DIR: /tmp/baseharbor-runtime
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
@@ -25,57 +27,21 @@ jobs:
           cp /tmp/baha /tmp/baseharbor-runtime-image/baha
           cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
           docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
-      - name: Checkout MailFlow readiness branch
-        run: git clone --depth 1 --branch chore/platform-isolate-baseharbor-readiness https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
-      - name: Extend MailFlow acceptance with TLS file bindings
+      - name: Checkout MailFlow v0.2 compatibility branch
+        run: git clone --depth 1 --branch fix/baseharbor-v020-contract https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
+      - name: Install MailFlow through its real BaseHarbor bootstrap
         working-directory: /tmp/mailflow
+        env:
+          MAILFLOW_BASEHARBOR_RECOVERY_FILE: /tmp/mailflow-openbao-recovery.json
         run: |
-          cat >> baseharbor.yaml <<'EOF'
-              - name: TLS_CERT_FILE
-              - name: TLS_KEY_FILE
-          EOF
-          openssl req -x509 -newkey rsa:2048 -nodes \
-            -keyout /tmp/mailflow-tls.key \
-            -out /tmp/mailflow-tls.crt \
-            -days 1 \
-            -subj '/CN=localhost' \
-            -addext 'subjectAltName=DNS:localhost'
-      - name: Bootstrap BaseHarbor control plane
-        working-directory: /tmp/mailflow
-        run: |
-          mkdir -p .baseharbor/runtime
-          chmod 700 .baseharbor .baseharbor/runtime
-          cat > .baseharbor/runtime/runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=mailflow-control-plane-ci
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
-          EOF
-          chmod 600 .baseharbor/runtime/runtime.env
-          /tmp/baha up --control-plane-only
-          /tmp/baha openbao bootstrap --recovery-file /tmp/mailflow-openbao-recovery.json
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-      - name: Prove required secret gate and import sensitive files
-        working-directory: /tmp/mailflow
-        run: |
-          set +e
-          /tmp/baha app apply >/tmp/mailflow-missing-secret.out 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 1
-          grep -q "required secrets check failed" /tmp/mailflow-missing-secret.out
-          printf '%s' 'mailflow-ci-secret' | /tmp/baha app secret set SECRET_KEY --stdin
-          /tmp/baha app secret tls-set --cert-file /tmp/mailflow-tls.crt --key-file /tmp/mailflow-tls.key
-      - name: Apply MailFlow through BaseHarbor
-        working-directory: /tmp/mailflow
-        run: |
-          /tmp/baha app apply | tee /tmp/mailflow-apply.out
-          grep -q "Application mailflow is ready" /tmp/mailflow-apply.out
-          /tmp/baha app status | tee /tmp/mailflow-status.out
-          /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
+          PATH="/tmp:$PATH" bash scripts/install-baseharbor.sh | tee /tmp/mailflow-install.out
+          grep -q "MailFlow is ready" /tmp/mailflow-install.out
+          test -s /tmp/mailflow-openbao-recovery.json
+          test "$(stat -c '%a' /tmp/mailflow-openbao-recovery.json)" = 600
+          PATH="/tmp:$PATH" /tmp/baha app status | tee /tmp/mailflow-status.out
+          PATH="/tmp:$PATH" /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
           grep -q "Application runtime is healthy" /tmp/mailflow-doctor.out
-      - name: Verify managed backends, env secret and TLS file bindings
+      - name: Verify generated secret and native managed backends
         working-directory: /tmp/mailflow
         run: |
           project=baseharbor-workload-mailflow-production
@@ -90,7 +56,30 @@ jobs:
 
           api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
-          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]; assert os.environ["TLS_CERT_FILE"] == "/run/baseharbor/bindings/secrets/TLS_CERT_FILE"; assert os.environ["TLS_KEY_FILE"] == "/run/baseharbor/bindings/secrets/TLS_KEY_FILE"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
+          docker exec "$api_id" python -c 'import os; key=os.environ["SECRET_KEY"]; assert len(key)==64; int(key,16); assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
+      - name: Extend MailFlow acceptance with TLS file bindings
+        working-directory: /tmp/mailflow
+        run: |
+          cat >> baseharbor.yaml <<'EOF'
+              - name: TLS_CERT_FILE
+              - name: TLS_KEY_FILE
+          EOF
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tmp/mailflow-tls.key \
+            -out /tmp/mailflow-tls.crt \
+            -days 1 \
+            -subj '/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost'
+          /tmp/baha app secret tls-set --cert-file /tmp/mailflow-tls.crt --key-file /tmp/mailflow-tls.key
+          /tmp/baha app apply | tee /tmp/mailflow-apply.out
+          grep -q "Application mailflow is ready" /tmp/mailflow-apply.out
+      - name: Verify TLS file bindings
+        working-directory: /tmp/mailflow
+        run: |
+          project=baseharbor-workload-mailflow-production
+          api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
+          test -n "$api_id"
+          docker exec "$api_id" python -c 'import os; assert os.environ["TLS_CERT_FILE"] == "/run/baseharbor/bindings/secrets/TLS_CERT_FILE"; assert os.environ["TLS_KEY_FILE"] == "/run/baseharbor/bindings/secrets/TLS_KEY_FILE"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
 
           secret_dir=.baseharbor/apps/mailflow/runtime/bindings/secrets
           cert_host="$secret_dir/TLS_CERT_FILE"
@@ -258,7 +247,7 @@ jobs:
           test "$(cat /tmp/mailflow-token-before)" != "$token_after"
           test "$(cat /tmp/mailflow-cert-before)" != "$cert_after"
 
-          docker exec "$api_id" python -c 'import os; assert os.environ["SECRET_KEY"] == "mailflow-ci-secret"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
+          docker exec "$api_id" python -c 'import os; key=os.environ["SECRET_KEY"]; assert len(key)==64; int(key,16); assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
       - name: Diagnose MailFlow workload failure
         if: failure()
         working-directory: /tmp/mailflow
@@ -281,6 +270,6 @@ jobs:
         if: always()
         working-directory: /tmp/mailflow
         run: |
-          rm -f /tmp/mailflow-backup.pass /tmp/mailflow.baha /tmp/mailflow-provider-ref /tmp/mailflow-token-before /tmp/mailflow-cert-before
+          rm -f /tmp/mailflow-backup.pass /tmp/mailflow.baha /tmp/mailflow-provider-ref /tmp/mailflow-token-before /tmp/mailflow-cert-before /tmp/mailflow-openbao-recovery.json
           /tmp/baha app destroy --yes || true
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v || true
+          /tmp/baha down || true
