@@ -4,7 +4,7 @@ BaseHarbor trennt konsequent **was eine Anwendung braucht** von **welches Produk
 
 Dieses Dokument ist die Arbeitsmatrix für die Plattformarchitektur. Es hält die portable Capability, den aktuellen oder geplanten BaseHarbor-Default-Provider und dokumentierte Austauschpfade fest.
 
-Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](../decisions/0005-capabilities-not-products.md).
+Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](decisions/0005-capabilities-not-products.md).
 
 ## Regeln
 
