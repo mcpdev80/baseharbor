@@ -30,6 +30,7 @@ func rootCommand() *cli.Command {
 		appShellCommand(store),
 		appExecCommand(store),
 		appStatusCommand(store),
+		appShowCommand(store),
 		appDoctorRepairCommand(store),
 		appDownCommand(store),
 		appUpCommand(store),
