@@ -41,7 +41,7 @@ func main() {
 
 func defaultRuntimeImage(buildVersion string) string {
 	versionTag := strings.TrimSpace(strings.TrimPrefix(buildVersion, "v"))
-	if versionTag == "" || versionTag == "dev" || strings.Contains(versionTag, "dirty") {
+	if versionTag == "" || versionTag == "dev" || strings.HasPrefix(versionTag, "dev-") || strings.Contains(versionTag, "dirty") {
 		versionTag = "edge"
 	}
 	return "ghcr.io/mcpdev80/baseharbor-runtime:" + versionTag
