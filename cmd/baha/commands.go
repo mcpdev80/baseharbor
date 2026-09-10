@@ -22,7 +22,7 @@ func rootCommand() *cli.Command {
 	}
 	appCmd.Children = append(appCmd.Children,
 		appApplyCommand(store),
-		appBackupCommand(store),
+		appBackupCommandWithMetadata(store),
 		appRestoreCommand(store),
 		appEnvCommand(store),
 		appPSQLCommand(store),

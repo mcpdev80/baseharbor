@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -31,6 +32,7 @@ type applicationOverview struct {
 	SecretsReady    int
 	SecretsState    string
 	BrokerState     string
+	LastBackup      *application.BackupMetadata
 }
 
 func appShowCommand(store application.Store) *cli.Command {
@@ -38,7 +40,7 @@ func appShowCommand(store application.Store) *cli.Command {
 		Name:    "show",
 		Summary: "Show a coherent application overview",
 		Usage:   "baha app show [NAME]",
-		Long:    "Shows application identity, backend readiness, repository workload state and secret readiness without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor. Applications that have not been applied yet are shown as NOT READY instead of failing the inspection.",
+		Long:    "Shows application identity, backend readiness, repository workload state, secret readiness and the last recorded successful backup without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor. Applications that have not been applied yet are shown as NOT READY instead of failing the inspection.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "show")
 			if err != nil {
@@ -68,6 +70,14 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	}
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return overview, err
+	}
+	lastBackup, backupErr := resolved.Store.LastBackup(m.Name)
+	if backupErr == nil {
+		if lastBackup.Environment == m.Environment {
+			overview.LastBackup = &lastBackup
+		}
+	} else if !errors.Is(backupErr, application.ErrNoBackupMetadata) {
+		return overview, backupErr
 	}
 
 	for _, name := range application.PostgresInstanceNames(m) {
@@ -228,5 +238,20 @@ func formatApplicationOverview(out io.Writer, overview applicationOverview) {
 	}
 
 	fmt.Fprintln(out, "\nLast backup")
-	fmt.Fprintln(out, "  not recorded yet")
+	if overview.LastBackup == nil {
+		fmt.Fprintln(out, "  not recorded yet")
+		return
+	}
+	fmt.Fprintf(out, "  created              %s\n", overview.LastBackup.CreatedAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(out, "  archive              %s\n", overview.LastBackup.ArchivePath)
+	if len(overview.LastBackup.PostgresResources) > 0 {
+		fmt.Fprintf(out, "  PostgreSQL           %s\n", strings.Join(overview.LastBackup.PostgresResources, ", "))
+	} else {
+		fmt.Fprintln(out, "  PostgreSQL           none")
+	}
+	if overview.LastBackup.IncludesSecrets {
+		fmt.Fprintln(out, "  managed secrets      included")
+	} else {
+		fmt.Fprintln(out, "  managed secrets      not included")
+	}
 }

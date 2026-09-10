@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +107,25 @@ services:
 	if err := runWithIO(ctx, []string{"app", "backup", "--password-file", passwordPath, "--output", backupPath}, &output, &output); err != nil {
 		t.Fatalf("app backup: %v\n%s", err, output.String())
 	}
+	metadata, err := resolved.Store.LastBackup(m.Name)
+	if err != nil {
+		t.Fatalf("load recorded backup metadata: %v", err)
+	}
+	if metadata.Application != m.Name || metadata.Environment != m.Environment || metadata.CreatedAt.IsZero() || metadata.ArchivePath != backupPath || len(metadata.PostgresResources) != 1 || metadata.PostgresResources[0] != "default" || !metadata.IncludesSecrets {
+		t.Fatalf("unexpected recorded backup metadata: %#v", metadata)
+	}
+	output.Reset()
+	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+		t.Fatalf("app show after backup: %v\n%s", err, output.String())
+	}
+	showOutput := output.String()
+	if !strings.Contains(showOutput, "Last backup") || !strings.Contains(showOutput, backupPath) || !strings.Contains(showOutput, "managed secrets      included") {
+		t.Fatalf("app show did not report last backup metadata:\n%s", showOutput)
+	}
+	if strings.Contains(showOutput, "provider-key-v1") || strings.Contains(showOutput, "API_TOKEN") {
+		t.Fatalf("app show exposed secret-bearing backup detail:\n%s", showOutput)
+	}
+
 	output.Reset()
 	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("app destroy: %v\n%s", err, output.String())
