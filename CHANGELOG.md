@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
 ### Added
 
 - End-to-end developer-journey acceptance that validates a clean MailFlow checkout against the exact BaseHarbor CLI/runtime under test.
@@ -59,5 +61,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0
 [0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1
