@@ -1,6 +1,6 @@
 name: mailflow-acceptance
 
-# Temporary v0.2.0 cross-repository release validation against MailFlow PR #89.
+# Cross-repository acceptance proving the current BaseHarbor head against MailFlow main.
 on:
   pull_request:
 
@@ -27,8 +27,8 @@ jobs:
           cp /tmp/baha /tmp/baseharbor-runtime-image/baha
           cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
           docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
-      - name: Checkout MailFlow v0.2 compatibility branch
-        run: git clone --depth 1 --branch fix/baseharbor-v020-contract https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
+      - name: Checkout MailFlow main
+        run: git clone --depth 1 --branch main https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
       - name: Install MailFlow through its real BaseHarbor bootstrap
         working-directory: /tmp/mailflow
         env:

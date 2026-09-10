@@ -10,11 +10,11 @@ BaseHarbor provides common backend capabilities such as PostgreSQL, Valkey, mana
 
 > BaseHarbor should hide operational complexity without hiding standard interfaces.
 
-Applications keep using normal protocols, environment variables and files. A repository can declare the backend it needs in `baseharbor.yaml`; developers do not need a BaseHarbor login and workloads do not need the `baha` process at runtime.
+Applications keep using normal protocols, environment variables and files. A repository can declare the backend it needs in `baseharbor.yaml`; developers do not need a BaseHarbor login for the current trusted local/Compose workflow and workloads do not need the `baha` process at runtime.
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by a real application**. The project is preparing its first official `v0.1.0` release.
+BaseHarbor is **pre-v1 and already consumed by a real application**. The current development line is preparing `v0.2.0`, with Compose as the complete first runtime target while the public application concepts remain suitable for later runtime providers.
 
 The current default branch includes:
 
@@ -45,11 +45,11 @@ Install the latest stable release:
 curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
 ```
 
-For production automation, pin both installer and requested version to the immutable release tag:
+For production automation, pin both installer and requested version to an immutable published release tag. After `v0.2.0` is published:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.1.0/scripts/install.sh \
-  | bash -s -- v0.1.0
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.2.0/scripts/install.sh \
+  | bash -s -- v0.2.0
 ```
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
@@ -88,6 +88,8 @@ secrets:
     - name: SECRET_KEY
 ```
 
+`app.name` is the stable logical application identity. In manifest v1, `app.environment` identifies the deployment context of the current BaseHarbor realization; it is not an intrinsic business property of the application. The same logical application may later be realized independently in development, staging, production or customer-specific environments. See [`docs/decisions/0002-application-environment-is-deployment-context.md`](docs/decisions/0002-application-environment-is-deployment-context.md).
+
 Create a repository manifest non-interactively:
 
 ```bash
@@ -108,7 +110,7 @@ baha app status
 baha app doctor
 ```
 
-The planned guided checkbox-style `baha app init` flow will generate the same manifest contract; the current flags are the deterministic automation path.
+The guided `baha app init` flow detects the current project first and asks only for missing or ambiguous information; explicit flags remain the deterministic automation path.
 
 ## Control-plane bootstrap
 
@@ -281,8 +283,8 @@ The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 - isolated backend service stacks for independent applications;
 - native protocols and standard interfaces for application consumption;
 - applications remain runnable without BaseHarbor when equivalent interfaces are supplied elsewhere;
-- self-hosted first, cloud-native where useful;
-- Docker/Podman first; Kubernetes optional;
+- developer-first from local/self-hosted development through progressively stricter environments;
+- Compose first and complete; later runtime providers may include Kubernetes and OpenShift without redefining logical application requirements;
 - mature open-source components instead of unnecessary reinvention;
 - observable health, backup/restore, certificates and lifecycle operations;
 - optional first-class AI, MCP and RAG capabilities where they add value.
