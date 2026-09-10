@@ -1,24 +1,25 @@
 # BaseHarbor architecture
 
-BaseHarbor is a secure, modular, self-hosted application backend runtime. It manages backend infrastructure for independent applications without forcing those applications into a BaseHarbor-specific SDK or hosting model.
+BaseHarbor is a secure, modular, self-hosted application platform foundation. It manages backend infrastructure and application lifecycle for independent applications without forcing those applications into a BaseHarbor-specific SDK.
+
+The long-term lifecycle target is continuous growth from local development and homelab deployments to stricter production environments and, where needed, Kubernetes/OpenShift enterprise deployments without redefining the logical application contract.
 
 ## Product boundary
 
-BaseHarbor is not a general-purpose PaaS and does not compete by rebuilding Git deployment, buildpacks, source builds or frontend hosting. Applications can run anywhere. BaseHarbor manages the backend services those applications depend on.
+BaseHarbor is developer-first, but it is not a source-code build service or proprietary application framework. Applications keep their own source, business logic and native ecosystem interfaces. BaseHarbor owns the operational realization around them: managed dependencies, lifecycle, isolation, security boundaries, recovery and provider-specific deployment mechanics.
 
 ```text
-Application
-   │
-   ├── PostgreSQL        native protocol/client
-   ├── Redis/Valkey      native protocol/client
-   ├── Object Storage    S3-compatible API
-   ├── Identity          OIDC/OAuth2
-   ├── Secrets           OpenBao/Vault-compatible API
-   └── Telemetry         OpenTelemetry/OpenMetrics
-            │
-            ▼
-       BaseHarbor
+Application contract
+        |
+        v
+BaseHarbor lifecycle / policy / provisioning
+        |
+        +-- Compose (current complete provider)
+        +-- Kubernetes (future provider)
+        +-- OpenShift (future enterprise provider)
 ```
+
+The application should continue to consume standard interfaces such as PostgreSQL, Redis/Valkey, S3, OIDC/OAuth2, OpenBao/Vault-compatible secrets and OpenTelemetry/OpenMetrics rather than BaseHarbor-specific data protocols.
 
 ## Control plane and application stacks
 
@@ -38,15 +39,15 @@ Application: mailflow
 ├── dedicated Redis/Valkey
 ├── isolated secret scope or optional dedicated secret service
 └── application-owned data
-
-Application: awc
-├── isolated network
-├── dedicated PostgreSQL
-├── dedicated Redis/Valkey
-└── isolated secret scope
 ```
 
-A dedicated application service does not imply a dedicated physical host. On Compose it normally means separate containers, networks and volumes. Later deployment engines can map the same desired state to other runtimes.
+A dedicated application service does not imply a dedicated physical host. On Compose it normally means separate containers, networks and volumes. Later deployment engines can map the same logical desired state to other runtimes.
+
+## Identity versus deployment context
+
+`app.name` is the stable logical application identity. `app.environment` is deployment context. The same application can exist simultaneously in development, test, staging, production and customer-specific environments.
+
+Provider/runtime identities may include the environment to preserve isolation, but applications must not depend on those generated names.
 
 ## Principles
 
@@ -58,8 +59,9 @@ A dedicated application service does not imply a dedicated physical host. On Com
 6. Desired state is validated before mutation and verified after mutation.
 7. Container-running is not equivalent to service-ready.
 8. Secrets never belong in application manifests.
-9. Single-node Compose deployments are first-class; Kubernetes is optional and later.
-10. Observability is integrated through open standards rather than a proprietary telemetry stack.
+9. Compose is the complete current provider and remains first-class; future Kubernetes/OpenShift providers must preserve logical application requirements rather than redefine them.
+10. Environment/risk policy and deployment topology are separate concepts.
+11. Observability is integrated through open standards rather than a proprietary telemetry stack.
 
 ## Application lifecycle model
 
@@ -76,14 +78,14 @@ Preflight
    ↓
 Build desired-state plan
    ↓
-Mutate
+Mutate through current provider
    ↓
 Verify actual state
    ↓
 Ready / Failed truthfully
 ```
 
-The current application manifest is intentionally small:
+The current v0.2.0 application manifest is intentionally small and Compose-focused:
 
 ```yaml
 version: 1
@@ -99,34 +101,18 @@ services:
     enabled: false
 ```
 
+Provider-specific details such as Compose project names, networks, host ports, generated overrides, Kubernetes resource names or OpenShift Routes are implementation details, not portable application requirements.
+
 ## `baha` as the primary product interface
 
-`baha` is not a thin wrapper around Compose. It is the stable operator interface for BaseHarbor lifecycle, diagnostics and application resources.
+`baha` is not a thin wrapper around Compose. It is the stable operator/developer interface for BaseHarbor lifecycle, diagnostics and application resources. Compose is the current implementation target behind that interface.
 
-Command families are hierarchical and self-documenting:
-
-```text
-baha --help
-baha app --help
-baha app create --help
-```
-
-CLI guarantees:
-
-- one binary
-- stable command hierarchy
-- actionable help and errors
-- exit code 0 for success
-- exit code 1 for operational/runtime failure
-- exit code 2 for invalid command usage
-- read-only `plan` and `preflight` before future mutation commands
-
-## Security and operations capabilities
+## Security and operations direction
 
 The target platform capabilities include:
 
-- OIDC/OAuth2 identity and authorization
-- tenant-aware control-plane metadata and PostgreSQL RLS
+- environment-aware access policy
+- OIDC/OAuth2 identity and authorization for managed/enterprise deployments
 - OpenBao-backed secrets and PKI
 - ACME, internal PKI and imported/BYOC certificates
 - backup and verified restore
@@ -134,8 +120,10 @@ The target platform capabilities include:
 - metrics, logs and traces through OpenTelemetry/OpenMetrics-compatible pipelines
 - health/readiness/doctor semantics
 - upgrade and rollback safety
-- optional jobs, realtime, MCP, RAG and AI integrations after the runtime foundation is stable
+- standard and HA deployment profiles without changing logical resource identity
+
+These are future capabilities unless explicitly documented as implemented in the current release.
 
 ## Non-goals
 
-BaseHarbor does not aim to implement its own database, cache protocol, secret store, OIDC protocol, S3 protocol, ACME server, monitoring database or deployment PaaS. It also does not own application schemas or business data models.
+BaseHarbor does not aim to implement its own database, cache protocol, secret store, OIDC protocol, S3 protocol, ACME server or monitoring database. It also does not own application schemas or business data models.
