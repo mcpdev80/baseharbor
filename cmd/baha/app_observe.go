@@ -125,15 +125,28 @@ func appStatusCommand(store application.Store) *cli.Command {
 					fmt.Fprintln(out, "[OK] secret-broker     mTLS identity and app-scoped OpenBao readiness succeeded")
 				}
 			}
-			if count, found, workloadErr := checkRepositoryWorkloadReady(ctx, compose, resolved, files); found {
+
+			workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+			if workloadStatus.Found {
+				for _, service := range workloadStatus.Services {
+					prefix := "[OK]"
+					if !service.Ready {
+						prefix = "[FAIL]"
+						ready = false
+					}
+					fmt.Fprintf(out, "%s workload/%-14s %s\n", prefix, service.Service, formatWorkloadServiceStatus(service))
+				}
 				if workloadErr != nil {
-					fmt.Fprintln(out, "[FAIL] workload          repository Compose workload is not ready")
+					fmt.Fprintf(out, "[FAIL] workload          %v\n", workloadErr)
 					ready = false
+				} else if workloadStatus.Ready() {
+					fmt.Fprintf(out, "[OK] workload          %d/%d selected Compose service(s) ready\n", workloadStatus.ReadyCount(), len(workloadStatus.Services))
 				} else {
-					fmt.Fprintf(out, "[OK] workload          %d Compose service(s) running with BaseHarbor backend connectivity\n", count)
+					fmt.Fprintf(out, "[FAIL] workload          %d/%d selected Compose service(s) ready\n", workloadStatus.ReadyCount(), len(workloadStatus.Services))
+					ready = false
 				}
 			} else if workloadErr != nil {
-				fmt.Fprintln(out, "[FAIL] workload          repository Compose integration could not be resolved")
+				fmt.Fprintf(out, "[FAIL] workload          repository Compose integration could not be resolved: %v\n", workloadErr)
 				ready = false
 			}
 			if !ready {
@@ -161,6 +174,8 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			var running []string
 			var platformFiles bhruntime.Files
 			var requiredStatuses []openbao.RequiredSecretStatus
+			var workloadStatus repositoryWorkloadStatus
+			var workloadStatusErr error
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			checks := []preflight.Check{
@@ -206,8 +221,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					if runtimeErr != nil {
 						return runtimeErr
 					}
-					_, _, err := checkRepositoryWorkloadReady(ctx, compose, resolved, files)
-					return err
+					workloadStatus, workloadStatusErr = inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+					if workloadStatusErr != nil {
+						return workloadStatusErr
+					}
+					if workloadStatus.Found && !workloadStatus.Ready() {
+						return fmt.Errorf("%d/%d selected workload services ready", workloadStatus.ReadyCount(), len(workloadStatus.Services))
+					}
+					return nil
 				}},
 			}
 			if m.Services.Postgres {
@@ -283,6 +304,19 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
 			printRequiredSecretStatus(out, requiredStatuses)
+			if workloadStatus.Found {
+				fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
+				for _, service := range workloadStatus.Services {
+					marker := "OK"
+					if !service.Ready {
+						marker = "FAIL"
+					}
+					fmt.Fprintf(out, "[%s] %-20s %s\n", marker, service.Service, formatWorkloadServiceStatus(service))
+				}
+			}
+			if workloadStatusErr != nil {
+				fmt.Fprintf(out, "Workload diagnosis: %v\n", workloadStatusErr)
+			}
 			if !ok {
 				return errors.New("application doctor found one or more failures")
 			}
