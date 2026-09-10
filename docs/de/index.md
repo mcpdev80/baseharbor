@@ -15,7 +15,7 @@ BaseHarbor ist eine sichere, modulare und selbst gehostete Backend-Infrastruktur
 - [Releases](releases.md)
 - [Architektur](architecture.md)
 - [Capability- und Provider-Modell](capability-provider-model.md)
-- [ADR: Application Contracts beschreiben Capabilities statt Produkte](../decisions/0005-capabilities-not-products.md)
+- [ADR: Application Contracts beschreiben Capabilities statt Produkte](decisions/0005-capabilities-not-products.md)
 - [Roadmap](roadmap.md)
 
 Die englische Dokumentation ist die kanonische Quelle für den öffentlichen Vertrag. Diese deutsche Fassung wird zusammen mit ihr gepflegt. Bei Abweichungen gelten Code, Acceptance-Tests und die englische Release-Dokumentation als unmittelbare Referenz.
