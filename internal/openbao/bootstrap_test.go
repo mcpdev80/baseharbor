@@ -123,7 +123,7 @@ func TestBootstrapRejectsRecoveryFileInsideBaseHarborState(t *testing.T) {
 	files := bhruntime.Files{Compose: filepath.Join(runtimeDir, "compose.yaml"), Env: filepath.Join(runtimeDir, "runtime.env")}
 	executor := &fakeExecutor{}
 	err := Bootstrap(context.Background(), executor, files, filepath.Join(dir, ".baseharbor", "recovery.json"))
-	if err == nil || !strings.Contains(err.Error(), "outside .baseharbor") {
+	if err == nil || !strings.Contains(err.Error(), "outside BaseHarbor state") {
 		t.Fatalf("expected recovery path rejection, got %v", err)
 	}
 	if executor.initialized {
@@ -144,7 +144,7 @@ func TestBootstrapRejectsRecoveryDirectorySymlinkedIntoBaseHarborState(t *testin
 	files := bhruntime.Files{Compose: filepath.Join(runtimeDir, "compose.yaml"), Env: filepath.Join(runtimeDir, "runtime.env")}
 	executor := &fakeExecutor{}
 	err := Bootstrap(context.Background(), executor, files, filepath.Join(link, "recovery.json"))
-	if err == nil || !strings.Contains(err.Error(), "outside .baseharbor") {
+	if err == nil || !strings.Contains(err.Error(), "outside BaseHarbor state") {
 		t.Fatalf("expected symlinked recovery path rejection, got %v", err)
 	}
 	if executor.initialized {
