@@ -27,11 +27,23 @@ func (s ServiceState) Ready() bool {
 }
 
 // ServiceStatesProjectFilesEnv returns Compose service state without exposing
-// generated container names to application code.
+// generated container names to application code. Modern Compose implementations
+// expose JSON state including container health. Older compatible implementations
+// fall back to the portable running-service query; in that case Health remains
+// empty rather than inventing a health result.
 func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
 	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
 	if err != nil {
-		return nil, err
+		fallback, fallbackErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--services", "--status", "running")
+		if fallbackErr != nil {
+			return nil, err
+		}
+		services := nonEmptyLines(fallback)
+		states := make([]ServiceState, 0, len(services))
+		for _, service := range services {
+			states = append(states, ServiceState{Service: service, State: "running"})
+		}
+		return states, nil
 	}
 	states, err := parseComposeServiceStates(out)
 	if err != nil {
