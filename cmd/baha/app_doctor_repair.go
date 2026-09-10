@@ -24,7 +24,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose and safely repair an application's runtime",
 		Usage:   "baha app doctor [NAME] [--fix]",
-		Long:    "Runs the existing application doctor, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
+		Long:    "Runs the existing application doctor, including required-secret presence/usability checks, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			nameArgs, fix, err := parseAppDoctorRepairArgs(args)
 			if err != nil {
