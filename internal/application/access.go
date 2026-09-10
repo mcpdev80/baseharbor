@@ -55,20 +55,29 @@ func ResolveServiceBinding(files RuntimeFiles, kind, instance string) (ServiceBi
 	}
 
 	host, err := read("host", true)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 	port, err := read("port", true)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 	password, err := read("password", true)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 	uri, err := read("uri", true)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 	username, err := read("username", false)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 	database, err := read("database", false)
-	if err != nil { return ServiceBinding{}, err }
+	if err != nil {
+		return ServiceBinding{}, err
+	}
 
-	return ServiceBinding{
-		Kind: kind, Instance: instance, Host: host, Port: port,
-		Database: database, Username: username, Password: password, URI: uri,
-	}, nil
+	return ServiceBinding{Kind: kind, Instance: instance, Host: host, Port: port, Database: database, Username: username, Password: password, URI: uri}, nil
 }
