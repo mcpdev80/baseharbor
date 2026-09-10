@@ -37,8 +37,11 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "show"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "name: mailflow") {
-		t.Fatalf("repo manifest was not resolved: %s", out.String())
+	show := out.String()
+	for _, wanted := range []string{"Application: mailflow", "Environment: dev", "Status: NOT READY", "PostgreSQL default", "not applied"} {
+		if !strings.Contains(show, wanted) {
+			t.Fatalf("repo application overview missing %q: %s", wanted, show)
+		}
 	}
 	out.Reset()
 	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
