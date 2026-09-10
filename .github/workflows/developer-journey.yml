@@ -92,9 +92,9 @@ jobs:
       - name: Verify MailFlow app-owned HTTP and TLS exposure
         working-directory: /tmp/mailflow
         run: |
-          curl --fail --silent --show-error --head http://127.0.0.1/ | tee /tmp/mailflow-http-headers.out
+          curl --fail --silent --show-error --head --resolve localhost:80:127.0.0.1 http://localhost/ | tee /tmp/mailflow-http-headers.out
           grep -Eq '^HTTP/.* 30[1278]' /tmp/mailflow-http-headers.out
-          curl --fail --silent --show-error --insecure --location https://127.0.0.1/ --output /tmp/mailflow-home.html
+          curl --fail --silent --show-error --insecure --location --resolve localhost:443:127.0.0.1 https://localhost/ --output /tmp/mailflow-home.html
           test -s /tmp/mailflow-home.html
           openssl s_client -connect 127.0.0.1:443 -servername localhost </dev/null 2>/tmp/mailflow-tls.err | grep -q 'BEGIN CERTIFICATE'
 
