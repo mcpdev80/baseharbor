@@ -17,6 +17,8 @@ The README is a product overview and quick entry point. Detailed behavior, opera
 ## Architecture and security
 
 - [Architecture](architecture.md)
+- [Capability and provider model](capability-provider-model.md)
+- [ADR: application contracts describe capabilities, not products](decisions/0005-capabilities-not-products.md)
 - [Authentication](authentication.md)
 - [Authentication and API errors](authentication-and-api-errors.md)
 - [Application runtime identity](application-runtime-identity.md)
