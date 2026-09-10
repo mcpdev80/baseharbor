@@ -2,7 +2,7 @@
 
 BaseHarbor uses Semantic Versioning with Git tags prefixed by `v`.
 
-Examples: `v0.1.0`, `v0.1.1`, `v0.2.0`, `v1.0.0`.
+Examples: `v0.2.0`, `v0.2.1`, `v0.3.0`, `v1.0.0`.
 
 ## Stability policy
 
@@ -10,8 +10,8 @@ BaseHarbor is currently in the `0.x` series.
 
 During `0.x`:
 
-- patch releases (`0.1.0` -> `0.1.1`) are backward-compatible bug and security fixes;
-- minor releases (`0.1.x` -> `0.2.0`) may contain intentionally documented breaking changes;
+- patch releases (`0.2.0` -> `0.2.1`) are backward-compatible bug and security fixes;
+- minor releases (`0.2.x` -> `0.3.0`) may contain intentionally documented breaking changes;
 - every breaking change must be called out in `CHANGELOG.md` and GitHub Release notes;
 - consumers should pin an explicit compatible range instead of tracking `main`.
 
@@ -79,4 +79,4 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 ## Consumer guidance
 
-A real application should never silently follow `main`. During the `0.x` series, an application tested against `v0.1.0` should normally constrain itself to the compatible minor line, for example `>=0.1.0 <0.2.0`.
+A real application should never silently follow `main`. During the `0.x` series, an application tested against `v0.2.0` should normally constrain itself to the compatible minor line, for example `>=0.2.0 <0.3.0`, unless it intentionally validates against a newer minor release.

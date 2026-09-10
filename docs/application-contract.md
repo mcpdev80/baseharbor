@@ -8,6 +8,14 @@ A second design test is equally important:
 
 > The same application should still be runnable without BaseHarbor when another environment provides the same standard interfaces.
 
+## Application identity and deployment context
+
+`app.name` is the stable logical application identity. `app.environment` is deployment context, not part of the application's intrinsic identity.
+
+The same logical application can therefore be instantiated as `dev`, `test`, `staging`, `production` or a customer-specific deployment without being redefined as a different application. In v0.2.0 Compose uses the environment value for runtime isolation and naming. Future providers such as Kubernetes or OpenShift may realize the same logical requirements differently.
+
+Provider-specific implementation details such as Compose project names, networks, host ports, volumes or OpenBao paths are not portable application requirements and must not become application dependencies.
+
 ## Required secrets
 
 Required secrets are part of the declarative application contract:
@@ -80,16 +88,6 @@ services:
     enabled: false
 ```
 
-The CLI can create the same declaration without editing YAML by hand:
-
-```bash
-baha app create mailflow \
-  --postgres-instance primary \
-  --postgres-instance analytics \
-  --redis-instance cache \
-  --redis-instance sessions
-```
-
 Every named instance gets its own credentials, loopback port, volume, lifecycle identity and binding directory. Adding a second instance does not rotate an existing instance.
 
 Named PostgreSQL instances expose variables such as:
@@ -109,27 +107,6 @@ VALKEY_SESSIONS_URL=redis://...
 ```
 
 A single instance still receives the conventional generic aliases. With multiple instances, `default` is preferred for the generic alias. For PostgreSQL, `primary` is also accepted as the preferred generic target when no `default` instance exists. If there is no unambiguous preferred instance, BaseHarbor emits only named variables instead of guessing.
-
-Bindings for multiple named instances are nested by stable instance identity:
-
-```text
-bindings/
-├── postgres/
-│   ├── primary/
-│   │   ├── host
-│   │   ├── port
-│   │   ├── database
-│   │   ├── username
-│   │   ├── password
-│   │   └── uri
-│   └── analytics/
-│       └── ...
-└── valkey/
-    ├── cache/
-    │   └── ...
-    └── sessions/
-        └── ...
-```
 
 Multiple logical instances are not an HA mechanism. A `primary` PostgreSQL instance with future high availability remains one logical service with one stable application-facing endpoint while BaseHarbor manages the replicated topology behind it. See `docs/decisions/0001-service-instances-and-ha-intent.md`.
 
@@ -158,40 +135,7 @@ VALKEY_URL=redis://...
 
 A developer may point normal framework or IDE dotenv support at that file. The application itself only sees standard environment variables and native service protocols.
 
-BaseHarbor also materializes file bindings:
-
-```text
-bindings/
-├── metadata.json
-├── postgres/
-│   ├── host
-│   ├── port
-│   ├── database
-│   ├── username
-│   ├── password
-│   └── uri
-└── valkey/
-    ├── host
-    ├── port
-    ├── password
-    └── uri
-```
-
-Directories are owner-only and binding files are written with owner-only permissions. Service ports are bound to `127.0.0.1`, never to all host interfaces by default.
-
-The contract intentionally supports both common consumption styles:
-
-```text
-DATABASE_URL
-```
-
-or:
-
-```text
-<bindings>/postgres/password
-```
-
-No application code has to call BaseHarbor to retrieve either form.
+BaseHarbor also materializes owner-only file bindings. Service ports are bound to `127.0.0.1`, never to all host interfaces by default.
 
 ## CLI convenience is optional
 
@@ -211,44 +155,11 @@ Credential-bearing service URLs are masked by default. Printing them requires an
 baha app env mailflow --reveal
 ```
 
-`--path` prints the protected `application.env` path so an editor, IDE, process manager or normal dotenv loader can consume it directly.
-
 ## Lifecycle semantics
 
-`plan` includes a requirement action for every required secret.
+`plan` includes a requirement action for every required secret. `preflight` is read-only. Before workload start, `apply` and `up` evaluate all required secrets and fail closed when a required value is missing or unusable.
 
-`preflight` is read-only. When an application secret scope already exists it reports whether each required secret is present and usable. Before the first `apply`, presence is reported as unknown rather than materializing state during preflight.
-
-The first `apply` may materialize the runtime definition and isolated OpenBao scope. Before workload start it evaluates every required secret. Missing or unreadable required secrets stop the lifecycle at that boundary.
-
-```text
-baha app apply
-    |
-    +-- materialize runtime definition
-    +-- materialize isolated secret scope
-    +-- required secret missing/unusable -> STOP before workload start
-
-baha app secret set ...
-    |
-    v
-baha app apply / baha app up
-    |
-    +-- required secrets present and usable
-    +-- start workload
-    +-- verify runtime
-```
-
-`baha app up` always fails closed before workload start when a required secret is missing or unusable.
-
-`baha app status` and `baha app doctor` report readiness metadata only:
-
-```text
-REQUIRED SECRET    PRESENT    USABLE
-OPENAI_API_KEY     yes        yes
-SMTP_PASSWORD      no         no
-```
-
-They never reveal secret values.
+`baha app status` and `baha app doctor` report readiness metadata only and never reveal secret values.
 
 ## Secret delivery remains separate from the requirement contract
 
@@ -259,32 +170,13 @@ Runtime delivery may evolve independently and can use standard mechanisms such a
 - in-memory secret files
 - environment injection where explicitly appropriate
 - workload identity / native OpenBao access
-- Kubernetes-native secret projection
+- Kubernetes/OpenShift-native secret projection
 
 The selected runtime provider owns that delivery decision. The `secrets.required` contract remains stable.
 
 ## Secrets are not general application configuration
 
-BaseHarbor deliberately distinguishes secret/infrastructure inputs from normal application configuration.
-
-Typical secret or infrastructure inputs:
-
-```text
-DATABASE_PASSWORD
-S3_SECRET_KEY
-OPENAI_API_KEY
-SMTP_PASSWORD
-```
-
-Typical application configuration that should remain owned by the application:
-
-```text
-BACKFILL_BATCH_SIZE
-DEFAULT_LANGUAGE
-CLASSIFICATION_THRESHOLD
-```
-
-BaseHarbor must not become a universal configuration framework for application business behavior.
+BaseHarbor deliberately distinguishes secret/infrastructure inputs from normal application configuration. Business settings such as batch sizes, language or classification thresholds remain application-owned.
 
 ## Stable application-facing interfaces
 
