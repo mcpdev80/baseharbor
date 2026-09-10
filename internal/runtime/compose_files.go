@@ -121,19 +121,21 @@ func (c Compose) ServicesProjectFilesEnv(ctx context.Context, project, workdir s
 }
 
 func (c Compose) RunningServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "ps", "--services", "--status", "running")
-	if err != nil {
-		return nil, err
-	}
-	return nonEmptyLines(out), nil
+	return c.RunningServicesProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
 
 func (c Compose) RunningServicesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--services", "--status", "running")
+	states, err := c.ServiceStatesProjectFilesEnv(ctx, project, workdir, environment, composeFiles...)
 	if err != nil {
 		return nil, err
 	}
-	return nonEmptyLines(out), nil
+	services := make([]string, 0, len(states))
+	for _, state := range states {
+		if state.Ready() {
+			services = append(services, state.Service)
+		}
+	}
+	return services, nil
 }
 
 func nonEmptyLines(out string) []string {
