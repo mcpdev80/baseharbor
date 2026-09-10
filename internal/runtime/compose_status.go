@@ -1,0 +1,87 @@
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// ServiceState is the provider-facing runtime state BaseHarbor needs for
+// truthful workload readiness. Health is empty when the service has no
+// healthcheck or the Compose implementation cannot report one.
+type ServiceState struct {
+	Service string
+	State   string
+	Health  string
+}
+
+// Ready reports whether the service is running and, when a health status is
+// available, has reached a healthy terminal state.
+func (s ServiceState) Ready() bool {
+	if !strings.EqualFold(strings.TrimSpace(s.State), "running") {
+		return false
+	}
+	health := strings.ToLower(strings.TrimSpace(s.Health))
+	return health == "" || health == "healthy"
+}
+
+// ServiceStatesProjectFilesEnv returns Compose service state without exposing
+// generated container names to application code.
+func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
+	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	states, err := parseComposeServiceStates(out)
+	if err != nil {
+		return nil, fmt.Errorf("parse compose service state: %w", err)
+	}
+	return states, nil
+}
+
+type composePSState struct {
+	Service string `json:"Service"`
+	State   string `json:"State"`
+	Health  string `json:"Health"`
+}
+
+func parseComposeServiceStates(out string) ([]ServiceState, error) {
+	data := strings.TrimSpace(out)
+	if data == "" {
+		return nil, nil
+	}
+
+	var rows []composePSState
+	if strings.HasPrefix(data, "[") {
+		if err := json.Unmarshal([]byte(data), &rows); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, line := range strings.Split(data, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var row composePSState
+			if err := json.Unmarshal([]byte(line), &row); err != nil {
+				return nil, err
+			}
+			rows = append(rows, row)
+		}
+	}
+
+	states := make([]ServiceState, 0, len(rows))
+	for _, row := range rows {
+		service := strings.TrimSpace(row.Service)
+		if service == "" {
+			continue
+		}
+		states = append(states, ServiceState{
+			Service: service,
+			State:   strings.TrimSpace(row.State),
+			Health:  strings.TrimSpace(row.Health),
+		})
+	}
+	return states, nil
+}
