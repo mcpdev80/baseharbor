@@ -67,6 +67,54 @@ func TestPortAvailableDetectsOccupiedLoopbackPort(t *testing.T) {
 	}
 }
 
+func TestSelectControlPlanePortAutomaticallyRecoversDefaultConflict(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	occupied := listener.Addr().(*net.TCPAddr).Port
+	fallbackStart := occupied + 1
+	if fallbackStart > 65535 {
+		t.Skip("occupied ephemeral port leaves no fallback range")
+	}
+
+	var out bytes.Buffer
+	selected, err := selectControlPlanePort(&out, "PostgreSQL", "--postgres-port", 0, occupied, fallbackStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected == occupied || selected < fallbackStart {
+		t.Fatalf("selected port = %d, occupied=%d fallbackStart=%d", selected, occupied, fallbackStart)
+	}
+	text := out.String()
+	if !strings.Contains(text, "already in use") || !strings.Contains(text, "using it automatically") {
+		t.Fatalf("output = %q, want actionable automatic recovery", text)
+	}
+}
+
+func TestSelectControlPlanePortPreservesExplicitIntent(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	occupied := listener.Addr().(*net.TCPAddr).Port
+	fallbackStart := occupied + 1
+	if fallbackStart > 65535 {
+		t.Skip("occupied ephemeral port leaves no fallback range")
+	}
+
+	_, err = selectControlPlanePort(&bytes.Buffer{}, "PostgreSQL", "--postgres-port", occupied, 5432, fallbackStart)
+	if err == nil {
+		t.Fatal("expected explicit occupied port to fail closed")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "already in use") || !strings.Contains(message, "Retry with 'baha up --postgres-port") {
+		t.Fatalf("error = %q, want exact retry command", message)
+	}
+}
+
 func TestReadPortChoiceAcceptsDefaultAndOverride(t *testing.T) {
 	choice, err := readPortChoice(bufioReader("\n"), 15432)
 	if err != nil || choice != 15432 {

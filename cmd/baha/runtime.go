@@ -105,31 +105,16 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		return runtimeUp(parent, out)
 	}
 
-	postgresPort := opts.PostgresPort
-	if postgresPort == 0 {
-		postgresPort = bhruntime.DefaultPostgresPort
-		if !portAvailable(postgresPort) {
-			postgresPort = firstAvailablePort(15432)
-		}
+	postgresPort, err := selectControlPlanePort(out, "PostgreSQL", "--postgres-port", opts.PostgresPort, bhruntime.DefaultPostgresPort, 15432)
+	if err != nil {
+		return err
 	}
-	openBaoPort := opts.OpenBaoPort
-	if openBaoPort == 0 {
-		openBaoPort = bhruntime.DefaultOpenBaoPort
-		if !portAvailable(openBaoPort) {
-			openBaoPort = firstAvailablePort(18200)
-		}
-	}
-	if postgresPort == 0 || openBaoPort == 0 {
-		return errors.New("could not find available control-plane ports")
+	openBaoPort, err := selectControlPlanePort(out, "OpenBao", "--openbao-port", opts.OpenBaoPort, bhruntime.DefaultOpenBaoPort, 18200)
+	if err != nil {
+		return err
 	}
 	if postgresPort == openBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
-	}
-	if !portAvailable(postgresPort) {
-		return fmt.Errorf("PostgreSQL host port %d is already in use", postgresPort)
-	}
-	if !portAvailable(openBaoPort) {
-		return fmt.Errorf("OpenBao host port %d is already in use", openBaoPort)
 	}
 
 	interactive := !opts.Yes && readerIsTerminal(in)
@@ -153,10 +138,10 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 			return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 		}
 		if !portAvailable(postgresPort) {
-			return fmt.Errorf("PostgreSQL host port %d is already in use", postgresPort)
+			return occupiedSelectedPortError("PostgreSQL", "--postgres-port", postgresPort, 15432)
 		}
 		if !portAvailable(openBaoPort) {
-			return fmt.Errorf("OpenBao host port %d is already in use", openBaoPort)
+			return occupiedSelectedPortError("OpenBao", "--openbao-port", openBaoPort, 18200)
 		}
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Configuration:")
@@ -178,6 +163,33 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	}
 
 	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort})
+}
+
+func selectControlPlanePort(out io.Writer, service, flag string, requested, defaultPort, fallbackStart int) (int, error) {
+	if requested != 0 {
+		if portAvailable(requested) {
+			return requested, nil
+		}
+		return 0, occupiedSelectedPortError(service, flag, requested, fallbackStart)
+	}
+	if portAvailable(defaultPort) {
+		return defaultPort, nil
+	}
+	fallback := firstAvailablePort(fallbackStart)
+	if fallback == 0 {
+		return 0, fmt.Errorf("%s default host port %d is already in use and no free fallback port was found", service, defaultPort)
+	}
+	fmt.Fprintf(out, "%s host port %d is already in use.\n", service, defaultPort)
+	fmt.Fprintf(out, "Found free loopback port %d; using it automatically.\n", fallback)
+	return fallback, nil
+}
+
+func occupiedSelectedPortError(service, flag string, port, fallbackStart int) error {
+	fallback := firstAvailablePort(fallbackStart)
+	if fallback == 0 {
+		return fmt.Errorf("%s host port %d is already in use; choose another free TCP port with 'baha up %s PORT'", service, port, flag)
+	}
+	return fmt.Errorf("%s host port %d is already in use; free port %d is available. Retry with 'baha up %s %d'", service, port, fallback, flag, fallback)
 }
 
 func readPortChoice(reader *bufio.Reader, fallback int) (int, error) {
