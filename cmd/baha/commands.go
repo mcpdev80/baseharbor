@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/health"
 )
 
 func rootCommand() *cli.Command {
@@ -69,19 +67,10 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "doctor",
-			Summary: "Verify host and control-plane prerequisites",
-			Usage:   "baha doctor",
-			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 0 {
-					return usageError("baha doctor does not accept arguments", "Run 'baha doctor --help' for usage.")
-				}
-				formatted, ok := health.Format(health.Doctor())
-				fmt.Fprint(out, formatted)
-				if !ok {
-					return errors.New("one or more checks failed")
-				}
-				return nil
-			},
+			Summary: "Verify prerequisites and safely repair supported runtime findings",
+			Usage:   "baha doctor [--fix]",
+			Long:    "Classifies failed checks as auto-fixable, fixable with confirmation, requiring developer input, or requiring manual/admin action. --fix only applies safe reversible repairs to existing runtime state and never invents credentials, unseals OpenBao without recovery material, discards data, or silently overwrites application files.",
+			Run:     doctorCommand,
 		},
 		serveCommand(store),
 		appCmd,
