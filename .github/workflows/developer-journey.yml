@@ -63,8 +63,16 @@ jobs:
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           /tmp/baha app status | tee /tmp/developer-journey-status.out
+          grep -Eq '^\[OK\] workload/api +running health=healthy$' /tmp/developer-journey-status.out
+          grep -Eq '^\[OK\] workload/edge +running$' /tmp/developer-journey-status.out
+          grep -Eq '^\[OK\] workload/web +running$' /tmp/developer-journey-status.out
+          grep -Eq '^\[OK\] workload/worker +running$' /tmp/developer-journey-status.out
+          grep -q '[OK] workload          4/4 selected Compose service(s) ready' /tmp/developer-journey-status.out
+
           /tmp/baha app doctor | tee /tmp/developer-journey-doctor.out
           grep -q 'Application runtime is healthy' /tmp/developer-journey-doctor.out
+          grep -Eq '^\[OK\] api +running health=healthy$' /tmp/developer-journey-doctor.out
+          grep -Eq '^\[OK\] edge +running$' /tmp/developer-journey-doctor.out
 
       - name: Verify real repository workload and managed backends
         working-directory: /tmp/mailflow
@@ -80,6 +88,15 @@ jobs:
           api_id=$(docker ps --filter "label=com.docker.compose.project=$workload_project" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
           docker exec "$api_id" python -c 'import os,re; assert re.fullmatch(r"[0-9a-f]{64}", os.environ["SECRET_KEY"]); assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
+
+      - name: Verify MailFlow app-owned HTTP and TLS exposure
+        working-directory: /tmp/mailflow
+        run: |
+          curl --fail --silent --show-error --head http://127.0.0.1/ | tee /tmp/mailflow-http-headers.out
+          grep -Eq '^HTTP/.* 30[1278]' /tmp/mailflow-http-headers.out
+          curl --fail --silent --show-error --insecure --location https://127.0.0.1/ --output /tmp/mailflow-home.html
+          test -s /tmp/mailflow-home.html
+          openssl s_client -connect 127.0.0.1:443 -servername localhost </dev/null 2>/tmp/mailflow-tls.err | grep -q 'BEGIN CERTIFICATE'
 
       - name: Prove restart lifecycle preserves application state contract
         working-directory: /tmp/mailflow
