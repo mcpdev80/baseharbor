@@ -393,12 +393,3 @@ func replaceProcessEnv(key, value string) []string {
 	}
 	return append(env, prefix+value)
 }
-
-func containsString(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
-}
