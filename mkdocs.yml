@@ -54,6 +54,7 @@ nav:
   - Getting Started: repository-application-workflow.md
   - Application Contract: application-contract.md
   - CLI: cli.md
+  - Developer Access: developer-access.md
   - Control Plane: runtime-compose.md
   - Secrets: secrets-and-openbao.md
   - Backup & Restore: backup-and-restore.md
