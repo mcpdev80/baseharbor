@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -37,7 +38,7 @@ func appShowCommand(store application.Store) *cli.Command {
 		Name:    "show",
 		Summary: "Show a coherent application overview",
 		Usage:   "baha app show [NAME]",
-		Long:    "Shows application identity, backend readiness, repository workload state and secret readiness without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor.",
+		Long:    "Shows application identity, backend readiness, repository workload state and secret readiness without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor. Applications that have not been applied yet are shown as NOT READY instead of failing the inspection.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "show")
 			if err != nil {
@@ -68,7 +69,25 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return overview, err
 	}
+
+	for _, name := range application.PostgresInstanceNames(m) {
+		overview.Postgres = append(overview.Postgres, overviewResource{Name: name, State: "not applied"})
+	}
+	for _, name := range application.RedisInstanceNames(m) {
+		overview.Valkey = append(overview.Valkey, overviewResource{Name: name, State: "not applied"})
+	}
+	if m.Services.Secrets {
+		overview.SecretsDeclared = true
+		overview.SecretsRequired = len(application.RequiredSecretNames(m))
+		overview.SecretsState = "not applied"
+		overview.BrokerState = "not applied"
+	}
+
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if errors.Is(err, application.ErrRuntimeNotApplied) {
+		overview.Ready = false
+		return overview, nil
+	}
 	if err != nil {
 		return overview, err
 	}
@@ -93,9 +112,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 				state = "not ready"
 			}
 		}
-		for _, name := range application.PostgresInstanceNames(m) {
-			overview.Postgres = append(overview.Postgres, overviewResource{Name: name, State: state})
-		}
+		setOverviewResourceState(overview.Postgres, state)
 		if state != "healthy" {
 			overview.Ready = false
 		}
@@ -113,17 +130,13 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 				state = "not ready"
 			}
 		}
-		for _, name := range application.RedisInstanceNames(m) {
-			overview.Valkey = append(overview.Valkey, overviewResource{Name: name, State: state})
-		}
+		setOverviewResourceState(overview.Valkey, state)
 		if state != "healthy" {
 			overview.Ready = false
 		}
 	}
 
 	if m.Services.Secrets {
-		overview.SecretsDeclared = true
-		overview.SecretsRequired = len(application.RequiredSecretNames(m))
 		overview.SecretsState = "not ready"
 		overview.BrokerState = "not ready"
 		platformFiles, platformErr := bhruntime.ExistingFiles("")
@@ -163,6 +176,12 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	}
 
 	return overview, nil
+}
+
+func setOverviewResourceState(resources []overviewResource, state string) {
+	for i := range resources {
+		resources[i].State = state
+	}
 }
 
 func formatApplicationOverview(out io.Writer, overview applicationOverview) {
