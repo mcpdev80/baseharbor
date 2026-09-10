@@ -18,13 +18,13 @@ const (
 var ErrNoBackupMetadata = errors.New("no application backup metadata recorded")
 
 type BackupMetadata struct {
-	Version          int       `json:"version"`
-	Application      string    `json:"application"`
-	Environment      string    `json:"environment"`
-	CreatedAt        time.Time `json:"created_at"`
-	ArchivePath      string    `json:"archive_path"`
-	PostgresResources []string `json:"postgres_resources,omitempty"`
-	IncludesSecrets  bool      `json:"includes_secrets"`
+	Version           int       `json:"version"`
+	Application       string    `json:"application"`
+	Environment       string    `json:"environment"`
+	CreatedAt         time.Time `json:"created_at"`
+	ArchivePath       string    `json:"archive_path"`
+	PostgresResources []string  `json:"postgres_resources,omitempty"`
+	IncludesSecrets   bool      `json:"includes_secrets"`
 }
 
 func (m BackupMetadata) Validate() error {
