@@ -192,8 +192,8 @@ func (m Manifest) Validate() error {
 	}
 	postgres := PostgresInstanceNames(m)
 	redis := RedisInstanceNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && !m.Services.Secrets {
-		return fmt.Errorf("at least one backend service must be enabled")
+	if len(postgres) == 0 && len(redis) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) {
+		return fmt.Errorf("at least one backend service or explicit Compose workload must be enabled")
 	}
 	for _, name := range postgres {
 		if err := validateSlug("PostgreSQL instance name", name); err != nil {
