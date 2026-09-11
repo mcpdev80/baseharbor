@@ -40,24 +40,33 @@ func TestBuildWorkloadServiceStatuses(t *testing.T) {
 }
 
 func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
-	status := repositoryWorkloadStatus{
-		Found: true,
-		Services: []workloadServiceStatus{
-			{Service: "api", State: "running", Ready: true},
-			{Service: "web", State: "running", Ready: true},
-		},
-		Exposures: []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: true}},
+	services := []workloadServiceStatus{
+		{Service: "api", State: "running", Ready: true},
+		{Service: "web", State: "running", Ready: true},
 	}
+	exposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: true, Detail: "HTTP 200"}}
+	status := repositoryWorkloadStatus{Found: true, Services: attachWorkloadExposures(services, exposures), Exposures: exposures}
 	if !status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 1 {
 		t.Fatalf("expected ready status: %#v", status)
 	}
-	status.Exposures[0].Ready = false
-	status.Exposures[0].Detail = "unreachable"
-	if status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 0 {
+
+	failedExposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: false, Detail: "unreachable"}}
+	status = repositoryWorkloadStatus{
+		Found: true,
+		Services: attachWorkloadExposures([]workloadServiceStatus{
+			{Service: "api", State: "running", Ready: true},
+			{Service: "web", State: "running", Ready: true},
+		}, failedExposures),
+		Exposures: failedExposures,
+	}
+	if status.Ready() || status.ReadyCount() != 1 || status.ExposureReadyCount() != 0 {
 		t.Fatalf("expected exposure failure: %#v", status)
 	}
 	if err := workloadExposureReadinessError(status.Exposures); err == nil || !strings.Contains(err.Error(), "exposure readiness failed") {
 		t.Fatalf("expected classified exposure error, got %v", err)
+	}
+	if got := formatWorkloadServiceStatus(status.Services[1]); !strings.Contains(got, "exposure=https://127.0.0.1:443 unreachable") {
+		t.Fatalf("expected exposure detail in service status, got %q", got)
 	}
 }
 
