@@ -144,13 +144,16 @@ func TestWithInMemoryPasswordFileUsesOwnerOnlyNonDiskFile(t *testing.T) {
 		if info.Mode().Perm() != 0o600 {
 			t.Fatalf("password memfd mode=%o want 600", info.Mode().Perm())
 		}
-		got, err := readBackupPasswordFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer zeroBytes(got)
-		if !bytes.Equal(got, password) {
-			t.Fatal("password memfd content mismatch")
+		for readNumber := 1; readNumber <= 2; readNumber++ {
+			got, err := readBackupPasswordFile(path)
+			if err != nil {
+				t.Fatalf("password memfd read %d: %v", readNumber, err)
+			}
+			if !bytes.Equal(got, password) {
+				zeroBytes(got)
+				t.Fatalf("password memfd content mismatch on read %d", readNumber)
+			}
+			zeroBytes(got)
 		}
 		return nil
 	})
