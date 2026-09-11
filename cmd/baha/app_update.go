@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -25,21 +27,22 @@ type gitUpdateState struct {
 	Relation       string
 }
 
+type appUpdateOptions struct {
+	Check              bool
+	BackupPasswordFile string
+	NoBackup           bool
+}
+
 func appUpdateCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "update",
 		Summary: "Safely inspect or update a Git-backed application",
-		Usage:   "baha app update [--check]",
-		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. Without --check, BaseHarbor requires a clean working tree and a strict fast-forward path to the exact fetched target revision, then re-reads baseharbor.yaml and runs the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
+		Usage:   "baha app update [--check] [--backup-password-file FILE | --no-backup]",
+		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. For applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted pre-update recovery point through --backup-password-file FILE or an explicit --no-backup acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision, followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			check := false
-			for _, arg := range args {
-				switch arg {
-				case "--check":
-					check = true
-				default:
-					return usageError("unknown baha app update option: "+arg, "Run 'baha app update --help' for usage.")
-				}
+			opts, err := parseAppUpdateOptions(args)
+			if err != nil {
+				return err
 			}
 			resolved, err := resolveApplication(store, nil, "update")
 			if err != nil {
@@ -53,7 +56,7 @@ func appUpdateCommand(store application.Store) *cli.Command {
 				return err
 			}
 			formatGitApplicationUpdateCheck(out, resolved.Manifest.Name, resolved.Manifest.Environment, state)
-			if check {
+			if opts.Check {
 				return nil
 			}
 			if state.Dirty {
@@ -72,18 +75,115 @@ func appUpdateCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("automatic application update is blocked for unsupported Git relation %q", state.Relation)
 			}
 
+			var backup application.BackupMetadata
+			if applicationUpdateHasDurableState(resolved.Manifest) {
+				switch {
+				case opts.BackupPasswordFile != "":
+					backup, err = createApplicationUpdateRecoveryPoint(ctx, store, resolved, opts.BackupPasswordFile, out, errOut)
+					if err != nil {
+						return fmt.Errorf("create pre-update recovery point: %w", err)
+					}
+				case opts.NoBackup:
+					fmt.Fprintln(out, "WARNING: proceeding without a pre-update recovery point by explicit --no-backup request.")
+				default:
+					return usageError("application has durable managed state; automatic update requires a pre-update recovery choice", "Use --backup-password-file FILE to create an encrypted recovery point, or explicitly acknowledge the risk with --no-backup.")
+				}
+			}
+
 			if err := fastForwardGitApplicationUpdate(ctx, state); err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "Source fast-forwarded: %s -> %s\n", state.Current, state.Target)
 			fmt.Fprintln(out, "Re-reading application contract and reconciling runtime...")
 			if err := appApplyCommand(store).Run(ctx, nil, out, errOut); err != nil {
+				metadata := newApplicationUpdateMetadata(resolved, state, "runtime-verification-failed", backup)
+				if metadataErr := resolved.Store.RecordLastUpdate(metadata); metadataErr != nil {
+					return errors.Join(fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err), fmt.Errorf("record failed application update metadata: %w", metadataErr))
+				}
 				return fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err)
+			}
+			metadata := newApplicationUpdateMetadata(resolved, state, "ready", backup)
+			if err := resolved.Store.RecordLastUpdate(metadata); err != nil {
+				return fmt.Errorf("application reached READY after update but recording update metadata failed: %w", err)
 			}
 			fmt.Fprintf(out, "Application %s updated successfully: %s -> %s\n", resolved.Manifest.Name, state.Current, state.Target)
 			return nil
 		},
 	}
+}
+
+func parseAppUpdateOptions(args []string) (appUpdateOptions, error) {
+	var opts appUpdateOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--check":
+			opts.Check = true
+		case "--no-backup":
+			opts.NoBackup = true
+		case "--backup-password-file":
+			i++
+			if i >= len(args) || strings.TrimSpace(args[i]) == "" {
+				return appUpdateOptions{}, usageError("--backup-password-file requires a file path", "Run 'baha app update --help' for usage.")
+			}
+			opts.BackupPasswordFile = args[i]
+		default:
+			return appUpdateOptions{}, usageError("unknown baha app update option: "+args[i], "Run 'baha app update --help' for usage.")
+		}
+	}
+	if opts.NoBackup && opts.BackupPasswordFile != "" {
+		return appUpdateOptions{}, usageError("--no-backup and --backup-password-file cannot be used together", "Choose exactly one recovery policy for the update.")
+	}
+	if opts.Check && (opts.NoBackup || opts.BackupPasswordFile != "") {
+		return appUpdateOptions{}, usageError("--check does not accept backup mutation options", "Run 'baha app update --check' alone for a read-only update inspection.")
+	}
+	return opts, nil
+}
+
+func applicationUpdateHasDurableState(m application.Manifest) bool {
+	return len(application.PostgresInstanceNames(m)) > 0 || m.Services.Secrets
+}
+
+func createApplicationUpdateRecoveryPoint(ctx context.Context, store application.Store, resolved resolvedApplication, passwordFile string, out, errOut io.Writer) (application.BackupMetadata, error) {
+	if strings.TrimSpace(passwordFile) == "" {
+		return application.BackupMetadata{}, errors.New("backup password file is required")
+	}
+	backupDir := filepath.Join(filepath.Dir(resolved.Store.Root), "backups")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		return application.BackupMetadata{}, fmt.Errorf("create pre-update backup directory: %w", err)
+	}
+	outputPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s-pre-update-%s.bhbackup", resolved.Manifest.Name, resolved.Manifest.Environment, time.Now().UTC().Format("20060102T150405Z")))
+	if err := appBackupCommandWithMetadata(store).Run(ctx, []string{"--output", outputPath, "--password-file", passwordFile}, out, errOut); err != nil {
+		return application.BackupMetadata{}, err
+	}
+	metadata, err := resolved.Store.LastBackup(resolved.Manifest.Name)
+	if err != nil {
+		return application.BackupMetadata{}, fmt.Errorf("load pre-update backup metadata: %w", err)
+	}
+	absolute, err := filepath.Abs(outputPath)
+	if err == nil && filepath.Clean(metadata.ArchivePath) != filepath.Clean(absolute) {
+		return application.BackupMetadata{}, fmt.Errorf("pre-update backup metadata path mismatch: expected %s, recorded %s", absolute, metadata.ArchivePath)
+	}
+	fmt.Fprintf(out, "Pre-update recovery point: %s\n", metadata.ArchivePath)
+	return metadata, nil
+}
+
+func newApplicationUpdateMetadata(resolved resolvedApplication, state gitUpdateState, result string, backup application.BackupMetadata) application.UpdateMetadata {
+	metadata := application.UpdateMetadata{
+		Version:      application.LastUpdateMetadataVersion,
+		Application:  resolved.Manifest.Name,
+		Environment:  resolved.Manifest.Environment,
+		UpdatedAt:    time.Now().UTC(),
+		Branch:       state.Branch,
+		Upstream:     state.Upstream,
+		FromRevision: state.Current,
+		ToRevision:   state.Target,
+		Result:       result,
+	}
+	if backup.ArchivePath != "" {
+		metadata.BackupPath = backup.ArchivePath
+		metadata.BackupCreatedAt = backup.CreatedAt
+	}
+	return metadata
 }
 
 func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fetch bool) (gitUpdateState, error) {
@@ -152,16 +252,7 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 		}
 	}
 
-	return gitUpdateState{
-		RepositoryRoot: root,
-		Branch:         branch,
-		Upstream:       upstream,
-		Remote:         remote,
-		Current:        current,
-		Target:         target,
-		Dirty:          strings.TrimSpace(status) != "",
-		Relation:       relation,
-	}, nil
+	return gitUpdateState{RepositoryRoot: root, Branch: branch, Upstream: upstream, Remote: remote, Current: current, Target: target, Dirty: strings.TrimSpace(status) != "", Relation: relation}, nil
 }
 
 func fastForwardGitApplicationUpdate(ctx context.Context, state gitUpdateState) error {
@@ -174,7 +265,6 @@ func fastForwardGitApplicationUpdate(ctx context.Context, state gitUpdateState) 
 	if state.Current == "" || state.Target == "" {
 		return errors.New("refusing Git fast-forward without explicit current and target revisions")
 	}
-
 	current, err := gitOutput(ctx, state.RepositoryRoot, "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("verify current Git revision immediately before update: %w", err)
@@ -192,7 +282,6 @@ func fastForwardGitApplicationUpdate(ctx context.Context, state gitUpdateState) 
 	if !gitIsAncestor(ctx, state.RepositoryRoot, state.Current, state.Target) {
 		return errors.New("fetched target is no longer a strict fast-forward descendant of the current revision")
 	}
-
 	if _, err := gitOutput(ctx, state.RepositoryRoot, "merge", "--ff-only", state.Target); err != nil {
 		return fmt.Errorf("fast-forward application source to %s: %w", state.Target, err)
 	}
