@@ -122,9 +122,6 @@ func TestProbeHTTPExposureAcceptsHTTPRedirectAndSelfSignedTLS(t *testing.T) {
 	}
 
 	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != "localhost:"+strconv.Itoa(portFromURL(t, tlsServer.URL)) {
-			// Host is asserted below through a dedicated target-host call.
-		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer tlsServer.Close()
@@ -162,12 +159,6 @@ func testServerHostPort(t *testing.T, rawURL string) (string, int) {
 		t.Fatal(err)
 	}
 	return host, port
-}
-
-func portFromURL(t *testing.T, rawURL string) int {
-	t.Helper()
-	_, port := testServerHostPort(t, rawURL)
-	return port
 }
 
 func TestFormatWorkloadServiceStatus(t *testing.T) {
