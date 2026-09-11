@@ -4,9 +4,12 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +131,123 @@ func TestReleaseArchiveChecksumRoundTrip(t *testing.T) {
 	if got != hex.EncodeToString(sum[:]) {
 		t.Fatalf("unexpected checksum: %s", got)
 	}
+}
+
+func TestPerformSelfUpdateReplacesBinaryAndRetainsRecovery(t *testing.T) {
+	dir := t.TempDir()
+	executable := filepath.Join(dir, "baha")
+	oldBinary := []byte("#!/bin/sh\necho 'baha 0.2.0 (commit old, built test)'\n")
+	newBinary := []byte("#!/bin/sh\necho 'baha 0.3.0 (commit new, built test)'\n")
+	if err := os.WriteFile(executable, oldBinary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	archive := buildSelfUpdateArchive(t, tar.TypeReg, newBinary)
+	check, server := selfUpdateFixture(t, archive)
+	defer server.Close()
+	withSelfUpdateMutationFixture(t, executable, server)
+
+	var out strings.Builder
+	if err := performSelfUpdate(context.Background(), check, selfUpdateOptions{Yes: true, Version: "0.3.0"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(installed, newBinary) {
+		t.Fatalf("installed binary mismatch: %q", installed)
+	}
+	recovery, err := os.ReadFile(executable + ".previous-0.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(recovery, oldBinary) {
+		t.Fatalf("recovery binary mismatch: %q", recovery)
+	}
+	if !strings.Contains(out.String(), "BaseHarbor updated successfully: 0.2.0 -> 0.3.0") {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
+func TestPerformSelfUpdateRestoresBinaryWhenRuntimeVerificationFails(t *testing.T) {
+	dir := t.TempDir()
+	executable := filepath.Join(dir, "baha")
+	oldBinary := []byte("#!/bin/sh\necho 'baha 0.2.0 (commit old, built test)'\n")
+	newBinary := []byte("#!/bin/sh\nif [ \"$1\" = \"version\" ]; then echo 'baha 0.3.0 (commit new, built test)'; exit 0; fi\nexit 42\n")
+	if err := os.WriteFile(executable, oldBinary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "baseharbor.yaml"), []byte("name: demo\nenvironment: dev\nservices: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	archive := buildSelfUpdateArchive(t, tar.TypeReg, newBinary)
+	check, server := selfUpdateFixture(t, archive)
+	defer server.Close()
+	withSelfUpdateMutationFixture(t, executable, server)
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	var out strings.Builder
+	err = performSelfUpdate(context.Background(), check, selfUpdateOptions{Yes: true, Version: "0.3.0"}, &out, &out)
+	if err == nil || !strings.Contains(err.Error(), "previous CLI binary restored") {
+		t.Fatalf("expected runtime verification rollback error, got %v", err)
+	}
+	installed, readErr := os.ReadFile(executable)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(installed, oldBinary) {
+		t.Fatalf("old binary was not restored: %q", installed)
+	}
+}
+
+func selfUpdateFixture(t *testing.T, archive []byte) (selfUpdateCheck, *httptest.Server) {
+	t.Helper()
+	assetName := "baseharbor_linux_amd64.tar.gz"
+	sum := sha256.Sum256(archive)
+	digest := hex.EncodeToString(sum[:])
+	manifest := []byte(digest + "  " + assetName + "\n")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/checksums.txt":
+			_, _ = w.Write(manifest)
+		case "/asset.tar.gz":
+			_, _ = w.Write(archive)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	return selfUpdateCheck{
+		Installed:    "0.2.0",
+		Target:       "0.3.0",
+		Relation:     "update-available",
+		AssetName:    assetName,
+		AssetURL:     server.URL + "/asset.tar.gz",
+		AssetDigest:  "sha256:" + digest,
+		ChecksumsURL: server.URL + "/checksums.txt",
+	}, server
+}
+
+func withSelfUpdateMutationFixture(t *testing.T, executable string, server *httptest.Server) {
+	t.Helper()
+	oldExecutable := selfUpdateExecutable
+	oldClient := releaseHTTPClient
+	selfUpdateExecutable = func() (string, error) { return executable, nil }
+	releaseHTTPClient = server.Client()
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-not-created"))
+	t.Cleanup(func() {
+		selfUpdateExecutable = oldExecutable
+		releaseHTTPClient = oldClient
+	})
 }
 
 func buildSelfUpdateArchive(t *testing.T, typeflag byte, payload []byte) []byte {
