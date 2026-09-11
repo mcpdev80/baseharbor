@@ -1,6 +1,13 @@
 package main
 
 import (
+	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -32,18 +39,96 @@ func TestBuildWorkloadServiceStatuses(t *testing.T) {
 	}
 }
 
-func TestRepositoryWorkloadStatusReady(t *testing.T) {
-	status := repositoryWorkloadStatus{Found: true, Services: []workloadServiceStatus{
-		{Service: "api", State: "running", Ready: true},
-		{Service: "web", State: "running", Ready: true},
-	}}
-	if !status.Ready() || status.ReadyCount() != 2 {
+func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
+	status := repositoryWorkloadStatus{
+		Found: true,
+		Services: []workloadServiceStatus{
+			{Service: "api", State: "running", Ready: true},
+			{Service: "web", State: "running", Ready: true},
+		},
+		Exposures: []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: true}},
+	}
+	if !status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 1 {
 		t.Fatalf("expected ready status: %#v", status)
 	}
-	status.Services[1].Ready = false
-	if status.Ready() || status.ReadyCount() != 1 {
-		t.Fatalf("expected partial failure: %#v", status)
+	status.Exposures[0].Ready = false
+	status.Exposures[0].Detail = "unreachable"
+	if status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 0 {
+		t.Fatalf("expected exposure failure: %#v", status)
 	}
+	if err := workloadExposureReadinessError(status.Exposures); err == nil || !strings.Contains(err.Error(), "exposure readiness failed") {
+		t.Fatalf("expected classified exposure error, got %v", err)
+	}
+}
+
+func TestWorkloadExposureScheme(t *testing.T) {
+	for _, test := range []struct {
+		target, published int
+		scheme            string
+		ok                bool
+	}{
+		{443, 443, "https", true},
+		{443, 18443, "https", true},
+		{8080, 18080, "http", true},
+		{3000, 3000, "http", true},
+		{5432, 15432, "", false},
+	} {
+		scheme, ok := workloadExposureScheme(test.target, test.published)
+		if scheme != test.scheme || ok != test.ok {
+			t.Fatalf("workloadExposureScheme(%d,%d) = %q,%v; want %q,%v", test.target, test.published, scheme, ok, test.scheme, test.ok)
+		}
+	}
+}
+
+func TestProbeHTTPExposureAcceptsHTTPRedirectAndSelfSignedTLS(t *testing.T) {
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://example.invalid/", http.StatusPermanentRedirect)
+	}))
+	defer httpServer.Close()
+	host, port := testServerHostPort(t, httpServer.URL)
+	ready, detail := probeHTTPExposure(context.Background(), "http", host, port)
+	if !ready || detail != "HTTP 308" {
+		t.Fatalf("HTTP redirect readiness = %v %q", ready, detail)
+	}
+
+	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tlsServer.Close()
+	host, port = testServerHostPort(t, tlsServer.URL)
+	ready, detail = probeHTTPExposure(context.Background(), "https", host, port)
+	if !ready || detail != "HTTP 200" {
+		t.Fatalf("TLS readiness = %v %q", ready, detail)
+	}
+}
+
+func TestProbeHTTPExposureRejectsServerFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	host, port := testServerHostPort(t, server.URL)
+	ready, detail := probeHTTPExposure(context.Background(), "http", host, port)
+	if ready || detail != "HTTP 503" {
+		t.Fatalf("server failure readiness = %v %q", ready, detail)
+	}
+}
+
+func testServerHostPort(t *testing.T, rawURL string) (string, int) {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portText, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host, port
 }
 
 func TestFormatWorkloadServiceStatus(t *testing.T) {
