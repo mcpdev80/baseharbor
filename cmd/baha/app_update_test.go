@@ -7,16 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestInspectGitApplicationUpdateDetectsFastForwardAndDirtyTree(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not available")
 	}
-
 	remote := filepath.Join(t.TempDir(), "remote.git")
 	mustGitUpdateTest(t, "", "init", "--bare", remote)
-
 	seed := filepath.Join(t.TempDir(), "seed")
 	mustGitUpdateTest(t, "", "init", "-b", "main", seed)
 	configureGitUpdateTestIdentity(t, seed)
@@ -27,18 +27,15 @@ func TestInspectGitApplicationUpdateDetectsFastForwardAndDirtyTree(t *testing.T)
 	mustGitUpdateTest(t, seed, "commit", "-m", "initial")
 	mustGitUpdateTest(t, seed, "remote", "add", "origin", remote)
 	mustGitUpdateTest(t, seed, "push", "-u", "origin", "main")
-
 	work := filepath.Join(t.TempDir(), "work")
 	mustGitUpdateTest(t, "", "clone", "--branch", "main", remote, work)
 	configureGitUpdateTestIdentity(t, work)
-
 	if err := os.WriteFile(filepath.Join(seed, "README.md"), []byte("two\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mustGitUpdateTest(t, seed, "add", "README.md")
 	mustGitUpdateTest(t, seed, "commit", "-m", "upstream")
 	mustGitUpdateTest(t, seed, "push", "origin", "main")
-
 	state, err := inspectGitApplicationUpdate(context.Background(), work, true)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +46,6 @@ func TestInspectGitApplicationUpdateDetectsFastForwardAndDirtyTree(t *testing.T)
 	if state.Relation != "update-available" || state.Dirty || state.Current == state.Target {
 		t.Fatalf("expected clean fast-forward update: %#v", state)
 	}
-
 	if err := os.WriteFile(filepath.Join(work, "local.txt"), []byte("dirty\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -75,10 +71,34 @@ func TestInspectGitApplicationUpdateRejectsDetachedHead(t *testing.T) {
 	mustGitUpdateTest(t, repo, "add", "README.md")
 	mustGitUpdateTest(t, repo, "commit", "-m", "initial")
 	mustGitUpdateTest(t, repo, "checkout", "--detach")
-
 	_, err := inspectGitApplicationUpdate(context.Background(), repo, false)
 	if err == nil || !strings.Contains(err.Error(), "detached HEAD") {
 		t.Fatalf("expected detached HEAD rejection, got %v", err)
+	}
+}
+
+func TestParseAppUpdateOptionsEnforcesRecoveryChoiceRules(t *testing.T) {
+	opts, err := parseAppUpdateOptions([]string{"--backup-password-file", "/tmp/password"})
+	if err != nil || opts.BackupPasswordFile != "/tmp/password" || opts.NoBackup || opts.Check {
+		t.Fatalf("unexpected parsed options: %#v err=%v", opts, err)
+	}
+	if _, err := parseAppUpdateOptions([]string{"--backup-password-file", "/tmp/password", "--no-backup"}); err == nil {
+		t.Fatal("expected mutually exclusive recovery policy error")
+	}
+	if _, err := parseAppUpdateOptions([]string{"--check", "--no-backup"}); err == nil {
+		t.Fatal("expected read-only check to reject backup options")
+	}
+}
+
+func TestApplicationUpdateDurableStateDetection(t *testing.T) {
+	if applicationUpdateHasDurableState(application.Manifest{}) {
+		t.Fatal("empty manifest should not require a recovery point")
+	}
+	if !applicationUpdateHasDurableState(application.Manifest{Services: application.Services{Postgres: true}}) {
+		t.Fatal("PostgreSQL should be durable")
+	}
+	if !applicationUpdateHasDurableState(application.Manifest{Services: application.Services{Secrets: true}}) {
+		t.Fatal("managed secrets should be durable")
 	}
 }
 
@@ -93,7 +113,7 @@ func TestApplicationUpdateCommandIsDiscoverable(t *testing.T) {
 		for _, appChild := range child.Children {
 			if appChild.Name == "update" {
 				updateFound = true
-				if appChild.Usage != "baha app update [--check]" {
+				if appChild.Usage != "baha app update [--check] [--backup-password-file FILE | --no-backup]" {
 					t.Fatalf("unexpected update usage: %s", appChild.Usage)
 				}
 			}
