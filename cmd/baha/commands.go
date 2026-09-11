@@ -17,13 +17,13 @@ func rootCommand() *cli.Command {
 		case "init":
 			appCmd.Children[i] = appGuidedInitCommand()
 		case "show":
-			appCmd.Children[i] = appShowCommand(store)
+			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
 		}
 	}
 	appCmd.Children = append(appCmd.Children,
 		appApplyCommand(store),
 		appGuidedBackupCommand(store),
-		appGuidedRestoreCommand(store),
+		appGuidedRestoreCommandWithRecoveryMetadata(store),
 		appEnvCommand(store),
 		appPSQLCommand(store),
 		appRedisCommand(store),
