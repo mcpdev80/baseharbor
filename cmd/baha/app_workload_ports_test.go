@@ -41,9 +41,9 @@ func TestWorkloadPublishedPortVariables(t *testing.T) {
 
 func TestConflictingWorkloadHostPort(t *testing.T) {
 	cases := map[string]int{
-		"Bind for 127.0.0.1:80 failed: port is already allocated": 80,
+		"Bind for 127.0.0.1:80 failed: port is already allocated":          80,
 		"failed to bind host port for 0.0.0.0:443: address already in use": 443,
-		"host port 8080 is busy": 8080,
+		"host port 8080 is busy":                                           8080,
 	}
 	for message, want := range cases {
 		if got := conflictingWorkloadHostPort(errors.New(message)); got != want {
