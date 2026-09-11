@@ -16,10 +16,11 @@ import (
 )
 
 type workloadServiceStatus struct {
-	Service string
-	State   string
-	Health  string
-	Ready   bool
+	Service   string
+	State     string
+	Health    string
+	Ready     bool
+	Exposures []workloadExposureStatus
 }
 
 type workloadExposureStatus struct {
@@ -65,11 +66,13 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
+		exposures := inspectWorkloadExposures(ctx, expected, states)
+		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
 		status := repositoryWorkloadStatus{
 			Found:     true,
 			Workload:  workload,
-			Services:  buildWorkloadServiceStatuses(expected, states),
-			Exposures: inspectWorkloadExposures(ctx, expected, states),
+			Services:  services,
+			Exposures: exposures,
 		}
 		if err := workloadExposureReadinessError(status.Exposures); err != nil {
 			return status, err
@@ -112,6 +115,22 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 		})
 	}
 	return result
+}
+
+func attachWorkloadExposures(services []workloadServiceStatus, exposures []workloadExposureStatus) []workloadServiceStatus {
+	byService := make(map[string][]workloadExposureStatus)
+	for _, exposure := range exposures {
+		byService[exposure.Service] = append(byService[exposure.Service], exposure)
+	}
+	for i := range services {
+		services[i].Exposures = byService[services[i].Service]
+		for _, exposure := range services[i].Exposures {
+			if !exposure.Ready {
+				services[i].Ready = false
+			}
+		}
+	}
+	return services
 }
 
 func inspectWorkloadExposures(ctx context.Context, expected []string, states []bhruntime.ServiceState) []workloadExposureStatus {
@@ -243,11 +262,6 @@ func (status repositoryWorkloadStatus) Ready() bool {
 			return false
 		}
 	}
-	for _, exposure := range status.Exposures {
-		if !exposure.Ready {
-			return false
-		}
-	}
 	return true
 }
 
@@ -275,6 +289,9 @@ func formatWorkloadServiceStatus(service workloadServiceStatus) string {
 	detail := service.State
 	if service.Health != "" {
 		detail += " health=" + service.Health
+	}
+	for _, exposure := range service.Exposures {
+		detail += " exposure=" + formatWorkloadExposureStatus(exposure)
 	}
 	return detail
 }
