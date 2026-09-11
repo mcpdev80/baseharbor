@@ -223,11 +223,15 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 
 	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	var running []string
+	var lastStatus repositoryWorkloadStatus
+	var lastErr error
 	for verifyCtx.Err() == nil {
-		running, err = compose.RunningServicesProjectFilesEnv(verifyCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-		if err == nil && workloadRunningEnough(activeServices, running, expectedServices) {
-			fmt.Fprintf(out, "[OK] workload          %d Compose service(s) running on BaseHarbor backend network\n", len(expectedServices))
+		lastStatus, lastErr = inspectRepositoryWorkloadStatus(verifyCtx, compose, resolved, files)
+		if lastErr == nil && lastStatus.Found && lastStatus.Ready() {
+			fmt.Fprintf(out, "[OK] workload          %d Compose service(s) ready on BaseHarbor backend network\n", len(expectedServices))
+			if len(lastStatus.Exposures) > 0 {
+				fmt.Fprintf(out, "[OK] exposure          %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+			}
 			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
 			return true, nil
 		}
@@ -236,10 +240,10 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		case <-time.After(time.Second):
 		}
 	}
-	if err != nil {
-		return false, fmt.Errorf("verify application workload: %w", err)
+	if lastErr != nil {
+		return false, fmt.Errorf("verify application workload readiness: %w", lastErr)
 	}
-	return false, fmt.Errorf("application workload did not reach the expected running service set; expected=%v running=%v", expectedServices, running)
+	return false, fmt.Errorf("application workload did not reach readiness before timeout; services=%d/%d exposures=%d/%d", lastStatus.ReadyCount(), len(expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
@@ -305,27 +309,14 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 }
 
 func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (int, bool, error) {
-	workload, running, found, err := inspectRepositoryWorkload(ctx, compose, resolved, files)
-	if err != nil || !found {
-		return len(running), found, err
+	status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+	if err != nil || !status.Found {
+		return status.ReadyCount(), status.Found, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
-	if err != nil {
-		return len(running), true, err
+	if !status.Ready() {
+		return status.ReadyCount(), true, fmt.Errorf("application workload is not ready; services=%d/%d exposures=%d/%d", status.ReadyCount(), len(status.Services), status.ExposureReadyCount(), len(status.Exposures))
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
-	if err != nil {
-		return len(running), true, err
-	}
-	active, err := compose.ServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return len(running), true, err
-	}
-	expected := activeSelectedWorkloadServices(active, workload.Services)
-	if !workloadRunningEnough(active, running, expected) {
-		return len(running), true, fmt.Errorf("application workload is not ready; expected=%v running=%v", expected, running)
-	}
-	return len(running), true, nil
+	return status.ReadyCount(), true, nil
 }
 
 func workloadRunningEnough(active, running, requested []string) bool {
