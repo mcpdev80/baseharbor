@@ -149,3 +149,135 @@ networks:
 		t.Fatalf("repository manifest not preserved: %v", err)
 	}
 }
+
+func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
+	if os.Getenv("CI") == "" {
+		t.Skip("real repository workload-only lifecycle runs in CI")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: workload-only-ci
+  environment: dev
+services:
+  postgres:
+    enabled: false
+  redis:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  compose: compose.yaml
+  services:
+    - app
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := `services:
+  app:
+    image: alpine:3.22
+    command: ["sh", "-ec", "sleep infinity"]
+    environment:
+      APP_OWNED_VALUE: preserved
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+		t.Fatalf("apply workload-only application: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "workload") {
+		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
+	}
+
+	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	m, _, err := store.Load("workload-only-ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := application.ExistingRuntimeFiles(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize workload-only verification: found=%v err=%v", found, err)
+	}
+	override, err := os.ReadFile(workload.Override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unexpected := range []string{"baseharbor-backend", "DATABASE_URL", "REDIS_URL", "VALKEY_URL"} {
+		if strings.Contains(string(override), unexpected) {
+			t.Fatalf("workload-only override invented %q:\n%s", unexpected, string(override))
+		}
+	}
+
+	composeFiles := []string{workload.Compose, workload.Override}
+	probe, err := compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; test -z "$DATABASE_URL"; test -z "$REDIS_URL"; echo ok`)
+	if err != nil || strings.TrimSpace(probe) != "ok" {
+		t.Fatalf("workload-only application contract probe: result=%q err=%v", probe, err)
+	}
+
+	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
+		out.Reset()
+		if err := runWithIO(ctx, command, &out, &out); err != nil {
+			t.Fatalf("%v failed for workload-only app: %v\n%s", command, err, out.String())
+		}
+		if !strings.Contains(out.String(), "workload") {
+			t.Fatalf("%v did not report workload-only state:\n%s", command, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "down"}, &out, &out); err != nil {
+		t.Fatalf("down workload-only application: %v\n%s", err, out.String())
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(running) != 0 {
+		t.Fatalf("workload-only services remain after down: %v", running)
+	}
+
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+		t.Fatalf("up workload-only application: %v\n%s", err, out.String())
+	}
+	probe, err = compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; echo ok`)
+	if err != nil || strings.TrimSpace(probe) != "ok" {
+		t.Fatalf("workload-only probe after up: result=%q err=%v", probe, err)
+	}
+
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("destroy workload-only application: %v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest not preserved: %v", err)
+	}
+}
