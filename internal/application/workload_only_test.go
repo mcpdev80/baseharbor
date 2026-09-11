@@ -90,8 +90,20 @@ func TestWorkloadOnlyRuntimeMaterializationDoesNotInventBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(appEnv) != 0 {
-		t.Fatalf("workload-only application env must be empty, got %q", string(appEnv))
+	appEnvText := string(appEnv)
+	for _, expected := range []string{
+		"BASEHARBOR_APP_NAME=awc\n",
+		"BASEHARBOR_ENVIRONMENT=production\n",
+		"BASEHARBOR_BINDINGS=",
+	} {
+		if !strings.Contains(appEnvText, expected) {
+			t.Fatalf("workload-only application env missing %q, got %q", expected, appEnvText)
+		}
+	}
+	for _, unexpected := range []string{"DATABASE_URL=", "REDIS_URL=", "VALKEY_URL="} {
+		if strings.Contains(appEnvText, unexpected) {
+			t.Fatalf("workload-only application env invented %q, got %q", unexpected, appEnvText)
+		}
 	}
 	if got := ExpectedRuntimeResources(m); len(got) != 0 {
 		t.Fatalf("workload-only app must not claim managed runtime resources: %#v", got)
