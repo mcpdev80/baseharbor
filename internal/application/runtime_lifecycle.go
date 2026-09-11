@@ -14,6 +14,9 @@ import (
 var ErrRuntimeDefinitionChanged = errors.New("application runtime definition differs from the BaseHarbor-managed definition")
 
 func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	if !HasManagedRuntimeServices(m) {
+		return nil
+	}
 	project := RuntimeProjectName(m)
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkName(m)}}
 	for _, instance := range PostgresInstanceNames(m) {
