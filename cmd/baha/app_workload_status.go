@@ -65,12 +65,16 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
-		return repositoryWorkloadStatus{
+		status := repositoryWorkloadStatus{
 			Found:     true,
 			Workload:  workload,
 			Services:  buildWorkloadServiceStatuses(expected, states),
 			Exposures: inspectWorkloadExposures(ctx, expected, states),
-		}, nil
+		}
+		if err := workloadExposureReadinessError(status.Exposures); err != nil {
+			return status, err
+		}
+		return status, nil
 	}
 
 	readyServices, err := compose.RunningServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
@@ -149,6 +153,20 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 		return result[i].Scheme < result[j].Scheme
 	})
 	return result
+}
+
+func workloadExposureReadinessError(exposures []workloadExposureStatus) error {
+	var failures []string
+	for _, exposure := range exposures {
+		if exposure.Ready {
+			continue
+		}
+		failures = append(failures, fmt.Sprintf("%s/%s", exposure.Service, formatWorkloadExposureStatus(exposure)))
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return fmt.Errorf("exposure readiness failed: %s", strings.Join(failures, "; "))
 }
 
 func workloadExposureScheme(targetPort, publishedPort int) (string, bool) {
