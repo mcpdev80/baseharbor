@@ -44,13 +44,13 @@ func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
 		{Service: "api", State: "running", Ready: true},
 		{Service: "web", State: "running", Ready: true},
 	}
-	exposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: true, Detail: "HTTP 200"}}
+	exposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "localhost", Port: 443, Ready: true, Detail: "HTTP 200"}}
 	status := repositoryWorkloadStatus{Found: true, Services: attachWorkloadExposures(services, exposures), Exposures: exposures}
 	if !status.Ready() || status.ReadyCount() != 2 || status.ExposureReadyCount() != 1 {
 		t.Fatalf("expected ready status: %#v", status)
 	}
 
-	failedExposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "127.0.0.1", Port: 443, Ready: false, Detail: "unreachable"}}
+	failedExposures := []workloadExposureStatus{{Service: "web", Scheme: "https", Host: "localhost", Port: 443, Ready: false, Detail: "unreachable"}}
 	status = repositoryWorkloadStatus{
 		Found: true,
 		Services: attachWorkloadExposures([]workloadServiceStatus{
@@ -65,8 +65,29 @@ func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
 	if err := workloadExposureReadinessError(status.Exposures); err == nil || !strings.Contains(err.Error(), "exposure readiness failed") {
 		t.Fatalf("expected classified exposure error, got %v", err)
 	}
-	if got := formatWorkloadServiceStatus(status.Services[1]); !strings.Contains(got, "exposure=https://127.0.0.1:443 unreachable") {
+	if got := formatWorkloadServiceStatus(status.Services[1]); !strings.Contains(got, "exposure=https://localhost:443 unreachable") {
 		t.Fatalf("expected exposure detail in service status, got %q", got)
+	}
+}
+
+func TestInspectWorkloadExposuresDeduplicatesIPv4IPv6Publishers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer server.Close()
+	_, port := testServerHostPort(t, server.URL)
+	states := []bhruntime.ServiceState{{
+		Service: "edge",
+		State:   "running",
+		Publishers: []bhruntime.PublishedPort{
+			{URL: "0.0.0.0", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+			{URL: "::", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+		},
+	}}
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states)
+	if len(exposures) != 1 {
+		t.Fatalf("expected one deduplicated exposure, got %#v", exposures)
+	}
+	if exposures[0].Host != "localhost" || !exposures[0].Ready || exposures[0].Detail != "HTTP 200" {
+		t.Fatalf("unexpected exposure: %#v", exposures[0])
 	}
 }
 
@@ -101,13 +122,16 @@ func TestProbeHTTPExposureAcceptsHTTPRedirectAndSelfSignedTLS(t *testing.T) {
 	}
 
 	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "localhost:"+strconv.Itoa(portFromURL(t, tlsServer.URL)) {
+			// Host is asserted below through a dedicated target-host call.
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer tlsServer.Close()
 	host, port = testServerHostPort(t, tlsServer.URL)
-	ready, detail = probeHTTPExposure(context.Background(), "https", host, port)
+	ready, detail = probeHTTPExposureTarget(context.Background(), "https", host, "localhost", port)
 	if !ready || detail != "HTTP 200" {
-		t.Fatalf("TLS readiness = %v %q", ready, detail)
+		t.Fatalf("TLS localhost readiness = %v %q", ready, detail)
 	}
 }
 
@@ -138,6 +162,12 @@ func testServerHostPort(t *testing.T, rawURL string) (string, int) {
 		t.Fatal(err)
 	}
 	return host, port
+}
+
+func portFromURL(t *testing.T, rawURL string) int {
+	t.Helper()
+	_, port := testServerHostPort(t, rawURL)
+	return port
 }
 
 func TestFormatWorkloadServiceStatus(t *testing.T) {
