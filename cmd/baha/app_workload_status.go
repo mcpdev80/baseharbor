@@ -68,12 +68,7 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 	if stateErr == nil {
 		exposures := inspectWorkloadExposures(ctx, expected, states)
 		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
-		status := repositoryWorkloadStatus{
-			Found:     true,
-			Workload:  workload,
-			Services:  services,
-			Exposures: exposures,
-		}
+		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures}
 		if err := workloadExposureReadinessError(status.Exposures); err != nil {
 			return status, err
 		}
@@ -107,12 +102,7 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 			result = append(result, workloadServiceStatus{Service: service, State: "not running"})
 			continue
 		}
-		result = append(result, workloadServiceStatus{
-			Service: service,
-			State:   normalizedWorkloadState(state.State),
-			Health:  strings.ToLower(strings.TrimSpace(state.Health)),
-			Ready:   state.Ready(),
-		})
+		result = append(result, workloadServiceStatus{Service: service, State: normalizedWorkloadState(state.State), Health: strings.ToLower(strings.TrimSpace(state.Health)), Ready: state.Ready()})
 	}
 	return result
 }
@@ -138,6 +128,7 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 	for _, name := range expected {
 		selected[name] = true
 	}
+	seen := map[string]struct{}{}
 	var result []workloadExposureStatus
 	for _, state := range states {
 		if !selected[state.Service] || !state.Ready() {
@@ -149,17 +140,19 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 				continue
 			}
 			host := normalizePublishedHost(publisher.URL)
+			key := fmt.Sprintf("%s\x00%s\x00%s\x00%d", state.Service, scheme, host, publisher.PublishedPort)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			logicalHost := host
+			if isLoopbackHost(host) {
+				logicalHost = "localhost"
+			}
 			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			ready, detail := probeHTTPExposure(probeCtx, scheme, host, publisher.PublishedPort)
+			ready, detail := probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
 			cancel()
-			result = append(result, workloadExposureStatus{
-				Service: state.Service,
-				Scheme:  scheme,
-				Host:    host,
-				Port:    publisher.PublishedPort,
-				Ready:   ready,
-				Detail:  detail,
-			})
+			result = append(result, workloadExposureStatus{Service: state.Service, Scheme: scheme, Host: logicalHost, Port: publisher.PublishedPort, Ready: ready, Detail: detail})
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -177,10 +170,9 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 func workloadExposureReadinessError(exposures []workloadExposureStatus) error {
 	var failures []string
 	for _, exposure := range exposures {
-		if exposure.Ready {
-			continue
+		if !exposure.Ready {
+			failures = append(failures, fmt.Sprintf("%s/%s", exposure.Service, formatWorkloadExposureStatus(exposure)))
 		}
-		failures = append(failures, fmt.Sprintf("%s/%s", exposure.Service, formatWorkloadExposureStatus(exposure)))
 	}
 	if len(failures) == 0 {
 		return nil
@@ -212,12 +204,29 @@ func normalizePublishedHost(host string) string {
 	return strings.Trim(host, "[]")
 }
 
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
 func probeHTTPExposure(ctx context.Context, scheme, host string, port int) (bool, string) {
+	return probeHTTPExposureTarget(ctx, scheme, host, host, port)
+}
+
+func probeHTTPExposureTarget(ctx context.Context, scheme, dialHost, requestHost string, port int) (bool, string) {
+	dialAddress := net.JoinHostPort(dialHost, strconv.Itoa(port))
+	dialer := &net.Dialer{Timeout: 2 * time.Second}
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, dialAddress)
+		},
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true, // Readiness proves the local TLS endpoint; certificate trust is app-owned in v0.3.
+			ServerName:         requestHost,
+			InsecureSkipVerify: true, // v0.3 proves the app-owned local TLS endpoint, not certificate trust policy.
 		},
 		TLSHandshakeTimeout: 2 * time.Second,
 	}
@@ -225,11 +234,9 @@ func probeHTTPExposure(ctx context.Context, scheme, host string, port int) (bool
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   3 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	url := scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+	url := scheme + "://" + net.JoinHostPort(requestHost, strconv.Itoa(port)) + "/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, "invalid endpoint"
