@@ -31,6 +31,7 @@ func rootCommand() *cli.Command {
 		appLogsCommand(store),
 		appShellCommand(store),
 		appExecCommand(store),
+		appUpdateCommand(store),
 		appStatusCommand(store),
 		appDoctorRepairCommand(store),
 		appDownCommand(store),
