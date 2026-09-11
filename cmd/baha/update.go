@@ -18,7 +18,7 @@ import (
 const defaultReleaseAPIBase = "https://api.github.com/repos/mcpdev80/baseharbor"
 
 var (
-	releaseAPIBase = defaultReleaseAPIBase
+	releaseAPIBase    = defaultReleaseAPIBase
 	releaseHTTPClient = &http.Client{Timeout: 15 * time.Second}
 )
 
@@ -37,17 +37,17 @@ type baseHarborRelease struct {
 }
 
 type selfUpdateCheck struct {
-	Installed     string
-	Channel       string
-	Target        string
-	ReleaseURL    string
-	AssetName     string
-	AssetURL      string
-	AssetDigest   string
-	ChecksumsURL  string
-	Relation      string
-	Platform      string
-	Prerelease    bool
+	Installed    string
+	Channel      string
+	Target       string
+	ReleaseURL   string
+	AssetName    string
+	AssetURL     string
+	AssetDigest  string
+	ChecksumsURL string
+	Relation     string
+	Platform     string
+	Prerelease   bool
 }
 
 type selfUpdateOptions struct {
@@ -157,17 +157,17 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 		}
 	}
 	return selfUpdateCheck{
-		Installed: installedNormalized,
-		Channel: opts.Channel,
-		Target: target,
-		ReleaseURL: release.HTMLURL,
-		AssetName: assetName,
-		AssetURL: assetURL,
-		AssetDigest: assetDigest,
+		Installed:    installedNormalized,
+		Channel:      opts.Channel,
+		Target:       target,
+		ReleaseURL:   release.HTMLURL,
+		AssetName:    assetName,
+		AssetURL:     assetURL,
+		AssetDigest:  assetDigest,
 		ChecksumsURL: checksumsURL,
-		Relation: relation,
-		Platform: runtime.GOOS + "/" + runtime.GOARCH,
-		Prerelease: release.Prerelease,
+		Relation:     relation,
+		Platform:     runtime.GOOS + "/" + runtime.GOARCH,
+		Prerelease:   release.Prerelease,
 	}, nil
 }
 
@@ -292,7 +292,7 @@ func compareReleaseVersions(left, right string) (int, bool) {
 }
 
 type parsedReleaseVersion struct {
-	numbers [3]int
+	numbers    [3]int
 	prerelease string
 }
 
