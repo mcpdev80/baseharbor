@@ -232,8 +232,8 @@ func probeHTTPExposureTarget(ctx context.Context, scheme, dialHost, requestHost 
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
-		Transport: transport,
-		Timeout:   3 * time.Second,
+		Transport:     transport,
+		Timeout:       3 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	url := scheme + "://" + net.JoinHostPort(requestHost, strconv.Itoa(port)) + "/"
