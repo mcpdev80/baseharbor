@@ -64,7 +64,7 @@ jobs:
 
           /tmp/baha app status | tee /tmp/developer-journey-status.out
           grep -Eq '^\[OK\] workload/api +running health=healthy$' /tmp/developer-journey-status.out
-          grep -Eq '^\[OK\] workload/edge +running$' /tmp/developer-journey-status.out
+          grep -Eq '^\[OK\] workload/edge +running .*exposure=http://127\.0\.0\.1:80 HTTP 30[1278].*exposure=https://127\.0\.0\.1:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-status.out
           grep -Eq '^\[OK\] workload/web +running$' /tmp/developer-journey-status.out
           grep -Eq '^\[OK\] workload/worker +running$' /tmp/developer-journey-status.out
           grep -Fq '[OK] workload          4/4 selected Compose service(s) ready' /tmp/developer-journey-status.out
@@ -72,7 +72,7 @@ jobs:
           /tmp/baha app doctor | tee /tmp/developer-journey-doctor.out
           grep -q 'Application runtime is healthy' /tmp/developer-journey-doctor.out
           grep -Eq '^\[OK\] api +running health=healthy$' /tmp/developer-journey-doctor.out
-          grep -Eq '^\[OK\] edge +running$' /tmp/developer-journey-doctor.out
+          grep -Eq '^\[OK\] edge +running .*exposure=http://127\.0\.0\.1:80 HTTP 30[1278].*exposure=https://127\.0\.0\.1:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-doctor.out
 
           /tmp/baha app show | tee /tmp/developer-journey-show.out
           grep -Fq 'Application: mailflow' /tmp/developer-journey-show.out
@@ -81,7 +81,7 @@ jobs:
           grep -Eq '^  PostgreSQL +default +healthy$' /tmp/developer-journey-show.out
           grep -Eq '^  Valkey +default +healthy$' /tmp/developer-journey-show.out
           grep -Eq '^  api +running health=healthy$' /tmp/developer-journey-show.out
-          grep -Eq '^  edge +running$' /tmp/developer-journey-show.out
+          grep -Eq '^  edge +running .*exposure=http://127\.0\.0\.1:80 HTTP 30[1278].*exposure=https://127\.0\.0\.1:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-show.out
           grep -Eq '^  required +1$' /tmp/developer-journey-show.out
           grep -Eq '^  ready +1$' /tmp/developer-journey-show.out
           ! grep -Fq 'SECRET_KEY' /tmp/developer-journey-show.out
