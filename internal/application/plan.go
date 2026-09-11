@@ -19,7 +19,9 @@ func BuildPlan(m Manifest) (Plan, error) {
 		return Plan{}, err
 	}
 	p := Plan{Application: m.Name, Environment: m.Environment}
-	p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})
+	if HasManagedRuntimeServices(m) {
+		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})
+	}
 	for _, instance := range PostgresInstanceNames(m) {
 		resource := "postgres"
 		if instance != defaultServiceInstance {
@@ -45,6 +47,9 @@ func BuildPlan(m Manifest) (Plan, error) {
 		for _, key := range RequiredSecretNames(m) {
 			p.Actions = append(p.Actions, Action{Kind: "verify", Resource: "secret:" + key, Description: "require application secret before readiness"})
 		}
+	}
+	if HasExplicitWorkload(m) {
+		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "workload", Description: "start and verify repository Compose workload"})
 	}
 	return p, nil
 }

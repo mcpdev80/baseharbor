@@ -208,6 +208,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	if err != nil {
 		return "", err
 	}
+	managedRuntime := HasManagedRuntimeServices(m)
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, service := range services {
@@ -223,10 +224,14 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(env[key]))
 			}
 		}
-		b.WriteString("    networks:\n      baseharbor-backend: {}\n")
+		if managedRuntime {
+			b.WriteString("    networks:\n      baseharbor-backend: {}\n")
+		}
 	}
-	b.WriteString("networks:\n  baseharbor-backend:\n    external: true\n")
-	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+	if managedRuntime {
+		b.WriteString("networks:\n  baseharbor-backend:\n    external: true\n")
+		fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+	}
 	return b.String(), nil
 }
 

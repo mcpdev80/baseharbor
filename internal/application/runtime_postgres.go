@@ -29,11 +29,14 @@ func RuntimeProjectName(m Manifest) string {
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
-	if len(PostgresInstanceNames(m)) == 0 && len(RedisInstanceNames(m)) == 0 {
+	if !HasManagedRuntimeServices(m) {
 		if m.Services.Secrets {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
 		}
-		return fmt.Errorf("%w: no supported runtime service is enabled", ErrUnsupportedService)
+		if HasExplicitWorkload(m) {
+			return nil
+		}
+		return fmt.Errorf("%w: no supported runtime service or explicit Compose workload is enabled", ErrUnsupportedService)
 	}
 	return nil
 }
@@ -113,6 +116,9 @@ func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manif
 func RuntimeComposeYAML(m Manifest) (string, error) {
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
+	}
+	if !HasManagedRuntimeServices(m) {
+		return "services: {}\n", nil
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
