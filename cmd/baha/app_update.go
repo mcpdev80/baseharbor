@@ -30,7 +30,7 @@ func appUpdateCommand(store application.Store) *cli.Command {
 		Name:    "update",
 		Summary: "Safely inspect or update a Git-backed application",
 		Usage:   "baha app update [--check]",
-		Long:    "Inspects the current repository Git branch and upstream without changing application source. --check fetches the configured upstream remote, reports current and target revisions, and classifies the working tree as clean or dirty. Automatic mutation remains fail-closed and is added in the next v0.3 update slice; BaseHarbor never resets, stashes, discards changes or switches branches implicitly.",
+		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. Without --check, BaseHarbor requires a clean working tree and a strict fast-forward path to the exact fetched target revision, then re-reads baseharbor.yaml and runs the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			check := false
 			for _, arg := range args {
@@ -40,9 +40,6 @@ func appUpdateCommand(store application.Store) *cli.Command {
 				default:
 					return usageError("unknown baha app update option: "+arg, "Run 'baha app update --help' for usage.")
 				}
-			}
-			if !check {
-				return usageError("baha app update mutation is not enabled yet", "Run 'baha app update --check' to inspect the safe Git update path.")
 			}
 			resolved, err := resolveApplication(store, nil, "update")
 			if err != nil {
@@ -56,6 +53,34 @@ func appUpdateCommand(store application.Store) *cli.Command {
 				return err
 			}
 			formatGitApplicationUpdateCheck(out, resolved.Manifest.Name, resolved.Manifest.Environment, state)
+			if check {
+				return nil
+			}
+			if state.Dirty {
+				return errors.New("automatic application update is blocked because the Git working tree is dirty; commit or otherwise resolve local changes yourself")
+			}
+			switch state.Relation {
+			case "up-to-date":
+				fmt.Fprintf(out, "Application %s is already up to date.\n", resolved.Manifest.Name)
+				return nil
+			case "ahead":
+				return errors.New("automatic application update is blocked because the local branch is ahead of its upstream")
+			case "diverged":
+				return errors.New("automatic application update is blocked because the local branch has diverged from its upstream")
+			case "update-available":
+			default:
+				return fmt.Errorf("automatic application update is blocked for unsupported Git relation %q", state.Relation)
+			}
+
+			if err := fastForwardGitApplicationUpdate(ctx, state); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Source fast-forwarded: %s -> %s\n", state.Current, state.Target)
+			fmt.Fprintln(out, "Re-reading application contract and reconciling runtime...")
+			if err := appApplyCommand(store).Run(ctx, nil, out, errOut); err != nil {
+				return fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err)
+			}
+			fmt.Fprintf(out, "Application %s updated successfully: %s -> %s\n", resolved.Manifest.Name, state.Current, state.Target)
 			return nil
 		},
 	}
@@ -139,6 +164,55 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 	}, nil
 }
 
+func fastForwardGitApplicationUpdate(ctx context.Context, state gitUpdateState) error {
+	if state.Dirty {
+		return errors.New("refusing Git fast-forward with a dirty working tree")
+	}
+	if state.Relation != "update-available" {
+		return fmt.Errorf("refusing Git fast-forward for relation %q", state.Relation)
+	}
+	if state.Current == "" || state.Target == "" {
+		return errors.New("refusing Git fast-forward without explicit current and target revisions")
+	}
+
+	current, err := gitOutput(ctx, state.RepositoryRoot, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("verify current Git revision immediately before update: %w", err)
+	}
+	if strings.TrimSpace(current) != state.Current {
+		return fmt.Errorf("Git HEAD changed after preflight; expected %s, found %s", state.Current, strings.TrimSpace(current))
+	}
+	status, err := gitOutput(ctx, state.RepositoryRoot, "status", "--porcelain=v1", "--untracked-files=normal")
+	if err != nil {
+		return fmt.Errorf("verify Git working tree immediately before update: %w", err)
+	}
+	if strings.TrimSpace(status) != "" {
+		return errors.New("Git working tree changed after preflight; automatic update aborted")
+	}
+	if !gitIsAncestor(ctx, state.RepositoryRoot, state.Current, state.Target) {
+		return errors.New("fetched target is no longer a strict fast-forward descendant of the current revision")
+	}
+
+	if _, err := gitOutput(ctx, state.RepositoryRoot, "merge", "--ff-only", state.Target); err != nil {
+		return fmt.Errorf("fast-forward application source to %s: %w", state.Target, err)
+	}
+	head, err := gitOutput(ctx, state.RepositoryRoot, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("verify Git revision after fast-forward: %w", err)
+	}
+	if strings.TrimSpace(head) != state.Target {
+		return fmt.Errorf("Git fast-forward ended at unexpected revision %s; expected %s", strings.TrimSpace(head), state.Target)
+	}
+	status, err = gitOutput(ctx, state.RepositoryRoot, "status", "--porcelain=v1", "--untracked-files=normal")
+	if err != nil {
+		return fmt.Errorf("verify Git working tree after fast-forward: %w", err)
+	}
+	if strings.TrimSpace(status) != "" {
+		return errors.New("Git working tree is not clean after fast-forward")
+	}
+	return nil
+}
+
 func formatGitApplicationUpdateCheck(out io.Writer, name, environment string, state gitUpdateState) {
 	fmt.Fprintf(out, "Application: %s\n", name)
 	fmt.Fprintf(out, "Environment: %s\n", environment)
@@ -164,7 +238,7 @@ func formatGitApplicationUpdateCheck(out io.Writer, name, environment string, st
 	default:
 		fmt.Fprintf(out, "Update: %s\n", state.Relation)
 	}
-	fmt.Fprintln(out, "No application source changes were made.")
+	fmt.Fprintln(out, "No application source changes were made during preflight.")
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
