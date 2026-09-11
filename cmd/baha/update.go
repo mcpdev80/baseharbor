@@ -52,6 +52,7 @@ type selfUpdateCheck struct {
 
 type selfUpdateOptions struct {
 	Check   bool
+	Yes     bool
 	Channel string
 	Version string
 }
@@ -60,22 +61,26 @@ func updateCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "update",
 		Summary: "Safely inspect or update BaseHarbor itself",
-		Usage:   "baha update --check [--channel stable|rc | --version VERSION]",
-		Long:    "Checks published BaseHarbor releases without changing the installed CLI or runtime. Stable is the default channel; prereleases are considered only when --channel rc or an explicit prerelease --version is supplied. The mutation path is intentionally added only after release selection, compatibility and recovery preflight are proven.",
+		Usage:   "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]",
+		Long:    "Checks or installs published BaseHarbor releases. Stable is the default channel; prereleases are considered only when --channel rc or an explicit prerelease --version is supplied. Mutation requires --yes, verifies release checksums and the candidate binary before replacement, retains a recovery binary, and verifies the updated CLI/runtime before reporting success.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			opts, err := parseSelfUpdateOptions(args)
 			if err != nil {
 				return err
 			}
-			if !opts.Check {
-				return usageError("baha update mutation is not enabled yet", "Run 'baha update --check' to inspect the safe release path.")
-			}
 			check, err := inspectSelfUpdate(ctx, version, opts)
 			if err != nil {
 				return err
 			}
-			formatSelfUpdateCheck(out, check)
-			return nil
+			if opts.Check {
+				formatSelfUpdateCheck(out, check)
+				return nil
+			}
+			if !opts.Yes {
+				formatSelfUpdateCheck(out, check)
+				return usageError("BaseHarbor self-update requires explicit confirmation", "Re-run with --yes after reviewing the selected release.")
+			}
+			return performSelfUpdate(ctx, check, opts, out, errOut)
 		},
 	}
 }
@@ -87,6 +92,8 @@ func parseSelfUpdateOptions(args []string) (selfUpdateOptions, error) {
 		switch args[i] {
 		case "--check":
 			opts.Check = true
+		case "--yes", "-y":
+			opts.Yes = true
 		case "--channel":
 			i++
 			if i >= len(args) {
@@ -109,6 +116,9 @@ func parseSelfUpdateOptions(args []string) (selfUpdateOptions, error) {
 	}
 	if opts.Version != "" && channelSet {
 		return selfUpdateOptions{}, usageError("--version and --channel cannot be combined", "Choose an exact release or a release channel.")
+	}
+	if opts.Check && opts.Yes {
+		return selfUpdateOptions{}, usageError("--check and --yes cannot be combined", "Use --check for a read-only inspection or --yes to perform the update.")
 	}
 	return opts, nil
 }
