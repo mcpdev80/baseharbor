@@ -84,6 +84,7 @@ func rootCommand() *cli.Command {
 		serveCommand(store),
 		appCmd,
 		openBaoCommand(),
+		updateCommand(),
 		{
 			Name:    "version",
 			Aliases: []string{"--version", "-v"},
