@@ -134,11 +134,34 @@ services:
 	if err := runWithIO(ctx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output); err != nil {
 		t.Fatalf("app restore: %v\n%s", err, output.String())
 	}
+	restoreOutput := output.String()
+	if !strings.Contains(restoreOutput, "was restored and verified") || !strings.Contains(restoreOutput, "Status: READY") {
+		t.Fatalf("restore did not report READY after verification:\n%s", restoreOutput)
+	}
 
 	resolved, err = resolveApplication(application.DefaultStore(), nil, "backup acceptance verify")
 	if err != nil {
 		t.Fatal(err)
 	}
+	recoveryMetadata, err := resolved.Store.LastRecovery(resolved.Manifest.Name)
+	if err != nil {
+		t.Fatalf("load recorded recovery metadata: %v", err)
+	}
+	if recoveryMetadata.Application != resolved.Manifest.Name || recoveryMetadata.Environment != resolved.Manifest.Environment || recoveryMetadata.RestoredAt.IsZero() || recoveryMetadata.BackupCreatedAt != metadata.CreatedAt || recoveryMetadata.ArchivePath != backupPath {
+		t.Fatalf("unexpected recorded recovery metadata: %#v", recoveryMetadata)
+	}
+	output.Reset()
+	if err := runWithIO(ctx, []string{"app", "show"}, &output, &output); err != nil {
+		t.Fatalf("app show after recovery: %v\n%s", err, output.String())
+	}
+	showOutput = output.String()
+	if !strings.Contains(showOutput, "Last recovery") || !strings.Contains(showOutput, "verification         READY") || !strings.Contains(showOutput, backupPath) {
+		t.Fatalf("app show did not report verified recovery metadata:\n%s", showOutput)
+	}
+	if strings.Contains(showOutput, "provider-key-v1") || strings.Contains(showOutput, "API_TOKEN") {
+		t.Fatalf("app show exposed secret-bearing recovery detail:\n%s", showOutput)
+	}
+
 	files, err = application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
