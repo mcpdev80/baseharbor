@@ -16,11 +16,22 @@ func TestParseSelfUpdateOptionsDefaultsToStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Check || opts.Channel != "stable" || opts.Version != "" {
+	if !opts.Check || opts.Yes || opts.Channel != "stable" || opts.Version != "" {
 		t.Fatalf("unexpected options: %#v", opts)
 	}
 	if _, err := parseSelfUpdateOptions([]string{"--check", "--version", "0.3.0", "--channel", "rc"}); err == nil {
 		t.Fatal("expected exact version and channel to be mutually exclusive")
+	}
+	if _, err := parseSelfUpdateOptions([]string{"--check", "--yes"}); err == nil {
+		t.Fatal("expected --check and --yes to be mutually exclusive")
+	}
+
+	mutation, err := parseSelfUpdateOptions([]string{"--yes", "--version", "0.3.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutation.Check || !mutation.Yes || mutation.Version != "0.3.0" {
+		t.Fatalf("unexpected mutation options: %#v", mutation)
 	}
 }
 
@@ -122,19 +133,34 @@ func TestCompareReleaseVersions(t *testing.T) {
 	}
 }
 
-func TestSelfUpdateCommandIsDiscoverableAndMutationDisabled(t *testing.T) {
+func TestSelfUpdateCommandIsDiscoverableAndMutationRequiresConfirmation(t *testing.T) {
 	root := rootCommand()
 	var updateFound bool
 	for _, child := range root.Children {
-		if child.Name == "update" {
-			updateFound = true
-			if child.Usage != "baha update --check [--channel stable|rc | --version VERSION]" {
-				t.Fatalf("unexpected update usage: %s", child.Usage)
-			}
-			var out strings.Builder
-			if err := child.Run(context.Background(), nil, &out, &out); err == nil || !strings.Contains(err.Error(), "mutation is not enabled yet") {
-				t.Fatalf("expected disabled mutation error, got %v", err)
-			}
+		if child.Name != "update" {
+			continue
+		}
+		updateFound = true
+		if child.Usage != "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]" {
+			t.Fatalf("unexpected update usage: %s", child.Usage)
+		}
+
+		server := newReleaseTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+			writeReleaseTestJSON(t, w, testRelease("v0.3.0", false))
+		})
+		defer server.Close()
+		withReleaseTestServer(t, server)
+		oldVersion := version
+		version = "0.2.0"
+		t.Cleanup(func() { version = oldVersion })
+
+		var out strings.Builder
+		err := child.Run(context.Background(), nil, &out, &out)
+		if err == nil || !strings.Contains(err.Error(), "requires explicit confirmation") {
+			t.Fatalf("expected explicit confirmation error, got %v", err)
+		}
+		if !strings.Contains(out.String(), "Available version: 0.3.0") || !strings.Contains(out.String(), "No changes were made.") {
+			t.Fatalf("expected mutation preflight output, got %q", out.String())
 		}
 	}
 	if !updateFound {
