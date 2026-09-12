@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -10,12 +11,16 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
-const repositoryInitEnvName = "init.env"
+const (
+	repositoryInitEnvName = "init.env"
+	repositoryTLSDirName  = "tls"
+)
 
 type repositoryInitOptions struct {
 	Hostname string
@@ -28,14 +33,23 @@ type repositoryInitState struct {
 	Hostname string
 	TLSMode  string
 	CertDir  string
+	TLSDir   string
+}
+
+type detectedCertificatePair struct {
+	CertPath string
+	KeyPath  string
+	CertPEM  []byte
+	KeyData  []byte
+	Score    int
 }
 
 func appInitOrConfigureCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create the application contract or initialize deployment settings",
-		Usage:   "baha app init [--hostname HOST] [--tls acme|existing|openbao-pki] [--cert-dir DIR] [--yes]",
-		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, initializes deployment-specific hostname and TLS settings. Values are stored under .baseharbor and stay outside the repository contract. Existing certificate mode accepts one directory; BaseHarbor resolves the certificate set from that directory during startup.",
+		Usage:   "baha app init [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes]",
+		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, asks only for deployment-specific hostname and TLS settings. Existing certificate mode accepts one directory; BaseHarbor detects and validates the matching certificate/key pair and normalizes it under protected local state.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -94,8 +108,8 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 			return repositoryInitOptions{}, err
 		}
 	}
-	if opts.TLSMode != "" && opts.TLSMode != "acme" && opts.TLSMode != "existing" && opts.TLSMode != "openbao-pki" {
-		return repositoryInitOptions{}, usageError("unsupported --tls value "+opts.TLSMode, "Use acme, existing or openbao-pki.")
+	if opts.TLSMode != "" && opts.TLSMode != "acme" && opts.TLSMode != "existing" && opts.TLSMode != "local" {
+		return repositoryInitOptions{}, usageError("unsupported --tls value "+opts.TLSMode, "Use acme, existing or local.")
 	}
 	return opts, nil
 }
@@ -106,18 +120,9 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 	if err != nil {
 		return err
 	}
-	hostname := strings.TrimSpace(opts.Hostname)
-	if hostname == "" {
-		hostname = current.Hostname
-	}
-	tlsMode := strings.TrimSpace(opts.TLSMode)
-	if tlsMode == "" {
-		tlsMode = current.TLSMode
-	}
-	certDir := strings.TrimSpace(opts.CertDir)
-	if certDir == "" {
-		certDir = current.CertDir
-	}
+	hostname := firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname)
+	tlsMode := firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode)
+	certDir := firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir)
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes
 	reader := bufio.NewReader(appInitInput)
@@ -147,13 +152,21 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 				return err
 			}
 		} else if hostname == "localhost" {
-			tlsMode = "openbao-pki"
+			tlsMode = "local"
 		} else {
 			tlsMode = "acme"
 		}
 	}
 	if tlsMode == "" {
-		tlsMode = "acme"
+		tlsMode = "local"
+	}
+
+	tlsDir := filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)
+	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
+		return fmt.Errorf("create local TLS state directory: %w", err)
+	}
+	if err := os.Chmod(tlsDir, 0o700); err != nil {
+		return fmt.Errorf("protect local TLS state directory: %w", err)
 	}
 
 	if tlsMode == "existing" {
@@ -171,17 +184,24 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		if err != nil {
 			return err
 		}
-		info, err := os.Stat(absolute)
+		pair, err := detectCertificatePair(absolute, hostname)
 		if err != nil {
-			return fmt.Errorf("inspect certificate directory: %w", err)
+			return err
 		}
-		if !info.IsDir() {
-			return fmt.Errorf("certificate path %s is not a directory", absolute)
+		if err := writeNormalizedTLSFiles(tlsDir, pair); err != nil {
+			return err
 		}
 		certDir = absolute
+		fmt.Fprintf(out, "[OK] certificate      %s\n", filepath.Base(pair.CertPath))
+		fmt.Fprintf(out, "[OK] private key      %s\n", filepath.Base(pair.KeyPath))
+		fmt.Fprintf(out, "[OK] hostname         %s is covered by the certificate\n", hostname)
+	} else {
+		certDir = ""
+		_ = os.Remove(filepath.Join(tlsDir, "cert.pem"))
+		_ = os.Remove(filepath.Join(tlsDir, "key.pem"))
 	}
 
-	state := repositoryInitState{Hostname: hostname, TLSMode: tlsMode, CertDir: certDir}
+	state := repositoryInitState{Hostname: hostname, TLSMode: tlsMode, CertDir: certDir, TLSDir: tlsDir}
 	if err := writeRepositoryInitState(repoRoot, state); err != nil {
 		return err
 	}
@@ -189,28 +209,38 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 	fmt.Fprintf(out, "Hostname: %s\n", hostname)
 	fmt.Fprintf(out, "TLS: %s\n", tlsMode)
 	if certDir != "" {
-		fmt.Fprintf(out, "Certificate directory: %s\n", certDir)
+		fmt.Fprintf(out, "Certificate source: %s\n", certDir)
 	}
+	fmt.Fprintln(out, "Ports remain managed automatically by BaseHarbor.")
 	fmt.Fprintln(out, "next: run 'baha up'")
 	return nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func promptTLSMode(reader *bufio.Reader, out io.Writer) (string, error) {
 	fmt.Fprintln(out, "TLS:")
 	fmt.Fprintln(out, "  1. ACME / automatic public certificate")
 	fmt.Fprintln(out, "  2. Existing certificate directory")
-	fmt.Fprintln(out, "  3. BaseHarbor PKI (OpenBao-backed)")
+	fmt.Fprintln(out, "  3. Local development certificate")
 	line, err := readPrompt(reader, out, "> ")
 	if err != nil {
 		return "", err
 	}
-	switch strings.TrimSpace(line) {
+	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "", "1", "acme":
 		return "acme", nil
 	case "2", "existing":
 		return "existing", nil
-	case "3", "openbao-pki", "pki":
-		return "openbao-pki", nil
+	case "3", "local":
+		return "local", nil
 	default:
 		return "", fmt.Errorf("invalid TLS selection %q", line)
 	}
@@ -249,6 +279,123 @@ func repositoryWorkloadLooksTLS(repoRoot string, m application.Manifest) (bool, 
 	return strings.Contains(text, "HTTPS_PORT") || strings.Contains(text, ":443") || strings.Contains(text, "443:") || strings.Contains(text, "https://"), nil
 }
 
+func detectCertificatePair(dir, hostname string) (detectedCertificatePair, error) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return detectedCertificatePair{}, fmt.Errorf("inspect certificate directory: %w", err)
+	}
+	if !info.IsDir() {
+		return detectedCertificatePair{}, fmt.Errorf("certificate path %s is not a directory", dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return detectedCertificatePair{}, fmt.Errorf("read certificate directory: %w", err)
+	}
+	type certCandidate struct {
+		path string
+		pem  []byte
+	}
+	var certs []certCandidate
+	var keys []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if certPEM, leaf, err := normalizeCertificateInput(data); err == nil {
+			now := time.Now()
+			if !now.Before(leaf.NotAfter) || now.Before(leaf.NotBefore) || leaf.IsCA {
+				continue
+			}
+			if hostname != "localhost" {
+				if err := leaf.VerifyHostname(hostname); err != nil {
+					continue
+				}
+			}
+			certs = append(certs, certCandidate{path: path, pem: certPEM})
+		}
+		lower := strings.ToLower(entry.Name())
+		if strings.Contains(lower, "key") || strings.HasSuffix(lower, ".key") || strings.Contains(string(data), "PRIVATE KEY") {
+			keys = append(keys, path)
+		}
+	}
+	var matches []detectedCertificatePair
+	for _, cert := range certs {
+		for _, keyPath := range keys {
+			keyData, err := os.ReadFile(keyPath)
+			if err != nil {
+				continue
+			}
+			if _, err := tls.X509KeyPair(cert.pem, keyData); err != nil {
+				continue
+			}
+			matches = append(matches, detectedCertificatePair{
+				CertPath: cert.path,
+				KeyPath:  keyPath,
+				CertPEM:  cert.pem,
+				KeyData:  keyData,
+				Score:    certificatePairScore(cert.path, keyPath, hostname),
+			})
+		}
+	}
+	if len(matches) == 0 {
+		return detectedCertificatePair{}, fmt.Errorf("no valid certificate/private-key pair for hostname %s was found in %s", hostname, dir)
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].Score == matches[j].Score {
+			return matches[i].CertPath < matches[j].CertPath
+		}
+		return matches[i].Score > matches[j].Score
+	})
+	if len(matches) > 1 && matches[0].Score == matches[1].Score && (matches[0].CertPath != matches[1].CertPath || matches[0].KeyPath != matches[1].KeyPath) {
+		return detectedCertificatePair{}, fmt.Errorf("multiple equally suitable certificate/key pairs were found in %s; remove obsolete files or keep one preferred fullchain/key pair", dir)
+	}
+	return matches[0], nil
+}
+
+func certificatePairScore(certPath, keyPath, hostname string) int {
+	certName := strings.ToLower(filepath.Base(certPath))
+	keyName := strings.ToLower(filepath.Base(keyPath))
+	score := 0
+	if strings.Contains(certName, "fullchain") || strings.Contains(certName, "bundle") {
+		score += 20
+	}
+	certStem := strings.TrimSuffix(certName, filepath.Ext(certName))
+	keyStem := strings.TrimSuffix(keyName, filepath.Ext(keyName))
+	if certStem == keyStem || strings.TrimSuffix(certStem, "-cert") == strings.TrimSuffix(keyStem, "-key") {
+		score += 10
+	}
+	if hostname != "" && strings.Contains(certName, strings.ToLower(strings.ReplaceAll(hostname, ".", "-"))) {
+		score += 5
+	}
+	return score
+}
+
+func writeNormalizedTLSFiles(tlsDir string, pair detectedCertificatePair) error {
+	for path, data := range map[string][]byte{
+		filepath.Join(tlsDir, "cert.pem"): pair.CertPEM,
+		filepath.Join(tlsDir, "key.pem"):  pair.KeyData,
+	} {
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, data, 0o600); err != nil {
+			return fmt.Errorf("write normalized TLS material: %w", err)
+		}
+		if err := os.Chmod(tmp, 0o600); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+	}
+	return nil
+}
+
 func repositoryInitEnvPath(repoRoot string) string {
 	return filepath.Join(repoRoot, ".baseharbor", repositoryInitEnvName)
 }
@@ -264,7 +411,8 @@ func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 	return repositoryInitState{
 		Hostname: strings.TrimSpace(values["BASEHARBOR_HOSTNAME"]),
 		TLSMode:  strings.TrimSpace(values["BASEHARBOR_TLS_MODE"]),
-		CertDir:  strings.TrimSpace(values["BASEHARBOR_TLS_CERT_DIR"]),
+		CertDir:  strings.TrimSpace(values["BASEHARBOR_TLS_SOURCE_DIR"]),
+		TLSDir:   strings.TrimSpace(values["BASEHARBOR_TLS_CERT_DIR"]),
 	}, nil
 }
 
@@ -277,9 +425,11 @@ func writeRepositoryInitState(repoRoot string, state repositoryInitState) error 
 		return err
 	}
 	values := map[string]string{
-		"BASEHARBOR_HOSTNAME":     state.Hostname,
-		"BASEHARBOR_TLS_MODE":     state.TLSMode,
-		"BASEHARBOR_TLS_CERT_DIR": state.CertDir,
+		"BASEHARBOR_HOSTNAME":       state.Hostname,
+		"BASEHARBOR_PUBLIC_SCHEME":  "https",
+		"BASEHARBOR_TLS_MODE":       state.TLSMode,
+		"BASEHARBOR_TLS_CERT_DIR":   state.TLSDir,
+		"BASEHARBOR_TLS_SOURCE_DIR": state.CertDir,
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
