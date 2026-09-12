@@ -55,19 +55,28 @@ func configureRepositoryComposeEnvironment(repoRoot string) error {
 	if strings.TrimSpace(os.Getenv("COMPOSE_ENV_FILES")) != "" {
 		return nil
 	}
-	path := filepath.Join(repoRoot, ".env")
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
+	var paths []string
+	for _, path := range []string{
+		repositoryInitEnvPath(repoRoot),
+		filepath.Join(repoRoot, ".env"),
+	} {
+		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect repository Compose environment file: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("repository Compose environment file %s is not a regular file", path)
+		}
+		paths = append(paths, path)
+	}
+	if len(paths) == 0 {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("inspect repository Compose environment file: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("repository Compose environment file %s is not a regular file", path)
-	}
-	if err := os.Setenv("COMPOSE_ENV_FILES", path); err != nil {
-		return fmt.Errorf("configure repository Compose environment file: %w", err)
+	if err := os.Setenv("COMPOSE_ENV_FILES", strings.Join(paths, ",")); err != nil {
+		return fmt.Errorf("configure repository Compose environment files: %w", err)
 	}
 	return nil
 }

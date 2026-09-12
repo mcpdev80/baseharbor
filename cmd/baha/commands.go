@@ -15,7 +15,10 @@ func rootCommand() *cli.Command {
 	for i, child := range appCmd.Children {
 		switch child.Name {
 		case "init":
-			appCmd.Children[i] = appGuidedInitCommand()
+			initCmd := appInitOrConfigureCommand(store)
+			initCmd.Usage = "baha app init [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]..."
+			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
+			appCmd.Children[i] = initCmd
 		case "show":
 			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
 		}
