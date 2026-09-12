@@ -15,7 +15,7 @@ func rootCommand() *cli.Command {
 	for i, child := range appCmd.Children {
 		switch child.Name {
 		case "init":
-			appCmd.Children[i] = appGuidedInitCommand()
+			appCmd.Children[i] = appInitOrConfigureCommand(store)
 		case "show":
 			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
 		}
