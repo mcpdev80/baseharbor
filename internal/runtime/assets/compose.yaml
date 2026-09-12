@@ -18,7 +18,7 @@ services:
       start_period: 5s
 
   openbao:
-    image: openbao/openbao:2.6.2
+    image: openbao/openbao:2.6.2@sha256:11fd73a2102cda9c55d5d881a8c3210303146a7ec1e8ac76f526e175c6d24641
     restart: unless-stopped
     command: server
     environment:
