@@ -119,7 +119,7 @@ func TestPromptTLSMode(t *testing.T) {
 		"2\n": "existing",
 		"3\n": "local",
 	} {
-		got, err := promptTLSMode(bufioReader(input), &bytes.Buffer{})
+		got, err := promptTLSMode(runtimeInitReader(input), &bytes.Buffer{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +129,7 @@ func TestPromptTLSMode(t *testing.T) {
 	}
 }
 
-func bufioReader(input string) *bufio.Reader {
+func runtimeInitReader(input string) *bufio.Reader {
 	return bufio.NewReader(bytes.NewBufferString(input))
 }
 
