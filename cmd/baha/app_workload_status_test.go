@@ -82,12 +82,39 @@ func TestInspectWorkloadExposuresDeduplicatesIPv4IPv6Publishers(t *testing.T) {
 			{URL: "::", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
 		},
 	}}
-	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states)
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "")
 	if len(exposures) != 1 {
 		t.Fatalf("expected one deduplicated exposure, got %#v", exposures)
 	}
 	if exposures[0].Host != "localhost" || !exposures[0].Ready || exposures[0].Detail != "HTTP 200" {
 		t.Fatalf("unexpected exposure: %#v", exposures[0])
+	}
+}
+
+func TestInspectWorkloadExposuresUsesConfiguredHostnameForLoopbackProbe(t *testing.T) {
+	var requestHost string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	_, port := testServerHostPort(t, server.URL)
+	states := []bhruntime.ServiceState{{
+		Service: "edge",
+		State:   "running",
+		Publishers: []bhruntime.PublishedPort{
+			{URL: "0.0.0.0", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
+		},
+	}}
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "mail.example.test")
+	if len(exposures) != 1 {
+		t.Fatalf("expected one exposure, got %#v", exposures)
+	}
+	if exposures[0].Host != "mail.example.test" || !exposures[0].Ready {
+		t.Fatalf("unexpected configured-host exposure: %#v", exposures[0])
+	}
+	if requestHost != "mail.example.test:"+strconv.Itoa(port) {
+		t.Fatalf("request Host = %q", requestHost)
 	}
 }
 
