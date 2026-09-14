@@ -66,7 +66,7 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
-		exposures := inspectWorkloadExposures(ctx, expected, states)
+		exposures := inspectWorkloadExposures(ctx, expected, states, environment["BASEHARBOR_HOSTNAME"])
 		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
 		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures}
 		if err := workloadExposureReadinessError(status.Exposures); err != nil {
@@ -123,11 +123,12 @@ func attachWorkloadExposures(services []workloadServiceStatus, exposures []workl
 	return services
 }
 
-func inspectWorkloadExposures(ctx context.Context, expected []string, states []bhruntime.ServiceState) []workloadExposureStatus {
+func inspectWorkloadExposures(ctx context.Context, expected []string, states []bhruntime.ServiceState, configuredHostname string) []workloadExposureStatus {
 	selected := make(map[string]bool, len(expected))
 	for _, name := range expected {
 		selected[name] = true
 	}
+	configuredHostname = strings.TrimSpace(configuredHostname)
 	seen := map[string]struct{}{}
 	var result []workloadExposureStatus
 	for _, state := range states {
@@ -148,6 +149,9 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 			logicalHost := host
 			if isLoopbackHost(host) {
 				logicalHost = "localhost"
+				if configuredHostname != "" {
+					logicalHost = configuredHostname
+				}
 			}
 			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			ready, detail := probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
