@@ -48,6 +48,10 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 	if err != nil {
 		return repositoryWorkloadStatus{Found: true, Workload: workload}, err
 	}
+	initState, err := loadRepositoryInitState(workload.RepositoryRoot)
+	if err != nil {
+		return repositoryWorkloadStatus{Found: true, Workload: workload}, fmt.Errorf("load repository deployment state: %w", err)
+	}
 	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return repositoryWorkloadStatus{Found: true, Workload: workload}, err
@@ -66,7 +70,7 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
-		exposures := inspectWorkloadExposures(ctx, expected, states, environment["BASEHARBOR_HOSTNAME"])
+		exposures := inspectWorkloadExposures(ctx, expected, states, initState.Hostname)
 		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
 		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures}
 		if err := workloadExposureReadinessError(status.Exposures); err != nil {
