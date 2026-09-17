@@ -15,10 +15,10 @@ const (
 // on. Capability providers such as PostgreSQL, Valkey or object storage are a
 // separate axis and must not be encoded here.
 type ProviderCapabilities struct {
-	WorkloadLifecycle  bool
-	ServiceExec        bool
-	PublishedPorts     bool
-	ResourceOwnership  bool
+	WorkloadLifecycle bool
+	ServiceExec       bool
+	PublishedPorts    bool
+	ResourceOwnership bool
 }
 
 // Provider is the minimal runtime-provider seam. It deliberately exposes only
