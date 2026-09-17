@@ -15,6 +15,18 @@ const (
 	ProviderCompose ProviderKind = "compose"
 )
 
+// RuntimeCapability names portable runtime behavior that orchestration may
+// require from a provider. These capabilities describe the runtime substrate,
+// not application capabilities such as PostgreSQL or object storage.
+type RuntimeCapability string
+
+const (
+	CapabilityWorkloadLifecycle RuntimeCapability = "workload-lifecycle"
+	CapabilityServiceExec       RuntimeCapability = "service-exec"
+	CapabilityPublishedPorts    RuntimeCapability = "published-ports"
+	CapabilityResourceOwnership RuntimeCapability = "resource-ownership"
+)
+
 // ProviderCapabilities describes runtime behavior that orchestration may rely
 // on. Capability providers such as PostgreSQL, Valkey or object storage are a
 // separate axis and must not be encoded here.
@@ -23,6 +35,21 @@ type ProviderCapabilities struct {
 	ServiceExec       bool
 	PublishedPorts    bool
 	ResourceOwnership bool
+}
+
+func (c ProviderCapabilities) Supports(capability RuntimeCapability) bool {
+	switch capability {
+	case CapabilityWorkloadLifecycle:
+		return c.WorkloadLifecycle
+	case CapabilityServiceExec:
+		return c.ServiceExec
+	case CapabilityPublishedPorts:
+		return c.PublishedPorts
+	case CapabilityResourceOwnership:
+		return c.ResourceOwnership
+	default:
+		return false
+	}
 }
 
 // Provider is the minimal runtime-provider seam. It deliberately exposes only
@@ -45,6 +72,25 @@ func ParseProviderKind(value string) (ProviderKind, error) {
 	default:
 		return "", fmt.Errorf("unsupported runtime provider %q", value)
 	}
+}
+
+// RequireCapabilities validates runtime requirements before orchestration
+// starts. Providers must satisfy every requested capability; BaseHarbor never
+// silently downgrades runtime behavior because a provider lacks a feature.
+func RequireCapabilities(provider Provider, required ...RuntimeCapability) error {
+	if provider == nil {
+		return fmt.Errorf("runtime provider is required")
+	}
+	caps := provider.Capabilities()
+	for _, capability := range required {
+		if capability == "" {
+			return fmt.Errorf("runtime provider %s: empty capability requirement", provider.Kind())
+		}
+		if !caps.Supports(capability) {
+			return fmt.Errorf("runtime provider %s does not support required capability %q", provider.Kind(), capability)
+		}
+	}
+	return nil
 }
 
 func (Compose) Kind() ProviderKind {
