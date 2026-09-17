@@ -18,7 +18,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor löst, provisioniert, sichert und betreibt diese Anforderungen über den gewählten Runtime-/Deployment-Provider. Die Anwendung selbst bleibt bei Standardprotokollen und nativen Clients.
 
-## Stand v0.2.0
+## Stand v0.3.0
 
 Der vollständige aktuelle Runtime-Weg ist Docker/Podman Compose.
 
@@ -26,52 +26,98 @@ Bereits vorhanden sind:
 
 - `baha` als zentrale Lifecycle-CLI;
 - repository-eigene `baseharbor.yaml`;
-- projektbewusstes `baha app init` und der `baha up` Happy Path;
+- Detect-first `baha app init`, `--quick` und deterministische Flags;
 - PostgreSQL und Valkey mit mehreren benannten logischen Instanzen;
+- explizite Workload-only-Compose-Anwendungen ohne künstliche Backend-Abhängigkeit;
 - Managed Required/Generated Secrets mit OpenBao;
-- Standard-Environment-/Datei-Bindings;
-- Workload-Anbindung über generierte Compose-Overrides;
-- isolierte Application-Backend-Netze;
-- Runtime Identity und mTLS Secret Broker;
-- Status, Doctor, Recovery und kontrollierter Lebenszyklus;
-- verschlüsseltes Application Backup/Restore;
-- versionierter Release-/Runtime-Image-Vertrag und reale MailFlow-Acceptance-Tests.
+- Standard-Environment-/Datei-Bindings und Runtime Identity/mTLS Broker;
+- Trusted-local Developer Access mit DB-/Cache-Clients, Logs, Shell und Exec;
+- servicebezogene, health-aware Workload-Truth inklusive app-eigener HTTP/HTTPS-Readiness;
+- `show`, `status` und `doctor` auf gemeinsamer Runtime-Wahrheit;
+- verschlüsseltes Guided Backup/Restore mit verifizierter Recovery-Metadatenablage;
+- strict fast-forward Application Updates mit Recovery-Policy;
+- abgesichertes BaseHarbor-Self-Update mit Artefaktprüfung und Rollback;
+- Repository-Deployment-Init für Public FQDN und TLS-Modus;
+- Existing/BYOC-Zertifikatsprüfung und -Update mit Reload-/Readiness-Verifikation;
+- persistenter automatischer Host-Port-Fallback für konfigurierbare Compose-Publisher inklusive IPv4/IPv6-Bindfehlern;
+- versionierter Release-/Runtime-Image-Vertrag und reale Acceptance-Tests einschließlich MailFlow.
 
 Mehrere logische Service-Instanzen sind nicht HA. HA ist spätere Topologie hinter einem stabilen logischen Dienst.
 
 ## Architekturregel
 
-Compose bleibt first-class und wird jetzt sauber fertiggezogen. Gleichzeitig dürfen Compose-spezifische Details nicht Teil der portablen App-Anforderungen werden.
+Compose bleibt first-class und ist in v0.3 der vollständige Runtime-Provider. Gleichzeitig dürfen Compose-spezifische Details nicht Teil der portablen App-Anforderungen werden.
 
-Dazu gehören etwa Compose-Projektnamen, Netzwerke, Container-Namen, Host-Ports und generierte Overrides. Später gilt dasselbe für Kubernetes-Objektnamen, Namespace-Mechaniken oder OpenShift-spezifische Routes/SCCs.
+Dazu gehören etwa Compose-Projektnamen, Netzwerke, Container-Namen, Host-Ports, Public-FQDN/TLS-Realisierung und generierte Overrides. Später gilt dasselbe für Kubernetes-Objektnamen, Namespace-Mechaniken oder OpenShift-spezifische Routes/SCCs.
+
+## v0.3-Grenze: umgesetzt versus später
+
+In v0.3 umgesetzt:
+
+- aktive Verifikation app-eigener HTTP/HTTPS-Exposition;
+- Public FQDN als geschützter Deployment-State;
+- Existing/BYOC-Zertifikats-Lifecycle für Repository-Compose-Deployments;
+- lokaler Compose-Port-Fallback;
+- Backup/Restore- und Update-Verifikation an der echten Application Boundary.
+
+Weiterhin Future Work:
+
+- providerneutrale `ingress.http`-/`tls.certificate`-Capabilities;
+- BaseHarbor-gesteuertes ACME und automatische Zertifikatserneuerung;
+- OpenBao-PKI-Issuance/Rotation für Ingress-Zertifikate;
+- Kubernetes Gateway/Ingress und OpenShift Routes;
+- HA-/Topologieprofile;
+- Managed-Production-OIDC/RBAC/JIT-Policy.
 
 ## Nächste Architekturstränge
 
-### Application Contract und Input Resolver
+### Portable Application Contract und Provider-Seam
 
-- Provider-neutralere Weiterentwicklung des Anwendungsvertrags;
+- Weiterentwicklung des Anwendungsvertrags ohne Compose-only-Annahmen;
+- Capability-Negotiation und fail-closed Provider-Auswahl;
+- klare Trennung von App-Anforderungen und Environment-/Operator-Policy;
+- inkrementelle Provider-Grenze ohne den v0.3-Compose-Developer-Journey zu brechen.
+
+### Input Resolver
+
 - deklarative Inputs, Defaults, generierte Werte und abhängige Fragen;
 - dieselbe Resolver-Logik für CLI, spätere GUI/API und Automation;
-- klare Trennung von App-Anforderungen und Plattform-/Operator-Policy.
+- klare Ownership von App-Anforderungen versus Deployment-/Operator-Inputs;
+- keine universelle Business-Konfigurationsplattform für Anwendungen.
 
-### Developer Access
+### Developer Access und Managed Policy
 
-- bequemer Zugriff auf verwaltete Ressourcen über `baha`;
-- PostgreSQL-/Valkey-Shell, Logs, Exec und kontrollierter Credential-Zugriff;
-- identische Befehlslogik über unterschiedliche Environments hinweg.
+Trusted-local Developer Access ist in v0.3 vorhanden. Später folgen:
 
-### Environment, Identity und Policy
-
-- Development bleibt möglichst reibungslos;
-- Test/Staging/Production können zunehmend strengere Policies erzwingen;
-- später OIDC, RBAC, Audit und Just-in-Time/Elevated Access;
-- Raw-Secret-Reveal wird in Managed Production zur Ausnahme.
+- environmentabhängige Zugriffsregeln;
+- OIDC, RBAC, Audit und Just-in-Time/Elevated Access;
+- Raw-Secret-Reveal als Ausnahme in Managed Production;
+- policy-gesteuerter Zugriff auf Logs, Shells, Credentials und destruktive Lifecycle-Aktionen.
 
 ### Exposure, TLS und PKI
 
-- öffentliche/interne Exposition als Plattformfähigkeit;
-- ACME, interne OpenBao-PKI und bestehende/BYOC-Zertifikate;
-- automatische Erkennung, Validierung, Rotation und Health Checks.
+Existing/BYOC und app-eigene HTTP/TLS-Readiness sind in v0.3 umgesetzt. Später folgen:
+
+- öffentliche/interne Exposition als portabler Plattform-Intent;
+- providerneutrale Ingress-/Gateway-Abstraktion;
+- ACME-Lifecycle über den gewählten Provider;
+- interne OpenBao-PKI, wo passend;
+- automatische Renewal/Rotation und Health Policy;
+- cert-manager/Gateway und OpenShift-native Integrationen.
+
+### Capability Provider
+
+Default-Produkte bleiben austauschbare Implementierungsentscheidungen. Geplant sind Provider-Grenzen für:
+
+- relationale SQL-Datenbank;
+- Cache/Key-Value;
+- Secrets;
+- S3-kompatibles Object Storage;
+- Ingress/Exposure;
+- Identity;
+- Observability.
+
+Kann ein Provider die geforderte Capability oder Garantie nicht erfüllen, muss BaseHarbor klar ablehnen statt Sicherheit, Haltbarkeit oder Verfügbarkeit stillschweigend zu reduzieren.
 
 ### Runtime Provider
 
@@ -85,9 +131,9 @@ Runtime / Deployment Provider
  Compose   Kubernetes    OpenShift
 ```
 
-Kubernetes und OpenShift sind zukünftige Provider, keine v0.2.0-Features. Sie sollen dieselben logischen Ressourcen und Lifecycle-Konzepte auf native Plattformprimitive abbilden.
+Kubernetes und OpenShift sind zukünftige Provider, keine v0.3.0-Features. Sie sollen dieselben logischen Ressourcen und Lifecycle-Konzepte auf native Plattformprimitive abbilden.
 
-### Deploymentprofile und HA
+### Environment, Identity und Topologieprofile
 
 Environment/Risiko und Topologie bleiben getrennt. Ein späteres Deployment kann z. B. `production + enterprise-ha + openshift` sein, während die Anwendung weiterhin nur eine logische PostgreSQL-Ressource `primary` anfordert.
 
