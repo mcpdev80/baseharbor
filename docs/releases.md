@@ -10,8 +10,8 @@ BaseHarbor is currently in the `0.x` series.
 
 During `0.x`:
 
-- patch releases (`0.2.0` -> `0.2.1`) are backward-compatible bug and security fixes;
-- minor releases (`0.2.x` -> `0.3.0`) may contain intentionally documented breaking changes;
+- patch releases (`0.3.0` -> `0.3.1`) are backward-compatible bug and security fixes;
+- minor releases (`0.3.x` -> `0.4.0`) may contain intentionally documented breaking changes;
 - every breaking change must be called out in `CHANGELOG.md` and GitHub Release notes;
 - consumers should pin an explicit compatible range instead of tracking `main`.
 
@@ -38,10 +38,10 @@ Published channels:
 
 Every release starts with a release-preparation pull request.
 
-1. Ensure all required CI and real-product acceptance gates are green.
+1. Ensure all required CI and real-product acceptance gates are green on the exact release-preparation head.
 2. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
 3. Review compatibility impact and select the SemVer increment.
-4. Merge the release-preparation PR to `main`.
+4. Merge the release-preparation PR to `main` only after the required gates are green.
 5. Create an immutable tag `vX.Y.Z` on that exact green `main` commit.
 6. Push the tag.
 7. The release workflow validates the tag, changelog section and source, tests the code, publishes artifacts and provenance.
@@ -79,4 +79,4 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 ## Consumer guidance
 
-A real application should never silently follow `main`. During the `0.x` series, an application tested against `v0.2.0` should normally constrain itself to the compatible minor line, for example `>=0.2.0 <0.3.0`, unless it intentionally validates against a newer minor release.
+A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.3.0` should normally constrain itself to the compatible minor line, for example `>=0.3.0 <0.4.0`, unless it intentionally validates against a newer minor release.
