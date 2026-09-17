@@ -49,7 +49,7 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 		Name:    "init",
 		Summary: "Create the application contract or initialize deployment settings",
 		Usage:   "baha app init [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes]",
-		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, asks only for deployment-specific hostname and TLS settings. Existing certificate mode accepts one directory; BaseHarbor detects and validates the matching certificate/key pair and normalizes it under protected local state.",
+		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, asks only for the public FQDN and TLS settings. The --hostname flag is kept for compatibility and accepts the public FQDN. Existing certificate mode accepts one directory; BaseHarbor detects and validates the matching certificate/key pair and normalizes it under protected local state.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -128,7 +128,7 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 	reader := bufio.NewReader(appInitInput)
 	if hostname == "" {
 		if interactive {
-			hostname, err = promptLine(reader, out, "Hostname", "localhost")
+			hostname, err = promptLine(reader, out, "Public FQDN (example: mailflow.example.com)", "localhost")
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		certDir = absolute
 		fmt.Fprintf(out, "[OK] certificate      %s\n", filepath.Base(pair.CertPath))
 		fmt.Fprintf(out, "[OK] private key      %s\n", filepath.Base(pair.KeyPath))
-		fmt.Fprintf(out, "[OK] hostname         %s is covered by the certificate\n", hostname)
+		fmt.Fprintf(out, "[OK] FQDN             %s is covered by the certificate\n", hostname)
 	} else {
 		certDir = ""
 		_ = os.Remove(filepath.Join(tlsDir, "cert.pem"))
@@ -206,7 +206,7 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		return err
 	}
 	fmt.Fprintf(out, "Application runtime initialization saved for %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
-	fmt.Fprintf(out, "Hostname: %s\n", hostname)
+	fmt.Fprintf(out, "FQDN: %s\n", hostname)
 	fmt.Fprintf(out, "TLS: %s\n", tlsMode)
 	if certDir != "" {
 		fmt.Fprintf(out, "Certificate source: %s\n", certDir)
@@ -251,15 +251,15 @@ func validateRuntimeHostname(hostname string) error {
 		return nil
 	}
 	if len(hostname) == 0 || len(hostname) > 253 || strings.ContainsAny(hostname, "/:@ \\") {
-		return fmt.Errorf("invalid hostname %q", hostname)
+		return fmt.Errorf("invalid FQDN %q", hostname)
 	}
 	for _, label := range strings.Split(hostname, ".") {
 		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
-			return fmt.Errorf("invalid hostname %q", hostname)
+			return fmt.Errorf("invalid FQDN %q", hostname)
 		}
 		for _, r := range label {
 			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-') {
-				return fmt.Errorf("invalid hostname %q", hostname)
+				return fmt.Errorf("invalid FQDN %q", hostname)
 			}
 		}
 	}
@@ -343,7 +343,7 @@ func detectCertificatePair(dir, hostname string) (detectedCertificatePair, error
 		}
 	}
 	if len(matches) == 0 {
-		return detectedCertificatePair{}, fmt.Errorf("no valid certificate/private-key pair for hostname %s was found in %s", hostname, dir)
+		return detectedCertificatePair{}, fmt.Errorf("no valid certificate/private-key pair for FQDN %s was found in %s", hostname, dir)
 	}
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Score == matches[j].Score {
