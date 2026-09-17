@@ -29,6 +29,9 @@ func RuntimeProviderStateFromValues(values map[string]string) (RuntimeProviderSt
 
 // ApplyRuntimeProviderState writes normalized deployment metadata into the
 // supplied state map while preserving unrelated deployment-owned values.
+// Provider-only legacy writers also materialize the standard runtime profile
+// when no profile has been persisted yet, so protected deployment state is a
+// complete provider+profile selection without requiring a migration step.
 func ApplyRuntimeProviderState(values map[string]string, state RuntimeProviderState) error {
 	if values == nil {
 		return fmt.Errorf("runtime provider state target is nil")
@@ -38,5 +41,8 @@ func ApplyRuntimeProviderState(values map[string]string, state RuntimeProviderSt
 		return fmt.Errorf("runtime provider state: %w", err)
 	}
 	values[RuntimeProviderEnvKey] = strings.TrimSpace(string(kind))
+	if strings.TrimSpace(values[RuntimeProfileEnvKey]) == "" {
+		values[RuntimeProfileEnvKey] = string(RuntimeProfileStandard)
+	}
 	return nil
 }

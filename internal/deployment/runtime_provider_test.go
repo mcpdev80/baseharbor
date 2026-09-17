@@ -30,12 +30,25 @@ func TestRuntimeProviderStateRoundTripPreservesOtherDeploymentState(t *testing.T
 	if values["BASEHARBOR_HOSTNAME"] != "mail.example.test" || values["BASEHARBOR_TLS_MODE"] != "existing" {
 		t.Fatalf("unrelated deployment state changed: %#v", values)
 	}
+	if values[RuntimeProfileEnvKey] != string(RuntimeProfileStandard) {
+		t.Fatalf("runtime profile = %q, want %q", values[RuntimeProfileEnvKey], RuntimeProfileStandard)
+	}
 	got, err := RuntimeProviderStateFromValues(values)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
 		t.Fatalf("state = %#v, want %#v", got, want)
+	}
+}
+
+func TestApplyRuntimeProviderStatePreservesExplicitProfile(t *testing.T) {
+	values := map[string]string{RuntimeProfileEnvKey: "future-profile"}
+	if err := ApplyRuntimeProviderState(values, RuntimeProviderState{Provider: bhruntime.ProviderCompose}); err != nil {
+		t.Fatal(err)
+	}
+	if values[RuntimeProfileEnvKey] != "future-profile" {
+		t.Fatalf("explicit runtime profile changed: %#v", values)
 	}
 }
 
