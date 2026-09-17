@@ -1,6 +1,6 @@
 # `baha` CLI
 
-`baha` is the primary operator and developer interface for BaseHarbor. The CLI owns setup, inspection, provisioning, verification, backup/restore and controlled lifecycle operations while applications continue to consume standard protocols, environment variables and files.
+`baha` is the primary operator and developer interface for BaseHarbor. The CLI owns setup, inspection, provisioning, verification, backup/restore, updates and controlled lifecycle operations while applications continue to consume standard protocols, environment variables and files.
 
 ## Design rules
 
@@ -24,6 +24,7 @@ baha
 ├── status
 ├── doctor
 ├── serve
+├── update
 ├── app
 │   ├── init
 │   ├── create
@@ -37,6 +38,16 @@ baha
 │   ├── doctor
 │   ├── backup
 │   ├── restore
+│   ├── update
+│   ├── psql
+│   ├── redis
+│   ├── valkey
+│   ├── creds
+│   ├── logs
+│   ├── shell
+│   ├── exec
+│   ├── tls
+│   │   └── update
 │   ├── down
 │   ├── up
 │   ├── destroy
@@ -61,6 +72,9 @@ Use executable help output for precise syntax:
 baha --help
 baha app --help
 baha app backup --help
+baha app update --help
+baha app tls update --help
+baha update --help
 baha openbao --help
 ```
 
@@ -98,42 +112,17 @@ baha app init
 
 Before asking setup questions, `baha` analyzes the repository read-only and detects as much as it can safely derive, including:
 
-- common Compose files in the repository root and under `deploy/` or `docker/`;
+- common Compose files in the repository root and supported conventional subdirectories;
 - PostgreSQL and Redis/Valkey usage;
 - likely application workload services;
-- infrastructure variables from `.env.example`, `.env.template`, `.env.sample` and `.env`;
+- infrastructure variables from common example/template env files;
 - likely required application secret names.
 
 Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
 
-Example detection summary:
-
-```text
-Analyzing repository...
-✓ Application name: mailflow
-✓ Compose file: deploy/docker-compose.yml
-✓ PostgreSQL detected
-✓ Redis/Valkey detected
-✓ Potential required secret names:
-    OPENAI_API_KEY
-    SMTP_PASSWORD
-```
-
-The wizard then shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
+The wizard shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
 
 When more than one PostgreSQL or Redis/Valkey backend is visible, the wizard proposes logical instance names automatically. A single detected backend stays the simple `default` instance.
-
-Example:
-
-```text
-✓ PostgreSQL detected from compose.yaml service postgres-primary
-  logical instances proposed: analytics, primary
-✓ Redis/Valkey detected from compose.yaml service redis-cache
-  logical instances proposed: cache, sessions
-
-PostgreSQL instances (comma-separated) [analytics,primary]:
-Valkey / Redis instances (comma-separated) [cache,sessions]:
-```
 
 Before writing anything, the generated `baseharbor.yaml` is shown as a preview. An existing manifest is never silently overwritten.
 
@@ -156,6 +145,8 @@ baha app init mailflow \
 ```
 
 If the name is omitted from the explicit path, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
+
+For repository deployments, v0.3 additionally initializes protected deployment/runtime state for the current Compose realization. Interactive setup may request a **Public FQDN** and TLS mode. Existing/BYOC certificate mode accepts a source directory, validates the matching certificate/key pair and FQDN coverage, and normalizes the pair into owner-only BaseHarbor state. These deployment details do not become portable fields in `baseharbor.yaml`.
 
 Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
 
@@ -186,7 +177,7 @@ baha app init demo \
   --redis-instance sessions
 ```
 
-The interactive wizard and `--quick` path generate the same logical-instance contract as these deterministic flags. Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
+Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
 
 ## Plan, preflight, apply and verify
 
@@ -198,16 +189,7 @@ plan -> preflight -> apply -> verify
 
 Required secrets are a startup gate. Missing or unusable required secrets prevent the workload from starting.
 
-Once the application secret scope exists, `baha app preflight` reports required-secret readiness directly:
-
-```text
-No application secrets have been configured yet.
-REQUIRED SECRET       STATUS                         ACTION
-OPENAI_API_KEY        missing - user input required  baha app secret set OPENAI_API_KEY --stdin
-SMTP_PASSWORD         missing - user input required  baha app secret set SMTP_PASSWORD --stdin
-```
-
-Present values are reported as `present`; unreadable values are reported as `present but unusable` with the same safe replacement command. Secret values are never printed.
+Repository workload readiness is service-level and health-aware. When conventional HTTP/HTTPS publishers exist, BaseHarbor also probes the locally published endpoint. Redirects count as reachable exposure; 5xx/unreachable endpoints do not. For hostname-bound HTTPS, the local socket is probed using the configured public FQDN as HTTP Host/TLS ServerName.
 
 ## Application environment and bindings
 
@@ -225,6 +207,25 @@ Credential-bearing values are masked by default. Revealing them is an explicit o
 
 See [application-contract.md](application-contract.md).
 
+## Trusted-local developer access
+
+The v0.3 trusted-local workflow can open normal clients and application workload tooling through logical BaseHarbor resource/service names:
+
+```bash
+baha app psql [INSTANCE]
+baha app redis [INSTANCE]
+baha app valkey [INSTANCE]
+baha app creds postgres [INSTANCE]
+baha app creds valkey [INSTANCE]
+baha app logs [SERVICE]
+baha app shell SERVICE
+baha app exec SERVICE COMMAND [ARG...]
+```
+
+Database/cache commands avoid placing passwords in normal command arguments. Credential output is masked by default; explicit reveal is separate. Compose container selection remains an internal provider detail rather than a developer-facing identity.
+
+See [developer-access.md](developer-access.md).
+
 ## Managed secrets
 
 ```bash
@@ -234,7 +235,7 @@ baha app secret list
 baha app secret delete API_TOKEN --yes
 ```
 
-Validate and import a certificate/key pair:
+Validate and import a certificate/key pair into managed application secrets when an application explicitly needs secret material:
 
 ```bash
 baha app secret tls-set \
@@ -243,7 +244,22 @@ baha app secret tls-set \
   --chain-file ./intermediate.pem
 ```
 
-The CLI never uses status/list operations to reveal secret values.
+This command is separate from the repository deployment TLS lifecycle described below. The CLI never uses status/list operations to reveal secret values.
+
+## Deployment TLS lifecycle
+
+For repository deployments initialized with `tls: existing`:
+
+```bash
+baha app tls update --check
+baha app tls update
+```
+
+`--check` is read-only. Mutation validates the configured source certificate/key pair and FQDN coverage, refuses certificate downgrades, writes owner-only normalized files, restarts the repository workload when required and verifies readiness. If recovery fails, the previous protected certificate state is restored and the operation returns failure.
+
+`baha app status` reports TLS mode, expiry, source/update information when deployment TLS state exists. `baha app doctor` adds certificate/key/FQDN/expiry diagnostics.
+
+ACME automation, OpenBao PKI issuance and provider-neutral certificate lifecycle contracts are future work; v0.3 does not claim them.
 
 ## Dynamic runtime identity
 
@@ -254,14 +270,15 @@ baha app runtime-identity revoke --yes
 
 Stored opaque `baseharbor://` secret references remain stable across runtime-identity rotation.
 
-## Status and doctor
+## Status, show and doctor
 
 ```bash
+baha app show
 baha app status
 baha app doctor
 ```
 
-`app doctor` diagnoses manifest integrity, permissions, Compose ownership/configuration, PostgreSQL/Valkey protocol readiness, OpenBao application scope, required-secret usability, repository workload and runtime broker/mTLS readiness when enabled.
+`app show` gives a read-only human-facing overview. `app status` and `app doctor` use the same workload truth for selected Compose services and HTTP/TLS exposure. Diagnostics include manifest integrity, permissions, Compose ownership/configuration, PostgreSQL/Valkey protocol readiness, OpenBao application scope, required-secret usability, repository workload and runtime broker/mTLS readiness when enabled. Secret values and credential-bearing URLs are not printed.
 
 ## Stop, resume and destroy
 
@@ -276,13 +293,53 @@ baha app destroy --yes
 
 ## Backup and restore
 
+Interactive guided flow:
+
+```bash
+baha app backup
+baha app restore ./demo-production.bhbackup
+```
+
+Deterministic automation:
+
 ```bash
 baha app backup --password-file ./backup-password.txt
 baha app backup --password-file ./backup-password.txt --output ./demo-production.bhbackup
 baha app restore ./demo-production.bhbackup --password-file ./backup-password.txt
 ```
 
+Interactive password entry disables terminal echo, requires confirmation and never places the password in argv. Restore validates/decrypts before mutation, remains fail-closed, and reports READY only after backend, secret/runtime identity, workload and exposure verification succeed. Last successful backup/recovery metadata is stored without secret-bearing detail and shown by `baha app show`.
+
 See [backup-and-restore.md](backup-and-restore.md).
+
+## Application updates
+
+Read-only Git update inspection:
+
+```bash
+baha app update --check
+```
+
+Mutation uses a strict fast-forward-only model: named branch, configured upstream, clean working tree, no divergence, exact fetched target SHA and post-mutation verification. BaseHarbor never resets, stashes, rebases or silently discards local work.
+
+For applications with durable BaseHarbor-managed state, mutation requires either an encrypted pre-update recovery point or explicit acknowledgement:
+
+```bash
+baha app update --backup-password-file ./backup-password.txt
+baha app update --no-backup
+```
+
+After source advancement, BaseHarbor reuses the normal application apply/readiness lifecycle. Success is reported only after the updated application is READY. Protected update metadata records non-secret before/after state and recovery metadata where applicable.
+
+## BaseHarbor self-update
+
+Read-only release inspection:
+
+```bash
+baha update --check
+```
+
+Stable is the default channel. Prerelease or exact-version selection is explicit. Mutation requires explicit confirmation and performs checksum/release-asset validation before replacing the current regular executable atomically. BaseHarbor does not invoke `sudo` automatically. A recovery binary is retained, and failed post-update CLI/runtime verification triggers rollback.
 
 ## OpenBao trust-plane lifecycle
 
