@@ -8,7 +8,7 @@ Date: 2026-09-10
 
 BaseHarbor is intended to carry the same logical application from local development and homelab use through Compose-based production and, later, Kubernetes/OpenShift enterprise deployments.
 
-Concrete infrastructure products will change across that lifecycle. A local deployment may use bundled PostgreSQL, Valkey, OpenBao and Caddy while an enterprise deployment may use a customer PostgreSQL service, managed Redis, Vault, Ceph RGW and OpenShift Routes.
+Concrete infrastructure products will change across that lifecycle. A local deployment may use bundled PostgreSQL, Valkey and OpenBao while an enterprise deployment may use a customer PostgreSQL service, managed Redis, Vault, Ceph RGW and OpenShift Routes.
 
 If product names become part of the portable application contract, every such replacement becomes an application migration. That would couple application repositories to BaseHarbor implementation choices and undermine the goal of keeping the application contract stable across environments.
 
@@ -145,13 +145,15 @@ Where possible, BaseHarbor uses existing ecosystem contracts rather than inventi
 - standard TLS/X.509 material and ACME/PKI integration;
 - native secret files/environment/workload identity mechanisms according to provider policy.
 
-BaseHarbor orchestration and policy may be proprietary to BaseHarbor; application data access should not be.
+BaseHarbor orchestration and policy may be BaseHarbor-specific; application data access should not be.
 
-## Current v0.2.0 compatibility
+## Current v0.3.0 compatibility
 
-This decision does not add a v0.2.0 feature and does not change Manifest v1.
+This decision still does not introduce the future generic capability/provider manifest schema.
 
-The current v0.2.0 manifest still names PostgreSQL/Redis/Valkey-oriented services because Compose is the first complete implementation. Those fields are treated as the current v1 contract, not as a requirement that all future provider-neutral schemas expose product names.
+The current v0.3.0 Manifest v1 still names PostgreSQL/Redis/Valkey-oriented services because Compose is the first complete implementation. Those fields remain the current pre-v1 contract, not a requirement that all future provider-neutral schemas expose product names.
+
+v0.3 adds deployment-specific operational behavior such as public FQDN/TLS runtime state, existing/BYOC certificate lifecycle, app-owned HTTP/TLS readiness and Compose host-port fallback. These are intentionally kept outside the portable manifest and therefore reinforce rather than weaken this ADR.
 
 Future contract evolution under issues such as #97 and #102 must preserve migration compatibility appropriate for the pre-v1 `0.x` series while moving product choices behind provider boundaries.
 
@@ -176,4 +178,4 @@ Future contract evolution under issues such as #97 and #102 must preserve migrat
 
 This ADR does not require BaseHarbor to implement multiple providers immediately.
 
-Compose remains the current focus. PostgreSQL, Valkey and OpenBao remain the current concrete implementations. Future Caddy, SeaweedFS, Kubernetes/OpenShift, identity and observability work should follow this boundary from the start.
+Compose remains the current focus. PostgreSQL, Valkey and OpenBao remain the current concrete managed implementations. Provider-neutral ingress/TLS, object storage, Kubernetes/OpenShift, identity and broader observability work should follow this boundary from the start.
