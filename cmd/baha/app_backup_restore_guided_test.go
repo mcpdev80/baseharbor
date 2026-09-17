@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +130,23 @@ func TestPromptGuidedConfirmationDefaultsAreSafe(t *testing.T) {
 				t.Fatalf("confirmation=%v want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunGuidedActivityShowsProgressAndFlushesBufferedOutput(t *testing.T) {
+	var out bytes.Buffer
+	err := runGuidedActivity(context.Background(), &out, "Restoring encrypted backup", func(buffer io.Writer) error {
+		_, err := io.WriteString(buffer, "restore detail\n")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	for _, wanted := range []string{"Restoring encrypted backup", "[####################] Restoring encrypted backup - done", "restore detail"} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("guided activity output missing %q:\n%s", wanted, text)
+		}
 	}
 }
 
