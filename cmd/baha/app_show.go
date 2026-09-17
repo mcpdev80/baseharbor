@@ -101,7 +101,14 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	if err != nil {
 		return overview, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	required := []bhruntime.RuntimeCapability{
+		bhruntime.CapabilityWorkloadLifecycle,
+		bhruntime.CapabilityPublishedPorts,
+	}
+	if m.Services.Secrets {
+		required = append(required, bhruntime.CapabilityServiceExec)
+	}
+	compose, err := detectComposeForApplication(ctx, resolved, required...)
 	if err != nil {
 		return overview, err
 	}
