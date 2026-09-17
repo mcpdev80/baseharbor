@@ -18,6 +18,14 @@ type CapabilityRequirement struct {
 	Name string
 }
 
+// SecretContract describes secret intent without selecting a concrete secret
+// backend or delivery mechanism. Required values remain names/generation intent
+// only; provider credentials and provider object identifiers never belong here.
+type SecretContract struct {
+	Managed  bool
+	Required []SecretRequirement
+}
+
 // PortableContract is the provider-neutral application requirement view used
 // as the seam between manifest compatibility and runtime/capability providers.
 //
@@ -27,7 +35,7 @@ type CapabilityRequirement struct {
 type PortableContract struct {
 	Application  string
 	Capabilities []CapabilityRequirement
-	Secrets      []SecretRequirement
+	Secrets      SecretContract
 }
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
@@ -39,7 +47,13 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		return PortableContract{}, err
 	}
 
-	contract := PortableContract{Application: m.Name}
+	contract := PortableContract{
+		Application: m.Name,
+		Secrets: SecretContract{
+			Managed:  m.Services.Secrets,
+			Required: cloneSecretRequirements(m.Secrets.Required),
+		},
+	}
 	for _, name := range PostgresInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
 			Kind: CapabilitySQL,
@@ -53,7 +67,6 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		})
 	}
 
-	contract.Secrets = cloneSecretRequirements(m.Secrets.Required)
 	return contract, nil
 }
 
