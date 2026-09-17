@@ -14,14 +14,21 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current stable release is `v0.3.0`, with Compose as the complete runtime target while the public application concepts remain suitable for later runtime providers.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current stable release is `v0.4.0`. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
 
-The v0.3.0 line includes:
+The v0.4.0 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
 - user-global control-plane runtime state that survives application checkout changes;
-- repository-owned `baseharbor.yaml` application contracts;
+- repository-owned Manifest v1 `baseharbor.yaml` application contracts;
+- a provider-neutral `PortableContract` compatibility adapter for logical application intent;
+- explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
+- Compose as the current runtime provider behind an explicit provider/capability seam;
+- protected deployment-owned runtime-provider state and fail-closed unsupported-provider behavior;
+- declarative input resolution for default, generated, external and conditional deployment values;
+- `baha app init --input NAME=VALUE` for automation-safe non-secret deployment input injection;
+- repository-aware `baha up` that resolves only missing deployment inputs before application convergence;
 - detect-first guided repository initialization and deterministic automation flags;
 - one or multiple named PostgreSQL instances per application;
 - one or multiple named Valkey/Redis-protocol instances per application;
@@ -38,6 +45,8 @@ The v0.3.0 line includes:
 - existing/BYOC TLS certificate lifecycle with validation, downgrade protection, reload and readiness verification;
 - automatic persisted fallback for configurable workload host-port conflicts, including IPv4/IPv6 Docker bind errors.
 
+Kubernetes and OpenShift are not implemented in v0.4. They are future runtime providers that should map the same logical application requirements to their native primitives instead of requiring applications to adopt a second operational contract.
+
 The public compatibility contract is still allowed to evolve during `0.x`. Patch releases are expected to remain compatible; minor releases may contain documented breaking changes until `v1.0.0`.
 
 ## Install `baha`
@@ -50,11 +59,11 @@ Install the latest stable release:
 curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
 ```
 
-For production automation, pin both installer and requested version to an immutable published release tag. After `v0.3.0` is published:
+For production automation, pin both installer and requested version to an immutable published release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.3.0/scripts/install.sh \
-  | bash -s -- v0.3.0
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.4.0/scripts/install.sh \
+  | bash -s -- v0.4.0
 ```
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
@@ -95,13 +104,15 @@ secrets:
 
 `app.name` is the stable logical application identity. In manifest v1, `app.environment` identifies deployment context; it is not an intrinsic business property of the application. The same logical application may later be realized independently in development, staging, production or customer-specific environments. See [`docs/decisions/0002-application-environment-is-deployment-context.md`](docs/decisions/0002-application-environment-is-deployment-context.md).
 
+Manifest v1 remains the supported compatibility surface in v0.4. Internally, BaseHarbor translates portable intent into provider-neutral logical capabilities while keeping Compose/deployment implementation details outside that contract.
+
 Interactive repository setup is detect-first:
 
 ```bash
 baha app init
 ```
 
-For deterministic automation:
+For deterministic application-contract creation:
 
 ```bash
 baha app init mailflow \
@@ -111,7 +122,16 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
-The guided flow detects the current project first and asks only for missing or ambiguous information. Deployment/runtime initialization may additionally collect a public FQDN and TLS mode for the current Compose realization. These values are protected deployment state, not portable application requirements in `baseharbor.yaml`.
+The guided flow detects the current project first and asks only for missing or ambiguous application-contract information. Deployment/runtime values use the reusable input resolver and remain protected deployment state rather than portable requirements in `baseharbor.yaml`.
+
+Existing dedicated deployment flags remain supported, and non-interactive automation can inject declared non-secret inputs explicitly:
+
+```bash
+baha app init --yes \
+  --input hostname=mail.example.com \
+  --input tls_mode=existing \
+  --input cert_dir=/secure/certificates
+```
 
 Then operate from the repository without repeating the application name:
 
@@ -138,7 +158,9 @@ baha up
 baha up --yes
 ```
 
-Explicit ports are also supported and still fail closed when occupied:
+Inside an application repository, `baha up` also resolves required deployment inputs before convergence. Complete protected state causes no additional questions; non-interactive mode uses only safe defaults/derivations and never invents an external certificate path.
+
+Explicit control-plane ports are also supported and still fail closed when occupied:
 
 ```bash
 baha up --postgres-port 15432 --openbao-port 18200
@@ -262,9 +284,11 @@ printf '%s' "$SMTP_PASSWORD" | baha app secret set SMTP_PASSWORD --stdin
 
 BaseHarbor also supports app-scoped dynamic secret references through the runtime broker so applications can store an opaque reference while the credential remains in OpenBao.
 
+The v0.4 declarative input resolver can represent secret inputs, but generic persistable output excludes them and string rendering is redacted. Secret delivery/storage remains a dedicated capability-provider concern rather than becoming ordinary committed deployment state.
+
 ## Deployment TLS
 
-The v0.3 Compose deployment initializer supports deployment TLS modes without adding TLS provider details to the portable application manifest. For existing/BYOC certificates, BaseHarbor validates and stores the normalized certificate/key pair in protected runtime state.
+The v0.4 Compose deployment initializer supports deployment TLS modes without adding TLS provider details to the portable application manifest. For existing/BYOC certificates, BaseHarbor validates and stores the normalized certificate/key pair in protected runtime state.
 
 Check or install a newer certificate from the configured source directory:
 
@@ -273,7 +297,7 @@ baha app tls update --check
 baha app tls update
 ```
 
-The update path validates certificate/key matching and FQDN coverage, refuses certificate downgrades, restarts the repository workload when required and verifies readiness. ACME automation, OpenBao PKI issuance and provider-neutral certificate contracts remain future work.
+The update path validates certificate/key matching and FQDN coverage, refuses certificate downgrades, restarts the repository workload when required and verifies readiness. ACME automation, OpenBao PKI issuance and provider-neutral certificate realization remain future capability-provider work.
 
 ## Backup and restore
 
@@ -311,6 +335,14 @@ baha update --check
 
 Actual self-update requires explicit confirmation and verifies release artifacts before atomic replacement. A retained recovery binary is used to roll back when post-update verification fails.
 
+## Runtime/provider direction
+
+v0.4 introduces runtime-provider identity and capability negotiation without pretending Kubernetes/OpenShift already exist. The current application runtime is Compose. Future providers must satisfy the requested runtime capabilities or fail clearly; they must not silently downgrade into Compose-specific behavior.
+
+Runtime-provider choice and backend capability-provider choice remain independent. A future Kubernetes/OpenShift deployment may therefore use bundled, external or customer-managed PostgreSQL, Valkey, S3 and secrets providers behind the same logical application requirements.
+
+See [`docs/roadmap.md`](docs/roadmap.md) for the staged provider roadmap.
+
 ## CLI discovery
 
 ```bash
@@ -333,7 +365,7 @@ The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 - Compose first and complete; later runtime providers may include Kubernetes and OpenShift without redefining logical application requirements;
 - mature open-source components instead of unnecessary reinvention;
 - observable health, backup/restore, certificates and lifecycle operations;
-- capability/provider boundaries that avoid locking applications to bundled infrastructure products.
+- independent runtime-provider and capability-provider boundaries that avoid locking applications to bundled infrastructure products.
 
 ## Release policy
 
