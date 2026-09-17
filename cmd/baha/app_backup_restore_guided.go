@@ -74,7 +74,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				forwarded = append(forwarded, "--output", outputPath)
 			}
 			forwarded = append(forwarded, "--password-file", passwordPath)
-			return baseRun(ctx, forwarded, out, errOut)
+			return runGuidedActivity(ctx, out, "Creating encrypted backup", func(buffer io.Writer) error {
+				return baseRun(ctx, forwarded, buffer, errOut)
+			})
 		})
 	}
 	return command
@@ -135,7 +137,9 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 
 		return withInMemoryPasswordFile(password, func(passwordPath string) error {
 			forwarded := append(append([]string(nil), args...), "--password-file", passwordPath)
-			return baseRun(ctx, forwarded, out, errOut)
+			return runGuidedActivity(ctx, out, "Restoring encrypted backup", func(buffer io.Writer) error {
+				return baseRun(ctx, forwarded, buffer, errOut)
+			})
 		})
 	}
 	return command
@@ -213,6 +217,7 @@ func formatBackupPreview(out io.Writer, m application.Manifest, outputPath strin
 	}
 	fmt.Fprintln(out, "  Impact: repository workload and secret broker may be stopped briefly for a consistent snapshot.")
 	fmt.Fprintln(out, "  Encryption: password entered with terminal echo disabled; the password is never placed in argv.")
+	fmt.Fprintln(out, "  Password: minimum 12 bytes (12+ ASCII characters recommended).")
 }
 
 func formatRestorePreview(out io.Writer, backupPath string, m application.Manifest, createdAt time.Time, entries []applicationbackup.Entry) {
@@ -282,28 +287,85 @@ func readBackupPasswordFromTerminal(out io.Writer, confirm bool) ([]byte, error)
 	if !ok {
 		return nil, errors.New("secure backup password entry requires a terminal")
 	}
-	first, err := readHiddenTerminalLine(file, out, "Backup password: ")
-	if err != nil {
-		return nil, err
-	}
-	if len(first) < 12 {
-		zeroBytes(first)
-		return nil, errors.New("backup password must contain at least 12 bytes")
-	}
-	if !confirm {
+	for {
+		first, err := readHiddenTerminalLine(file, out, "Backup password (minimum 12 bytes): ")
+		if err != nil {
+			return nil, err
+		}
+		if len(first) < 12 {
+			zeroBytes(first)
+			fmt.Fprintln(out, "[WARN] Password is too short. Use at least 12 bytes (12+ ASCII characters recommended) and try again.")
+			continue
+		}
+		if !confirm {
+			return first, nil
+		}
+		second, err := readHiddenTerminalLine(file, out, "Confirm backup password: ")
+		if err != nil {
+			zeroBytes(first)
+			return nil, err
+		}
+		if !bytes.Equal(first, second) {
+			zeroBytes(first)
+			zeroBytes(second)
+			fmt.Fprintln(out, "[WARN] Password confirmation does not match. Please enter the password again.")
+			continue
+		}
+		zeroBytes(second)
 		return first, nil
 	}
-	second, err := readHiddenTerminalLine(file, out, "Confirm backup password: ")
-	if err != nil {
-		zeroBytes(first)
-		return nil, err
+}
+
+func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func(io.Writer) error) error {
+	var buffered bytes.Buffer
+	file, terminal := out.(*os.File)
+	if !terminal || !isTerminalWriter(file) {
+		fmt.Fprintf(out, "%s...\n", label)
+		err := fn(&buffered)
+		_, _ = io.Copy(out, &buffered)
+		return err
 	}
-	defer zeroBytes(second)
-	if !bytes.Equal(first, second) {
-		zeroBytes(first)
-		return nil, errors.New("backup password confirmation does not match")
+
+	done := make(chan error, 1)
+	go func() { done <- fn(&buffered) }()
+
+	frames := []string{
+		"[#...................]",
+		"[..#.................]",
+		"[....#...............]",
+		"[......#.............]",
+		"[........#...........]",
+		"[..........#.........]",
+		"[............#.......]",
+		"[..............#.....]",
+		"[................#...]",
+		"[..................#.]",
 	}
-	return first, nil
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	frame := 0
+	for {
+		select {
+		case err := <-done:
+			fmt.Fprintf(out, "\r[####################] %s - done\n", label)
+			_, _ = io.Copy(out, &buffered)
+			return err
+		case <-ctx.Done():
+			fmt.Fprintf(out, "\r[--------------------] %s - cancelled\n", label)
+			return ctx.Err()
+		case <-ticker.C:
+			fmt.Fprintf(out, "\r%s %s", frames[frame%len(frames)], label)
+			frame++
+		}
+	}
+}
+
+func isTerminalWriter(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	_, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
+	return err == nil
 }
 
 func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte, error) {
