@@ -14,7 +14,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current release line is preparing `v0.3.0`, with Compose as the complete runtime target while the public application concepts remain suitable for later runtime providers.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current stable release is `v0.3.0`, with Compose as the complete runtime target while the public application concepts remain suitable for later runtime providers.
 
 The v0.3.0 line includes:
 
