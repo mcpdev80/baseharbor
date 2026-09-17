@@ -208,7 +208,13 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		_ = os.Remove(filepath.Join(tlsDir, "key.pem"))
 	}
 
-	state := repositoryInitState{Hostname: hostname, TLSMode: tlsMode, CertDir: certDir, TLSDir: tlsDir, RuntimeProvider: provider}
+	state := repositoryInitState{
+		Hostname:        hostname,
+		TLSMode:         tlsMode,
+		CertDir:         certDir,
+		TLSDir:          tlsDir,
+		RuntimeProvider: provider,
+	}
 	if err := writeRepositoryInitState(repoRoot, state); err != nil {
 		return err
 	}
