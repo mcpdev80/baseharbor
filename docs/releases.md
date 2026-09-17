@@ -2,7 +2,7 @@
 
 BaseHarbor uses Semantic Versioning with Git tags prefixed by `v`.
 
-Examples: `v0.2.0`, `v0.2.1`, `v0.3.0`, `v1.0.0`.
+Examples: `v0.3.0`, `v0.4.0`, `v0.4.1`, `v1.0.0`.
 
 ## Stability policy
 
@@ -10,8 +10,8 @@ BaseHarbor is currently in the `0.x` series.
 
 During `0.x`:
 
-- patch releases (`0.3.0` -> `0.3.1`) are backward-compatible bug and security fixes;
-- minor releases (`0.3.x` -> `0.4.0`) may contain intentionally documented breaking changes;
+- patch releases (`0.4.0` -> `0.4.1`) are backward-compatible bug and security fixes;
+- minor releases (`0.4.x` -> `0.5.0`) may contain intentionally documented breaking changes;
 - every breaking change must be called out in `CHANGELOG.md` and GitHub Release notes;
 - consumers should pin an explicit compatible range instead of tracking `main`.
 
@@ -22,6 +22,8 @@ After `v1.0.0`, breaking public CLI, manifest, persisted-state or supported inte
 The versioned contract includes documented `baha` commands and flags, the `baseharbor.yaml` schema, persisted BaseHarbor state, supported backup/restore formats, application-facing environment/service contracts, and runtime image tags coupled to CLI versions.
 
 Internal Go packages are not public API unless explicitly documented.
+
+Manifest v1 remains the supported v0.4 compatibility surface. v0.4 adds provider-neutral contract/runtime seams behind that surface rather than forcing applications to rewrite their manifest for future providers.
 
 ## Development versus releases
 
@@ -79,4 +81,6 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 ## Consumer guidance
 
-A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.3.0` should normally constrain itself to the compatible minor line, for example `>=0.3.0 <0.4.0`, unless it intentionally validates against a newer minor release.
+A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.0` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
+
+Applications moving from `v0.3.x` to `v0.4.0` keep Manifest v1 and the existing Compose developer journey. The v0.4 changes primarily establish the portable contract, runtime-provider and declarative-input seams that future providers will consume.
