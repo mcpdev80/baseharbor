@@ -48,9 +48,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "application workload", Run: func(context.Context) error {
 					return preflightRepositoryWorkload(resolved)
 				}},
-				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+				{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
+					required := []bhruntime.RuntimeCapability{bhruntime.CapabilityWorkloadLifecycle}
+					if m.Services.Secrets {
+						required = append(required, bhruntime.CapabilityServiceExec)
+					}
 					var err error
-					compose, err = bhruntime.DetectCompose(ctx)
+					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
 			}
