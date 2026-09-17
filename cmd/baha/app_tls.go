@@ -61,6 +61,9 @@ func appTLSCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
+				if status.State.TLSMode == "" {
+					return errors.New("application TLS runtime initialization is missing; run 'baha app init'")
+				}
 				printApplicationTLSStatus(out, status)
 				if status.State.TLSMode != "existing" {
 					fmt.Fprintf(out, "TLS mode %s is not updated from an external certificate directory.\n", status.State.TLSMode)
@@ -103,13 +106,14 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 		_, _ = io.Copy(out, &base)
 		resolved, resolveErr := resolveApplication(store, args, "status")
 		if resolveErr == nil && resolved.FromRepository {
-			fmt.Fprintln(out)
 			if tlsStatus, tlsErr := inspectApplicationTLS(resolved); tlsErr != nil {
+				fmt.Fprintln(out)
 				fmt.Fprintf(out, "[FAIL] tls               %v\n", tlsErr)
 				if baseErr == nil {
 					return tlsErr
 				}
-			} else {
+			} else if tlsStatus.State.TLSMode != "" {
+				fmt.Fprintln(out)
 				printApplicationTLSStatus(out, tlsStatus)
 			}
 		}
@@ -128,14 +132,16 @@ func appDoctorRepairCommandWithTLS(store application.Store) *cli.Command {
 		_, _ = io.Copy(out, &base)
 		resolved, resolveErr := resolveApplication(store, doctorApplicationArgs(args), "doctor")
 		if resolveErr == nil && resolved.FromRepository {
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "TLS")
 			if tlsStatus, tlsErr := inspectApplicationTLS(resolved); tlsErr != nil {
+				fmt.Fprintln(out)
+				fmt.Fprintln(out, "TLS")
 				fmt.Fprintf(out, "[FAIL] tls certificate lifecycle: %v\n", tlsErr)
 				if baseErr == nil {
 					return tlsErr
 				}
-			} else {
+			} else if tlsStatus.State.TLSMode != "" {
+				fmt.Fprintln(out)
+				fmt.Fprintln(out, "TLS")
 				printApplicationTLSDiagnostics(out, tlsStatus)
 			}
 		}
@@ -146,8 +152,7 @@ func appDoctorRepairCommandWithTLS(store application.Store) *cli.Command {
 
 func doctorApplicationArgs(args []string) []string {
 	result := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
+	for _, arg := range args {
 		if arg == "--fix" {
 			continue
 		}
@@ -162,10 +167,10 @@ func inspectApplicationTLS(resolved resolvedApplication) (applicationTLSStatus, 
 	if err != nil {
 		return applicationTLSStatus{}, err
 	}
-	if strings.TrimSpace(state.TLSMode) == "" {
-		return applicationTLSStatus{}, errors.New("application TLS runtime initialization is missing; run 'baha app init'")
-	}
 	status := applicationTLSStatus{State: state}
+	if strings.TrimSpace(state.TLSMode) == "" {
+		return status, nil
+	}
 	if state.TLSMode == "existing" {
 		if state.TLSDir == "" {
 			state.TLSDir = filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)
@@ -335,7 +340,7 @@ func printApplicationTLSDiagnostics(out io.Writer, status applicationTLSStatus) 
 	fmt.Fprintf(out, "[OK] TLS hostname      certificate covers %s\n", status.State.Hostname)
 	fmt.Fprintf(out, "%s TLS expiry        %s remaining; expires %s\n", certificateHealthPrefix(status.Installed.NotAfter), certificateRemaining(status.Installed.NotAfter), formatCertificateTime(status.Installed.NotAfter))
 	if status.UpdateAvailable {
-		fmt.Fprintf(out, "[INFO] TLS update       newer/different source certificate detected; run 'baha app tls update --check'\n")
+		fmt.Fprintln(out, "[INFO] TLS update       newer/different source certificate detected; run 'baha app tls update --check'")
 	} else {
 		fmt.Fprintln(out, "[OK] TLS update        installed certificate matches configured source")
 	}
