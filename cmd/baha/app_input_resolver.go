@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -184,8 +183,6 @@ func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot str
 		if err != nil {
 			return err
 		}
-		// cert_dir is conditional on the TLS answer and may only become required
-		// after the first pass resolves tls_mode.
 		for _, input := range result.Unresolved {
 			if input.Name != inputCertDir {
 				continue
@@ -224,7 +221,7 @@ func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot str
 	return runRepositoryRuntimeInit(resolved, resolvedOpts, out)
 }
 
-func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+func ensureRepositoryDeploymentInputsForUp(in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -246,9 +243,11 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 	if err != nil {
 		return err
 	}
-	definitions := repositoryDeploymentInputDefinitions(needsTLS)
-	supplied := map[string]string{inputHostname: current.Hostname, inputTLSMode: current.TLSMode, inputCertDir: current.CertDir}
-	result, err := applicationinput.Resolve(definitions, supplied, nil)
+	result, err := applicationinput.Resolve(repositoryDeploymentInputDefinitions(needsTLS), map[string]string{
+		inputHostname: current.Hostname,
+		inputTLSMode:  current.TLSMode,
+		inputCertDir:  current.CertDir,
+	}, nil)
 	if err != nil {
 		return err
 	}
@@ -256,8 +255,6 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 		return nil
 	}
 	if opts.Yes || !readerIsTerminal(in) {
-		// Non-interactive `baha up` keeps safe defaults and never invents an
-		// external certificate path.
 		initOpts := repositoryInitOptions{Yes: true}
 		if needsTLS && current.Hostname != "" && current.Hostname != "localhost" {
 			initOpts.Hostname = current.Hostname
@@ -272,4 +269,35 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 	return runRepositoryRuntimeInitResolved(resolved, repoRoot, repositoryInitOptions{}, out)
 }
 
-var _ = errors.New
+func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
+	opts, err := parseRuntimeUpOptions(args)
+	if err != nil {
+		return err
+	}
+	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+		return err
+	}
+	if opts.ControlPlaneOnly {
+		return nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if _, err := application.FindRepositoryManifest(cwd); err != nil {
+		if !strings.Contains(err.Error(), application.RepositoryManifestName+" not found") {
+			return err
+		}
+		initialized, err := initializeRepositoryManifestForUp(ctx, runtimeInput, out, errOut, opts)
+		if err != nil {
+			return err
+		}
+		if !initialized {
+			return nil
+		}
+	}
+	if err := ensureRepositoryDeploymentInputsForUp(runtimeInput, out, opts); err != nil {
+		return err
+	}
+	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
+}
