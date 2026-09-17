@@ -16,6 +16,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type applicationTLSStatus struct {
@@ -39,7 +40,7 @@ func appTLSCommand(store application.Store) *cli.Command {
 			Name:    "update",
 			Summary: "Check for or install a newer existing TLS certificate",
 			Usage:   "baha app tls update [--check]",
-			Long:    "For TLS mode 'existing', validates the certificate/key pair in the configured source directory, compares it with the installed certificate and refuses certificate downgrades. Without --check, a newer certificate is copied into protected BaseHarbor state and the normal application reconciliation path is run.",
+			Long:    "For TLS mode 'existing', validates the certificate/key pair in the configured source directory, compares it with the installed certificate and refuses certificate downgrades. Without --check, a newer certificate is copied into protected BaseHarbor state and the repository workload is restarted so the new certificate is actually served.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				checkOnly := false
 				for _, arg := range args {
@@ -69,6 +70,9 @@ func appTLSCommand(store application.Store) *cli.Command {
 					fmt.Fprintf(out, "TLS mode %s is not updated from an external certificate directory.\n", status.State.TLSMode)
 					return nil
 				}
+				if status.Source == nil {
+					return fmt.Errorf("certificate source is not ready: %s", status.Warning)
+				}
 				if !status.UpdateAvailable {
 					fmt.Fprintln(out, "Certificate is up to date. No changes were made.")
 					return nil
@@ -80,20 +84,64 @@ func appTLSCommand(store application.Store) *cli.Command {
 					fmt.Fprintln(out, "Certificate update is available. No changes were made.")
 					return nil
 				}
-				if err := writeNormalizedTLSFiles(status.State.TLSDir, status.SourcePair); err != nil {
-					return err
-				}
-				fmt.Fprintf(out, "[OK] tls-update        installed certificate valid until %s\n", formatCertificateTime(status.Source.NotAfter))
-				fmt.Fprintln(out, "Reconciling application workload so the updated certificate can be served...")
-				if err := appUpCommand(store).Run(ctx, nil, out, errOut); err != nil {
-					return fmt.Errorf("certificate installed but application reconciliation failed: %w", err)
-				}
-				fmt.Fprintln(out, "TLS certificate update completed.")
-				return nil
+				return installApplicationTLSUpdate(ctx, out, resolved, status)
 			},
 		},
 	}
 	return cmd
+}
+
+func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved resolvedApplication, status applicationTLSStatus) error {
+	certPath := filepath.Join(status.State.TLSDir, "cert.pem")
+	keyPath := filepath.Join(status.State.TLSDir, "key.pem")
+	oldCert, err := os.ReadFile(certPath)
+	if err != nil {
+		return fmt.Errorf("read installed certificate before update: %w", err)
+	}
+	oldKey, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("read installed private key before update: %w", err)
+	}
+	if err := writeNormalizedTLSFiles(status.State.TLSDir, status.SourcePair); err != nil {
+		return err
+	}
+	rollback := func() {
+		_ = os.WriteFile(certPath, oldCert, 0o600)
+		_ = os.WriteFile(keyPath, oldKey, 0o600)
+		_ = os.Chmod(certPath, 0o600)
+		_ = os.Chmod(keyPath, 0o600)
+	}
+
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		rollback()
+		return fmt.Errorf("certificate update rolled back because application runtime state is unavailable: %w", err)
+	}
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		rollback()
+		return fmt.Errorf("certificate update rolled back because Compose is unavailable: %w", err)
+	}
+	stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
+	if err != nil {
+		rollback()
+		return fmt.Errorf("certificate update rolled back because the application workload could not be stopped: %w", err)
+	}
+	if stopped {
+		if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+			rollback()
+			_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+			return fmt.Errorf("certificate update rolled back because the application workload did not recover: %w", err)
+		}
+	}
+	fmt.Fprintf(out, "[OK] tls-update        installed certificate valid until %s\n", formatCertificateTime(status.Source.NotAfter))
+	if stopped {
+		fmt.Fprintln(out, "[OK] tls-reload        repository workload restarted and readiness verified")
+	} else {
+		fmt.Fprintln(out, "[OK] tls-reload        no repository workload restart was required")
+	}
+	fmt.Fprintln(out, "TLS certificate update completed.")
+	return nil
 }
 
 func appStatusCommandWithTLS(store application.Store) *cli.Command {
@@ -182,15 +230,18 @@ func inspectApplicationTLS(resolved resolvedApplication) (applicationTLSStatus, 
 		}
 		status.Installed = installed
 		if strings.TrimSpace(state.CertDir) == "" {
-			return applicationTLSStatus{}, errors.New("existing TLS mode has no configured certificate source directory")
+			status.Warning = "existing TLS mode has no configured certificate source directory"
+			return status, nil
 		}
 		pair, err := detectCertificatePair(state.CertDir, state.Hostname)
 		if err != nil {
-			return applicationTLSStatus{}, fmt.Errorf("certificate source: %w", err)
+			status.Warning = "certificate source is unavailable or invalid: " + err.Error()
+			return status, nil
 		}
 		source, err := certificateFromPEM(pair.CertPEM, state.Hostname)
 		if err != nil {
-			return applicationTLSStatus{}, fmt.Errorf("certificate source: %w", err)
+			status.Warning = "certificate source is invalid: " + err.Error()
+			return status, nil
 		}
 		status.SourcePair = pair
 		status.Source = source
@@ -311,6 +362,10 @@ func printApplicationTLSStatus(out io.Writer, status applicationTLSStatus) {
 	case "existing":
 		fmt.Fprintf(out, "%s tls               %s; expires %s (%s remaining)\n", certificateHealthPrefix(status.Installed.NotAfter), certificateDisplayName(status.Installed), formatCertificateTime(status.Installed.NotAfter), certificateRemaining(status.Installed.NotAfter))
 		fmt.Fprintf(out, "TLS source: %s\n", status.State.CertDir)
+		if status.Source == nil {
+			fmt.Fprintf(out, "[WARN] tls-source        %s\n", status.Warning)
+			return
+		}
 		if status.UpdateAvailable {
 			fmt.Fprintf(out, "[INFO] tls-update        available: %s; source expires %s\n", certificateDisplayName(status.Source), formatCertificateTime(status.Source.NotAfter))
 			fmt.Fprintln(out, "       action: baha app tls update --check")
@@ -339,6 +394,10 @@ func printApplicationTLSDiagnostics(out io.Writer, status applicationTLSStatus) 
 	fmt.Fprintln(out, "[OK] TLS key pair      certificate and private key match")
 	fmt.Fprintf(out, "[OK] TLS hostname      certificate covers %s\n", status.State.Hostname)
 	fmt.Fprintf(out, "%s TLS expiry        %s remaining; expires %s\n", certificateHealthPrefix(status.Installed.NotAfter), certificateRemaining(status.Installed.NotAfter), formatCertificateTime(status.Installed.NotAfter))
+	if status.Source == nil {
+		fmt.Fprintf(out, "[WARN] TLS source       %s\n", status.Warning)
+		return
+	}
 	if status.UpdateAvailable {
 		fmt.Fprintln(out, "[INFO] TLS update       newer/different source certificate detected; run 'baha app tls update --check'")
 	} else {
