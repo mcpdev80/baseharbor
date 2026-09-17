@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-17
+
+### Added
+
+- Trusted-local developer access workflows: `baha app psql`, `redis`/`valkey`, masked/reveal-on-demand credentials, workload logs, shell and exec using logical application/resource identities.
+- Health-aware, service-level Compose workload truth shared by `baha app status`, `doctor` and `show`, including HTTP/HTTPS exposure readiness for conventional app-owned web publishers.
+- `baha app show` as a read-only application overview with backend, workload, secret, backup and recovery readiness metadata without exposing secret values or credential-bearing URLs.
+- Guided application backup and restore with secure no-echo password entry, explicit impact previews, verified recovery metadata and `Status: READY` only after successful post-restore verification.
+- Safe Git-backed `baha app update --check` and strict fast-forward application updates, with dirty/diverged history protection, optional encrypted pre-update recovery points and protected update metadata.
+- Guarded BaseHarbor self-update through `baha update --check` and explicit mutation, including release-asset/checksum verification, atomic replacement, retained recovery binary and rollback on failed post-update verification.
+- Workload-only repository applications for explicit Compose workloads that do not require artificial PostgreSQL or Valkey dependencies.
+- Automatic published-port fallback for configurable Compose bindings when host ports are already allocated, including IPv4 and IPv6 loopback/wildcard Docker error forms.
+- Repository deployment runtime initialization for public FQDN and TLS mode while keeping deployment/runtime details outside the portable `baseharbor.yaml` application contract.
+- Existing/BYOC TLS certificate lifecycle with `baha app tls update --check` and `baha app tls update`, including certificate/key/FQDN validation, downgrade protection, protected installation, restart and readiness verification.
+- Linux terminal directory completion for interactive existing-certificate source selection without adding a new readline dependency.
+
+### Changed
+
+- Compose readiness now distinguishes running, starting, unhealthy, exited and missing services instead of treating every running container as READY.
+- HTTP/TLS exposure failures now make the associated workload and whole application NOT READY; redirects are accepted as reachable exposure while 5xx/unreachable endpoints fail readiness.
+- HTTPS readiness continues to probe the local published socket while using the configured public FQDN for HTTP Host and TLS ServerName, allowing hostname-bound application-owned TLS endpoints to be verified locally.
+- Backup/restore interactive UX now retries short or mismatched passwords and shows reliable indeterminate progress without inventing percentage estimates.
+- Restore workload verification now allows a bounded readiness window for real applications to reach service and HTTP/TLS readiness while remaining fail-closed.
+- Application updates reuse the existing plan/preflight/apply/verify lifecycle after source fast-forward; durable applications require either an encrypted recovery point or explicit `--no-backup` acknowledgement before mutation.
+- Self-update keeps stable as the default release channel, refuses downgrades, never invokes `sudo` automatically and reconciles the current repository application through the normal lifecycle when applicable.
+- Repository workload port fallback preserves explicit operator environment overrides and persists BaseHarbor-selected fallback values in protected runtime state for later lifecycle commands.
+
+### Security
+
+- Guided backup/restore passwords are never accepted as command-line values and are passed to the existing hardened recovery path through owner-only in-memory file descriptors on Linux.
+- Update metadata records non-secret state only; raw runtime errors, credentials and secret values are not persisted.
+- TLS updates fail closed on invalid key pairs, FQDN mismatch, downgrade attempts or failed workload recovery and restore the previous protected certificate state on failure.
+- Workload-only applications do not receive invented backend credentials, backend networks or services that they did not request.
+
 ## [0.2.0] - 2026-09-10
 
 ### Added
@@ -61,6 +95,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0
 [0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1
