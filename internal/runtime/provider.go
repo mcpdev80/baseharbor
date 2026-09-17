@@ -1,6 +1,10 @@
 package runtime
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // ProviderKind identifies the runtime implementation selected for application
 // workloads. It is deployment configuration, not part of the portable
@@ -28,6 +32,19 @@ type ProviderCapabilities struct {
 type Provider interface {
 	Kind() ProviderKind
 	Capabilities() ProviderCapabilities
+}
+
+func ParseProviderKind(value string) (ProviderKind, error) {
+	kind := ProviderKind(strings.TrimSpace(strings.ToLower(value)))
+	if kind == "" {
+		kind = ProviderCompose
+	}
+	switch kind {
+	case ProviderCompose:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("unsupported runtime provider %q", value)
+	}
 }
 
 func (Compose) Kind() ProviderKind {

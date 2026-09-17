@@ -33,3 +33,23 @@ func TestProviderKindIsDeploymentMetadata(t *testing.T) {
 		t.Fatalf("ProviderCompose = %q, want %q", got, want)
 	}
 }
+
+func TestParseProviderKindDefaultsToCompose(t *testing.T) {
+	for _, input := range []string{"", " ", "compose", " COMPOSE "} {
+		got, err := ParseProviderKind(input)
+		if err != nil {
+			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
+		}
+		if got != ProviderCompose {
+			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, ProviderCompose)
+		}
+	}
+}
+
+func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
+	for _, input := range []string{"kubernetes", "openshift", "docker"} {
+		if _, err := ParseProviderKind(input); err == nil {
+			t.Fatalf("ParseProviderKind(%q) unexpectedly succeeded", input)
+		}
+	}
+}
