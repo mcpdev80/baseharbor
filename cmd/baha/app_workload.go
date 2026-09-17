@@ -16,6 +16,11 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+const (
+	repositoryWorkloadReadinessTimeout      = 2 * time.Minute
+	repositoryWorkloadReadinessPollInterval = time.Second
+)
+
 func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	if !resolved.FromRepository {
 		return nil
@@ -95,6 +100,9 @@ func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compo
 
 func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
+	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+		return nil, err
+	}
 	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
 		return nil, err
 	} else if configured {
@@ -217,11 +225,12 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
 		startServices = expectedServices
 	}
-	if err := compose.UpProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, composeFiles...); err != nil {
+	if err := startRepositoryWorkloadWithPortFallback(ctx, runtimeInput, out, compose, workload, files, environment, startServices, composeFiles); err != nil {
 		return false, fmt.Errorf("start application workload: %w", err)
 	}
 
-	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	fmt.Fprintf(out, "[WAIT] workload          waiting up to %s for service and HTTP/TLS readiness\n", repositoryWorkloadReadinessTimeout)
+	verifyCtx, cancel := context.WithTimeout(ctx, repositoryWorkloadReadinessTimeout)
 	defer cancel()
 	var lastStatus repositoryWorkloadStatus
 	var lastErr error
@@ -237,13 +246,13 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		}
 		select {
 		case <-verifyCtx.Done():
-		case <-time.After(time.Second):
+		case <-time.After(repositoryWorkloadReadinessPollInterval):
 		}
 	}
 	if lastErr != nil {
-		return false, fmt.Errorf("verify application workload readiness: %w", lastErr)
+		return false, fmt.Errorf("verify application workload readiness after %s: %w", repositoryWorkloadReadinessTimeout, lastErr)
 	}
-	return false, fmt.Errorf("application workload did not reach readiness before timeout; services=%d/%d exposures=%d/%d", lastStatus.ReadyCount(), len(expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+	return false, fmt.Errorf("application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d", repositoryWorkloadReadinessTimeout, lastStatus.ReadyCount(), len(expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {

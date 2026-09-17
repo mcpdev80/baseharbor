@@ -1,6 +1,6 @@
 # `baha` CLI
 
-`baha` ist die zentrale Operator- und Entwickler-Schnittstelle von BaseHarbor. Mutationen erfolgen fail-closed: prüfen, ändern, verifizieren.
+`baha` ist die zentrale Operator- und Entwickler-Schnittstelle von BaseHarbor. Mutationen erfolgen fail-closed: planen/pruefen, aendern, verifizieren.
 
 ## Wichtige Befehle
 
@@ -8,11 +8,15 @@
 baha
 ├── up / down / status / doctor
 ├── serve
+├── update
 ├── app
 │   ├── init / create / list / show
 │   ├── plan / preflight / apply
 │   ├── env / status / doctor
-│   ├── backup / restore
+│   ├── backup / restore / update
+│   ├── psql / redis / valkey / creds
+│   ├── logs / shell / exec
+│   ├── tls update
 │   ├── down / up / destroy
 │   ├── runtime-identity rotate|revoke
 │   └── secret set|list|delete|tls-set
@@ -20,11 +24,14 @@ baha
 └── version
 ```
 
-Die exakte Syntax liefert immer die ausführbare Hilfe:
+Die exakte Syntax liefert immer die ausfuehrbare Hilfe:
 
 ```bash
 baha --help
 baha app --help
+baha app update --help
+baha app tls update --help
+baha update --help
 baha openbao --help
 ```
 
@@ -36,7 +43,7 @@ baha up --yes
 baha up --postgres-port 15432 --openbao-port 18200
 ```
 
-Beim ersten Start werden Ports geprüft. Belegte Standardports werden nicht blind verwendet.
+Beim ersten Start werden Ports geprueft. Belegte Standardports werden nicht blind verwendet.
 
 ## Anwendung
 
@@ -48,54 +55,27 @@ baha app init
 
 `baha` analysiert das Repository zuerst read-only und erkennt, soweit eindeutig:
 
-- gängige Compose-Dateien im Projektwurzelverzeichnis sowie unter `deploy/` und `docker/`;
-- PostgreSQL- und Redis/Valkey-Abhängigkeiten;
+- gaengige Compose-Dateien;
+- PostgreSQL- und Redis/Valkey-Abhaengigkeiten;
 - wahrscheinliche Workload-Services;
-- Infrastrukturvariablen aus `.env.example`, `.env.template`, `.env.sample` oder `.env`;
-- wahrscheinliche Namen benötigter Secrets.
+- Infrastrukturvariablen aus gaengigen Env-Beispieldateien;
+- wahrscheinliche Namen benoetigter Secrets.
 
-Secret-Werte werden dabei weder angezeigt noch in `baseharbor.yaml` übernommen. Die Regel lautet: **zuerst erkennen, nur Unklares nachfragen**.
+Secret-Werte werden dabei weder angezeigt noch in `baseharbor.yaml` uebernommen. Die Regel lautet: **zuerst erkennen, nur Unklares nachfragen**.
 
-Beispiel:
+Anschliessend zeigt der Wizard eine kompakte Auswahl der erkannten Capabilities. Vorausgewaehlte Werte koennen geaendert werden. Bei mehreren moeglichen Compose-Dateien raet `baha` nicht, sondern fragt explizit nach.
 
-```text
-Analyzing repository...
-✓ Application name: mailflow
-✓ Compose file: deploy/docker-compose.yml
-✓ PostgreSQL detected
-✓ Redis/Valkey detected
-✓ Potential required secret names:
-    OPENAI_API_KEY
-    SMTP_PASSWORD
-```
+Vor dem Schreiben wird das erzeugte `baseharbor.yaml` als Vorschau angezeigt. Eine vorhandene Datei wird niemals still ueberschrieben.
 
-Anschließend zeigt der Wizard eine kompakte Auswahl der erkannten Capabilities. Die vorausgewählten Werte können geändert werden. Bei mehreren möglichen Compose-Dateien rät `baha` nicht, sondern fragt explizit nach.
-
-Sind mehrere PostgreSQL- oder Redis/Valkey-Backends sichtbar, schlägt der Wizard automatisch logische Instanznamen vor. Ein einzelner erkannter Backend-Service bleibt die einfache `default`-Instanz.
-
-Beispiel:
-
-```text
-✓ PostgreSQL detected from compose.yaml service postgres-primary
-  logical instances proposed: analytics, primary
-✓ Redis/Valkey detected from compose.yaml service redis-cache
-  logical instances proposed: cache, sessions
-
-PostgreSQL instances (comma-separated) [analytics,primary]:
-Valkey / Redis instances (comma-separated) [cache,sessions]:
-```
-
-Vor dem Schreiben wird das erzeugte `baseharbor.yaml` als Vorschau angezeigt. Eine vorhandene Datei wird niemals still überschrieben.
-
-Für einen nicht-interaktiven, erkennungsbasierten Pfad gibt es:
+Nicht-interaktiv und erkennungsbasiert:
 
 ```bash
 baha app init --quick
 ```
 
-`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab und verweist auf den interaktiven Wizard. Mehrere erkannte logische PostgreSQL- oder Redis/Valkey-Instanzen bleiben dabei erhalten.
+`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab.
 
-Für CI, Skripte oder bewusst vollständig deklarative Aufrufe bleibt der bestehende Flag-Pfad erhalten:
+Der deterministische Flag-Pfad bleibt fuer CI/Skripte erhalten:
 
 ```bash
 baha app init mailflow \
@@ -104,7 +84,7 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
-Benannte Instanzen können weiterhin deterministisch angegeben werden:
+Benannte Instanzen:
 
 ```bash
 baha app init mailflow \
@@ -114,7 +94,9 @@ baha app init mailflow \
   --redis-instance sessions
 ```
 
-Wizard, `--quick` und Flag-Pfad erzeugen denselben Manifest-Vertrag. Mehrere Instanzen sind mehrere logische Services und keine HA-Replikate.
+Mehrere Instanzen sind mehrere logische Services und keine HA-Replikate.
+
+Repository-Deployments initialisieren in v0.3 zusaetzlich geschuetzten Deployment-State. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden. Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und normalisiert die Dateien in owner-only BaseHarbor-State. Diese Deployment-Details gehoeren nicht in den portablen `baseharbor.yaml`-Contract.
 
 Danach:
 
@@ -122,20 +104,20 @@ Danach:
 baha app plan
 baha app preflight
 baha app apply
+baha app show
 baha app status
 baha app doctor
 ```
 
-Fehlende Pflicht-Secrets blockieren `apply`/`up`. Sobald der App-Secret-Scope materialisiert ist, zeigt `baha app preflight` den Zustand und eine direkte sichere Abhilfe:
+Fehlende Pflicht-Secrets blockieren `apply`/`up`. Secret-Werte selbst werden nie ausgegeben.
 
-```text
-No application secrets have been configured yet.
-REQUIRED SECRET       STATUS                         ACTION
-OPENAI_API_KEY        missing - user input required  baha app secret set OPENAI_API_KEY --stdin
-SMTP_PASSWORD         missing - user input required  baha app secret set SMTP_PASSWORD --stdin
-```
+## Runtime-Truth
 
-Vorhandene Werte werden als `present` gemeldet. Nicht lesbare Werte erscheinen als `present but unusable` und erhalten ebenfalls den sicheren Ersetzungsbefehl. Secret-Werte selbst werden nie ausgegeben.
+Ein laufender Container ist nicht automatisch READY. Fuer ausgewaehlte Compose-Services unterscheidet BaseHarbor Running/Healthy, Starting, Unhealthy, Exited und Missing. Konventionelle app-eigene HTTP/HTTPS-Publisher werden lokal aktiv geprueft.
+
+Redirects gelten als erreichbare Exposition. 5xx oder nicht erreichbare Endpunkte sind NOT READY. Bei hostname-gebundenem HTTPS wird lokal verbunden, aber der konfigurierte Public FQDN als HTTP Host/TLS ServerName verwendet.
+
+`show`, `status` und `doctor` nutzen dieselbe Workload-Wahrheit.
 
 ## Environment und Bindings
 
@@ -145,7 +127,22 @@ baha app env --format json
 baha app env --path
 ```
 
-Credential-haltige Werte sind standardmäßig maskiert.
+Credential-haltige Werte sind standardmaessig maskiert.
+
+## Trusted-local Developer Access
+
+```bash
+baha app psql [INSTANCE]
+baha app redis [INSTANCE]
+baha app valkey [INSTANCE]
+baha app creds postgres [INSTANCE]
+baha app creds valkey [INSTANCE]
+baha app logs [SERVICE]
+baha app shell SERVICE
+baha app exec SERVICE COMMAND [ARG...]
+```
+
+DB-/Cache-Passwoerter landen nicht als normale Argumente im Prozessaufruf. Credentials bleiben standardmaessig maskiert. Generierte Container-Namen bleiben Provider-Detail.
 
 ## Secrets
 
@@ -155,12 +152,54 @@ baha app secret list
 baha app secret delete API_TOKEN --yes
 ```
 
+## Deployment-TLS
+
+Fuer Repository-Deployments mit `tls: existing`:
+
+```bash
+baha app tls update --check
+baha app tls update
+```
+
+`--check` ist read-only. Mutation validiert Quelle, Key-Pair und FQDN, verweigert Downgrades, installiert owner-only Dateien, startet den Workload bei Bedarf neu und verifiziert Readiness. Bei Fehlern wird der vorherige geschuetzte Zertifikatsstand wiederhergestellt.
+
+ACME-Automation, OpenBao-PKI-Issuance und ein providerneutraler TLS-Contract bleiben Future Work.
+
 ## Backup und Restore
+
+Interaktiv:
+
+```bash
+baha app backup
+baha app restore ./backup.bhbackup
+```
+
+Fuer Automation:
 
 ```bash
 baha app backup --password-file ./backup-password.txt
 baha app restore ./backup.bhbackup --password-file ./backup-password.txt
 ```
+
+Guided Password-Eingabe deaktiviert Terminal-Echo und legt das Passwort nicht in argv. Restore bleibt fail-closed und meldet READY erst nach erfolgreicher Backend-, Runtime-Identity-, Workload- und HTTP/TLS-Verifikation.
+
+## Application Update
+
+Read-only pruefen:
+
+```bash
+baha app update --check
+```
+
+Mutation ist strict fast-forward only. Dirty/Ahead/Diverged schlagen fail-closed fehl. Anwendungen mit dauerhaftem BaseHarbor-State benoetigen entweder ein verschluesseltes Pre-Update-Recovery oder eine explizite `--no-backup`-Bestaetigung. Nach dem Source-Update wird der normale Apply-/Readiness-Pfad wiederverwendet.
+
+## BaseHarbor Self-Update
+
+```bash
+baha update --check
+```
+
+Stable ist der Default-Channel. Mutation erfordert explizite Bestaetigung, prueft Release-Artefakte/Checksums, ersetzt die CLI atomar und behaelt eine Recovery-Binary. Schlaegt die Post-Verifikation fehl, wird zurueckgerollt. `sudo` wird nicht automatisch aufgerufen.
 
 ## Version
 
