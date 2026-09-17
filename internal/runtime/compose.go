@@ -25,7 +25,22 @@ type Compose struct {
 	prefix  []string
 }
 
+// DetectCompose remains the compatibility entry point for existing v0.3
+// callers. Provider selection itself is centralized in DetectProvider so new
+// runtime implementations do not require application-contract changes.
 func DetectCompose(ctx context.Context) (Compose, error) {
+	provider, err := DetectProvider(ctx)
+	if err != nil {
+		return Compose{}, err
+	}
+	compose, ok := provider.(Compose)
+	if !ok {
+		return Compose{}, fmt.Errorf("selected runtime provider %q is not compatible with the Compose runtime path", provider.Kind())
+	}
+	return compose, nil
+}
+
+func detectCompose(ctx context.Context) (Compose, error) {
 	if path, err := exec.LookPath("docker"); err == nil {
 		cmd := exec.CommandContext(ctx, path, "compose", "version")
 		if err := cmd.Run(); err == nil {
@@ -138,7 +153,7 @@ func (c Compose) InspectProjectResource(ctx context.Context, project string, res
 
 	label, err := c.directOutput(ctx, inspectArgs...)
 	if err != nil {
-		return false, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
+		return true, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
 	}
 	if strings.TrimSpace(label) != project {
 		return true, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, resource.Name, project)
