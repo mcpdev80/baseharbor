@@ -171,7 +171,7 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 
 	if tlsMode == "existing" {
 		if certDir == "" && interactive {
-			certDir, err = promptLine(reader, out, "Certificate directory", "")
+			certDir, err = promptDirectoryPath(reader, out, "Certificate directory")
 			if err != nil {
 				return err
 			}
