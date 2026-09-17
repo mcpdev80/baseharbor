@@ -1,8 +1,19 @@
 package runtime
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 var _ Provider = Compose{}
+
+type testProvider struct {
+	kind ProviderKind
+	caps ProviderCapabilities
+}
+
+func (p testProvider) Kind() ProviderKind                 { return p.kind }
+func (p testProvider) Capabilities() ProviderCapabilities { return p.caps }
 
 func TestComposeProviderMetadata(t *testing.T) {
 	var provider Provider = Compose{}
@@ -51,5 +62,55 @@ func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
 		if _, err := ParseProviderKind(input); err == nil {
 			t.Fatalf("ParseProviderKind(%q) unexpectedly succeeded", input)
 		}
+	}
+}
+
+func TestProviderCapabilitiesSupportsKnownCapabilities(t *testing.T) {
+	caps := ProviderCapabilities{WorkloadLifecycle: true, ServiceExec: true}
+	if !caps.Supports(CapabilityWorkloadLifecycle) {
+		t.Fatal("workload lifecycle should be supported")
+	}
+	if !caps.Supports(CapabilityServiceExec) {
+		t.Fatal("service exec should be supported")
+	}
+	if caps.Supports(CapabilityPublishedPorts) {
+		t.Fatal("published ports should not be supported")
+	}
+	if caps.Supports(RuntimeCapability("future-capability")) {
+		t.Fatal("unknown capability must fail closed")
+	}
+}
+
+func TestRequireCapabilitiesAcceptsSatisfiedRequirements(t *testing.T) {
+	provider := testProvider{
+		kind: "test",
+		caps: ProviderCapabilities{WorkloadLifecycle: true, ServiceExec: true},
+	}
+	if err := RequireCapabilities(provider, CapabilityWorkloadLifecycle, CapabilityServiceExec); err != nil {
+		t.Fatalf("RequireCapabilities() error = %v", err)
+	}
+}
+
+func TestRequireCapabilitiesRejectsMissingRequirement(t *testing.T) {
+	provider := testProvider{
+		kind: "test",
+		caps: ProviderCapabilities{WorkloadLifecycle: true},
+	}
+	err := RequireCapabilities(provider, CapabilityWorkloadLifecycle, CapabilityServiceExec)
+	if err == nil {
+		t.Fatal("expected missing capability to fail")
+	}
+	if !strings.Contains(err.Error(), "service-exec") || !strings.Contains(err.Error(), "test") {
+		t.Fatalf("error does not identify provider and capability: %v", err)
+	}
+}
+
+func TestRequireCapabilitiesRejectsNilProviderAndEmptyRequirement(t *testing.T) {
+	if err := RequireCapabilities(nil, CapabilityWorkloadLifecycle); err == nil {
+		t.Fatal("nil provider unexpectedly accepted")
+	}
+	provider := testProvider{kind: "test", caps: ProviderCapabilities{}}
+	if err := RequireCapabilities(provider, ""); err == nil {
+		t.Fatal("empty capability unexpectedly accepted")
 	}
 }
