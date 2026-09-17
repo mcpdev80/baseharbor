@@ -1,8 +1,24 @@
 # Repository-first Workflow
 
-Der bevorzugte BaseHarbor-Vertrag liegt direkt im Repository der Anwendung als `baseharbor.yaml`. Diese Datei enthält nur deklarative Anforderungen und darf committed werden. Secret-Werte, generierte Zugangsdaten und Laufzeitstatus bleiben außerhalb von Git.
+Der bevorzugte BaseHarbor-Vertrag liegt direkt im Repository der Anwendung als `baseharbor.yaml`. Diese Datei enthaelt nur deklarative, portable Anforderungen und darf committed werden. Secret-Werte, generierte Zugangsdaten, Deployment-TLS-Material und Laufzeitstatus bleiben ausserhalb von Git.
 
 ## Manifest erzeugen
+
+Der normale interaktive Weg ist:
+
+```bash
+baha app init
+```
+
+BaseHarbor analysiert das Repository zuerst read-only, erkennt soweit moeglich Compose-Dateien, PostgreSQL/Redis/Valkey, Workload-Services und moegliche Secret-Namen und fragt nur nach fehlenden oder mehrdeutigen Informationen. Vor dem Schreiben wird das erzeugte Manifest angezeigt; eine vorhandene Datei wird niemals still ueberschrieben.
+
+Nicht-interaktiv und detect-first:
+
+```bash
+baha app init --quick
+```
+
+Deterministisch fuer Skripte/CI:
 
 ```bash
 baha app init mailflow --environment production --postgres --redis
@@ -18,16 +34,25 @@ baha app init mailflow \
   --redis-instance sessions
 ```
 
-Ohne Namen verwendet `baha app init` den aktuellen Verzeichnisnamen, sofern er als Anwendungsslug gültig ist.
+Ohne Namen verwendet `baha app init` den aktuellen Verzeichnisnamen, sofern er als Anwendungsslug gueltig ist.
+
+## Deployment-Init in v0.3
+
+Repository-Deployments koennen zusaetzlich geschuetzten Compose-spezifischen Deployment-State erhalten. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden.
+
+Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und schreibt normalisierte owner-only Dateien in BaseHarbor-State. Automatisch gewaehlt Host-Port-Fallbacks fuer konfigurierbare Compose-Publisher werden ebenfalls geschuetzt persistiert.
+
+Diese Werte sind Deployment-/Provider-Details und gehoeren nicht in den portablen `baseharbor.yaml`-Contract.
 
 ## Danach aus dem Repository arbeiten
 
-BaseHarbor sucht im aktuellen Verzeichnis und seinen Eltern nach der nächsten `baseharbor.yaml`:
+BaseHarbor sucht im aktuellen Verzeichnis und seinen Eltern nach der naechsten `baseharbor.yaml`:
 
 ```bash
 baha app plan
 baha app preflight
 baha app apply
+baha app show
 baha app status
 baha app doctor
 ```
@@ -36,22 +61,72 @@ Der Anwendungsname muss dabei normalerweise nicht wiederholt werden.
 
 ## Bestehendes Compose bleibt Anwendungseigentum
 
-BaseHarbor ersetzt die Compose-Topologie der Anwendung nicht. Bei einem vorhandenen Compose-Workload werden nur die benötigten BaseHarbor-Verbindungen über einen generierten Override und ein isoliertes Backend-Netz ergänzt. Bestehende Anwendungsnetzwerke und anwendungseigene Volumes bleiben erhalten.
+BaseHarbor ersetzt die Compose-Topologie der Anwendung nicht. Bei einem vorhandenen Compose-Workload werden nur die tatsaechlich benoetigten BaseHarbor-Verbindungen ueber geschuetzte generierte Overrides ergaenzt. Bestehende Anwendungsnetzwerke und anwendungseigene Volumes bleiben erhalten.
 
-Host-Prozesse erhalten Loopback-Endpunkte, Container erhalten containerfähige DNS-Endpunkte. Die Anwendung konsumiert weiterhin normale Variablen wie `DATABASE_URL` oder `REDIS_URL`.
+Ein expliziter Compose-Workload kann in v0.3 auch als Workload-only-Anwendung ohne kuenstliche PostgreSQL-/Valkey-Abhaengigkeit betrieben werden. BaseHarbor erfindet dafuer keine Backend-Services, Credentials oder Netzwerke.
+
+Host-Prozesse erhalten Loopback-Endpunkte, Container erhalten containerfaehige DNS-Endpunkte. Die Anwendung konsumiert weiterhin normale Variablen wie `DATABASE_URL` oder `REDIS_URL`.
 
 ```bash
 baha app env --path
 ```
 
-zeigt den geschützten dotenv-Pfad für normale IDE-, Prozessmanager- oder Framework-Nutzung.
+zeigt den geschuetzten dotenv-Pfad fuer normale IDE-, Prozessmanager- oder Framework-Nutzung.
+
+## Readiness
+
+Ein laufender Container ist nicht automatisch READY. BaseHarbor bewertet ausgewaehlte Services health-aware und prueft konventionelle app-eigene HTTP/HTTPS-Publisher auf den lokal veroeffentlichten Ports.
+
+Redirects gelten als erreichbar. 5xx oder nicht erreichbare Endpunkte sind NOT READY. Bei hostname-gebundenem HTTPS wird lokal verbunden, aber der konfigurierte Public FQDN als HTTP Host/TLS ServerName verwendet.
 
 ## Lebenszyklus
 
 ```text
-apply/up: BaseHarbor Backend -> Anwendungs-Workload
+apply/up: BaseHarbor Backend -> Anwendungs-Workload -> Readiness pruefen
 down:     Anwendungs-Workload -> BaseHarbor Backend
-destroy:  Workload stoppen -> BaseHarbor-eigene Ressourcen löschen
+destroy:  Workload stoppen -> BaseHarbor-eigene Ressourcen loeschen
+restore:  validieren -> stoppen -> wiederherstellen -> Identity neu -> starten -> verifizieren
+update:   preflight -> strict fast-forward -> reconcile -> verifizieren
 ```
 
-`baha app destroy --yes` entfernt BaseHarbor-eigene Laufzeitressourcen, lässt aber die committed `baseharbor.yaml` und anwendungseigene Compose-Volumes bestehen.
+`baha app destroy --yes` entfernt BaseHarbor-eigene Laufzeitressourcen, laesst aber die committed `baseharbor.yaml` und anwendungseigene Compose-Volumes bestehen.
+
+## Developer Access
+
+Trusted-local Komfortbefehle verwenden logische Ressourcen/Services statt generierter Container-Namen:
+
+```bash
+baha app psql
+baha app valkey
+baha app logs
+baha app shell SERVICE
+baha app exec SERVICE COMMAND
+```
+
+## Backup, Restore und Update
+
+Interaktiv:
+
+```bash
+baha app backup
+baha app restore ./mailflow-production.bhbackup
+```
+
+Automation kann weiterhin explizit `--password-file` verwenden. Restore bleibt fail-closed und meldet READY erst nach erfolgreicher Backend-, Runtime-Identity-, Workload- und HTTP/TLS-Verifikation.
+
+Git-basierte Updates lassen sich vor Mutation pruefen:
+
+```bash
+baha app update --check
+```
+
+Mutation ist strict fast-forward only. Dirty/Ahead/Diverged schlagen fehl. Fuer dauerhaften BaseHarbor-State muss vor Mutation entweder ein verschluesseltes Recovery erstellt oder `--no-backup` explizit bestaetigt werden.
+
+## Existing/BYOC TLS aktualisieren
+
+```bash
+baha app tls update --check
+baha app tls update
+```
+
+`--check` ist read-only. Mutation prueft Quelle/Key-Pair/FQDN, verweigert Downgrades, installiert geschuetzte Dateien, startet bei Bedarf neu und verifiziert Readiness. ACME-Automation und providerneutraler TLS-Contract bleiben Future Work.

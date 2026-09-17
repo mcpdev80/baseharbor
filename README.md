@@ -14,24 +14,29 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by a real application**. The current development line is preparing `v0.2.0`, with Compose as the complete first runtime target while the public application concepts remain suitable for later runtime providers.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current release line is preparing `v0.3.0`, with Compose as the complete runtime target while the public application concepts remain suitable for later runtime providers.
 
-The current default branch includes:
+The v0.3.0 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
 - user-global control-plane runtime state that survives application checkout changes;
 - repository-owned `baseharbor.yaml` application contracts;
-- repository discovery so most `baha app` commands do not require repeating the application name;
+- detect-first guided repository initialization and deterministic automation flags;
 - one or multiple named PostgreSQL instances per application;
 - one or multiple named Valkey/Redis-protocol instances per application;
+- explicit workload-only Compose applications without artificial backend dependencies;
 - application environment/file bindings using standard connection information;
-- managed required secrets with fail-closed workload startup gates;
-- static secret environment/file delivery;
-- app-scoped dynamic secret references and runtime API;
-- per-application runtime identity and mTLS broker isolation;
-- lifecycle status/doctor/down/up/destroy operations;
-- encrypted application backup/restore covering metadata, PostgreSQL and the application OpenBao scope.
+- managed required/generated secrets with fail-closed workload startup gates;
+- app-scoped dynamic secret references and per-application mTLS runtime broker isolation;
+- service-level, health-aware workload status plus application-owned HTTP/HTTPS exposure readiness;
+- trusted-local developer access through database/cache clients, logs, shell and exec;
+- guided encrypted backup/restore with verified recovery metadata and fail-closed post-restore readiness;
+- strict fast-forward Git-backed application updates with optional encrypted pre-update recovery points;
+- guarded BaseHarbor self-update with checksum verification, atomic replacement and rollback;
+- repository deployment initialization for public FQDN and TLS mode;
+- existing/BYOC TLS certificate lifecycle with validation, downgrade protection, reload and readiness verification;
+- automatic persisted fallback for configurable workload host-port conflicts, including IPv4/IPv6 Docker bind errors.
 
 The public compatibility contract is still allowed to evolve during `0.x`. Patch releases are expected to remain compatible; minor releases may contain documented breaking changes until `v1.0.0`.
 
@@ -45,11 +50,11 @@ Install the latest stable release:
 curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
 ```
 
-For production automation, pin both installer and requested version to an immutable published release tag. After `v0.2.0` is published:
+For production automation, pin both installer and requested version to an immutable published release tag. After `v0.3.0` is published:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.2.0/scripts/install.sh \
-  | bash -s -- v0.2.0
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.3.0/scripts/install.sh \
+  | bash -s -- v0.3.0
 ```
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
@@ -66,7 +71,7 @@ go build -o baha ./cmd/baha
 
 ## Preferred application workflow
 
-The preferred contract lives with the application source:
+The preferred portable contract lives with the application source:
 
 ```yaml
 version: 1
@@ -88,9 +93,15 @@ secrets:
     - name: SECRET_KEY
 ```
 
-`app.name` is the stable logical application identity. In manifest v1, `app.environment` identifies the deployment context of the current BaseHarbor realization; it is not an intrinsic business property of the application. The same logical application may later be realized independently in development, staging, production or customer-specific environments. See [`docs/decisions/0002-application-environment-is-deployment-context.md`](docs/decisions/0002-application-environment-is-deployment-context.md).
+`app.name` is the stable logical application identity. In manifest v1, `app.environment` identifies deployment context; it is not an intrinsic business property of the application. The same logical application may later be realized independently in development, staging, production or customer-specific environments. See [`docs/decisions/0002-application-environment-is-deployment-context.md`](docs/decisions/0002-application-environment-is-deployment-context.md).
 
-Create a repository manifest non-interactively:
+Interactive repository setup is detect-first:
+
+```bash
+baha app init
+```
+
+For deterministic automation:
 
 ```bash
 baha app init mailflow \
@@ -100,17 +111,18 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
+The guided flow detects the current project first and asks only for missing or ambiguous information. Deployment/runtime initialization may additionally collect a public FQDN and TLS mode for the current Compose realization. These values are protected deployment state, not portable application requirements in `baseharbor.yaml`.
+
 Then operate from the repository without repeating the application name:
 
 ```bash
 baha app plan
 baha app preflight
 baha app apply
+baha app show
 baha app status
 baha app doctor
 ```
-
-The guided `baha app init` flow detects the current project first and asks only for missing or ambiguous information; explicit flags remain the deterministic automation path.
 
 ## Control-plane bootstrap
 
@@ -194,7 +206,7 @@ services:
       sessions: {}
 ```
 
-Each named instance gets independent credentials, persistent data and stable bindings. Multiple logical instances are not HA; HA is a topology behind one stable logical service and is tracked separately as an architecture decision.
+Each named instance gets independent credentials, persistent data and stable bindings. Multiple logical instances are not HA; HA is a topology behind one stable logical service and is tracked separately as future architecture work.
 
 ## Native application consumption
 
@@ -216,7 +228,17 @@ baha app env --format json
 baha app env --path
 ```
 
-Credential-bearing values are masked by default; revealing them requires an explicit option.
+Credential-bearing values are masked by default; revealing them requires an explicit operation.
+
+Trusted local developer access is available through logical resources and services:
+
+```bash
+baha app psql
+baha app valkey
+baha app logs
+baha app shell SERVICE
+baha app exec SERVICE COMMAND
+```
 
 ## Managed secrets
 
@@ -236,34 +258,58 @@ printf '%s' "$OPENAI_API_KEY" | baha app secret set OPENAI_API_KEY --stdin
 printf '%s' "$SMTP_PASSWORD" | baha app secret set SMTP_PASSWORD --stdin
 ```
 
-`baha app apply` and `baha app up` fail closed before workload start when required secrets are missing or unusable. Status and doctor expose readiness metadata only, never secret values.
+`baha app apply` and `baha app up` fail closed before workload start when required secrets are missing or unusable. Status, show and doctor expose readiness metadata only, never secret values.
 
 BaseHarbor also supports app-scoped dynamic secret references through the runtime broker so applications can store an opaque reference while the credential remains in OpenBao.
 
+## Deployment TLS
+
+The v0.3 Compose deployment initializer supports deployment TLS modes without adding TLS provider details to the portable application manifest. For existing/BYOC certificates, BaseHarbor validates and stores the normalized certificate/key pair in protected runtime state.
+
+Check or install a newer certificate from the configured source directory:
+
+```bash
+baha app tls update --check
+baha app tls update
+```
+
+The update path validates certificate/key matching and FQDN coverage, refuses certificate downgrades, restarts the repository workload when required and verifies readiness. ACME automation, OpenBao PKI issuance and provider-neutral certificate contracts remain future work.
+
 ## Backup and restore
 
-Create one encrypted recovery unit:
+Interactive terminals can use the guided flow:
+
+```bash
+baha app backup
+baha app restore ./mailflow-production.bhbackup
+```
+
+Automation keeps the deterministic password-file path:
 
 ```bash
 baha app backup --password-file ./backup-password.txt
+baha app restore ./mailflow-production.bhbackup --password-file ./backup-password.txt
 ```
 
-Optionally choose the output path:
+The recovery unit includes desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope. Restore validates and decrypts before mutation, rebuilds protected state, restores data while the workload is stopped, regenerates runtime identities and reports READY only after the restarted application boundary has been verified.
+
+## Updates
+
+Inspect a Git-backed application update without mutation:
 
 ```bash
-baha app backup \
-  --password-file ./backup-password.txt \
-  --output ./mailflow-production.bhbackup
+baha app update --check
 ```
 
-Restore and verify it:
+Application mutation is strict fast-forward only and reuses the normal application reconciliation/readiness lifecycle. Durable applications require either an encrypted pre-update recovery point or explicit acknowledgement to proceed without one.
+
+Inspect BaseHarbor itself for an available stable release:
 
 ```bash
-baha app restore ./mailflow-production.bhbackup \
-  --password-file ./backup-password.txt
+baha update --check
 ```
 
-The recovery unit includes desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope. Restore validates and decrypts before mutation, rebuilds protected state, restores data while the workload is stopped, regenerates runtime identities and verifies the restarted application boundary.
+Actual self-update requires explicit confirmation and verifies release artifacts before atomic replacement. A retained recovery binary is used to roll back when post-update verification fails.
 
 ## CLI discovery
 
@@ -287,7 +333,7 @@ The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
 - Compose first and complete; later runtime providers may include Kubernetes and OpenShift without redefining logical application requirements;
 - mature open-source components instead of unnecessary reinvention;
 - observable health, backup/restore, certificates and lifecycle operations;
-- optional first-class AI, MCP and RAG capabilities where they add value.
+- capability/provider boundaries that avoid locking applications to bundled infrastructure products.
 
 ## Release policy
 

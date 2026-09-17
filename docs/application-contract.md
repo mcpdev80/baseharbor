@@ -12,9 +12,23 @@ A second design test is equally important:
 
 `app.name` is the stable logical application identity. `app.environment` is deployment context, not part of the application's intrinsic identity.
 
-The same logical application can therefore be instantiated as `dev`, `test`, `staging`, `production` or a customer-specific deployment without being redefined as a different application. In v0.2.0 Compose uses the environment value for runtime isolation and naming. Future providers such as Kubernetes or OpenShift may realize the same logical requirements differently.
+The same logical application can therefore be instantiated as `dev`, `test`, `staging`, `production` or a customer-specific deployment without being redefined as a different application. In v0.3.0 Compose uses the environment value for runtime isolation and naming. Future providers such as Kubernetes or OpenShift may realize the same logical requirements differently.
 
 Provider-specific implementation details such as Compose project names, networks, host ports, volumes or OpenBao paths are not portable application requirements and must not become application dependencies.
+
+## Portable application contract versus deployment state
+
+`baseharbor.yaml` is the portable, repository-owned desired-state contract. It describes application requirements that should survive a future change of runtime/provider.
+
+The current Compose deployment may also need operator/runtime inputs that are **not** portable application requirements. In v0.3 these are stored separately in protected BaseHarbor runtime state and can include:
+
+- the public FQDN used for the current deployment;
+- the selected deployment TLS mode;
+- the source/normalized files for an existing/BYOC certificate pair;
+- automatically selected host-port fallbacks for configurable Compose publishers;
+- generated Compose overrides and runtime identity material.
+
+Those values must not be copied into the portable manifest merely because the Compose provider currently needs them. Future Kubernetes/OpenShift providers may realize the same application requirements through entirely different primitives.
 
 ## Required secrets
 
@@ -141,6 +155,12 @@ bindings/
 
 Multiple logical instances are not an HA mechanism. A `primary` PostgreSQL instance with future high availability remains one logical service with one stable application-facing endpoint while BaseHarbor manages the replicated topology behind it. See `docs/decisions/0001-service-instances-and-ha-intent.md`.
 
+## Workload-only applications
+
+A repository may explicitly declare an application-owned Compose workload without also requesting an artificial managed PostgreSQL or Valkey dependency. This is a valid v0.3 application shape when the workload is explicit.
+
+BaseHarbor does not invent backend environment variables, backend networks, volumes or credentials for workload-only applications. A manifest with neither a managed capability nor an explicit workload remains invalid. Managed-secrets-only applications remain unsupported where the current v0.3 runtime broker requires a materialized managed backend.
+
 ## Native runtime contract
 
 Applications do not log in to BaseHarbor and do not require the `baha` process, a BaseHarbor SDK or a proprietary protocol at runtime.
@@ -203,7 +223,7 @@ No application code has to call BaseHarbor to retrieve either form.
 
 ## CLI convenience is optional
 
-`baha app env` exists for developer convenience and inspection; it is not a runtime dependency.
+`baha app env` and the trusted-local developer-access commands exist for convenience; they are not runtime dependencies.
 
 ```bash
 baha app env mailflow
@@ -211,17 +231,16 @@ baha app env mailflow --format json
 baha app env mailflow --format yaml
 baha app env mailflow --format shell
 baha app env mailflow --path
+baha app psql
+baha app valkey
+baha app logs
 ```
 
-Credential-bearing service URLs are masked by default. Printing them requires an explicit operation:
-
-```bash
-baha app env mailflow --reveal
-```
+Credential-bearing service URLs are masked by default. Printing them requires an explicit operation such as `--reveal` where supported.
 
 `--path` prints the protected `application.env` path so an editor, IDE, process manager or normal dotenv loader can consume it directly.
 
-## Lifecycle semantics
+## Lifecycle and readiness semantics
 
 `plan` includes a requirement action for every required secret.
 
@@ -248,15 +267,15 @@ baha app apply / baha app up
 
 `baha app up` always fails closed before workload start when a required secret is missing or unusable.
 
-`baha app status` and `baha app doctor` report readiness metadata only:
+For repository Compose workloads, readiness also includes selected service state/health and conventional application-owned HTTP/HTTPS publishers. A running container is not automatically READY. Redirects count as reachable web exposure; 5xx or unreachable endpoints do not. Hostname-bound local HTTPS uses the configured deployment FQDN as HTTP Host/TLS ServerName while BaseHarbor still dials the local published socket.
 
-```text
-REQUIRED SECRET    PRESENT    USABLE
-OPENAI_API_KEY     yes        yes
-SMTP_PASSWORD      no         no
-```
+`baha app show`, `status` and `doctor` report readiness metadata only and never reveal secret values.
 
-They never reveal secret values.
+## Deployment TLS is not an application dependency
+
+v0.3 supports an existing/BYOC certificate lifecycle for the current repository Compose deployment. `baha app tls update --check` is read-only; `baha app tls update` validates the source certificate/key pair and FQDN, refuses downgrades, installs owner-only normalized files, restarts the workload when required and verifies readiness.
+
+This does not turn certificate source directories, Compose TLS files or Caddy details into portable application requirements. BaseHarbor-managed ACME issuance, OpenBao PKI issuance, automatic rotation and provider-neutral `tls.certificate` intent remain future work.
 
 ## Secret delivery remains separate from the requirement contract
 
@@ -314,6 +333,8 @@ OpenBao KV-v2 internal paths
 BaseHarbor policy names
 Compose network names
 BaseHarbor internal IDs
+Compose-generated host ports
+certificate source directories
 ```
 
 This keeps BaseHarbor useful without making applications proprietary to BaseHarbor.
