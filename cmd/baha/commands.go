@@ -44,6 +44,7 @@ func rootCommand() *cli.Command {
 		appSecretCommand(store),
 		appRuntimeIdentityCommand(store),
 	)
+	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 
 	root := &cli.Command{
 		Name:    "baha",
