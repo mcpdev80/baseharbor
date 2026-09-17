@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-18
+
+### Added
+
+- A provider-neutral `PortableContract` seam that translates supported Manifest v1 application intent into logical capabilities without exposing Compose project names, host ports, deployment FQDN/TLS source paths or other provider implementation details.
+- Runtime provider identity and capability negotiation with Compose as the current implementation and explicit extension points for future Kubernetes and OpenShift providers.
+- Protected deployment-owned runtime-provider state through `BASEHARBOR_RUNTIME_PROVIDER`; legacy v0.3 state without the key safely resolves to Compose.
+- A central fail-closed runtime-provider guard for remaining application runtime commands, including preflight, backup/restore, workload logs/shell/exec, update, TLS reload, status/doctor, down and destroy.
+- A reusable declarative application input resolver supporting safe defaults, generated values, external/operator values and conditional `required-if` dependencies.
+- Automation-safe `baha app init --input NAME=VALUE` injection for declared non-secret deployment inputs while preserving the existing dedicated flags.
+- Resolver-driven repository deployment initialization for `hostname`, `tls_mode` and conditionally required `cert_dir`, shared by `baha app init` and the repository-aware `baha up` path.
+- Architecture decisions documenting portable contract/provider boundaries, runtime-provider selection and contract evolution/versioning rules.
+
+### Changed
+
+- Manifest v1 is now explicitly treated as the supported compatibility surface and translated one-way into portable application intent rather than being treated as the permanent provider-neutral schema itself.
+- Application requirements, runtime-provider selection and capability-provider/product selection are formally separate concerns; an application requests logical capabilities while deployment/platform policy chooses how they are realized.
+- Contract evolution is fail-closed for unknown required versions or semantics; additive evolution remains preferred and provider-specific escape hatches, when eventually required, must remain optional and namespaced.
+- Repository runtime operations now resolve the deployment-selected runtime provider and required runtime capabilities before entering the current Compose-backed implementation, preventing future providers from silently falling through into Docker/Compose code.
+- `baha app init` and `baha up` ask only for unresolved deployment values when interactive. Complete protected state causes no additional questions; non-interactive operation uses only safe defaults/derivations and never invents an external certificate path.
+- Compose remains the complete and first-class runtime implementation for v0.4. Kubernetes and OpenShift are intentionally not implemented in this release; the new seams are the compatibility boundary they will consume later.
+
+### Security
+
+- Unsupported or unavailable runtime providers fail explicitly instead of silently degrading to Compose or weakening requested runtime guarantees.
+- Secret input values are represented explicitly, render redacted, and are excluded from generic persistable non-secret resolver output by construction.
+- Runtime-provider capability negotiation fails closed when an operation requires behavior the selected provider cannot satisfy.
+- Existing protected deployment state, certificate validation, secret storage and provider-specific security controls remain separate from the portable application contract and are not copied into committed manifests.
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
@@ -95,7 +124,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0
 [0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1
