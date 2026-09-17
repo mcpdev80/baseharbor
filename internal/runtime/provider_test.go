@@ -12,7 +12,7 @@ type testProvider struct {
 	caps ProviderCapabilities
 }
 
-func (p testProvider) Kind() ProviderKind { return p.kind }
+func (p testProvider) Kind() ProviderKind                 { return p.kind }
 func (p testProvider) Capabilities() ProviderCapabilities { return p.caps }
 
 func TestComposeProviderMetadata(t *testing.T) {
