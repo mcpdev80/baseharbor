@@ -318,14 +318,6 @@ func readBackupPasswordFromTerminal(out io.Writer, confirm bool) ([]byte, error)
 
 func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func(io.Writer) error) error {
 	var buffered bytes.Buffer
-	file, terminal := out.(*os.File)
-	if !terminal || !isTerminalWriter(file) {
-		fmt.Fprintf(out, "%s...\n", label)
-		err := fn(&buffered)
-		_, _ = io.Copy(out, &buffered)
-		return err
-	}
-
 	done := make(chan error, 1)
 	go func() { done <- fn(&buffered) }()
 
@@ -341,9 +333,10 @@ func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func
 		"[................#...]",
 		"[..................#.]",
 	}
+	fmt.Fprintf(out, "\r%s %s", frames[0], label)
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
-	frame := 0
+	frame := 1
 	for {
 		select {
 		case err := <-done:
@@ -358,14 +351,6 @@ func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func
 			frame++
 		}
 	}
-}
-
-func isTerminalWriter(file *os.File) bool {
-	if file == nil {
-		return false
-	}
-	_, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
-	return err == nil
 }
 
 func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte, error) {
