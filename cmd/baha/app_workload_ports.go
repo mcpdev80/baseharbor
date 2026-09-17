@@ -21,7 +21,7 @@ const workloadPortOverridesFile = "workload-ports.env"
 
 var (
 	composePublishedPortVariableRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*):-([0-9]{1,5})\}\s*:`)
-	conflictingHostPortRE          = regexp.MustCompile(`(?i)(?:127\.0\.0\.1:|0\.0\.0\.0:|\[::\]:|host port\s+)([0-9]{1,5})`)
+	conflictingHostPortRE          = regexp.MustCompile(`(?i)(?:127\.0\.0\.1:|0\.0\.0\.0:|\[::\]:|\[::1\]:|::1:|host port\s+)([0-9]{1,5})`)
 )
 
 type workloadPublishedPortVariable struct {
