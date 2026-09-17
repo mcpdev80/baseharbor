@@ -45,9 +45,16 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
-				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+				{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
+					required := []bhruntime.RuntimeCapability{
+						bhruntime.CapabilityWorkloadLifecycle,
+						bhruntime.CapabilityResourceOwnership,
+					}
+					if m.Services.Secrets {
+						required = append(required, bhruntime.CapabilityServiceExec)
+					}
 					var err error
-					compose, err = bhruntime.DetectCompose(ctx)
+					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
