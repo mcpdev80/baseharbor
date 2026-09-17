@@ -12,8 +12,11 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestParseRepositoryInitOptions(t *testing.T) {
@@ -32,10 +35,11 @@ func TestParseRepositoryInitOptions(t *testing.T) {
 func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	state := repositoryInitState{
-		Hostname: "mail.example.test",
-		TLSMode:  "existing",
-		CertDir:  "/operator/certs",
-		TLSDir:   filepath.Join(root, ".baseharbor", "tls"),
+		Hostname:        "mail.example.test",
+		TLSMode:         "existing",
+		CertDir:         "/operator/certs",
+		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
+		RuntimeProvider: bhruntime.ProviderCompose,
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -53,6 +57,31 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("init env mode = %o, want 600", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(repositoryInitEnvPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=compose\n") {
+		t.Fatalf("runtime provider missing from init state: %s", data)
+	}
+}
+
+func TestRepositoryInitStateDefaultsLegacyRuntimeProviderToCompose(t *testing.T) {
+	root := t.TempDir()
+	path := repositoryInitEnvPath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("BASEHARBOR_HOSTNAME=mail.example.test\nBASEHARBOR_TLS_MODE=local\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := loadRepositoryInitState(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.RuntimeProvider != bhruntime.ProviderCompose {
+		t.Fatalf("runtime provider = %q, want %q", state.RuntimeProvider, bhruntime.ProviderCompose)
 	}
 }
 

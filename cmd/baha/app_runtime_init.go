@@ -15,6 +15,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const (
@@ -30,10 +32,11 @@ type repositoryInitOptions struct {
 }
 
 type repositoryInitState struct {
-	Hostname string
-	TLSMode  string
-	CertDir  string
-	TLSDir   string
+	Hostname        string
+	TLSMode         string
+	CertDir         string
+	TLSDir          string
+	RuntimeProvider bhruntime.ProviderKind
 }
 
 type detectedCertificatePair struct {
@@ -123,6 +126,10 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 	hostname := firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname)
 	tlsMode := firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode)
 	certDir := firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir)
+	provider := current.RuntimeProvider
+	if provider == "" {
+		provider = bhruntime.ProviderCompose
+	}
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes
 	reader := bufio.NewReader(appInitInput)
@@ -201,11 +208,18 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		_ = os.Remove(filepath.Join(tlsDir, "key.pem"))
 	}
 
-	state := repositoryInitState{Hostname: hostname, TLSMode: tlsMode, CertDir: certDir, TLSDir: tlsDir}
+	state := repositoryInitState{
+		Hostname:        hostname,
+		TLSMode:         tlsMode,
+		CertDir:         certDir,
+		TLSDir:          tlsDir,
+		RuntimeProvider: provider,
+	}
 	if err := writeRepositoryInitState(repoRoot, state); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Application runtime initialization saved for %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
+	fmt.Fprintf(out, "Runtime provider: %s\n", provider)
 	fmt.Fprintf(out, "FQDN: %s\n", hostname)
 	fmt.Fprintf(out, "TLS: %s\n", tlsMode)
 	if certDir != "" {
@@ -403,16 +417,21 @@ func repositoryInitEnvPath(repoRoot string) string {
 func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 	values, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
 	if errors.Is(err, os.ErrNotExist) {
-		return repositoryInitState{}, nil
+		return repositoryInitState{RuntimeProvider: bhruntime.ProviderCompose}, nil
 	}
 	if err != nil {
 		return repositoryInitState{}, err
 	}
+	providerState, err := deployment.RuntimeProviderStateFromValues(values)
+	if err != nil {
+		return repositoryInitState{}, err
+	}
 	return repositoryInitState{
-		Hostname: strings.TrimSpace(values["BASEHARBOR_HOSTNAME"]),
-		TLSMode:  strings.TrimSpace(values["BASEHARBOR_TLS_MODE"]),
-		CertDir:  strings.TrimSpace(values["BASEHARBOR_TLS_SOURCE_DIR"]),
-		TLSDir:   strings.TrimSpace(values["BASEHARBOR_TLS_CERT_DIR"]),
+		Hostname:        strings.TrimSpace(values["BASEHARBOR_HOSTNAME"]),
+		TLSMode:         strings.TrimSpace(values["BASEHARBOR_TLS_MODE"]),
+		CertDir:         strings.TrimSpace(values["BASEHARBOR_TLS_SOURCE_DIR"]),
+		TLSDir:          strings.TrimSpace(values["BASEHARBOR_TLS_CERT_DIR"]),
+		RuntimeProvider: providerState.Provider,
 	}, nil
 }
 
@@ -430,6 +449,9 @@ func writeRepositoryInitState(repoRoot string, state repositoryInitState) error 
 		"BASEHARBOR_TLS_MODE":       state.TLSMode,
 		"BASEHARBOR_TLS_CERT_DIR":   state.TLSDir,
 		"BASEHARBOR_TLS_SOURCE_DIR": state.CertDir,
+	}
+	if err := deployment.ApplyRuntimeProviderState(values, deployment.RuntimeProviderState{Provider: state.RuntimeProvider}); err != nil {
+		return err
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
