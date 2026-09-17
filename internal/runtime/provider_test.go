@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -62,6 +63,12 @@ func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
 		if _, err := ParseProviderKind(input); err == nil {
 			t.Fatalf("ParseProviderKind(%q) unexpectedly succeeded", input)
 		}
+	}
+}
+
+func TestDetectProviderForKindRejectsUnavailableProvider(t *testing.T) {
+	if _, err := DetectProviderForKind(context.Background(), ProviderKind("kubernetes")); err == nil {
+		t.Fatal("unavailable runtime provider unexpectedly resolved")
 	}
 }
 
