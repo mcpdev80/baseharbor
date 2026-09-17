@@ -11,167 +11,139 @@ homelab / single host
         ↓
 Compose production
         ↓
-future Kubernetes / OpenShift
+Kubernetes / OpenShift
         ↓
 enterprise deployment profiles
 ```
 
-The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime/deployment provider while applications continue to use standard protocols and native clients.
+The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.3.0 Compose foundation
+## Current v0.4.0 portable application foundation
 
-The current complete runtime target is Docker/Podman Compose.
+Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
 Implemented foundations include:
 
 - `baha` as the primary lifecycle CLI;
-- repository-owned `baseharbor.yaml` application contracts;
-- detect-first guided `baha app init`, `--quick` and deterministic explicit flags;
-- one or multiple named PostgreSQL resources;
-- one or multiple named Valkey/Redis-protocol resources;
+- repository-owned Manifest v1 `baseharbor.yaml` as the supported compatibility surface;
+- a provider-neutral `PortableContract` adapter for application intent;
+- one or multiple named logical PostgreSQL resources;
+- one or multiple named logical Valkey/Redis-protocol resources;
+- managed/generated secret intent without embedding secret values in the application contract;
+- explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
+- deployment-owned runtime-provider state with Compose as the current provider;
+- runtime provider capability negotiation and fail-closed unsupported-provider behavior;
+- centralized runtime guards preventing future provider selections from falling through into Compose-specific application operations;
+- declarative input resolution with default, generated, external and conditional values;
+- resolver-driven deployment inputs shared by `baha app init` and repository-aware `baha up`;
+- automation-safe explicit non-secret input injection through `--input NAME=VALUE`;
+- detect-first guided application initialization, `--quick` and deterministic explicit flags;
 - explicit workload-only repository applications without artificial managed backend dependencies;
 - OpenBao-backed required/generated secrets and scoped runtime identity;
 - standard environment/file bindings and optional app-scoped runtime secret references;
 - application workload attachment through generated Compose overrides;
-- isolated application backend networks where managed backends exist;
 - trusted-local developer access through database/cache clients, logs, shell and exec;
-- health-aware service-level workload truth plus app-owned HTTP/HTTPS exposure readiness;
+- health-aware workload and HTTP/HTTPS exposure readiness;
 - coherent `show`, `status` and `doctor` operator views;
-- guided encrypted backup/restore with verified recovery metadata and fail-closed post-restore readiness;
-- strict fast-forward Git-backed application update with explicit recovery policy for durable state;
-- guarded BaseHarbor self-update with artifact verification, atomic replacement and rollback;
-- repository deployment initialization for public FQDN and TLS mode;
-- existing/BYOC certificate validation, protected installation, update checking and reload verification;
-- automatic persisted host-port fallback for configurable Compose publishers, including IPv4/IPv6 bind-conflict forms;
+- guided encrypted backup/restore with verified recovery metadata;
+- strict fast-forward application updates and guarded BaseHarbor self-update;
+- public-FQDN/TLS deployment initialization and existing/BYOC certificate lifecycle;
+- automatic persisted host-port fallback for configurable Compose publishers;
 - release/runtime-image version coupling and real-product acceptance coverage including MailFlow.
 
-Multiple logical service instances are not HA. HA is future topology behind one stable logical resource.
+Multiple logical service instances are not HA. HA remains a topology/availability concern behind stable logical resources.
 
-## Architecture rule for future work
+## Architecture rules
 
-Compose is not disposable prototype code; it remains a first-class provider. At the same time, Compose-specific details must not leak into portable application requirements.
+Compose is not disposable prototype code; it remains a first-class runtime provider. Compose-specific details must not leak into portable application requirements.
+
+Runtime providers and capability providers are independent axes. For example, a future OpenShift deployment may still use customer-managed PostgreSQL, Vault/OpenBao and Ceph RGW rather than requiring platform-native products for every capability.
 
 Provider-specific implementation details include:
 
 - Compose project/network/container names;
 - allocated host ports and generated overrides;
 - deployment FQDN/TLS realization for the current provider;
-- Kubernetes object names and namespace mechanics;
+- Kubernetes object names, namespaces and storage classes;
 - OpenShift Routes/SCC-specific realization;
-- provider-specific storage and secret projection mechanics.
+- provider-specific storage, secret projection and ingress mechanics.
 
-Applications should continue to consume stable interfaces such as PostgreSQL, Redis/Valkey, S3, OIDC/OAuth2, OpenBao/Vault-compatible secrets and OpenTelemetry/OpenMetrics.
+Applications should continue to consume stable interfaces such as PostgreSQL, Redis/Valkey, S3, OIDC/OAuth2, Vault/OpenBao-compatible secrets and OpenTelemetry/OpenMetrics.
 
-## v0.3 boundary: implemented versus future
+Provider substitution must satisfy the requested contract or fail clearly. BaseHarbor must never silently downgrade requested security, durability or availability.
 
-v0.3 deliberately implements only the current Compose realization needed for a complete local/self-hosted operational lifecycle.
+## v0.4 boundary: implemented versus future
 
-Implemented now:
+Implemented in v0.4:
 
-- application-owned HTTP/HTTPS exposure verification;
-- deployment public FQDN persisted as protected runtime state;
-- existing/BYOC certificate lifecycle for repository deployments;
-- local Compose workload port fallback;
-- backup/restore and update verification against the real application boundary.
+- Manifest v1 compatibility classification and one-way portable-contract translation;
+- contract versioning/evolution rules;
+- runtime-provider identity, state and capability negotiation;
+- Compose as the current runtime provider implementation;
+- deployment-selected application runtime guards;
+- reusable declarative input resolution;
+- shared TLS/FQDN deployment input reference flow;
+- preserved v0.3 Compose developer journey and persisted-state compatibility.
 
 Still future:
 
-- provider-neutral `ingress.http` or `tls.certificate` application capabilities;
+- additional capability-provider implementations and S3/object-storage realization;
+- provider-neutral ingress/TLS capability implementation;
 - BaseHarbor-managed ACME issuance/renewal;
 - OpenBao PKI issuance/rotation for application ingress certificates;
-- Kubernetes Gateway/Ingress and OpenShift Route realization;
+- managed environment/policy profiles;
 - topology/HA profiles;
-- managed-production OIDC/RBAC/JIT policy.
+- managed-production OIDC/RBAC/JIT policy;
+- actual Kubernetes and OpenShift runtime implementations.
 
 ## Next architecture tracks
 
-The post-v0.3 roadmap remains split into independent tracks rather than one large rewrite.
+### v0.5 – Compose platform capabilities
 
-### Portable application contract and provider seam
+Expand the portable capability model while keeping Compose as the production implementation:
 
-- evolve the application contract without baking in Compose-only assumptions;
-- move from product-oriented v1 fields toward capability-oriented requirements where justified;
-- define capability negotiation and fail-closed provider selection;
-- separate application requirements from operator/environment policy;
-- preserve the v0.3 Compose developer journey while introducing the runtime/provider seam incrementally.
+- capability-provider boundaries for relational SQL, cache/key-value, secrets, S3-compatible object storage and exposure;
+- replaceable reference providers rather than product lock-in;
+- provider conformance and explicit capability negotiation;
+- object storage reference implementation, with SeaweedFS/Ceph RGW/external S3-style providers evaluated behind the same logical contract;
+- further provider-neutral exposure/TLS intent without leaking Compose details.
 
-### Input resolution
+### v0.6 – Environments, policy, identity and topology intent
 
-- declarative inputs, defaults, generated values and conditional questions;
-- one resolver usable by CLI, future GUI/API and automation;
-- explicit ownership of app requirements versus deployment/operator inputs;
-- no universal application business-configuration framework.
+Add platform/operator policy while keeping it outside the application contract:
 
-### Developer access and managed policy
+- named environment profiles and server-side policy;
+- runtime/capability provider selection per environment;
+- OIDC login, RBAC, audit and just-in-time/elevated production access where required;
+- topology intent such as standard versus enterprise/HA without changing logical application resource identity;
+- external/customer-managed provider bindings.
 
-Trusted-local access is implemented in v0.3. Future work adds stricter policy without changing the application runtime contract:
+### v0.7 – Kubernetes provider
 
-- environment-aware access policy;
-- future OIDC login, RBAC, audit and just-in-time/elevated production access;
-- raw secret reveal becoming exceptional in managed production deployments;
-- policy-controlled access to logs, shells, credentials and destructive lifecycle actions.
+Map the same portable application requirements to Kubernetes primitives where applicable:
 
-### Exposure, TLS and PKI
+- Deployments and StatefulSets;
+- Services;
+- Gateway/Ingress;
+- PVCs/storage classes;
+- workload secret delivery/provider integration;
+- NetworkPolicies;
+- readiness/liveness probes;
+- PodDisruptionBudgets where required by topology/policy;
+- provider-conformance and migration tests.
 
-Existing/BYOC certificate lifecycle and app-owned HTTP/TLS readiness are implemented for Compose v0.3. Future work includes:
+Applications keep the same `baha` lifecycle and logical resources rather than gaining a second Kubernetes-specific operational contract.
 
-- public/internal exposure as an explicit portable platform capability;
-- provider-neutral ingress/gateway intent;
-- ACME lifecycle managed by the selected provider;
-- internal OpenBao PKI issuance where appropriate;
-- automatic renewal/rotation and health policy;
-- Kubernetes cert-manager / Gateway integrations and OpenShift-native realization.
+### v0.8 – OpenShift / enterprise provider
 
-### Capability providers
+Add OpenShift-specific behavior where Kubernetes-generic mapping is insufficient:
 
-Default products remain replaceable implementation choices. Planned tracks include provider boundaries for:
-
-- relational SQL;
-- cache/key-value;
-- secrets;
-- S3-compatible object storage;
-- ingress/exposure;
-- identity;
-- observability.
-
-Substitution must preserve the requested contract or fail clearly; BaseHarbor must not silently downgrade security, durability or availability.
-
-### Runtime provider expansion
-
-The intended provider evolution is:
-
-```text
-Application Contract
-        ↓
-Runtime / Deployment Provider
-   ┌─────────┼─────────────┐
- Compose   Kubernetes    OpenShift
-```
-
-Kubernetes and OpenShift are future providers, not v0.3.0 features. They should map the same logical application resources and lifecycle concepts to their native primitives rather than requiring a separate application model.
-
-### Environment, identity and topology profiles
-
-Environment/risk and topology are separate dimensions.
-
-A future deployment may combine, for example:
-
-```text
-environment: production
-deployment profile: enterprise-ha
-provider: openshift
-```
-
-while the application continues to request one logical `primary` PostgreSQL resource.
-
-Future profiles may include:
-
-- single-node/standard;
-- HA control plane;
-- replicated/managed service topologies;
-- Kubernetes/OpenShift enterprise policy integration;
-- external managed PostgreSQL/Valkey/S3/OpenBao adapters;
-- backup/DR and observability requirements.
+- Routes/Gateway integrations;
+- SCC/security constraints;
+- Operator integrations where appropriate;
+- OpenShift identity/policy integration points;
+- enterprise registry, proxy and offline constraints;
+- customer-managed infrastructure capability providers.
 
 ## Long-term success criterion
 
@@ -189,4 +161,4 @@ and later reach:
 
 without a second operational rewrite of the application.
 
-The exact infrastructure may change substantially; the logical application requirements and standard application-facing interfaces should change as little as possible.
+The infrastructure may change substantially; the logical application requirements and standard application-facing interfaces should change as little as possible.
