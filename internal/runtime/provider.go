@@ -106,10 +106,25 @@ func (Compose) Capabilities() ProviderCapabilities {
 	}
 }
 
-// DetectProvider is the single runtime-provider selection seam. v0.4 currently
-// selects only the existing Compose implementation. Kubernetes/OpenShift must
-// later be selected explicitly from deployment/environment configuration rather
-// than inferred from the application contract.
+// DetectProviderForKind resolves the explicitly selected deployment runtime.
+// Provider selection belongs to deployment/environment state and must never be
+// inferred from the portable application contract.
+func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, error) {
+	normalized, err := ParseProviderKind(string(kind))
+	if err != nil {
+		return nil, err
+	}
+	switch normalized {
+	case ProviderCompose:
+		return detectCompose(ctx)
+	default:
+		return nil, fmt.Errorf("runtime provider %q is not implemented", normalized)
+	}
+}
+
+// DetectProvider preserves the v0.3/v0.4 Compose-default compatibility path.
+// Deployment-aware callers should use DetectProviderForKind with the explicit
+// provider stored in protected deployment state.
 func DetectProvider(ctx context.Context) (Provider, error) {
-	return detectCompose(ctx)
+	return DetectProviderForKind(ctx, ProviderCompose)
 }
