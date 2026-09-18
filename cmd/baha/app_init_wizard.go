@@ -385,7 +385,7 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		required = uniqueSorted(required)
 	}
 
-	m := application.New(name, environment, selected[0], selected[1], selected[2])
+	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], compose != "" && len(workloadServices) > 0)
 	if len(postgresInstances) > 0 {
 		m = application.WithPostgresInstances(m, postgresInstances...)
 	}
@@ -415,6 +415,20 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	return writeRepositoryManifest(m, out)
 }
 
+func detectedApplicationManifest(name, environment string, postgres, redis, secrets, hasWorkload bool) application.Manifest {
+	if !postgres && !redis && !secrets && hasWorkload {
+		if environment == "" {
+			environment = "dev"
+		}
+		return application.Manifest{
+			Version:     application.CurrentVersion,
+			Name:        name,
+			Environment: environment,
+		}
+	}
+	return application.New(name, environment, postgres, redis, secrets)
+}
+
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
 	if quick && len(d.ComposeCandidates) > 1 {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
@@ -423,7 +437,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if !postgres && !redis && !secrets && len(d.WorkloadServices) == 0 {
 		postgres = true
 	}
-	m := application.New(d.Name, "dev", postgres, redis, secrets)
+	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, secrets, d.Compose != "" && len(d.WorkloadServices) > 0)
 	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
 		m = application.WithPostgresInstances(m, postgresNamed...)
 	}
