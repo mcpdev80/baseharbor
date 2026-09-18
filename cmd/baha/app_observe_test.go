@@ -4,12 +4,12 @@ import "testing"
 
 func TestApplicationComponentsStopped(t *testing.T) {
 	tests := []struct {
-		name            string
-		managed         []string
-		workload        []string
-		workloadFound   bool
-		brokerRunning   bool
-		want            bool
+		name          string
+		managed       []string
+		workload      []string
+		workloadFound bool
+		brokerRunning bool
+		want          bool
 	}{
 		{name: "fully stopped managed app", workloadFound: true, want: true},
 		{name: "workload only stopped app", workloadFound: true, want: true},
