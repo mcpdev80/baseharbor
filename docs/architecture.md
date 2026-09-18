@@ -77,6 +77,8 @@ v0.4.1 introduces this foundation for application capabilities as typed capabili
 
 v0.4.2 adds provider registry, placement and lifecycle ownership as protected operator state. Shared, application-scoped and external provider placement therefore remains outside portable application intent.
 
+Provider Integration Contract v1 establishes the mandatory boundary for all subsequent capability providers. BaseHarbor owns versioned capability semantics; built-in/reference providers implement them through the shared driver/registry model, and future external providers will adapt to the same semantics through a language-neutral gRPC/Protocol Buffers boundary. OCI is the distribution direction for future external provider packages. See [Provider Integration Contract v1](provider-integration-contract.md).
+
 See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
 
 ## Control plane and application stacks
@@ -138,6 +140,7 @@ These values are operational realization, not portable application requirements.
 13. Environment/risk policy and deployment topology are separate concepts.
 14. Observability is integrated through open standards rather than a proprietary telemetry stack.
 15. CLI, HTTP API, Web UI and Operator are adapters over shared domain/lifecycle services; business logic must not be duplicated in presentation layers.
+16. Every capability provider implements a versioned BaseHarbor Capability Specification and shared provider lifecycle; product-specific one-off lifecycle paths are not allowed.
 
 ## Application lifecycle model
 
