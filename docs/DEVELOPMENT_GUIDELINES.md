@@ -400,6 +400,25 @@ A maintainer should be able to answer without reverse-engineering the repository
 
 If these answers are difficult to find, the design is probably too indirect.
 
+## 25. Provider integrations implement BaseHarbor contracts
+
+New capability/provider integrations must use the shared BaseHarbor provider boundary rather than add product-specific lifecycle paths.
+
+Rules:
+
+- BaseHarbor owns versioned capability semantics; providers implement those semantics.
+- Every new capability has a versioned Capability Specification.
+- Every provider declares the exact specifications it implements.
+- Built-in/reference providers and future external providers reuse the same lifecycle, ownership, diagnostics and conformance model.
+- Do not add provider-specific fields to portable application intent merely to satisfy one product.
+- Do not create a parallel provider lifecycle alongside the existing capability Driver and provider registry.
+- Capability-specific conformance must verify real application-facing behavior, not only process/container liveness.
+- Provider metadata, diagnostics and normal bindings must not contain plaintext secret material.
+- Future external providers remain language- and registry-neutral; the public boundary is the versioned protocol/specification, not a Go SDK or vendor-specific plugin framework.
+- gRPC/Protocol Buffers and OCI distribution are the selected open-standard direction for future external provider transport and packaging; implementing a dynamic loader requires a separate demonstrated need.
+
+See `docs/provider-integration-contract.md` and `spec/capabilities/`.
+
 ## Mandatory task release footer
 
 Every implementation task that can contribute to a BaseHarbor release must carry the following release requirements in its task/issue description and must satisfy them before release:

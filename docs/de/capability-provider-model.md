@@ -148,3 +148,18 @@ Valkey-Instanzen     -> application-scoped
 ```
 
 Logische Ressourcen bleiben unabhaengig vom Provider-Scope Eigentum der Anwendung. Shared Provider bleiben bei Application-Lifecycle-Operationen bestehen; externe Provider werden von BaseHarbor nicht lifecycle-seitig veraendert.
+
+
+## Provider Integration Contract v1
+
+Alle nach v0.4.2 hinzukommenden Provider implementieren den gemeinsamen [Provider Integration Contract v1](provider-integration-contract.md).
+
+Aktuelle versionierte Reference Claims:
+
+- PostgreSQL: `database.sql/v1`
+- Valkey: `cache.key-value/v1`
+- OpenBao: `secrets/v1`
+
+Neue S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provider definieren bzw. implementieren versionierte Capability Specifications. Produktdetails duerfen dadurch nicht in den portablen Application Contract gelangen.
+
+Fuer kuenftige externe Provider ist gRPC/Protocol Buffers als Transport und OCI als Distribution vorgesehen. BaseHarbor bleibt fuer Capability-Semantik und Conformance autoritativ.

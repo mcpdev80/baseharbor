@@ -29,6 +29,7 @@ Implemented foundations include:
 - a provider-neutral `PortableContract` adapter for application intent;
 - a shared capability/provider/resource/binding domain core with fail-closed provider negotiation and machine-readable lifecycle results;
 - a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
+- Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
 - one or multiple named logical Valkey/Redis-protocol resources;
 - managed/generated secret intent without embedding secret values in the application contract;
@@ -99,6 +100,14 @@ Still future:
 - topology/HA profiles;
 - managed-production OIDC/RBAC/JIT policy;
 - actual Kubernetes and OpenShift runtime implementations.
+
+## Provider integration prerequisite before v0.4.3+
+
+Before additional provider/capability implementations are added, BaseHarbor standardizes the provider boundary through Provider Integration Contract v1.
+
+Every subsequent reference provider must become evidence for the same open ecosystem contract a future vendor/community provider can implement. BaseHarbor will continue to build the important providers itself; vendor participation is not assumed.
+
+The prerequisite deliberately does not implement a dynamic plugin loader. It defines versioned capability semantics, provider lifecycle metadata, conformance and the future language-neutral/registry-neutral boundary first.
 
 ## Next architecture tracks
 

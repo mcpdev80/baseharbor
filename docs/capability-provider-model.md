@@ -151,3 +151,31 @@ Valkey instances     -> application-scoped
 ```
 
 Logical resources remain application-owned regardless of provider scope. Shared providers are retained during application lifecycle operations, external providers are never lifecycle-mutated by BaseHarbor, and only BaseHarbor-owned application-scoped providers are provider-lifecycle-owned by an application.
+
+
+## Provider Integration Contract v1
+
+All capability providers added after v0.4.2 must implement the shared [Provider Integration Contract v1](provider-integration-contract.md).
+
+The contract separates three concerns:
+
+```text
+Capability Specification
+  = what the application is guaranteed
+
+Provider Integration Contract
+  = lifecycle/ownership/diagnostic semantics
+
+Provider implementation
+  = PostgreSQL, Tempo, RabbitMQ, cloud service, etc.
+```
+
+Current reference claims are versioned:
+
+- PostgreSQL implements `database.sql/v1`;
+- Valkey implements `cache.key-value/v1`;
+- OpenBao implements `secrets/v1`.
+
+Future S3, telemetry, observability, messaging, AI/MCP and vector providers must define/implement versioned capability specifications rather than introduce product-specific application contracts.
+
+The future external transport is gRPC/Protocol Buffers and distribution direction is OCI. Those are open-standard transport/package mechanisms; BaseHarbor capability semantics and conformance remain authoritative.
