@@ -50,18 +50,18 @@ type PortEvidence struct {
 }
 
 type Result struct {
-	Root              string         `json:"root"`
-	Application       string         `json:"application"`
-	ExistingManifest  string         `json:"existing_manifest,omitempty"`
-	Artifacts         []Artifact     `json:"artifacts,omitempty"`
-	ComposeCandidates []string       `json:"compose_candidates,omitempty"`
-	SelectedCompose   string         `json:"selected_compose,omitempty"`
-	WorkloadServices  []string       `json:"workload_services,omitempty"`
-	Findings          []Finding      `json:"findings,omitempty"`
-	SecretCandidates  []string       `json:"secret_candidates,omitempty"`
+	Root              string            `json:"root"`
+	Application       string            `json:"application"`
+	ExistingManifest  string            `json:"existing_manifest,omitempty"`
+	Artifacts         []Artifact        `json:"artifacts,omitempty"`
+	ComposeCandidates []string          `json:"compose_candidates,omitempty"`
+	SelectedCompose   string            `json:"selected_compose,omitempty"`
+	WorkloadServices  []string          `json:"workload_services,omitempty"`
+	Findings          []Finding         `json:"findings,omitempty"`
+	SecretCandidates  []string          `json:"secret_candidates,omitempty"`
 	SecretSources     map[string]string `json:"secret_sources,omitempty"`
-	Ports             []PortEvidence `json:"ports,omitempty"`
-	HealthChecks      []Evidence     `json:"health_checks,omitempty"`
+	Ports             []PortEvidence    `json:"ports,omitempty"`
+	HealthChecks      []Evidence        `json:"health_checks,omitempty"`
 }
 
 type Snapshot struct {
@@ -78,11 +78,10 @@ type Engine struct {
 	Detectors []Detector
 }
 
-
 type ComposeAnalysis struct {
-	WorkloadServices []string       `json:"workload_services,omitempty"`
-	PostgresInstances []string      `json:"postgres_instances,omitempty"`
-	RedisInstances    []string      `json:"redis_instances,omitempty"`
+	WorkloadServices  []string       `json:"workload_services,omitempty"`
+	PostgresInstances []string       `json:"postgres_instances,omitempty"`
+	RedisInstances    []string       `json:"redis_instances,omitempty"`
 	Ports             []PortEvidence `json:"ports,omitempty"`
-	HealthChecks      []Evidence    `json:"health_checks,omitempty"`
+	HealthChecks      []Evidence     `json:"health_checks,omitempty"`
 }
