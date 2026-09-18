@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
 func appStatusCommand(store application.Store) *cli.Command {
@@ -49,6 +50,25 @@ func appStatusCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "Manifest: %s\n", resolved.ManifestPath)
 			}
 			fmt.Fprintf(out, "Project: %s\n", project)
+
+			workloadRunning := []string(nil)
+			workloadFound := false
+			if _, running, found, inspectErr := inspectRepositoryWorkload(ctx, compose, resolved, files); inspectErr == nil {
+				workloadRunning = running
+				workloadFound = found
+			}
+			brokerRunning := false
+			if m.Services.Secrets {
+				if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
+					if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
+						brokerRunning = len(running) > 0
+					}
+				}
+			}
+			if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning) {
+				fmt.Fprintln(out, "State: STOPPED (persistent application state is preserved)")
+				return nil
+			}
 
 			ready := true
 			if m.Services.Postgres {
@@ -345,4 +365,15 @@ func containsString(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+
+func applicationComponentsStopped(managedRunning, workloadRunning []string, workloadFound, brokerRunning bool) bool {
+	if len(managedRunning) != 0 || brokerRunning {
+		return false
+	}
+	if workloadFound && len(workloadRunning) != 0 {
+		return false
+	}
+	return true
 }
