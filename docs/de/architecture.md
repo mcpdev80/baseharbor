@@ -17,6 +17,41 @@ Das langfristige Ziel ist ein durchgängiger Weg von lokaler Entwicklung und Hom
 - Compose ist der vollständige aktuelle Provider und bleibt first-class.
 - Spätere Kubernetes-/OpenShift-Provider müssen dieselben logischen Anforderungen abbilden, statt einen neuen App-Vertrag zu erzwingen.
 - Environment/Risiko und Deployment-Topologie sind getrennte Konzepte.
+- CLI, API/WebGUI und Operator sind Adapter ueber denselben Domain-/Lifecycle-Core und duerfen keine getrennten Wahrheiten fuer Plan, Status, Readiness oder Security entwickeln.
+
+## Gemeinsamer Core und mehrere Bedienoberflaechen
+
+BaseHarbor wird als **ein gemeinsamer Application-/Lifecycle-Core mit mehreren Control Surfaces** aufgebaut.
+
+```text
+                         BaseHarbor Core
+              +--------------------------------+
+              | PortableContract                |
+              | Input Resolution                |
+              | Plan / Preflight / Apply        |
+              | Verify / Status / Diagnostics   |
+              | Recovery / Update               |
+              | Provider Selection/Capabilities |
+              +---------------+----------------+
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+          v                   v                   v
+       baha CLI            HTTP API        Operator Controller
+                              |
+                              v
+                         schlanke WebGUI
+```
+
+`baha` bleibt die primaere lokale Developer-/Operator-Oberflaeche. Zukuenftige HTTP-API, WebGUI und Kubernetes/OpenShift-Operatoren muessen dieselben Domain-Modelle und Lifecycle-Semantiken verwenden, statt sie separat zu implementieren.
+
+Die WebGUI bleibt bewusst schlank und nutzt die BaseHarbor-API. Sie darf weder `baha` per Shell aufrufen noch Validation, Policy, Secret-Schutz oder Readiness-Regeln umgehen.
+
+Ein spaeterer Kubernetes/OpenShift-Operator reconciled BaseHarbor Desired State ueber dasselbe Application-/Provider-Modell. Er verwendet idempotente Reconciliation und provider-native Observation statt imperative CLI-Kommandos einzuwickeln.
+
+Lifecycle- und Diagnoseergebnisse sollen zuerst maschinenlesbar sein. CLI, API, WebGUI und Operator-Status sind verschiedene Darstellungen derselben Runtime-Wahrheit.
+
+Siehe ADR [0009](../decisions/0009-shared-core-multiple-control-surfaces.md).
 
 ## Ebenen
 
