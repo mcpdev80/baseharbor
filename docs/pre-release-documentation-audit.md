@@ -1,87 +1,39 @@
-# v0.4.0 pre-release documentation audit
+# Pre-release documentation audit
 
-This document is the current documentation and release-scope gate for BaseHarbor `v0.4.0`. The historical v0.3.0 audit is preserved under `docs/release-audits/v0.3.0.md`.
+This file is the active documentation/release gate for the **next unreleased BaseHarbor version**.
 
-## Evidence basis
+The latest published stable release is `v0.4.0`. Completed release audits are preserved under `docs/release-audits/`.
 
-The v0.4 scope was reviewed against the implementation, architecture decisions, public documentation, issue acceptance criteria and exact-head CI evidence.
+Before preparing the next release, update this document with the concrete target version and audit the actual implementation rather than copying claims from the previous release.
 
-The release-preparation head `7cefb4b581ee250e62f90a03fc9393b3fa5e8d60` passed all 10 release-preparation workflows before merge, including:
-
-- main CI;
-- release snapshot;
-- developer journey;
-- real MailFlow acceptance including backup -> destroy -> restore;
-- PostgreSQL backup acceptance;
-- OpenBao backup acceptance;
-- application backup/restore acceptance;
-- runtime broker acceptance;
-- runtime broker performance;
-- documentation/pages build.
-
-Release preparation was merged to `main` as `993c5c0102efd50935946f35c8b96aec816f763b`.
-
-A published `v0.4.0` release must still be created from that exact release-ready source or from a later documentation-only correction that itself passes the complete release gate. Until the immutable tag and release exist, `v0.3.0` remains the latest published stable release.
-
-## Implemented v0.4 scope
-
-v0.4 adds the architecture and DX seams needed to evolve beyond the current Compose runtime without changing the logical application contract:
-
-- provider-neutral `PortableContract` compatibility view for Manifest v1 application intent;
-- explicit separation between runtime-provider selection and capability-provider selection;
-- deployment-owned runtime provider and profile state;
-- runtime capability negotiation and fail-closed unsupported-provider behavior;
-- centralized guards preventing application runtime commands from falling through into Compose-specific code when an unsupported provider is selected;
-- reusable declarative input resolution for default, generated, external and conditional values;
-- resolver-driven repository deployment initialization shared by `baha app init` and repository-aware `baha up`;
-- explicit non-secret automation input through `--input NAME=VALUE`;
-- contract-evolution/versioning rules that preserve Manifest v1 compatibility while requiring new versions for incompatible required semantics.
-
-Compose remains the only complete runtime implementation in v0.4. Kubernetes and OpenShift are future providers, not release claims.
-
-## Development-guideline alignment
+## Required audit areas
 
 ### Scope and architecture
 
-- Changes were incremental rather than a runtime rewrite.
-- Application requirements, deployment state, runtime providers and capability providers remain separate responsibilities.
-- Manifest v1 remains a compatibility surface; provider-specific runtime objects are not added to the portable application contract.
-- No speculative Kubernetes/OpenShift implementation or generic plugin framework was introduced.
-- Stable concepts use typed domain models for provider kind, runtime profile, runtime capabilities and portable contract requirements.
+- Compare the target release issues/roadmap with the actual code.
+- Confirm current behavior and future architecture are clearly separated.
+- Confirm application contract, deployment state, runtime providers and capability providers remain separate responsibilities.
+- Confirm new shared lifecycle behavior belongs in the common core rather than only in CLI/API/UI/Operator presentation layers.
+- Reject speculative abstractions that are not required by the target release.
 
-### Product interface and lifecycle
+### Product behavior
 
-- `baha` remains the stable product interface.
-- Existing v0.3 Compose workflows remain compatible.
-- Application runtime mutation paths continue to use preflight/verification semantics.
-- Provider selection is resolved before guarded runtime operations.
-- Unsupported providers or capabilities fail clearly before mutation instead of silently degrading to Compose.
+- Verify the exact CLI/API/operator behavior claimed by documentation.
+- Confirm mutation paths retain plan/preflight/apply/verify semantics where applicable.
+- Confirm readiness reflects actual protocol/application readiness.
+- Confirm unsupported providers/capabilities fail clearly instead of silently degrading guarantees.
+- Confirm compatibility and migration behavior are explicitly documented.
 
-### Security and fail-closed behavior
+### Security and recovery
 
-- Runtime provider/profile state is protected deployment state, not committed application configuration.
-- Unknown provider/profile values fail closed.
-- Secret input values are explicitly marked, render redacted and are excluded from generic persistable values.
-- `--input NAME=VALUE` is intentionally limited to declared non-secret deployment inputs.
-- Existing secret storage, runtime identity, backup/restore and TLS security boundaries remain separate from generic input resolution.
-- Backup remains supported only with exercised restore and post-restore verification.
+- Confirm secret values are not exposed through logs, errors, API responses, audit output, metrics, tests or committed manifests.
+- Confirm protected runtime/deployment state remains outside the portable application contract.
+- Confirm backup claims include exercised restore and post-restore verification.
+- Confirm risky updates have preflight and post-change verification.
 
 ### Documentation
 
-Canonical documentation must distinguish:
-
-- Manifest v1 compatibility from the internal provider-neutral `PortableContract`;
-- current Compose implementation from future Kubernetes/OpenShift providers;
-- runtime-provider selection from SQL/cache/secrets capability-provider selection;
-- deployment/operator inputs from portable application requirements;
-- implemented existing/BYOC TLS lifecycle from future managed ACME/PKI/provider-neutral TLS capabilities;
-- release-ready source from an actually published stable GitHub release.
-
-Historical ADRs and release audits remain historical and are not rewritten to pretend they were authored for v0.4.
-
-## Maintained documentation surface
-
-The release gate covers at minimum:
+Audit at minimum:
 
 - `README.md`;
 - `CHANGELOG.md`;
@@ -93,19 +45,24 @@ The release gate covers at minimum:
 - `docs/roadmap.md`;
 - `docs/releases.md`;
 - maintained German documentation under `docs/de/`;
-- ADRs 0005 through 0008;
+- relevant ADRs;
 - executable CLI help and acceptance workflows.
 
-## Final release gate
+Historical release audits and ADRs should remain historical. Do not rewrite them merely to make old text look current.
 
-Before publishing `v0.4.0`:
+## Validation policy
 
-1. documentation and code must agree on current behavior;
-2. all required workflows must succeed on the exact final release-preparation head;
-3. merge the release-preparation/fix PR only after that exact head is green;
-4. create immutable tag `v0.4.0` on that exact green main commit;
-5. let the release workflow validate tag/source/changelog consistency and publish artifacts;
-6. verify Linux amd64/arm64 archives, checksums, build provenance and matching runtime image;
-7. only then describe `v0.4.0` as the current published stable release.
+Documentation-only corrections use the lightweight documentation/Pages gate.
 
-A published tag must never be moved. A bad release is corrected with a new patch version.
+Run expensive runtime, MailFlow, broker, backup/restore or full product acceptance only when executable code, runtime/deployment configuration, dependencies, CI/release mechanics or other behavior-affecting files change.
+
+Before a product release tag is created, the exact final release-preparation head must have the validation required by `docs/DEVELOPMENT_GUIDELINES.md`.
+
+## Release completion
+
+After the next release is successfully published:
+
+1. archive the completed target-specific audit under `docs/release-audits/vX.Y.Z.md`;
+2. update README/current-version installation examples;
+3. return this file to an unreleased/next-cycle state;
+4. do not move or recreate the published tag.
