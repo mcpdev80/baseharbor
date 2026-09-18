@@ -11,11 +11,11 @@ import (
 const providerRegistryFile = "provider-registry.json"
 
 func ReconcileReferenceProviderRegistry(m Manifest) error {
-	stateDir, err := bhruntime.StateDir("")
+	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(stateDir, providerRegistryFile)}
+	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseManagedApplication(m.Name)
 		return registerReferenceProviders(registry, m)
@@ -23,11 +23,11 @@ func ReconcileReferenceProviderRegistry(m Manifest) error {
 }
 
 func ReleaseApplicationProviderRegistry(m Manifest) error {
-	stateDir, err := bhruntime.StateDir("")
+	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(stateDir, providerRegistryFile)}
+	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseApplication(m.Name)
 		return nil
