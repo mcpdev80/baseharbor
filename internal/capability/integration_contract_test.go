@@ -9,11 +9,11 @@ type adapterTestDriver struct {
 	provider Provider
 }
 
-func (d *adapterTestDriver) Descriptor() Provider { return d.provider }
+func (d *adapterTestDriver) Descriptor() Provider                               { return d.provider }
 func (d *adapterTestDriver) Preflight(context.Context, Resource, Binding) error { return nil }
-func (d *adapterTestDriver) Provision(context.Context, Resource) error { return nil }
-func (d *adapterTestDriver) Bind(context.Context, Resource, Binding) error { return nil }
-func (d *adapterTestDriver) Verify(context.Context, Resource, Binding) error { return nil }
+func (d *adapterTestDriver) Provision(context.Context, Resource) error          { return nil }
+func (d *adapterTestDriver) Bind(context.Context, Resource, Binding) error      { return nil }
+func (d *adapterTestDriver) Verify(context.Context, Resource, Binding) error    { return nil }
 
 func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 	for _, descriptor := range []IntegrationDescriptor{
@@ -48,7 +48,7 @@ func TestIntegrationDescriptorRequiresEveryProviderCapabilityToHaveSpecification
 	descriptor := IntegrationDescriptor{
 		Protocol: ProviderProtocolV1,
 		Provider: Provider{
-			Kind: ProviderPostgreSQL,
+			Kind:         ProviderPostgreSQL,
 			Capabilities: []Kind{SQL, KeyValue},
 		},
 		Capabilities: []SpecificationID{SQLV1.ID},
