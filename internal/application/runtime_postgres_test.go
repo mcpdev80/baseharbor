@@ -172,6 +172,23 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 			t.Fatalf("binding %s is accessible by group or others: %o", path, info.Mode().Perm())
 		}
 	}
+
+	metadata, err := os.ReadFile(filepath.Join(files.Bindings, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataText := string(metadata)
+	for _, wanted := range []string{
+		"\"kind\": \"database.sql\"",
+		"\"provider\": \"postgresql\"",
+		"\"kind\": \"cache.key-value\"",
+		"\"provider\": \"valkey\"",
+		"\"workload\": \"application/demo\"",
+	} {
+		if !strings.Contains(metadataText, wanted) {
+			t.Fatalf("runtime metadata missing %q:\n%s", wanted, metadataText)
+		}
+	}
 }
 
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
