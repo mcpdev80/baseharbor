@@ -198,7 +198,6 @@ func TestEmbeddedComposeUsesWritableOpenBaoFileStoragePath(t *testing.T) {
 	}
 }
 
-
 func TestDataDirDoesNotSwitchLegacyRuntimeSelection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -250,7 +249,6 @@ func TestDataDirDoesNotSwitchLegacyRuntimeSelection(t *testing.T) {
 		t.Fatalf("global runtime directory unexpectedly materialized: %v", err)
 	}
 }
-
 
 func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 	override := filepath.Join(t.TempDir(), "baseharbor-runtime")
