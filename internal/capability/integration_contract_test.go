@@ -91,7 +91,6 @@ func TestSpecificationIDsAreCanonical(t *testing.T) {
 	}
 }
 
-
 func TestDriverAdapterRejectsCapabilityDescriptorMismatch(t *testing.T) {
 	driver := &adapterTestDriver{provider: Provider{
 		Kind:         ProviderPostgreSQL,
