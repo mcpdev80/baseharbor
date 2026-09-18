@@ -97,12 +97,16 @@ func NewDriverAdapter(driver Driver, descriptor IntegrationDescriptor) (*DriverA
 	if err := descriptor.Validate(); err != nil {
 		return nil, err
 	}
-	if driver.Descriptor().Kind != descriptor.Provider.Kind {
+	driverProvider := driver.Descriptor()
+	if driverProvider.Kind != descriptor.Provider.Kind {
 		return nil, fmt.Errorf(
 			"provider driver kind %q does not match integration descriptor %q",
-			driver.Descriptor().Kind,
+			driverProvider.Kind,
 			descriptor.Provider.Kind,
 		)
+	}
+	if !sameCapabilitySet(driverProvider.Capabilities, descriptor.Provider.Capabilities) {
+		return nil, fmt.Errorf("provider driver %q capabilities do not match integration descriptor", driverProvider.Kind)
 	}
 	return &DriverAdapter{driver: driver, descriptor: descriptor}, nil
 }
@@ -129,4 +133,22 @@ func (a *DriverAdapter) Bind(ctx context.Context, resource Resource, binding Bin
 
 func (a *DriverAdapter) Verify(ctx context.Context, resource Resource, binding Binding) error {
 	return a.driver.Verify(ctx, resource, binding)
+}
+
+
+func sameCapabilitySet(a, b []Kind) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[Kind]int, len(a))
+	for _, kind := range a {
+		seen[kind]++
+	}
+	for _, kind := range b {
+		if seen[kind] == 0 {
+			return false
+		}
+		seen[kind]--
+	}
+	return true
 }
