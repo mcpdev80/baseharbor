@@ -1,6 +1,6 @@
 # Developer access
 
-BaseHarbor v0.3 adds a trusted-local developer access layer for day-to-day Compose workflows. The goal is to use logical application resource and workload names instead of generated ports, container names or OpenBao internals.
+BaseHarbor provides a trusted-local developer access layer for day-to-day Compose workflows. The goal is to use logical application resource and workload names instead of generated ports, container names or OpenBao internals.
 
 ## Database and cache shells
 
@@ -48,7 +48,7 @@ Explicit reveal is a separate action:
 baha app creds postgres --reveal
 ```
 
-Trusted-local v0.3 does not yet apply managed-production OIDC/RBAC/JIT policy. The command/action boundary is intentionally structured so later environment policy can govern the same action names without changing the normal developer workflow.
+The trusted-local path does not yet apply managed-production OIDC/RBAC/JIT policy. The command/action boundary is intentionally structured so later environment policy can govern the same action names without changing the normal developer workflow.
 
 ## Workload logs
 
