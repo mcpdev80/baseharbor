@@ -72,6 +72,8 @@ Applications should continue to consume stable interfaces such as PostgreSQL, Re
 
 Provider substitution must satisfy the requested contract or fail clearly. BaseHarbor must never silently downgrade requested security, durability or availability.
 
+BaseHarbor also has one shared domain/lifecycle core with multiple control surfaces. `baha`, a future HTTP API/Web UI and a future Kubernetes/OpenShift Operator must reuse the same plan, validation, lifecycle, readiness, diagnostics and policy semantics rather than becoming separate implementations.
+
 ## v0.4 boundary: implemented versus future
 
 Implemented in v0.4:
@@ -110,17 +112,20 @@ Expand the portable capability model while keeping Compose as the production imp
 
 ### v0.6 – Environments, policy, identity and topology intent
 
-Add platform/operator policy while keeping it outside the application contract:
+Add platform/operator policy while keeping it outside the application contract. This is also the natural phase for the first remote/API management surface and a lightweight Web UI backed by the shared core:
 
 - named environment profiles and server-side policy;
 - runtime/capability provider selection per environment;
 - OIDC login, RBAC, audit and just-in-time/elevated production access where required;
 - topology intent such as standard versus enterprise/HA without changing logical application resource identity;
-- external/customer-managed provider bindings.
+- external/customer-managed provider bindings;
+- stable machine-readable BaseHarbor API for application/platform operations;
+- lightweight Web UI for plan/apply/status/doctor/logs/inputs/backup/restore/update without duplicating lifecycle logic;
+- shared authorization/policy boundaries for CLI, API and Web UI.
 
 ### v0.7 – Kubernetes provider
 
-Map the same portable application requirements to Kubernetes primitives where applicable:
+Map the same portable application requirements to Kubernetes primitives where applicable and introduce the BaseHarbor Operator as the cluster-native control surface over the same shared core:
 
 - Deployments and StatefulSets;
 - Services;
@@ -130,7 +135,10 @@ Map the same portable application requirements to Kubernetes primitives where ap
 - NetworkPolicies;
 - readiness/liveness probes;
 - PodDisruptionBudgets where required by topology/policy;
-- provider-conformance and migration tests.
+- provider-conformance and migration tests;
+- BaseHarbor CRDs/controller reconciliation;
+- shared status/condition mapping from BaseHarbor readiness and diagnostics;
+- `baha`/API interaction with cluster-managed applications without wrapping imperative CLI commands inside the Operator.
 
 Applications keep the same `baha` lifecycle and logical resources rather than gaining a second Kubernetes-specific operational contract.
 
