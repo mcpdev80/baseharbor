@@ -90,3 +90,14 @@ func TestSpecificationIDsAreCanonical(t *testing.T) {
 		}
 	}
 }
+
+
+func TestDriverAdapterRejectsCapabilityDescriptorMismatch(t *testing.T) {
+	driver := &adapterTestDriver{provider: Provider{
+		Kind:         ProviderPostgreSQL,
+		Capabilities: []Kind{SQL, KeyValue},
+	}}
+	if _, err := NewDriverAdapter(driver, PostgreSQLIntegration); err == nil {
+		t.Fatal("same-kind driver with different capability set accepted")
+	}
+}
