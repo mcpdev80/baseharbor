@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 const RegistryVersion = 1
@@ -183,7 +184,13 @@ func (r Registry) Validate() error {
 			shared[instance.Provider.Kind] = instance.ID
 		}
 	}
+	seenResources := map[string]struct{}{}
 	for _, binding := range r.Bindings {
+		key := binding.Resource.Application + "\x00" + string(binding.Resource.Kind) + "\x00" + binding.Resource.Name
+		if _, exists := seenResources[key]; exists {
+			return fmt.Errorf("duplicate binding for resource %s/%s/%s", binding.Resource.Application, binding.Resource.Kind, binding.Resource.Name)
+		}
+		seenResources[key] = struct{}{}
 		instance, ok := r.instance(binding.ProviderInstanceID)
 		if !ok { return fmt.Errorf("binding references missing provider instance %q", binding.ProviderInstanceID) }
 		if binding.Resource.Provider != instance.Provider.Kind || !instance.Provider.Supports(binding.Resource.Kind) {
@@ -206,6 +213,36 @@ func (s RegistryStore) Load() (Registry, error) {
 	if err := json.Unmarshal(data, &registry); err != nil { return Registry{}, fmt.Errorf("decode provider registry: %w", err) }
 	if err := registry.Validate(); err != nil { return Registry{}, fmt.Errorf("validate provider registry: %w", err) }
 	return registry, nil
+}
+
+func (s RegistryStore) Update(mutate func(*Registry) error) error {
+	if strings.TrimSpace(s.Path) == "" {
+		return errors.New("provider registry path is required")
+	}
+	if mutate == nil {
+		return errors.New("provider registry mutation is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return fmt.Errorf("create provider registry directory: %w", err)
+	}
+	lock, err := os.OpenFile(s.Path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("open provider registry lock: %w", err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock provider registry: %w", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	registry, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if err := mutate(&registry); err != nil {
+		return err
+	}
+	return s.Save(registry)
 }
 
 func (s RegistryStore) Save(registry Registry) error {
