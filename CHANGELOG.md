@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Provider Integration Contract v1 with versioned capability specifications and a shared semantic boundary for built-in and future external providers.
+- Initial capability specifications for `database.sql/v1`, `cache.key-value/v1` and `secrets/v1`.
+- Versioned Protocol Buffers schema for the future language-neutral external provider API.
+- Static provider contract conformance foundation and reference integration descriptors for PostgreSQL, Valkey and OpenBao.
+
+### Architecture
+
+- Future external provider transport is based on gRPC/Protocol Buffers and future package distribution on OCI standards, without introducing a dynamic plugin loader yet.
+- All subsequent capability/provider integrations must use the shared lifecycle/registry contract and add capability-specific conformance rather than product-specific lifecycle paths.
+
 ## [0.4.2] - 2026-09-18
 
 ### Added
