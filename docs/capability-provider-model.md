@@ -132,3 +132,22 @@ v0.4.1 remains Compose-only at runtime. In addition to the v0.4.0 `PortableContr
 It preserves the concrete operational completeness of the Compose provider and adds the architectural seams required for future providers without changing the public Manifest v1 compatibility surface.
 
 These seams must not be misread as Kubernetes/OpenShift support. A new public capability schema, additional capability-provider implementations, HA profiles, managed ingress, ACME/PKI automation and Kubernetes/OpenShift runtime providers remain future work.
+
+
+## Provider registry in v0.4.2
+
+Provider placement remains protected deployment/operator state, not portable application intent.
+
+- `shared`: BaseHarbor-managed provider reusable by multiple applications.
+- `application`: BaseHarbor-managed provider dedicated to one application.
+- `external`: existing/BYO provider referenced by BaseHarbor but lifecycle-owned elsewhere.
+
+Current reference mapping:
+
+```text
+OpenBao              -> shared
+PostgreSQL instances -> application-scoped
+Valkey instances     -> application-scoped
+```
+
+Logical resources remain application-owned regardless of provider scope. Shared providers are retained during application lifecycle operations, external providers are never lifecycle-mutated by BaseHarbor, and only BaseHarbor-owned application-scoped providers are provider-lifecycle-owned by an application.
