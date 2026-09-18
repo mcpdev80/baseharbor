@@ -69,23 +69,31 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.ComposeCandidates = artifactPaths(artifacts, "compose")
 	if len(result.ComposeCandidates) == 1 {
 		result.SelectedCompose = result.ComposeCandidates[0]
-		services := detectComposeServices(snapshot.Files[result.SelectedCompose])
+	}
+	for _, rel := range result.ComposeCandidates {
+		services := detectComposeServices(snapshot.Files[rel])
 		for _, service := range services {
-			if !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
+			if rel == result.SelectedCompose && !service.Postgres && !service.Redis &&
+				(service.HasBuild || service.HasImage || service.HasPorts) {
 				result.WorkloadServices = append(result.WorkloadServices, service.Name)
 			}
 			for _, port := range service.Ports {
 				result.Ports = append(result.Ports, PortEvidence{
-					Path: result.SelectedCompose, Service: service.Name, Value: port,
+					Path: rel, Service: service.Name, Value: port,
 				})
 			}
 			if service.HealthCheck {
 				result.HealthChecks = append(result.HealthChecks, Evidence{
-					Kind: EvidenceHealth, Path: result.SelectedCompose,
+					Kind: EvidenceHealth, Path: rel,
 					Detail: "compose service " + service.Name + " declares healthcheck",
 				})
 			}
 		}
+	}
+	for _, rel := range artifactPaths(artifacts, "dockerfile") {
+		ports, health := inspectDockerfile(snapshot.Files[rel], rel)
+		result.Ports = append(result.Ports, ports...)
+		result.HealthChecks = append(result.HealthChecks, health...)
 	}
 
 	for _, rel := range artifactPaths(artifacts, "env") {
@@ -193,8 +201,9 @@ func classifyFile(rel string) (string, bool) {
 	}
 	ext := strings.ToLower(filepath.Ext(base))
 	switch ext {
-	case ".go", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
-		".json", ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties":
+	case ".json", ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties":
+		return "config", true
+	case ".go", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
 		return "", true
 	default:
 		return "", false
@@ -773,4 +782,29 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	})
 	analysis.HealthChecks = uniqueEvidence(analysis.HealthChecks)
 	return analysis, nil
+}
+
+
+func inspectDockerfile(data []byte, path string) ([]PortEvidence, []Evidence) {
+	var ports []PortEvidence
+	var health []Evidence
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		upper := strings.ToUpper(line)
+		if strings.HasPrefix(upper, "EXPOSE ") {
+			for _, value := range strings.Fields(strings.TrimSpace(line[len("EXPOSE "):])) {
+				ports = append(ports, PortEvidence{Path: path, Value: value})
+			}
+		}
+		if strings.HasPrefix(upper, "HEALTHCHECK ") {
+			health = append(health, Evidence{
+				Kind: EvidenceHealth, Path: path, Detail: "Dockerfile declares HEALTHCHECK",
+			})
+		}
+	}
+	return ports, health
 }
