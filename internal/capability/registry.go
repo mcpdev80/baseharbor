@@ -153,6 +153,24 @@ func (r Registry) ApplicationLifecycle(application string, operation LifecycleOp
 	return actions, nil
 }
 
+func (r *Registry) ReleaseManagedApplication(application string) {
+	if r == nil { return }
+	application = strings.TrimSpace(application)
+	bindings := r.Bindings[:0]
+	for _, binding := range r.Bindings {
+		if binding.Resource.Application != application {
+			bindings = append(bindings, binding)
+			continue
+		}
+		instance, ok := r.instance(binding.ProviderInstanceID)
+		if ok && instance.Ownership == OwnershipExternal {
+			bindings = append(bindings, binding)
+		}
+	}
+	r.Bindings = bindings
+	r.removeOwnedApplicationInstances(application)
+}
+
 func (r *Registry) ReleaseApplication(application string) {
 	if r == nil { return }
 	application = strings.TrimSpace(application)
@@ -161,6 +179,10 @@ func (r *Registry) ReleaseApplication(application string) {
 		if binding.Resource.Application != application { bindings = append(bindings, binding) }
 	}
 	r.Bindings = bindings
+	r.removeOwnedApplicationInstances(application)
+}
+
+func (r *Registry) removeOwnedApplicationInstances(application string) {
 	instances := r.Instances[:0]
 	for _, instance := range r.Instances {
 		if instance.Scope == ScopeApplication && instance.Ownership == OwnershipBaseHarbor && instance.OwnerApplication == application { continue }
