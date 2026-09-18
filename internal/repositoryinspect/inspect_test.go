@@ -186,3 +186,44 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+
+func TestInspectDoesNotExposeEnvValues(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, ".env", "DATABASE_URL=postgresql://user:super-secret@db/app\nAPI_TOKEN=very-secret\n")
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := MarshalJSONResult(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "super-secret") || strings.Contains(string(data), "very-secret") {
+		t.Fatalf("inspection leaked env value: %s", data)
+	}
+}
+
+func TestInspectSkipsSymlinkedFiles(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.conf")
+	if err := os.WriteFile(outside, []byte("postgresql://outside/secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked.conf")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range result.Findings {
+		for _, evidence := range finding.Evidence {
+			if evidence.Path == "linked.conf" {
+				t.Fatalf("symlink evidence should be ignored: %#v", finding)
+			}
+		}
+	}
+}
