@@ -17,7 +17,7 @@ func ReconcileReferenceProviderRegistry(m Manifest) error {
 	}
 	store := capability.RegistryStore{Path: filepath.Join(stateDir, providerRegistryFile)}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseApplication(m.Name)
+		registry.ReleaseManagedApplication(m.Name)
 		return registerReferenceProviders(registry, m)
 	})
 }
