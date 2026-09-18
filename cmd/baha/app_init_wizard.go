@@ -434,10 +434,14 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
 	postgres, redis, secrets := d.Postgres, d.Redis, len(d.SecretCandidates) > 0
-	if !postgres && !redis && !secrets && len(d.WorkloadServices) == 0 {
-		postgres = true
+	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
+	if quick && !postgres && !redis && !secrets && !hasWorkload {
+		return application.Manifest{}, usageError(
+			"no unambiguous application requirements were detected",
+			"Run 'baha app init' interactively or use explicit capability flags.",
+		)
 	}
-	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, secrets, d.Compose != "" && len(d.WorkloadServices) > 0)
+	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, secrets, hasWorkload)
 	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
 		m = application.WithPostgresInstances(m, postgresNamed...)
 	}
@@ -507,7 +511,11 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		return nil, err
 	}
 	if strings.TrimSpace(line) == "" {
-		return append([]bool(nil), defaults...), nil
+		selected := append([]bool(nil), defaults...)
+		if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+			return nil, errors.New("select at least one backend capability or configure an application workload")
+		}
+		return selected, nil
 	}
 	selected := make([]bool, len(labels))
 	for _, raw := range strings.Split(line, ",") {
