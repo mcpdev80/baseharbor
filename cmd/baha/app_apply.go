@@ -57,6 +57,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "provider registry", Run: func(context.Context) error {
+					return application.CheckReferenceProviderRegistry(m)
+				}},
 			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
