@@ -227,7 +227,6 @@ func TestInspectSkipsSymlinkedFiles(t *testing.T) {
 	}
 }
 
-
 func TestInspectDoesNotTreatApplicationEnvAsProviderService(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `services:
