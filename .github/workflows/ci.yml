@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, feat/v043-repository-inspection]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - 'README.md'
