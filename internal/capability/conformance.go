@@ -34,8 +34,8 @@ func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceRepor
 	if err := descriptor.Validate(); err != nil {
 		report.Status = ConformanceFail
 		report.Checks = append(report.Checks, ConformanceCheck{
-			Name: "provider-contract",
-			Status: ConformanceFail,
+			Name:    "provider-contract",
+			Status:  ConformanceFail,
 			Message: err.Error(),
 		})
 		return report
