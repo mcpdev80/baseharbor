@@ -146,6 +146,9 @@ func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, er
 			}
 			return nil
 		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		rel = filepath.ToSlash(rel)
 		kind, read := classifyFile(rel)
 		if !read {
@@ -161,6 +164,9 @@ func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, er
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		if kind == "env" {
+			data = envNamesOnly(data)
 		}
 		snapshot.Files[rel] = data
 		if kind != "" {
@@ -807,4 +813,14 @@ func inspectDockerfile(data []byte, path string) ([]PortEvidence, []Evidence) {
 		}
 	}
 	return ports, health
+}
+
+
+func envNamesOnly(data []byte) []byte {
+	var b strings.Builder
+	for _, name := range readEnvNames(data) {
+		b.WriteString(name)
+		b.WriteString("=\n")
+	}
+	return []byte(b.String())
 }
