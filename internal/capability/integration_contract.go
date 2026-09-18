@@ -135,7 +135,6 @@ func (a *DriverAdapter) Verify(ctx context.Context, resource Resource, binding B
 	return a.driver.Verify(ctx, resource, binding)
 }
 
-
 func sameCapabilitySet(a, b []Kind) bool {
 	if len(a) != len(b) {
 		return false
