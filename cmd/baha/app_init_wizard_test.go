@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames(t *testing.T) {
@@ -179,7 +181,6 @@ func withWizardTestDir(t *testing.T, dir string) {
 		}
 	})
 }
-
 
 func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 	root := t.TempDir()
