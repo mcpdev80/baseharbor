@@ -32,8 +32,8 @@ const (
 )
 
 // Provider describes the capability surface of one provider implementation.
-// Placement, ownership and shared/dedicated/external scope deliberately remain
-// outside this v0.4.1 foundation and are introduced by the provider registry.
+// Placement and ownership stay outside portable capability intent and are
+// represented separately by the provider registry.
 type Provider struct {
 	Kind         ProviderKind `json:"kind"`
 	Capabilities []Kind       `json:"capabilities"`
