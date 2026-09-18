@@ -400,6 +400,18 @@ A maintainer should be able to answer without reverse-engineering the repository
 
 If these answers are difficult to find, the design is probably too indirect.
 
+## Mandatory task release footer
+
+Every implementation task that can contribute to a BaseHarbor release must carry the following release requirements in its task/issue description and must satisfy them before release:
+
+- follow this `DEVELOPMENT_GUIDELINES.md`, including the mandatory pre-merge checklist;
+- review all affected canonical documentation and verify current behavior, future behavior, version references and compatibility claims against the implementation;
+- use CI economically: inspect failures before reruns, batch related changes, prefer local/repository-provided validation where practical, and use documentation-only validation when executable behavior is unchanged;
+- write human-friendly release notes that explain what changed, why it matters, compatibility/upgrade impact and intentionally deferred work;
+- never use a raw commit list as the release message.
+
+Release preparation is incomplete until these items are explicitly checked.
+
 ## Mandatory pre-merge checklist
 
 Before a BaseHarbor change is considered ready, verify:

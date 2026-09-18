@@ -14,7 +14,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The latest published stable release is **v0.4.1**. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.1 line keeps Compose as the complete runtime implementation while adding the reusable capability/provider/resource/binding core needed for later provider work. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
 The v0.4.1 line includes:
 
