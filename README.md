@@ -14,7 +14,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The v0.4.0 release source is prepared on `main`, while the latest published stable release remains `v0.3.0` until the immutable `v0.4.0` tag and GitHub Release are published. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The latest published stable release is **v0.4.0**. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
 
 The v0.4.0 line includes:
 
@@ -59,14 +59,12 @@ Install the latest stable release:
 curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
 ```
 
-For production automation, pin both installer and requested version to an immutable **published** release tag. Until `v0.4.0` is published, the current stable pin remains:
+For production automation, pin both installer and requested version to the immutable published release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.3.0/scripts/install.sh \
-  | bash -s -- v0.3.0
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.4.0/scripts/install.sh \
+  | bash -s -- v0.4.0
 ```
-
-Do not consume the release-prepared `v0.4.0` source as a published release until the immutable tag, artifacts and checksums exist.
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
 
