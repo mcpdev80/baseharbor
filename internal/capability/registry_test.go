@@ -3,6 +3,7 @@ package capability
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -75,4 +76,44 @@ func TestRegistryStorePersistsOwnerOnlyValidatedState(t *testing.T) {
 	if _, err := store.Load(); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(path, []byte("{broken"), 0o600); err != nil { t.Fatal(err) }
 	if _, err := store.Load(); err == nil { t.Fatal("corrupt registry accepted") }
+}
+
+
+func TestRegistryStoreSerializesConcurrentUpdates(t *testing.T) {
+	store := RegistryStore{Path: filepath.Join(t.TempDir(), "provider-registry.json")}
+	instances := []ProviderInstance{
+		{ID:"postgresql/alpha/default",Provider:PostgreSQL,Scope:ScopeApplication,Ownership:OwnershipBaseHarbor,OwnerApplication:"alpha"},
+		{ID:"postgresql/beta/default",Provider:PostgreSQL,Scope:ScopeApplication,Ownership:OwnershipBaseHarbor,OwnerApplication:"beta"},
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, len(instances))
+	var wg sync.WaitGroup
+	for _, instance := range instances {
+		instance := instance
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- store.Update(func(registry *Registry) error {
+				return registry.Register(instance)
+			})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Instances) != 2 {
+		t.Fatalf("instances=%#v", registry.Instances)
+	}
 }
