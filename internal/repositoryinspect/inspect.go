@@ -720,3 +720,57 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	}
 	return name
 }
+
+
+func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
+	if strings.TrimSpace(rel) == "" {
+		return ComposeAnalysis{}, fmt.Errorf("compose path is required")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return ComposeAnalysis{}, fmt.Errorf("resolve compose root: %w", err)
+	}
+	cleanRel := filepath.Clean(filepath.FromSlash(rel))
+	if filepath.IsAbs(cleanRel) || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
+		return ComposeAnalysis{}, fmt.Errorf("compose path %q must remain inside repository", rel)
+	}
+	path := filepath.Join(absRoot, cleanRel)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ComposeAnalysis{}, fmt.Errorf("read compose file %s: %w", filepath.ToSlash(cleanRel), err)
+	}
+	analysis := ComposeAnalysis{}
+	for _, service := range detectComposeServices(data) {
+		if service.Postgres {
+			analysis.PostgresInstances = append(analysis.PostgresInstances, detectedLogicalInstanceName(service.Name, "postgres"))
+		}
+		if service.Redis {
+			analysis.RedisInstances = append(analysis.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
+		}
+		if !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
+			analysis.WorkloadServices = append(analysis.WorkloadServices, service.Name)
+		}
+		for _, port := range service.Ports {
+			analysis.Ports = append(analysis.Ports, PortEvidence{
+				Path: filepath.ToSlash(cleanRel), Service: service.Name, Value: port,
+			})
+		}
+		if service.HealthCheck {
+			analysis.HealthChecks = append(analysis.HealthChecks, Evidence{
+				Kind: EvidenceHealth, Path: filepath.ToSlash(cleanRel),
+				Detail: "compose service " + service.Name + " declares healthcheck",
+			})
+		}
+	}
+	analysis.PostgresInstances = uniqueSorted(analysis.PostgresInstances)
+	analysis.RedisInstances = uniqueSorted(analysis.RedisInstances)
+	analysis.WorkloadServices = uniqueSorted(analysis.WorkloadServices)
+	sort.Slice(analysis.Ports, func(i, j int) bool {
+		if analysis.Ports[i].Service != analysis.Ports[j].Service {
+			return analysis.Ports[i].Service < analysis.Ports[j].Service
+		}
+		return analysis.Ports[i].Value < analysis.Ports[j].Value
+	})
+	analysis.HealthChecks = uniqueEvidence(analysis.HealthChecks)
+	return analysis, nil
+}
