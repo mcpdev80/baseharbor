@@ -433,7 +433,11 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.ComposeCandidates) > 1 {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
-	postgres, redis, secrets := d.Postgres, d.Redis, len(d.SecretCandidates) > 0
+	postgres, redis := d.Postgres, d.Redis
+	// Secret names discovered from env/example files are heuristic evidence only.
+	// Quick mode must never promote them into required portable contract entries
+	// without an explicit developer confirmation.
+	secrets := false
 	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
 	if quick && !postgres && !redis && !secrets && !hasWorkload {
 		return application.Manifest{}, usageError(
@@ -448,7 +452,9 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if redisNamed := quickNamedInstances(d.RedisInstances); len(redisNamed) > 0 {
 		m = application.WithRedisInstances(m, redisNamed...)
 	}
-	m = application.WithRequiredSecrets(m, d.SecretCandidates...)
+	if !quick {
+		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
+	}
 	if d.Compose != "" && len(d.WorkloadServices) > 0 {
 		m = application.WithWorkload(m, d.Compose, d.WorkloadServices...)
 	}

@@ -221,11 +221,37 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if len(expectedServices) == 0 {
 		return false, fmt.Errorf("application workload has no active selected Compose services")
 	}
+	beforeStates, err := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return false, fmt.Errorf("inspect application workload before start: %w", err)
+	}
+	beforeServices := make(map[string]struct{}, len(beforeStates))
+	for _, state := range beforeStates {
+		beforeServices[state.Service] = struct{}{}
+	}
+	cleanupNewResources := func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if len(beforeStates) == 0 {
+			_ = compose.DownProjectFilesEnv(cleanupCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+			return
+		}
+		var newlyCreated []string
+		for _, service := range expectedServices {
+			if _, existed := beforeServices[service]; !existed {
+				newlyCreated = append(newlyCreated, service)
+			}
+		}
+		if len(newlyCreated) > 0 {
+			_ = compose.StopProjectFilesSelected(cleanupCtx, workload.Project, workload.RepositoryRoot, environment, newlyCreated, composeFiles...)
+		}
+	}
 	startServices := []string(nil)
 	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
 		startServices = expectedServices
 	}
 	if err := startRepositoryWorkloadWithPortFallback(ctx, runtimeInput, out, compose, workload, files, environment, startServices, composeFiles); err != nil {
+		cleanupNewResources()
 		return false, fmt.Errorf("start application workload: %w", err)
 	}
 
@@ -249,6 +275,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		case <-time.After(repositoryWorkloadReadinessPollInterval):
 		}
 	}
+	cleanupNewResources()
 	if lastErr != nil {
 		return false, fmt.Errorf("verify application workload readiness after %s: %w", repositoryWorkloadReadinessTimeout, lastErr)
 	}

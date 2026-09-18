@@ -58,6 +58,7 @@ type Result struct {
 	SelectedCompose   string            `json:"selected_compose,omitempty"`
 	WorkloadServices  []string          `json:"workload_services,omitempty"`
 	Findings          []Finding         `json:"findings,omitempty"`
+	RequiredSecrets   []string          `json:"required_secrets,omitempty"`
 	SecretCandidates  []string          `json:"secret_candidates,omitempty"`
 	SecretSources     map[string]string `json:"secret_sources,omitempty"`
 	Ports             []PortEvidence    `json:"ports,omitempty"`

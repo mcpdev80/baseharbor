@@ -89,8 +89,14 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 	printInspectionFindings(out, result, repositoryinspect.ConfidenceSuggested, "Suggested")
 	printInspectionFindings(out, result, repositoryinspect.ConfidencePossible, "Possible")
 
+	if len(result.RequiredSecrets) > 0 {
+		fmt.Fprintln(out, "\nRequired secrets from BaseHarbor contract:")
+		for _, name := range result.RequiredSecrets {
+			fmt.Fprintf(out, "  - %s\n", name)
+		}
+	}
 	if len(result.SecretCandidates) > 0 {
-		fmt.Fprintln(out, "\nPotential required secrets:")
+		fmt.Fprintln(out, "\nPotential secret inputs from repository evidence:")
 		for _, name := range result.SecretCandidates {
 			fmt.Fprintf(out, "  - %s (%s)\n", name, result.SecretSources[name])
 		}

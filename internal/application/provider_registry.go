@@ -10,24 +10,70 @@ import (
 
 const providerRegistryFile = "provider-registry.json"
 
-func ReconcileReferenceProviderRegistry(m Manifest) error {
+func referenceProviderRegistryStore() (capability.RegistryStore, error) {
 	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return capability.RegistryStore{}, err
+	}
+	return capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}, nil
+}
+
+// CheckReferenceProviderRegistry validates the protected provider registry and
+// simulates the desired application reconciliation without writing it. Lifecycle
+// callers use this during preflight so invalid provider metadata fails before
+// any runtime or workload mutation.
+func CheckReferenceProviderRegistry(m Manifest) error {
+	store, err := referenceProviderRegistryStore()
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	registry.ReleaseManagedApplication(m.Name)
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		return err
+	}
+	return registry.Validate()
+}
+
+func ReconcileReferenceProviderRegistry(m Manifest) error {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return err
+	}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseManagedApplication(m.Name)
 		return registerReferenceProviders(registry, m)
 	})
 }
 
-func ReleaseApplicationProviderRegistry(m Manifest) error {
-	dataDir, err := bhruntime.DataDir("")
+func CheckControlPlaneDestroySafe() error {
+	store, err := referenceProviderRegistryStore()
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if len(registry.Bindings) != 0 {
+		return fmt.Errorf("provider registry still contains %d application binding(s); destroy managed applications before the global control plane", len(registry.Bindings))
+	}
+	for _, instance := range registry.Instances {
+		if instance.Scope == capability.ScopeApplication {
+			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the global control plane", instance.ID)
+		}
+	}
+	return nil
+}
+
+func ReleaseApplicationProviderRegistry(m Manifest) error {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return err
+	}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseApplication(m.Name)
 		return nil

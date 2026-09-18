@@ -150,7 +150,7 @@ For a non-interactive detection-based path:
 baha app init --quick
 ```
 
-`--quick` accepts only unambiguous **Detected** evidence plus an explicit detected workload. `Suggested` or `Possible` evidence is never promoted automatically. If no strong requirement and no workload is detected, quick mode fails closed and points to interactive setup or explicit flags. Ambiguous project structure also fails closed. Multiple detected logical PostgreSQL or Redis/Valkey instances are preserved automatically.
+`--quick` accepts only unambiguous **Detected** evidence plus an explicit detected workload. `Suggested` or `Possible` evidence is never promoted automatically. Credential-looking names from env/example files remain heuristic input suggestions and are never turned into `secrets.required` without explicit developer confirmation. If no strong requirement and no workload is detected, quick mode fails closed and points to interactive setup or explicit flags. Ambiguous project structure also fails closed. Multiple detected logical PostgreSQL or Redis/Valkey instances are preserved automatically.
 
 The explicit flag-based path remains available and deterministic for CI, scripts and developers who already know the desired contract:
 
@@ -305,7 +305,10 @@ baha app down
 baha app up
 baha app destroy
 baha app destroy --yes
+baha app destroy --yes --full-reset
 ```
+
+Normal `app destroy` preserves repository deployment settings (`.baseharbor/init.env`) and normalized local TLS state so an application can be recreated with the same deployment choices. The destruction plan shows these preserved paths. `--full-reset` additionally removes those BaseHarbor-owned repository deployment files, but still preserves `baseharbor.yaml`, application-owned Compose data/volumes and any external certificate source directory.
 
 `app up` resumes only already-materialized state. Missing expected persistent state causes a fail-closed error instead of silently creating an empty replacement.
 

@@ -267,3 +267,58 @@ func TestInspectCollectsDockerfilePortsAndHealthcheck(t *testing.T) {
 		t.Fatalf("HealthChecks = %#v", result.HealthChecks)
 	}
 }
+
+func TestInspectPrefersExistingManifestAsAuthoritativeContract(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "baseharbor.yaml", `version: 1
+app:
+  name: mailflow
+  environment: production
+services:
+  postgres:
+    enabled: true
+  redis:
+    enabled: true
+  secrets:
+    enabled: true
+secrets:
+  required:
+    - name: SECRET_KEY
+workload:
+  compose: deploy/compose.yaml
+  services:
+    - api
+`)
+	writeTestFile(t, root, "deploy/compose.yaml", `services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "compose.yaml", `services:
+  other:
+    image: example/other
+`)
+	writeTestFile(t, root, ".env.example", "OPTIONAL_CLIENT_SECRET=\n")
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Application != "mailflow" {
+		t.Fatalf("Application = %q, want manifest identity", result.Application)
+	}
+	if result.SelectedCompose != "deploy/compose.yaml" {
+		t.Fatalf("SelectedCompose = %q, want manifest workload", result.SelectedCompose)
+	}
+	if len(result.WorkloadServices) != 1 || result.WorkloadServices[0] != "api" {
+		t.Fatalf("WorkloadServices = %#v, want manifest services", result.WorkloadServices)
+	}
+	assertFindingConfidence(t, result, "database.sql", ConfidenceDetected)
+	assertFindingConfidence(t, result, "cache.key-value", ConfidenceDetected)
+	assertFindingConfidence(t, result, "secrets", ConfidenceDetected)
+	if len(result.RequiredSecrets) != 1 || result.RequiredSecrets[0] != "SECRET_KEY" {
+		t.Fatalf("RequiredSecrets = %#v", result.RequiredSecrets)
+	}
+	if len(result.SecretCandidates) != 1 || result.SecretCandidates[0] != "OPTIONAL_CLIENT_SECRET" {
+		t.Fatalf("SecretCandidates = %#v", result.SecretCandidates)
+	}
+}

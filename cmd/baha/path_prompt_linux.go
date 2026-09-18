@@ -16,12 +16,20 @@ import (
 )
 
 func promptDirectoryPath(reader *bufio.Reader, out io.Writer, label string) (string, error) {
-	input, ok := appInitInput.(*os.File)
-	if !ok || !appInitReaderIsTerminal(appInitInput) {
+	return promptPathWithCompletion(reader, out, label, appInitInput)
+}
+
+func promptNewFilePath(reader *bufio.Reader, out io.Writer, label string, input io.Reader) (string, error) {
+	return promptPathWithCompletion(reader, out, label, input)
+}
+
+func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string, input io.Reader) (string, error) {
+	inputFile, ok := input.(*os.File)
+	if !ok || !readerIsTerminal(input) {
 		return promptLine(reader, out, label, "")
 	}
 
-	fd := int(input.Fd())
+	fd := int(inputFile.Fd())
 	oldState, err := unix.IoctlGetTermios(fd, unix.TCGETS)
 	if err != nil {
 		return promptLine(reader, out, label, "")

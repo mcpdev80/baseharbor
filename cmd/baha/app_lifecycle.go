@@ -105,10 +105,10 @@ func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
-		Usage:   "baha app destroy [NAME] [--yes]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application secret broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and .baseharbor state. Application-owned Compose volumes and a repository-owned baseharbor.yaml are preserved.",
+		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application secret broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			name, confirmed, err := parseDestroyArgs(args)
+			name, confirmed, fullReset, err := parseDestroyArgs(args)
 			if err != nil {
 				return err
 			}
@@ -207,6 +207,14 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
+				repoRoot := filepath.Dir(resolved.ManifestPath)
+				if fullReset {
+					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPath(repoRoot))
+					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+				} else {
+					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPath(repoRoot))
+					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+				}
 			}
 			if !confirmed {
 				fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
@@ -242,6 +250,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if err := resolved.Store.Delete(m.Name); err != nil {
 				return err
 			}
+			if fullReset && resolved.FromRepository {
+				repoRoot := filepath.Dir(resolved.ManifestPath)
+				if err := os.Remove(repositoryInitEnvPath(repoRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("remove repository deployment state: %w", err)
+				}
+				if err := os.RemoveAll(filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)); err != nil {
+					return fmt.Errorf("remove normalized repository TLS state: %w", err)
+				}
+			}
 			if err := application.ReleaseApplicationProviderRegistry(m); err != nil {
 				return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
 			}
@@ -260,21 +277,24 @@ func appDestroyCommand(store application.Store) *cli.Command {
 	}
 }
 
-func parseDestroyArgs(args []string) (string, bool, error) {
+func parseDestroyArgs(args []string) (string, bool, bool, error) {
 	var name string
 	confirmed := false
+	fullReset := false
 	for _, arg := range args {
 		switch {
 		case arg == "--yes":
 			confirmed = true
+		case arg == "--full-reset":
+			fullReset = true
 		case strings.HasPrefix(arg, "-"):
-			return "", false, usageError("unknown option "+arg, "Run 'baha app destroy --help' for available options.")
+			return "", false, false, usageError("unknown option "+arg, "Run 'baha app destroy --help' for available options.")
 		default:
 			if name != "" {
-				return "", false, usageError("baha app destroy accepts at most one NAME", "Inside an application repository omit NAME.")
+				return "", false, false, usageError("baha app destroy accepts at most one NAME", "Inside an application repository omit NAME.")
 			}
 			name = arg
 		}
 	}
-	return name, confirmed, nil
+	return name, confirmed, fullReset, nil
 }

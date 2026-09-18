@@ -220,7 +220,7 @@ func doctorGuardTarget(store application.Store, args []string) (resolvedApplicat
 }
 
 func destroyGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
-	name, _, err := parseDestroyArgs(args)
+	name, _, _, err := parseDestroyArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false
 	}

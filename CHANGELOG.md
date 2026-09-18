@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Repository inspection now treats an existing `baseharbor.yaml` as authoritative for application identity, declared capabilities, required secrets and workload selection while keeping heuristic evidence visible as supplemental signals.
+- `app init --quick` no longer promotes heuristic credential-like names from env examples into mandatory managed secrets.
+- Global and application status now distinguish an intentionally stopped runtime from a running-but-unready failure state.
+- Provider-registry validation now happens during preflight before workload/runtime mutation.
+- Failed repository workload starts/readiness attempts clean up resources created by that failed attempt without deleting application-owned persistent data or pre-existing workload state.
+- Repeated reconciliation reuses valid runtime mTLS identities; actual identity rotation recreates the broker so bind mounts cannot retain stale certificate/key inodes.
+- `app destroy` now shows preserved repository deployment/TLS state and supports explicit `--full-reset` for BaseHarbor-owned repository deployment state without touching external certificate sources.
+- Added ownership-aware `baha destroy --yes` for explicit global control-plane/runtime-state removal after application bindings have been released.
+- Fresh OpenBao bootstrap clearly asks for a new recovery output file, reuses filesystem completion, refuses an existing target and preserves the non-interactive `--recovery-file` path.
+
+
 ## [0.4.3] - 2026-09-18
 
 ### Added

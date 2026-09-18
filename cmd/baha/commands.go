@@ -75,6 +75,15 @@ func rootCommand() *cli.Command {
 			Run:     noArgsCtx("baha down", runtimeDown),
 		},
 		{
+			Name:    "destroy",
+			Summary: "Permanently remove the global BaseHarbor control plane and its owned state",
+			Usage:   "baha destroy [--yes]",
+			Long:    "Shows a destruction plan for the global BaseHarbor Compose project, its owned volumes, runtime state and provider-registry metadata. Refuses to run while application bindings remain. Application-owned repository data and volumes are not removed.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				return runtimeDestroy(ctx, args, out)
+			},
+		},
+		{
 			Name:    "status",
 			Summary: "Show control-plane container and readiness status",
 			Usage:   "baha status",

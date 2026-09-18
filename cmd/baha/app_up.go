@@ -57,6 +57,9 @@ func appUpCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "provider registry", Run: func(context.Context) error {
+					return application.CheckReferenceProviderRegistry(m)
+				}},
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
 					if !application.HasManagedRuntimeServices(m) {
 						return nil

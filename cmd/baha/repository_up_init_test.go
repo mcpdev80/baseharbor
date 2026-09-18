@@ -41,10 +41,13 @@ func TestInitializeRepositoryManifestForUpQuickCreatesDetectedContract(t *testin
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"postgres:", "redis:", "SECRET_KEY", "compose.yaml", "api"} {
+	for _, want := range []string{"postgres:", "redis:", "compose.yaml", "api"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated manifest missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "SECRET_KEY") {
+		t.Fatalf("quick init promoted heuristic SECRET_KEY into the contract:\n%s", text)
 	}
 	if !strings.Contains(out.String(), "Creating the application contract from detected safe defaults") {
 		t.Fatalf("output missing quick-init explanation:\n%s", out.String())

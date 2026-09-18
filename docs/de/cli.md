@@ -45,6 +45,15 @@ baha up --postgres-port 15432 --openbao-port 18200
 
 Beim ersten Start werden Ports geprueft. Belegte Standardports werden nicht blind verwendet.
 
+Der globale Control Plane kann nach dem Entfernen aller Application-Bindings explizit geloescht werden:
+
+```bash
+baha destroy
+baha destroy --yes
+```
+
+Der Befehl entfernt nur das BaseHarbor-eigene Control-Plane-Compose-Projekt, dessen Volumes, Runtime-State und Provider-Registry-Metadaten. Solange Application-Bindings existieren, bricht er fail-closed ab.
+
 ## Anwendung
 
 Der normale Entwicklerweg beginnt im bestehenden Projektverzeichnis:
@@ -73,7 +82,7 @@ Nicht-interaktiv und erkennungsbasiert:
 baha app init --quick
 ```
 
-`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab.
+`--quick` akzeptiert nur eindeutige Erkennungen und sichere Defaults. Bei Mehrdeutigkeit bricht der Befehl fail-closed ab. Credential-aehnliche Namen aus Env-/Beispieldateien bleiben heuristische Hinweise und werden ohne explizite Entwicklerbestaetigung niemals zu `secrets.required`.
 
 Der deterministische Flag-Pfad bleibt fuer CI/Skripte erhalten:
 
@@ -164,6 +173,18 @@ baha app tls update
 `--check` ist read-only. Mutation validiert Quelle, Key-Pair und FQDN, verweigert Downgrades, installiert owner-only Dateien, startet den Workload bei Bedarf neu und verifiziert Readiness. Bei Fehlern wird der vorherige geschuetzte Zertifikatsstand wiederhergestellt.
 
 ACME-Automation, OpenBao-PKI-Issuance und ein providerneutraler TLS-Contract bleiben Future Work.
+
+## Stoppen, fortsetzen und zerstoeren
+
+```bash
+baha app down
+baha app up
+baha app destroy
+baha app destroy --yes
+baha app destroy --yes --full-reset
+```
+
+Der normale `app destroy` behaelt Repository-Deployment-State (`.baseharbor/init.env`) und normalisierte lokale TLS-Dateien fuer eine spaetere Neuerstellung. Der Destroy-Plan zeigt diesen erhaltenen State explizit. `--full-reset` entfernt zusaetzlich nur diese BaseHarbor-eigenen Repository-Deployment-Dateien; `baseharbor.yaml`, app-eigene Compose-Daten/Volumes und externe Zertifikatsquellen bleiben erhalten.
 
 ## Backup und Restore
 

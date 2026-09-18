@@ -165,7 +165,7 @@ jobs:
           /tmp/baha app up broker-demo | grep -q "Application broker-demo is running and ready"
           /tmp/baha app status broker-demo | grep -q "secret-broker.*mTLS identity and app-scoped OpenBao readiness succeeded"
           client_after=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
-          test "$client_before" != "$client_after"
+          test "$client_before" = "$client_after"
 
           broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
