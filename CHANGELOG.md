@@ -35,6 +35,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Runtime-provider capability negotiation fails closed when an operation requires behavior the selected provider cannot satisfy.
 - Existing protected deployment state, certificate validation, secret storage and provider-specific security controls remain separate from the portable application contract and are not copied into committed manifests.
 
+### Deprecated
+
+- No public `baha` command or Manifest v1 field is deprecated in v0.4.0. Compose-specific Manifest v1 fields remain supported compatibility inputs, but they are no longer treated as the long-term provider-neutral application model.
+
+### Removed
+
+- Nothing from the supported v0.3 CLI or Manifest v1 workflow is removed in v0.4.0.
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
