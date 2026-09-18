@@ -73,7 +73,7 @@ Provider/runtime identities may include the environment to preserve isolation, b
 
 The repository-owned `baseharbor.yaml` contains portable application requirements and remains the desired-state source for the application contract.
 
-Compose-specific deployment realization is stored separately in protected BaseHarbor runtime state. In v0.3 this includes deployment details such as:
+Compose-specific deployment realization is stored separately in protected BaseHarbor runtime state. In v0.4 this protected deployment state includes details such as:
 
 - selected/public FQDN used for local HTTP Host and TLS ServerName verification;
 - TLS mode for the current repository deployment;
@@ -122,7 +122,7 @@ Verify actual state
 Ready / Failed truthfully
 ```
 
-The current v0.3.0 application manifest remains intentionally small and Compose-focused:
+Manifest v1 remains intentionally small and Compose-oriented as a compatibility surface, while v0.4 translates its portable intent through `PortableContract`:
 
 ```yaml
 version: 1
@@ -146,7 +146,7 @@ The product-oriented field names that exist in Manifest v1 are the current pre-v
 
 ## Runtime truth and verification
 
-BaseHarbor v0.3 treats runtime truth as more than container state:
+BaseHarbor v0.4 continues to treat runtime truth as more than container state:
 
 - PostgreSQL and Valkey use real protocol verification;
 - selected Compose workload services distinguish running/healthy, starting, unhealthy, exited and missing states;
@@ -163,9 +163,9 @@ Backup is supported together with restore, not as an isolated archive feature. R
 
 Application source update is strict fast-forward only. BaseHarbor does not reset, stash, rebase, merge divergent history or discard local work. Durable applications require an explicit recovery policy before mutation. BaseHarbor self-update verifies release artifacts, replaces the CLI atomically and retains a recovery binary for rollback if post-update verification fails.
 
-## TLS boundary in v0.3
+## TLS boundary in v0.4
 
-v0.3 implements the existing/BYOC certificate lifecycle for repository Compose deployments, including certificate/key/FQDN validation, downgrade prevention, protected installation, workload restart and readiness verification.
+v0.4 retains the existing/BYOC certificate lifecycle for repository Compose deployments, including certificate/key/FQDN validation, downgrade prevention, protected installation, workload restart and readiness verification.
 
 It does **not** introduce a provider-neutral `tls.certificate` manifest capability, BaseHarbor-managed ACME issuance, OpenBao PKI issuance, automatic certificate rotation, cert-manager integration or Kubernetes/OpenShift ingress realization. Those remain future provider/capability work.
 
@@ -175,7 +175,7 @@ It does **not** introduce a provider-neutral `tls.certificate` manifest capabili
 
 ## Security and operations direction
 
-Implemented in the v0.3 Compose line:
+Implemented in the current Compose line:
 
 - OpenBao-backed managed application secrets;
 - scoped runtime identity and mTLS broker isolation;
