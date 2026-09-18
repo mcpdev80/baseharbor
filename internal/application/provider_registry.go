@@ -49,6 +49,26 @@ func ReconcileReferenceProviderRegistry(m Manifest) error {
 	})
 }
 
+func CheckControlPlaneDestroySafe() error {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if len(registry.Bindings) != 0 {
+		return fmt.Errorf("provider registry still contains %d application binding(s); destroy managed applications before the global control plane", len(registry.Bindings))
+	}
+	for _, instance := range registry.Instances {
+		if instance.Scope == capability.ScopeApplication {
+			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the global control plane", instance.ID)
+		}
+	}
+	return nil
+}
+
 func ReleaseApplicationProviderRegistry(m Manifest) error {
 	store, err := referenceProviderRegistryStore()
 	if err != nil {
