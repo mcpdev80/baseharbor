@@ -268,7 +268,6 @@ func TestInspectCollectsDockerfilePortsAndHealthcheck(t *testing.T) {
 	}
 }
 
-
 func TestInspectPrefersExistingManifestAsAuthoritativeContract(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "baseharbor.yaml", `version: 1
