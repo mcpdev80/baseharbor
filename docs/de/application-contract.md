@@ -12,7 +12,7 @@ Provider-spezifische Details wie Compose-Projektnamen, Netzwerke, Host-Ports, Vo
 
 ## Portabler Contract und Deployment-State
 
-`baseharbor.yaml` ist der repository-eigene portable Desired-State-Vertrag. Compose-spezifische Operator-/Runtime-Inputs werden davon getrennt in geschuetztem BaseHarbor-State gehalten.
+`baseharbor.yaml` Manifest v1 ist der unterstuetzte repository-eigene Kompatibilitaetsvertrag. BaseHarbor uebersetzt daraus den portablen Anwendungs-Intent in den providerneutralen `PortableContract`; Compose-spezifische Kompatibilitaetsfelder gehoeren nicht in diesen portablen View.
 
 Dazu gehoeren in v0.4 beispielsweise:
 
@@ -22,7 +22,7 @@ Dazu gehoeren in v0.4 beispielsweise:
 - automatisch ausgewaehlte Host-Port-Fallbacks;
 - generierte Compose-Overrides und Runtime-Identity-Material.
 
-Diese Werte duerfen nicht nur deshalb in das portable Manifest wandern, weil Compose sie aktuell benoetigt.
+Diese Werte duerfen nicht nur deshalb in den portablen Anwendungs-Intent wandern, weil Compose sie aktuell benoetigt.
 
 ```yaml
 version: 1
