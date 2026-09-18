@@ -16,7 +16,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.2 line keeps Compose as the complete runtime implementation while adding provider registry, placement and ownership semantics behind the unchanged Manifest v1 workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
-The v0.4.1 line includes:
+The v0.4.2 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
@@ -64,8 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/in
 For production automation, pin both installer and requested version to the immutable published release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.4.1/scripts/install.sh \
-  | bash -s -- v0.4.1
+release_tag=vX.Y.Z
+curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/${release_tag}/scripts/install.sh" \
+  | bash -s -- "${release_tag}"
 ```
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
