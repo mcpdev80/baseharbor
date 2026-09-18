@@ -50,13 +50,14 @@ or, when `XDG_DATA_HOME` is unset:
 Typical files include:
 
 ```text
+provider-registry.json
 runtime/
 ├── compose.yaml
 ├── runtime.env
 └── openbao-admin.env
 ```
 
-`BASEHARBOR_STATE_DIR` remains an explicit operator/CI override. For compatibility, a legacy repository-local `.baseharbor/runtime` is reused only when no global state exists yet.
+The provider registry is stored beside `runtime/`, not inside it. This prevents provider metadata from materializing or switching the selected runtime-state location.\n\n`BASEHARBOR_STATE_DIR` remains an explicit operator/CI override. For compatibility, a legacy repository-local `.baseharbor/runtime` is reused only when no global state exists yet.
 
 Credential-bearing files are owner-only. Generated PostgreSQL credentials and selected ports are preserved across subsequent starts.
 
