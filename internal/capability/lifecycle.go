@@ -114,6 +114,9 @@ func Run(ctx context.Context, application string, requests []Request) (Result, e
 		return Result{Application: strings.TrimSpace(application), Status: StatusFailed}, err
 	}
 	result := Result{Application: plan.Application, Status: StatusReady, Plan: plan}
+	for _, item := range plan.Items {
+		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
+	}
 
 	for i, item := range plan.Items {
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
