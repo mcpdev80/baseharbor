@@ -137,3 +137,14 @@ Nicht Teil von v0.4 sind ein providerneutraler `tls.certificate`-Manifest-Contra
 ## Bewusste Grenzen von v0.4.2
 
 Der aktuelle Standard bleibt Single-Node/Compose. HA, Kubernetes, OpenShift, providerneutrale Ingress-/TLS-Capabilities, Object Storage und Managed-Production-Identity/Policy werden separat entwickelt und versioniert. Diese zukuenftigen Faehigkeiten sind Architekturziele, keine impliziten Versprechen fuer v0.4.2.
+
+
+## Provider Integration Contract v1
+
+Alle neuen Capability Provider nach v0.4.2 muessen den gemeinsamen Provider Integration Contract v1 verwenden.
+
+BaseHarbor definiert die versionierte Capability-Semantik. Eingebaute Reference Provider und kuenftige externe Provider verwenden denselben Lifecycle-, Ownership-, Diagnostics- und Conformance-Vertrag.
+
+Die kuenftige externe Transportgrenze ist sprachneutral mit gRPC/Protocol Buffers; OCI ist die Richtung fuer registry-neutrales Packaging und Distribution. Ein dynamischer Plugin Loader ist in dieser Architektur-Voraussetzung bewusst noch nicht implementiert.
+
+Siehe [Provider Integration Contract v1](provider-integration-contract.md).
