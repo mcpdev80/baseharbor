@@ -82,6 +82,18 @@ Weiterhin Future Work:
 - Kubernetes Runtime Provider;
 - OpenShift Runtime Provider / Enterprise-Spezialisierung.
 
+## v0.4.3 Repository Inspection
+
+v0.4.3 macht Repository-Analyse zu einer gemeinsamen, strikt read-only Core-Funktion.
+
+- `baha app inspect [PATH]` zeigt nachvollziehbare Evidence;
+- `--json` liefert dasselbe strukturierte Ergebnis fuer spaetere API/WebUI/Operator-Adapter;
+- Findings werden als Detected / Suggested / Possible klassifiziert;
+- spaetere Capabilities koennen eigene Detektoren registrieren;
+- `app init` nutzt dieselbe Detection Engine;
+- Environment-Werte werden verworfen und Symlinks nicht verfolgt;
+- Inspection veraendert weder Repository noch Runtime-State.
+
 ## Geplante Phasen
 
 ### v0.5 - Capability Provider
