@@ -226,3 +226,45 @@ func TestInspectSkipsSymlinkedFiles(t *testing.T) {
 		}
 	}
 }
+
+
+func TestInspectDoesNotTreatApplicationEnvAsProviderService(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+    environment:
+      DATABASE_URL: postgresql://database/app
+  database:
+    image: postgres:17
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.WorkloadServices) != 1 || result.WorkloadServices[0] != "api" {
+		t.Fatalf("WorkloadServices = %#v", result.WorkloadServices)
+	}
+	for _, finding := range result.Findings {
+		if finding.Capability == "database.sql" && finding.Name == "api" {
+			t.Fatalf("application workload misclassified as database provider: %#v", finding)
+		}
+	}
+}
+
+func TestInspectCollectsDockerfilePortsAndHealthcheck(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "Dockerfile", "FROM scratch\nEXPOSE 8080 8443/tcp\nHEALTHCHECK CMD true\n")
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Ports) != 2 {
+		t.Fatalf("Ports = %#v", result.Ports)
+	}
+	if len(result.HealthChecks) != 1 || result.HealthChecks[0].Path != "Dockerfile" {
+		t.Fatalf("HealthChecks = %#v", result.HealthChecks)
+	}
+}
