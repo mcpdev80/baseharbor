@@ -43,7 +43,6 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	}
 }
 
-
 func TestCheckReferenceProviderRegistryRejectsCorruptStateBeforeReconcile(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
