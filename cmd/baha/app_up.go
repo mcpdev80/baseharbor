@@ -141,6 +141,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
 			}
+			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+				return fmt.Errorf("record provider registry after successful restart: %w", err)
+			}
 			fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
 			return nil
 		},
