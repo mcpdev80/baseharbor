@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package baseharbor.provider.v1;
+
+option go_package = "github.com/mcpdev80/baseharbor/spec/provider/v1;providerv1";
+
+// Provider defines the language-neutral BaseHarbor provider boundary.
+// BaseHarbor owns capability semantics and lifecycle rules. Implementations
+// declare which versioned capability specifications they satisfy.
+service Provider {
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Preflight(PreflightRequest) returns (OperationResponse);
+  rpc Provision(ProvisionRequest) returns (OperationResponse);
+  rpc Bind(BindRequest) returns (BindResponse);
+  rpc Verify(VerifyRequest) returns (OperationResponse);
+  rpc Status(StatusRequest) returns (OperationResponse);
+  rpc Update(UpdateRequest) returns (OperationResponse);
+  rpc Backup(BackupRequest) returns (OperationResponse);
+  rpc Restore(RestoreRequest) returns (OperationResponse);
+  rpc Destroy(DestroyRequest) returns (OperationResponse);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  string protocol = 1;
+  string provider = 2;
+  repeated string capability_specifications = 3;
+  LifecycleSupport optional_lifecycle = 4;
+}
+
+message LifecycleSupport {
+  bool status = 1;
+  bool update = 2;
+  bool backup = 3;
+  bool restore = 4;
+  bool destroy = 5;
+}
+
+message Resource {
+  string application = 1;
+  string capability = 2;
+  string capability_specification = 3;
+  string name = 4;
+  string provider = 5;
+}
+
+message WorkloadBinding {
+  Resource resource = 1;
+  string workload = 2;
+}
+
+message PreflightRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+}
+
+message ProvisionRequest {
+  Resource resource = 1;
+}
+
+message BindRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+}
+
+message VerifyRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+}
+
+message StatusRequest {
+  Resource resource = 1;
+}
+
+message UpdateRequest {
+  Resource resource = 1;
+}
+
+message BackupRequest {
+  Resource resource = 1;
+  string operation_id = 2;
+}
+
+message RestoreRequest {
+  Resource resource = 1;
+  string operation_id = 2;
+}
+
+message DestroyRequest {
+  Resource resource = 1;
+}
+
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  OPERATION_STATUS_READY = 1;
+  OPERATION_STATUS_FAILED = 2;
+  OPERATION_STATUS_UNSUPPORTED = 3;
+  OPERATION_STATUS_DEGRADED = 4;
+}
+
+message Diagnostic {
+  string code = 1;
+  string severity = 2;
+  string message = 3;
+}
+
+message OperationResponse {
+  OperationStatus status = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+message BindResponse {
+  OperationStatus status = 1;
+  repeated BindingValue values = 2;
+  repeated Diagnostic diagnostics = 3;
+}
+
+// BindingValue must never contain secret material. Secret-bearing values are
+// represented by credential_ref and resolved by BaseHarbor at a trusted
+// boundary.
+message BindingValue {
+  string name = 1;
+  string value = 2;
+  string credential_ref = 3;
+}
