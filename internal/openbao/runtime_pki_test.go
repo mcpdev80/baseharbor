@@ -1,7 +1,6 @@
 package openbao
 
 import (
-	"crypto/x509"
 	"encoding/pem"
 	"os"
 	"path/filepath"
@@ -114,5 +113,4 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 		t.Fatal("identity signed by another runtime CA must not be reused")
 	}
 
-	_ = x509.ExtKeyUsageClientAuth
 }
