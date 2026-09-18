@@ -146,7 +146,6 @@ func bufioReader(value string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(value))
 }
 
-
 func TestRecoveryFileForRepositoryUpRejectsExistingBootstrapOutput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openbao-recovery.json")
 	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
