@@ -367,7 +367,6 @@ func containsString(values []string, wanted string) bool {
 	return false
 }
 
-
 func applicationComponentsStopped(managedRunning, workloadRunning []string, workloadFound, brokerRunning bool) bool {
 	if len(managedRunning) != 0 || brokerRunning {
 		return false
