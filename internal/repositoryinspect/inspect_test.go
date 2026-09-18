@@ -115,7 +115,7 @@ func TestMarshalJSONResultIsMachineReadable(t *testing.T) {
 		Findings: []Finding{{
 			Capability: "database.sql",
 			Confidence: ConfidenceDetected,
-			Evidence: []Evidence{{Kind: EvidenceEnv, Path: ".env.example", Detail: "variable DATABASE_URL"}},
+			Evidence:   []Evidence{{Kind: EvidenceEnv, Path: ".env.example", Detail: "variable DATABASE_URL"}},
 		}},
 	}
 	data, err := MarshalJSONResult(result)
