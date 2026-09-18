@@ -242,6 +242,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if err := resolved.Store.Delete(m.Name); err != nil {
 				return err
 			}
+			if err := application.ReleaseApplicationProviderRegistry(m); err != nil {
+				return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
+			}
 			if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
 				if err == nil {
 					return errors.New("verify application destruction: application state still exists")

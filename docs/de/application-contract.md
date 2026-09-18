@@ -24,6 +24,8 @@ Dazu gehoeren in v0.4 beispielsweise:
 
 Diese Werte duerfen nicht nur deshalb in den portablen Anwendungs-Intent wandern, weil Compose sie aktuell benoetigt.
 
+Seit v0.4.2 werden auch Provider-Platzierung und Lifecycle-Ownership separat in einer geschuetzten Provider-Registry gehalten. Shared, application-scoped und externe Provider bleiben Operator-State und werden nicht Teil des portablen Application Contracts.
+
 ```yaml
 version: 1
 

@@ -18,7 +18,7 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.0 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.2 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
@@ -122,10 +122,29 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.1-Grenze
+## v0.4.2-Grenze
 
-v0.4.1 bleibt zur Laufzeit Compose-only. Zusaetzlich zum `PortableContract` und der Runtime-Provider-Grenze aus v0.4.0 fuehrt es den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, fail-closed Capability-Provider-Negotiation, maschinenlesbare Lifecycle-Ergebnisse und geschuetzte Runtime-Metadaten fuer aufgeloeste PostgreSQL-, Valkey- und OpenBao-Bindings ein. Ein neues generisches oeffentliches Capability-/Provider-Manifest wird weiterhin nicht eingefuehrt.
+v0.4.2 bleibt zur Laufzeit Compose-only. Es umfasst den Capability-/Provider-/Resource-/Binding-Core aus v0.4.1 und ergaenzt geschuetzte Provider-Registry-, Placement- und Ownership-Semantik fuer shared, application-scoped und externe Provider. Ein neues generisches oeffentliches Capability-/Provider-Manifest wird weiterhin nicht eingefuehrt.
 
 Die operative Vollstaendigkeit des Compose-Providers bleibt erhalten; neu sind die Architekturgrenzen fuer spaetere Provider ohne Bruch der Manifest-v1-Kompatibilitaet.
 
 Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Neues oeffentliches Capability-Schema, weitere Capability-Provider, HA, Managed Ingress, ACME/PKI-Automation und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
+
+
+## Provider-Registry in v0.4.2
+
+Provider-Platzierung bleibt geschuetzter Deployment-/Operator-State und ist kein portabler Application Intent.
+
+- `shared`: von BaseHarbor verwalteter Provider fuer mehrere Anwendungen.
+- `application`: von BaseHarbor verwalteter Provider exklusiv fuer eine Anwendung.
+- `external`: bestehender/BYO Provider, den BaseHarbor referenziert, aber lifecycle-seitig nicht besitzt.
+
+Aktuelle Referenzabbildung:
+
+```text
+OpenBao              -> shared
+PostgreSQL-Instanzen -> application-scoped
+Valkey-Instanzen     -> application-scoped
+```
+
+Logische Ressourcen bleiben unabhaengig vom Provider-Scope Eigentum der Anwendung. Shared Provider bleiben bei Application-Lifecycle-Operationen bestehen; externe Provider werden von BaseHarbor nicht lifecycle-seitig veraendert.

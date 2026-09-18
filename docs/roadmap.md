@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.1 portable application foundation
+## Current v0.4.2 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -28,6 +28,7 @@ Implemented foundations include:
 - repository-owned Manifest v1 `baseharbor.yaml` as the supported compatibility surface;
 - a provider-neutral `PortableContract` adapter for application intent;
 - a shared capability/provider/resource/binding domain core with fail-closed provider negotiation and machine-readable lifecycle results;
+- a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
 - one or multiple named logical PostgreSQL resources;
 - one or multiple named logical Valkey/Redis-protocol resources;
 - managed/generated secret intent without embedding secret values in the application contract;

@@ -147,6 +147,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
 			}
+			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+				return fmt.Errorf("record provider registry after successful convergence: %w", err)
+			}
 			fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
 			fmt.Fprintln(out, "Environment contract: baha app env --path")
 			return nil

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,5 +195,70 @@ func TestEmbeddedComposeUsesWritableOpenBaoFileStoragePath(t *testing.T) {
 	}
 	if strings.Contains(text, "/openbao/data") {
 		t.Fatal("openbao runtime must not use the non-image-managed /openbao/data path")
+	}
+}
+
+func TestDataDirDoesNotSwitchLegacyRuntimeSelection(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	legacy := filepath.Join(work, legacyStateDir)
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, envName), []byte("legacy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dataDir, err := DataDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataDir != ".baseharbor" {
+		t.Fatalf("data dir = %q, want .baseharbor", dataDir)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "provider-registry.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeDir, err := StateDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtimeDir != legacyStateDir {
+		t.Fatalf("runtime dir switched to %q, want legacy %q", runtimeDir, legacyStateDir)
+	}
+
+	global, err := globalStateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(global); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("global runtime directory unexpectedly materialized: %v", err)
+	}
+}
+
+func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "baseharbor-runtime")
+	t.Setenv("BASEHARBOR_STATE_DIR", override)
+
+	dataDir, err := DataDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataDir != override {
+		t.Fatalf("data dir = %q, want override %q", dataDir, override)
 	}
 }

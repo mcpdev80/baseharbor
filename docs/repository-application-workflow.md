@@ -63,6 +63,8 @@ The same protected deployment state owns automatic workload host-port fallbacks 
 
 These values are deployment realization, not portable application identity or capability requirements.
 
+v0.4.2 additionally records provider placement and lifecycle ownership in the protected provider registry. The repository contract still describes what the application needs; shared, dedicated or external provider placement remains operator state.
+
 ## Work from anywhere inside the repository
 
 BaseHarbor searches the current directory and then parent directories for the nearest `baseharbor.yaml`.

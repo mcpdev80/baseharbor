@@ -188,6 +188,8 @@ A developer may point normal framework or IDE dotenv support at that file. The a
 
 In v0.4.1 the protected runtime metadata additionally records the resolved logical capability, provider and workload binding. This metadata is for BaseHarbor control surfaces; applications continue to consume the same standard environment variables and files.
 
+In v0.4.2 provider placement and lifecycle ownership are recorded separately in the protected provider registry. Shared, dedicated or external placement remains operator state and does not become application contract content.
+
 BaseHarbor also materializes file bindings:
 
 ```text

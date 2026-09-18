@@ -75,6 +75,8 @@ Lifecycle results should be machine-readable before presentation. CLI output, AP
 
 v0.4.1 introduces this foundation for application capabilities as typed capability/provider/resource/binding models plus structured lifecycle steps and diagnostics. The reusable capability lifecycle is non-interactive and fail-closed; prompting remains a control-surface concern.
 
+v0.4.2 adds provider registry, placement and lifecycle ownership as protected operator state. Shared, application-scoped and external provider placement therefore remains outside portable application intent.
+
 See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
 
 ## Control plane and application stacks
