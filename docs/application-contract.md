@@ -18,7 +18,7 @@ Provider-specific implementation details such as Compose project names, networks
 
 ## Portable application contract versus deployment state
 
-`baseharbor.yaml` is the portable, repository-owned desired-state contract. It describes application requirements that should survive a future change of runtime/provider.
+`baseharbor.yaml` Manifest v1 is the supported repository-owned compatibility contract. BaseHarbor translates its portable application intent into the provider-neutral `PortableContract`; Compose-specific compatibility fields are not part of that portable view.
 
 The current Compose deployment may also need operator/runtime inputs that are **not** portable application requirements. In v0.4 these remain stored separately in protected BaseHarbor runtime state and can include:
 
@@ -28,7 +28,7 @@ The current Compose deployment may also need operator/runtime inputs that are **
 - automatically selected host-port fallbacks for configurable Compose publishers;
 - generated Compose overrides and runtime identity material.
 
-Those values must not be copied into the portable manifest merely because the Compose provider currently needs them. Future Kubernetes/OpenShift providers may realize the same application requirements through entirely different primitives.
+Those values must not be added to portable application intent merely because the Compose provider currently needs them. Future Kubernetes/OpenShift providers may realize the same application requirements through entirely different primitives.
 
 ## Required secrets
 
