@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -142,4 +144,20 @@ func TestRuntimePortDefaultsRemainStable(t *testing.T) {
 
 func bufioReader(value string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(value))
+}
+
+
+func TestRecoveryFileForRepositoryUpRejectsExistingBootstrapOutput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "openbao-recovery.json")
+	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	_, err := recoveryFileForRepositoryUp(strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected existing recovery output to fail, got %v", err)
+	}
+	if !strings.Contains(out.String(), "NEW operator-held recovery output file") {
+		t.Fatalf("prompt did not explain recovery output semantics: %q", out.String())
+	}
 }
