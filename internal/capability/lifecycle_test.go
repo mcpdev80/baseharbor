@@ -49,7 +49,7 @@ func TestRunCompletesResolvePreflightApplyBindVerify(t *testing.T) {
 	if result.Status != StatusReady {
 		t.Fatalf("Run() status = %q, want ready", result.Status)
 	}
-	if len(result.Plan.Items) != 1 || len(result.Steps) != 4 {
+	if len(result.Plan.Items) != 1 || len(result.Steps) != 5 {
 		t.Fatalf("Run() result = %#v", result)
 	}
 	if driver.preflightCalls != 1 || driver.provisionCalls != 1 || driver.bindCalls != 1 || driver.verifyCalls != 1 {
