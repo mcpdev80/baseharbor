@@ -48,25 +48,25 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 		switch resource.Provider {
 		case capability.ProviderPostgreSQL:
 			instance = capability.ProviderInstance{
-				ID: fmt.Sprintf("postgresql/%s/%s/%s", m.Name, m.Environment, resource.Name),
-				Provider: capability.PostgreSQL,
-				Scope: capability.ScopeApplication,
-				Ownership: capability.OwnershipBaseHarbor,
+				ID:               fmt.Sprintf("postgresql/%s/%s/%s", m.Name, m.Environment, resource.Name),
+				Provider:         capability.PostgreSQL,
+				Scope:            capability.ScopeApplication,
+				Ownership:        capability.OwnershipBaseHarbor,
 				OwnerApplication: m.Name,
 			}
 		case capability.ProviderValkey:
 			instance = capability.ProviderInstance{
-				ID: fmt.Sprintf("valkey/%s/%s/%s", m.Name, m.Environment, resource.Name),
-				Provider: capability.Valkey,
-				Scope: capability.ScopeApplication,
-				Ownership: capability.OwnershipBaseHarbor,
+				ID:               fmt.Sprintf("valkey/%s/%s/%s", m.Name, m.Environment, resource.Name),
+				Provider:         capability.Valkey,
+				Scope:            capability.ScopeApplication,
+				Ownership:        capability.OwnershipBaseHarbor,
 				OwnerApplication: m.Name,
 			}
 		case capability.ProviderOpenBao:
 			instance = capability.ProviderInstance{
-				ID: "openbao/control-plane",
-				Provider: capability.OpenBao,
-				Scope: capability.ScopeShared,
+				ID:        "openbao/control-plane",
+				Provider:  capability.OpenBao,
+				Scope:     capability.ScopeShared,
 				Ownership: capability.OwnershipBaseHarbor,
 			}
 		default:
