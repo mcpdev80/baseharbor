@@ -2,6 +2,13 @@ name: runtime-broker-performance
 
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'mkdocs.yml'
+      - 'mkdocs.de.yml'
+      - 'requirements-docs.txt'
 
 permissions:
   contents: read
