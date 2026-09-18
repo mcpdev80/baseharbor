@@ -294,6 +294,14 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 		return err
 	}
 	fmt.Fprint(out, status)
+	running, err := compose.RunningServicesProject(ctx, "baseharbor", files.Compose, files.Env)
+	if err != nil {
+		return err
+	}
+	if len(running) == 0 {
+		fmt.Fprintln(out, "BaseHarbor control-plane runtime is stopped.")
+		return nil
+	}
 
 	checks := health.RuntimeChecks()
 	if len(checks) == 0 {
