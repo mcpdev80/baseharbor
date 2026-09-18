@@ -66,7 +66,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 
 func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
-	m := New("demo", "dev", true, true, false)
+	m := New("demo", "dev", true, true, true)
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -183,6 +183,8 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 		"\"provider\": \"postgresql\"",
 		"\"kind\": \"cache.key-value\"",
 		"\"provider\": \"valkey\"",
+		"\"kind\": \"secrets\"",
+		"\"provider\": \"openbao\"",
 		"\"workload\": \"application/demo\"",
 	} {
 		if !strings.Contains(metadataText, wanted) {
