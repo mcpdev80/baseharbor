@@ -21,7 +21,6 @@ var (
 	}
 )
 
-
 var (
 	PostgreSQLIntegration = IntegrationDescriptor{
 		Protocol:     ProviderProtocolV1,
