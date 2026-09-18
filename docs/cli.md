@@ -27,6 +27,7 @@ baha
 ├── update
 ├── app
 │   ├── init
+│   ├── inspect
 │   ├── create
 │   ├── list
 │   ├── show
@@ -101,6 +102,25 @@ baha up --postgres-port 15432 --openbao-port 18200
 The default ports are checked before first initialization. An occupied default port is not blindly bound.
 
 Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/runtime` or `~/.local/share/baseharbor/runtime` when XDG is unset. `BASEHARBOR_STATE_DIR` is the explicit override.
+
+## Repository-first application workflow
+
+### Read-only repository inspection
+
+```bash
+baha app inspect .
+baha app inspect . --json
+```
+
+`app inspect` is strictly read-only. The shared repository-inspection core collects deterministic evidence from Compose files, Dockerfiles, dependency manifests, example/env variable names, source imports, configuration files, published ports and health checks.
+
+Findings are classified as:
+
+- **Detected** — strong evidence that may be accepted automatically by `app init --quick`;
+- **Suggested** — useful evidence requiring developer confirmation;
+- **Possible** — weak/configuration evidence that is never auto-selected.
+
+The JSON form is the canonical machine-readable result intended for reuse by future API/Web UI/Operator adapters. Environment values are discarded during collection; only variable names are retained. Symlinked files and generated/vendor directories are ignored.
 
 ## Repository-first application workflow
 
