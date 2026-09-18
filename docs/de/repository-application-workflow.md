@@ -44,6 +44,8 @@ Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Ke
 
 Diese Werte sind Deployment-/Provider-Details und gehoeren nicht in den providerneutralen `PortableContract`.
 
+Seit v0.4.2 werden Provider-Platzierung und Lifecycle-Ownership zusaetzlich in der geschuetzten Provider-Registry gespeichert. Shared, application-scoped oder externe Provider bleiben Operator-State und veraendern den Repository-Contract nicht.
+
 ## Danach aus dem Repository arbeiten
 
 BaseHarbor sucht im aktuellen Verzeichnis und seinen Eltern nach der naechsten `baseharbor.yaml`:
