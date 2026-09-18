@@ -117,3 +117,29 @@ func TestRegistryStoreSerializesConcurrentUpdates(t *testing.T) {
 		t.Fatalf("instances=%#v", registry.Instances)
 	}
 }
+
+
+func TestReleaseManagedApplicationPreservesExternalBinding(t *testing.T) {
+	registry := NewRegistry()
+	managed := ProviderInstance{ID:"postgresql/alpha/default",Provider:PostgreSQL,Scope:ScopeApplication,Ownership:OwnershipBaseHarbor,OwnerApplication:"alpha"}
+	external := ProviderInstance{ID:"postgresql/customer",Provider:PostgreSQL,Scope:ScopeExternal,Ownership:OwnershipExternal,Reference:"customer-postgres"}
+	for _, instance := range []ProviderInstance{managed, external} {
+		if err := registry.Register(instance); err != nil { t.Fatal(err) }
+	}
+	managedResource, _ := Resolve("alpha", Requirement{Kind:SQL,Name:"managed"}, PostgreSQL)
+	externalResource, _ := Resolve("alpha", Requirement{Kind:SQL,Name:"external"}, PostgreSQL)
+	if err := registry.Bind(managedResource, managed.ID); err != nil { t.Fatal(err) }
+	if err := registry.Bind(externalResource, external.ID); err != nil { t.Fatal(err) }
+
+	registry.ReleaseManagedApplication("alpha")
+
+	if _, ok := registry.instance(managed.ID); ok { t.Fatal("managed application provider was retained") }
+	if _, ok := registry.instance(external.ID); !ok { t.Fatal("external provider was removed") }
+	if len(registry.Bindings) != 1 || registry.Bindings[0].ProviderInstanceID != external.ID {
+		t.Fatalf("bindings=%#v", registry.Bindings)
+	}
+
+	registry.ReleaseApplication("alpha")
+	if len(registry.Bindings) != 0 { t.Fatalf("destroy bindings=%#v", registry.Bindings) }
+	if _, ok := registry.instance(external.ID); !ok { t.Fatal("destroy removed external provider instance") }
+}
