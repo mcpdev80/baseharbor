@@ -10,14 +10,17 @@ option go_package = "github.com/mcpdev80/baseharbor/spec/provider/v1;providerv1"
 service Provider {
   rpc Describe(DescribeRequest) returns (DescribeResponse);
   rpc Preflight(PreflightRequest) returns (OperationResponse);
-  rpc Provision(ProvisionRequest) returns (OperationResponse);
-  rpc Bind(BindRequest) returns (BindResponse);
+  rpc Provision(ProvisionRequest) returns (Operation);
+  rpc Bind(BindRequest) returns (Operation);
+  rpc Unbind(UnbindRequest) returns (Operation);
   rpc Verify(VerifyRequest) returns (OperationResponse);
-  rpc Status(StatusRequest) returns (OperationResponse);
-  rpc Update(UpdateRequest) returns (OperationResponse);
-  rpc Backup(BackupRequest) returns (OperationResponse);
-  rpc Restore(RestoreRequest) returns (OperationResponse);
-  rpc Destroy(DestroyRequest) returns (OperationResponse);
+  rpc GetStatus(StatusRequest) returns (OperationResponse);
+  rpc Update(UpdateRequest) returns (Operation);
+  rpc Backup(BackupRequest) returns (Operation);
+  rpc Restore(RestoreRequest) returns (Operation);
+  rpc Destroy(DestroyRequest) returns (Operation);
+  rpc GetOperation(GetOperationRequest) returns (Operation);
+  rpc CancelOperation(CancelOperationRequest) returns (Operation);
 }
 
 message DescribeRequest {}
@@ -27,6 +30,7 @@ message DescribeResponse {
   string provider = 2;
   repeated string capability_specifications = 3;
   LifecycleSupport optional_lifecycle = 4;
+  JsonSchema configuration_schema = 5;
 }
 
 message LifecycleSupport {
@@ -35,6 +39,29 @@ message LifecycleSupport {
   bool backup = 3;
   bool restore = 4;
   bool destroy = 5;
+  bool unbind = 6;
+  bool cancel_operation = 7;
+}
+
+message JsonSchema {
+  // BaseHarbor v1 requires the JSON Schema 2020-12 dialect URI.
+  string dialect = 1;
+  // UTF-8 encoded JSON Schema document. Secrets and credential values are
+  // forbidden in provider configuration schemas.
+  bytes document = 2;
+}
+
+enum ProviderScope {
+  PROVIDER_SCOPE_UNSPECIFIED = 0;
+  PROVIDER_SCOPE_SHARED = 1;
+  PROVIDER_SCOPE_APPLICATION = 2;
+  PROVIDER_SCOPE_EXTERNAL = 3;
+}
+
+enum ProviderOwnership {
+  PROVIDER_OWNERSHIP_UNSPECIFIED = 0;
+  PROVIDER_OWNERSHIP_BASEHARBOR = 1;
+  PROVIDER_OWNERSHIP_EXTERNAL = 2;
 }
 
 message Resource {
@@ -43,11 +70,22 @@ message Resource {
   string capability_specification = 3;
   string name = 4;
   string provider = 5;
+  // Stable opaque BaseHarbor identity. Provider-specific object names remain
+  // provider state and must not be inferred from this value.
+  string resource_id = 6;
+  ProviderScope scope = 7;
+  ProviderOwnership ownership = 8;
 }
 
 message WorkloadBinding {
   Resource resource = 1;
   string workload = 2;
+}
+
+// Mutating operations require a stable idempotency key. Repeating the same
+// request with the same semantic input and key must not duplicate resources.
+message MutationContext {
+  string idempotency_key = 1;
 }
 
 message PreflightRequest {
@@ -57,11 +95,19 @@ message PreflightRequest {
 
 message ProvisionRequest {
   Resource resource = 1;
+  MutationContext mutation = 2;
 }
 
 message BindRequest {
   Resource resource = 1;
   WorkloadBinding binding = 2;
+  MutationContext mutation = 3;
+}
+
+message UnbindRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+  MutationContext mutation = 3;
 }
 
 message VerifyRequest {
@@ -75,20 +121,31 @@ message StatusRequest {
 
 message UpdateRequest {
   Resource resource = 1;
+  MutationContext mutation = 2;
 }
 
 message BackupRequest {
   Resource resource = 1;
-  string operation_id = 2;
+  MutationContext mutation = 2;
 }
 
 message RestoreRequest {
   Resource resource = 1;
-  string operation_id = 2;
+  string backup_id = 2;
+  MutationContext mutation = 3;
 }
 
 message DestroyRequest {
   Resource resource = 1;
+  MutationContext mutation = 2;
+}
+
+message GetOperationRequest {
+  string operation_id = 1;
+}
+
+message CancelOperationRequest {
+  string operation_id = 1;
 }
 
 enum OperationStatus {
@@ -97,6 +154,15 @@ enum OperationStatus {
   OPERATION_STATUS_FAILED = 2;
   OPERATION_STATUS_UNSUPPORTED = 3;
   OPERATION_STATUS_DEGRADED = 4;
+}
+
+enum OperationState {
+  OPERATION_STATE_UNSPECIFIED = 0;
+  OPERATION_STATE_PENDING = 1;
+  OPERATION_STATE_RUNNING = 2;
+  OPERATION_STATE_SUCCEEDED = 3;
+  OPERATION_STATE_FAILED = 4;
+  OPERATION_STATE_CANCELED = 5;
 }
 
 message Diagnostic {
@@ -110,17 +176,30 @@ message OperationResponse {
   repeated Diagnostic diagnostics = 2;
 }
 
+message Operation {
+  string operation_id = 1;
+  OperationState state = 2;
+  repeated Diagnostic diagnostics = 3;
+
+  oneof result {
+    OperationResponse lifecycle_result = 4;
+    BindResponse bind_result = 5;
+  }
+}
+
 message BindResponse {
   OperationStatus status = 1;
   repeated BindingValue values = 2;
   repeated Diagnostic diagnostics = 3;
 }
 
-// BindingValue must never contain secret material. Secret-bearing values are
-// represented by credential_ref and resolved by BaseHarbor at a trusted
-// boundary.
+// Binding values distinguish explicitly between safe public configuration and
+// an opaque secret reference. Plaintext credentials are forbidden.
 message BindingValue {
   string name = 1;
-  string value = 2;
-  string credential_ref = 3;
+
+  oneof source {
+    string public_value = 2;
+    string credential_ref = 3;
+  }
 }
