@@ -9,6 +9,7 @@ BaseHarbor ist eine sichere, modulare und selbst gehostete Backend-Infrastruktur
 - [Repository-Workflow](repository-application-workflow.md)
 - [Anwendungsvertrag](application-contract.md)
 - [`baha` CLI](cli.md)
+- [Deklarative Input-Aufloesung](input-resolution.md)
 - [Control Plane](runtime-compose.md)
 - [Secrets und OpenBao](secrets-and-openbao.md)
 - [Backup und Restore](backup-and-restore.md)
