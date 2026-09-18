@@ -57,6 +57,8 @@ Provider-spezifische Details wie Compose-Projektnamen, Host-Ports, generierte Ov
 
 Provider-Substitution muss den angeforderten Contract erfuellen oder klar fehlschlagen. Sicherheit, Haltbarkeit oder Verfuegbarkeit duerfen niemals still reduziert werden.
 
+BaseHarbor verwendet einen gemeinsamen Domain-/Lifecycle-Core mit mehreren Control Surfaces. `baha`, eine spaetere HTTP-API/WebGUI und ein spaeterer Kubernetes/OpenShift-Operator muessen dieselben Plan-, Validation-, Lifecycle-, Readiness-, Diagnose- und Policy-Semantiken verwenden statt eigene Implementierungen zu entwickeln.
+
 ## v0.4-Grenze
 
 In v0.4 umgesetzt:
@@ -90,16 +92,24 @@ Weiterhin Future Work:
 
 ### v0.6 - Environment, Policy und Topologie
 
+Diese Phase ist zugleich der natuerliche Einstieg fuer Remote-Management und eine schlanke WebGUI ueber denselben Core.
+
 - explizite Environment-/Plattform-Policy;
 - OIDC/RBAC/JIT;
 - Standard- und HA-Topologieprofile;
-- Security-/Durability-/Availability-Anforderungen als Policy.
+- Security-/Durability-/Availability-Anforderungen als Policy;
+- stabile maschinenlesbare BaseHarbor-API;
+- schlanke WebGUI fuer Plan/Apply/Status/Doctor/Logs/Inputs/Backup/Restore/Update;
+- gemeinsame Authorization-/Policy-Grenzen fuer CLI, API und WebGUI.
 
 ### v0.7 - Kubernetes
 
 - Kubernetes als Runtime Provider;
+- BaseHarbor Operator als cluster-native Control Surface ueber denselben Core;
 - native Deployments/StatefulSets/Services/PVCs/Gateway/Ingress/Secrets/NetworkPolicies;
-- gleicher logischer Application Contract.
+- gleicher logischer Application Contract;
+- CRDs/Reconciliation und Status/Conditions aus derselben BaseHarbor-Runtime-Wahrheit;
+- kein Wrapping von imperativen `baha`-Kommandos im Operator.
 
 ### v0.8 - OpenShift / Enterprise
 
