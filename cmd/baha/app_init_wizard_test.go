@@ -50,7 +50,7 @@ PUBLIC_WEB_URL=http://localhost:8080
 	}
 }
 
-func TestGuidedInitQuickUsesDetectionAndNeverCopiesSecretValues(t *testing.T) {
+func TestGuidedInitQuickDoesNotPromoteHeuristicSecrets(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteWizardTestFile(t, filepath.Join(dir, "docker-compose.yml"), `services:
   db:
@@ -77,9 +77,6 @@ SECRET_KEY=also-must-not-be-copied
 	for _, want := range []string{
 		"postgres:",
 		"redis:",
-		"secrets:",
-		"- name: OPENAI_API_KEY",
-		"- name: SECRET_KEY",
 		"compose: docker-compose.yml",
 		"- web",
 	} {
@@ -89,6 +86,11 @@ SECRET_KEY=also-must-not-be-copied
 	}
 	if strings.Contains(manifest, "must-not-be-copied") {
 		t.Fatalf("secret value leaked into manifest:\n%s", manifest)
+	}
+	for _, forbidden := range []string{"- name: OPENAI_API_KEY", "- name: SECRET_KEY", "secrets:\n    enabled: true"} {
+		if strings.Contains(manifest, forbidden) {
+			t.Fatalf("quick init promoted heuristic secret evidence %q:\n%s", forbidden, manifest)
+		}
 	}
 }
 
