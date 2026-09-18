@@ -78,6 +78,12 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 	if len(result.WorkloadServices) > 0 {
 		fmt.Fprintf(out, "Workload services: %s\n", strings.Join(result.WorkloadServices, ", "))
 	}
+	if len(result.Artifacts) > 0 {
+		fmt.Fprintln(out, "Artifacts:")
+		for _, artifact := range result.Artifacts {
+			fmt.Fprintf(out, "  - %s: %s\n", artifact.Kind, artifact.Path)
+		}
+	}
 
 	printInspectionFindings(out, result, repositoryinspect.ConfidenceDetected, "Detected")
 	printInspectionFindings(out, result, repositoryinspect.ConfidenceSuggested, "Suggested")
