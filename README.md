@@ -14,7 +14,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.2 line keeps Compose as the complete runtime implementation while adding provider registry, placement and ownership semantics behind the unchanged Manifest v1 workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.3 line keeps Compose as the complete runtime implementation while adding an open provider-integration contract and deterministic read-only repository inspection behind the unchanged Manifest v1 workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
 The v0.4.2 line includes:
 
