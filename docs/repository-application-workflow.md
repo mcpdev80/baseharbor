@@ -30,7 +30,7 @@ baha app inspect . --json
 
 The inspection engine lives in shared core code rather than CLI rendering. It reports evidence, artifacts, Compose candidates, workload services, ports, health checks, likely secret names and capability findings with explicit confidence.
 
-Only strong `Detected` findings are eligible for automatic adoption by `app init --quick`. `Suggested` and `Possible` findings remain visible evidence and require human confirmation.
+Only strong `Detected` findings are eligible for automatic adoption by `app init --quick`. `Suggested` and `Possible` findings remain visible evidence and require human confirmation. If quick mode has neither a Detected capability nor an explicit detected workload, it fails closed instead of inventing a backend requirement.
 
 Inspection never writes `baseharbor.yaml`, runtime state or repository files. It also discards environment values before analysis/output and does not follow symlinked files.
 
