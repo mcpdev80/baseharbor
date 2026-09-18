@@ -16,15 +16,10 @@ func ReconcileReferenceProviderRegistry(m Manifest) error {
 		return err
 	}
 	store := capability.RegistryStore{Path: filepath.Join(stateDir, providerRegistryFile)}
-	registry, err := store.Load()
-	if err != nil {
-		return err
-	}
-	registry.ReleaseApplication(m.Name)
-	if err := registerReferenceProviders(&registry, m); err != nil {
-		return err
-	}
-	return store.Save(registry)
+	return store.Update(func(registry *capability.Registry) error {
+		registry.ReleaseApplication(m.Name)
+		return registerReferenceProviders(registry, m)
+	})
 }
 
 func ReleaseApplicationProviderRegistry(m Manifest) error {
@@ -33,12 +28,10 @@ func ReleaseApplicationProviderRegistry(m Manifest) error {
 		return err
 	}
 	store := capability.RegistryStore{Path: filepath.Join(stateDir, providerRegistryFile)}
-	registry, err := store.Load()
-	if err != nil {
-		return err
-	}
-	registry.ReleaseApplication(m.Name)
-	return store.Save(registry)
+	return store.Update(func(registry *capability.Registry) error {
+		registry.ReleaseApplication(m.Name)
+		return nil
+	})
 }
 
 func registerReferenceProviders(registry *capability.Registry, m Manifest) error {
