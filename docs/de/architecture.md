@@ -51,7 +51,7 @@ Ein spaeterer Kubernetes/OpenShift-Operator reconciled BaseHarbor Desired State 
 
 Lifecycle- und Diagnoseergebnisse sollen zuerst maschinenlesbar sein. CLI, API, WebGUI und Operator-Status sind verschiedene Darstellungen derselben Runtime-Wahrheit.
 
-Siehe ADR [0009](../decisions/0009-shared-core-multiple-control-surfaces.md).
+Siehe ADR [0009](https://github.com/mcpdev80/baseharbor/blob/main/docs/decisions/0009-shared-core-multiple-control-surfaces.md).
 
 ## Ebenen
 
