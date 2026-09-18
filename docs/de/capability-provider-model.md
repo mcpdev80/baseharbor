@@ -129,3 +129,22 @@ v0.4.1 bleibt zur Laufzeit Compose-only. Zusaetzlich zum `PortableContract` und 
 Die operative Vollstaendigkeit des Compose-Providers bleibt erhalten; neu sind die Architekturgrenzen fuer spaetere Provider ohne Bruch der Manifest-v1-Kompatibilitaet.
 
 Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Neues oeffentliches Capability-Schema, weitere Capability-Provider, HA, Managed Ingress, ACME/PKI-Automation und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
+
+
+## Provider-Registry in v0.4.2
+
+Provider-Platzierung bleibt geschuetzter Deployment-/Operator-State und ist kein portabler Application Intent.
+
+- `shared`: von BaseHarbor verwalteter Provider fuer mehrere Anwendungen.
+- `application`: von BaseHarbor verwalteter Provider exklusiv fuer eine Anwendung.
+- `external`: bestehender/BYO Provider, den BaseHarbor referenziert, aber lifecycle-seitig nicht besitzt.
+
+Aktuelle Referenzabbildung:
+
+```text
+OpenBao              -> shared
+PostgreSQL-Instanzen -> application-scoped
+Valkey-Instanzen     -> application-scoped
+```
+
+Logische Ressourcen bleiben unabhaengig vom Provider-Scope Eigentum der Anwendung. Shared Provider bleiben bei Application-Lifecycle-Operationen bestehen; externe Provider werden von BaseHarbor nicht lifecycle-seitig veraendert.
