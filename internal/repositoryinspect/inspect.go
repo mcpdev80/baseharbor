@@ -329,25 +329,25 @@ type signalSet struct {
 
 func sqlSignals() signalSet {
 	return signalSet{
-		env: []string{"DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL"},
+		env:     []string{"DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL"},
 		compose: []string{"postgres", "postgresql"},
 		dependency: []string{
 			"pg", "postgres", "postgresql", "pgx", "psycopg", "asyncpg", "sqlalchemy",
 		},
 		imports: []string{"pgx", "psycopg", "asyncpg", "sequelize", "typeorm", "prisma", "postgres"},
-		config: []string{"jdbc:postgresql:", "postgresql://", "postgres://"},
+		config:  []string{"jdbc:postgresql:", "postgresql://", "postgres://"},
 	}
 }
 
 func keyValueSignals() signalSet {
 	return signalSet{
-		env: []string{"REDIS_URL", "VALKEY_URL"},
+		env:     []string{"REDIS_URL", "VALKEY_URL"},
 		compose: []string{"redis", "valkey"},
 		dependency: []string{
 			"ioredis", "redis", "go-redis", "valkey",
 		},
 		imports: []string{"ioredis", "redis", "go-redis", "valkey"},
-		config: []string{"redis://", "rediss://"},
+		config:  []string{"redis://", "rediss://"},
 	}
 }
 
