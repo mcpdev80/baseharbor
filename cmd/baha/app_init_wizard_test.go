@@ -179,3 +179,30 @@ func withWizardTestDir(t *testing.T, dir string) {
 		}
 	})
 }
+
+
+func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Services.Postgres || m.Services.Redis || m.Services.Secrets {
+		t.Fatalf("quick init invented backend capability: %#v", m.Services)
+	}
+	if m.Workload == nil || len(m.Workload.Services) != 1 || m.Workload.Services[0] != "api" {
+		t.Fatalf("workload = %#v", m.Workload)
+	}
+}
