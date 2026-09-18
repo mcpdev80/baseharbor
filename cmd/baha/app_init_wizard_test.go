@@ -208,7 +208,6 @@ func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 	}
 }
 
-
 func TestQuickInitDoesNotPromoteSuggestedCapability(t *testing.T) {
 	root := t.TempDir()
 	mustWriteWizardTestFile(t, filepath.Join(root, "package.json"), `{"dependencies":{"pg":"latest"}}`)
