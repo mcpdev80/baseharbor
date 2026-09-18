@@ -92,14 +92,18 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 	}
 	dir := t.TempDir()
 	files := RuntimeMTLSFiles{
-		CA: filepath.Join(dir, "ca.pem"), BrokerCert: filepath.Join(dir, "broker-cert.pem"),
-		BrokerKey: filepath.Join(dir, "broker-key.pem"), ClientCert: filepath.Join(dir, "client-cert.pem"),
-		ClientKey: filepath.Join(dir, "client-key.pem"),
+		CA:         filepath.Join(dir, "ca.pem"),
+		BrokerCert: filepath.Join(dir, "broker-cert.pem"),
+		BrokerKey:  filepath.Join(dir, "broker-key.pem"),
+		ClientCert: filepath.Join(dir, "client-cert.pem"),
+		ClientKey:  filepath.Join(dir, "client-key.pem"),
 	}
 	for path, value := range map[string][]byte{
-		files.CA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}),
-		files.BrokerCert: brokerCert, files.BrokerKey: brokerKey,
-		files.ClientCert: clientCert, files.ClientKey: clientKey,
+		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}),
+		files.BrokerCert: brokerCert,
+		files.BrokerKey:  brokerKey,
+		files.ClientCert: clientCert,
+		files.ClientKey:  clientKey,
 	} {
 		if err := os.WriteFile(path, value, 0o600); err != nil {
 			t.Fatal(err)
@@ -112,5 +116,4 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 	if valid {
 		t.Fatal("identity signed by another runtime CA must not be reused")
 	}
-
 }
