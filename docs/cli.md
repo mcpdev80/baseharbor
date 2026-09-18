@@ -103,9 +103,7 @@ The default ports are checked before first initialization. An occupied default p
 
 Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/runtime` or `~/.local/share/baseharbor/runtime` when XDG is unset. `BASEHARBOR_STATE_DIR` is the explicit override.
 
-## Repository-first application workflow
-
-### Read-only repository inspection
+## Read-only repository inspection
 
 ```bash
 baha app inspect .
@@ -152,7 +150,7 @@ For a non-interactive detection-based path:
 baha app init --quick
 ```
 
-`--quick` accepts only unambiguous detections plus safe defaults. Ambiguous project structure fails closed and points back to the interactive flow. Multiple detected logical PostgreSQL or Redis/Valkey instances are preserved automatically.
+`--quick` accepts only unambiguous **Detected** evidence plus an explicit detected workload. `Suggested` or `Possible` evidence is never promoted automatically. If no strong requirement and no workload is detected, quick mode fails closed and points to interactive setup or explicit flags. Ambiguous project structure also fails closed. Multiple detected logical PostgreSQL or Redis/Valkey instances are preserved automatically.
 
 The explicit flag-based path remains available and deterministic for CI, scripts and developers who already know the desired contract:
 
