@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.2 portable application foundation
+## Current v0.4.3 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -108,6 +108,17 @@ Before additional provider/capability implementations are added, BaseHarbor stan
 Every subsequent reference provider must become evidence for the same open ecosystem contract a future vendor/community provider can implement. BaseHarbor will continue to build the important providers itself; vendor participation is not assumed.
 
 The prerequisite deliberately does not implement a dynamic plugin loader. It defines versioned capability semantics, provider lifecycle metadata, conformance and the future language-neutral/registry-neutral boundary first.
+
+## v0.4.3 repository inspection
+
+v0.4.3 makes repository inspection a shared, read-only core capability.
+
+- `baha app inspect [PATH]` exposes human-readable evidence.
+- `--json` exposes the same structured result for future control surfaces.
+- evidence is classified as Detected / Suggested / Possible;
+- detectors are registered behind a shared detector interface so later capability releases can extend inference incrementally;
+- current PostgreSQL/Valkey detection and guided `app init` reuse the same engine;
+- inspection never mutates repository/runtime state and never emits environment secret values.
 
 ## Next architecture tracks
 

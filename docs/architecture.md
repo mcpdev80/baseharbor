@@ -77,6 +77,8 @@ v0.4.1 introduces this foundation for application capabilities as typed capabili
 
 v0.4.2 adds provider registry, placement and lifecycle ownership as protected operator state. Shared, application-scoped and external provider placement therefore remains outside portable application intent.
 
+v0.4.3 moves repository understanding into a shared read-only core. CLI inspection and guided application initialization consume the same deterministic detector engine, with explicit Detected/Suggested/Possible confidence and machine-readable results for future control surfaces.
+
 Provider Integration Contract v1 establishes the mandatory boundary for all subsequent capability providers. BaseHarbor owns versioned capability semantics; built-in/reference providers implement them through the shared driver/registry model, and future external providers will adapt to the same semantics through a language-neutral gRPC/Protocol Buffers boundary. OCI is the distribution direction for future external provider packages. See [Provider Integration Contract v1](provider-integration-contract.md).
 
 See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).

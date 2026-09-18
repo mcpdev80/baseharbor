@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames(t *testing.T) {
@@ -178,4 +180,45 @@ func withWizardTestDir(t *testing.T, dir string) {
 			t.Errorf("restore cwd: %v", err)
 		}
 	})
+}
+
+func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Services.Postgres || m.Services.Redis || m.Services.Secrets {
+		t.Fatalf("quick init invented backend capability: %#v", m.Services)
+	}
+	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "api" {
+		t.Fatalf("workload = %#v", m.Workload)
+	}
+}
+
+func TestQuickInitDoesNotPromoteSuggestedCapability(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "package.json"), `{"dependencies":{"pg":"latest"}}`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "no unambiguous application requirements were detected") {
+		t.Fatalf("expected fail-closed quick init, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, application.RepositoryManifestName)); !os.IsNotExist(statErr) {
+		t.Fatalf("manifest should not be written from suggested evidence, stat err=%v", statErr)
+	}
 }

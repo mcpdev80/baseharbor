@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.2
+## Aktueller Stand v0.4.3
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -81,6 +81,18 @@ Weiterhin Future Work:
 - BaseHarbor-managed Ingress/ACME/PKI;
 - Kubernetes Runtime Provider;
 - OpenShift Runtime Provider / Enterprise-Spezialisierung.
+
+## v0.4.3 Repository Inspection
+
+v0.4.3 macht Repository-Analyse zu einer gemeinsamen, strikt read-only Core-Funktion.
+
+- `baha app inspect [PATH]` zeigt nachvollziehbare Evidence;
+- `--json` liefert dasselbe strukturierte Ergebnis fuer spaetere API/WebUI/Operator-Adapter;
+- Findings werden als Detected / Suggested / Possible klassifiziert;
+- spaetere Capabilities koennen eigene Detektoren registrieren;
+- `app init` nutzt dieselbe Detection Engine;
+- Environment-Werte werden verworfen und Symlinks nicht verfolgt;
+- Inspection veraendert weder Repository noch Runtime-State.
 
 ## Geplante Phasen
 

@@ -2,6 +2,21 @@
 
 Der bevorzugte BaseHarbor-Vertrag liegt direkt im Repository der Anwendung als `baseharbor.yaml`. Manifest v1 bleibt der oeffentliche Kompatibilitaetsvertrag; v0.4 uebersetzt daraus portablen Intent in `PortableContract`. Generierter Deployment-/Runtime-State bleibt ausserhalb von Git. Secret-Werte, generierte Zugangsdaten, Deployment-TLS-Material und Laufzeitstatus bleiben ausserhalb von Git.
 
+## Repository vor dem Manifest inspizieren
+
+Repository-Verstaendnis ist in v0.4.3 eine gemeinsame, strikt read-only Core-Funktion:
+
+```bash
+baha app inspect .
+baha app inspect . --json
+```
+
+Die Inspection Engine sammelt nachvollziehbare Evidence aus Compose-/Dockerfile-Dateien, Dependency-Metadaten, Environment-Variablennamen, Source-Imports, Konfiguration, Ports und Healthchecks. Findings werden als **Detected**, **Suggested** oder **Possible** klassifiziert.
+
+Nur **Detected** darf von `app init --quick` automatisch uebernommen werden. Suggested/Possible bleiben Hinweise. Gibt es weder eine sicher erkannte Capability noch einen explizit erkannten Workload, bricht Quick-Init fail-closed ab, statt PostgreSQL oder einen anderen Backend-Service zu erfinden.
+
+Inspection schreibt weder `baseharbor.yaml` noch Runtime-State oder andere Repository-Dateien. Environment-Werte werden vor Analyse/Ausgabe verworfen und Symlink-Dateien werden nicht verfolgt.
+
 ## Manifest erzeugen
 
 Der normale interaktive Weg ist:

@@ -148,3 +148,10 @@ BaseHarbor definiert die versionierte Capability-Semantik. Eingebaute Reference 
 Die kuenftige externe Transportgrenze ist sprachneutral mit gRPC/Protocol Buffers; OCI ist die Richtung fuer registry-neutrales Packaging und Distribution. Ein dynamischer Plugin Loader ist in dieser Architektur-Voraussetzung bewusst noch nicht implementiert.
 
 Siehe [Provider Integration Contract v1](provider-integration-contract.md).
+
+
+## Repository Inspection in v0.4.3
+
+v0.4.3 verschiebt Repository-Verstaendnis in einen gemeinsamen, read-only Core. CLI-Inspection und gefuehrtes `app init` verwenden dieselbe deterministische Detector Engine mit Detected/Suggested/Possible-Confidence und maschinenlesbaren Ergebnissen fuer spaetere Control Surfaces.
+
+Inspection ist keine Mutation und keine AI-Abhaengigkeit. Spaetere Capability-Releases erweitern die Engine ueber registrierbare Detektoren statt eigene CLI-Sonderlogik aufzubauen.

@@ -6,12 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-18
+
 ### Added
+
+- Read-only repository inspection core with extensible detectors and structured Detected/Suggested/Possible evidence.
+- `baha app inspect [PATH]` with human-readable and `--json` machine-readable output.
+- Detection evidence for Compose/Dockerfile, dependency manifests, env variable names, source imports, configuration endpoint patterns, ports and health checks.
+- Secret-safe repository snapshots that discard env values and skip symlinked/generated/vendor trees.
 
 - Provider Integration Contract v1 with versioned capability specifications and a shared semantic boundary for built-in and future external providers.
 - Initial capability specifications for `database.sql/v1`, `cache.key-value/v1` and `secrets/v1`.
 - Versioned Protocol Buffers schema for the future language-neutral external provider API.
 - Static provider contract conformance foundation and reference integration descriptors for PostgreSQL, Valkey and OpenBao.
+
+### Changed
+
+- Guided `app init` now consumes the shared repository inspection engine instead of owning a separate CLI-only detector.
+- Workload-only repositories no longer receive an invented PostgreSQL default when the workload itself is sufficient application intent.
+- Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
+- `app init --quick` now fails closed when only Suggested/Possible evidence exists and no explicit workload is detected, instead of inventing a backend requirement.
 
 ### Architecture
 
@@ -199,7 +213,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0

@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 var appInitInput io.Reader = os.Stdin
@@ -94,98 +95,56 @@ func appGuidedInitCommand() *cli.Command {
 }
 
 func detectAppProject(root string) (appProjectDetection, error) {
-	absRoot, err := filepath.Abs(root)
+	result, err := repositoryinspect.Inspect(context.Background(), root)
 	if err != nil {
 		return appProjectDetection{}, err
 	}
 	d := appProjectDetection{
-		Name:          slugifyAppName(filepath.Base(absRoot)),
-		SecretSources: map[string]string{},
+		Name:              result.Application,
+		ComposeCandidates: append([]string(nil), result.ComposeCandidates...),
+		Compose:           result.SelectedCompose,
+		WorkloadServices:  append([]string(nil), result.WorkloadServices...),
+		SecretCandidates:  append([]string(nil), result.SecretCandidates...),
+		SecretSources:     map[string]string{},
 	}
-	if d.Name == "" {
-		d.Name = "app"
+	for name, source := range result.SecretSources {
+		d.SecretSources[name] = source
 	}
-
-	composeCandidates := []string{
-		"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml",
-		filepath.Join("deploy", "compose.yaml"), filepath.Join("deploy", "compose.yml"),
-		filepath.Join("deploy", "docker-compose.yaml"), filepath.Join("deploy", "docker-compose.yml"),
-		filepath.Join("docker", "compose.yaml"), filepath.Join("docker", "compose.yml"),
-		filepath.Join("docker", "docker-compose.yaml"), filepath.Join("docker", "docker-compose.yml"),
-	}
-	for _, rel := range composeCandidates {
-		if info, err := os.Stat(filepath.Join(absRoot, rel)); err == nil && !info.IsDir() {
-			d.ComposeCandidates = append(d.ComposeCandidates, filepath.ToSlash(rel))
+	for _, artifact := range result.Artifacts {
+		if artifact.Kind == "env" {
+			d.EnvFiles = append(d.EnvFiles, artifact.Path)
 		}
 	}
-	if len(d.ComposeCandidates) == 1 {
-		d.Compose = d.ComposeCandidates[0]
-	}
-
-	for _, rel := range d.ComposeCandidates {
-		services, err := detectComposeServices(filepath.Join(absRoot, filepath.FromSlash(rel)))
-		if err != nil {
-			return appProjectDetection{}, err
-		}
-		for _, service := range services {
-			if service.Postgres {
-				d.Postgres = true
-				d.PostgresInstances = append(d.PostgresInstances, detectedLogicalInstanceName(service.Name, "postgres"))
-				if d.PostgresSource == "" {
-					d.PostgresSource = rel + " service " + service.Name
-				}
-			}
-			if service.Redis {
-				d.Redis = true
-				d.RedisInstances = append(d.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
-				if d.RedisSource == "" {
-					d.RedisSource = rel + " service " + service.Name
-				}
-			}
-			if rel == d.Compose && !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
-				d.WorkloadServices = append(d.WorkloadServices, service.Name)
-			}
-		}
-	}
-	d.WorkloadServices = uniqueSorted(d.WorkloadServices)
-	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
-	d.RedisInstances = uniqueSorted(d.RedisInstances)
-
-	envCandidates := []string{".env.example", ".env.template", ".env.sample", ".env"}
-	for _, rel := range envCandidates {
-		path := filepath.Join(absRoot, rel)
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
+	for _, finding := range result.Findings {
+		if finding.Confidence != repositoryinspect.ConfidenceDetected {
 			continue
 		}
-		d.EnvFiles = append(d.EnvFiles, rel)
-		names, err := readEnvNames(path)
-		if err != nil {
-			return appProjectDetection{}, err
+		source := ""
+		if len(finding.Evidence) > 0 {
+			source = finding.Evidence[0].Path + " " + finding.Evidence[0].Detail
 		}
-		for _, name := range names {
-			upper := strings.ToUpper(name)
-			switch upper {
-			case "DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL":
-				if !d.Postgres {
-					d.Postgres = true
-					d.PostgresSource = rel + " variable " + name
-				}
-			case "REDIS_URL", "VALKEY_URL":
-				if !d.Redis {
-					d.Redis = true
-					d.RedisSource = rel + " variable " + name
-				}
+		switch finding.Capability {
+		case "database.sql":
+			d.Postgres = true
+			if finding.Name != "" {
+				d.PostgresInstances = append(d.PostgresInstances, finding.Name)
 			}
-			if likelySecretName(name) {
-				if _, exists := d.SecretSources[name]; !exists {
-					d.SecretCandidates = append(d.SecretCandidates, name)
-					d.SecretSources[name] = rel
-				}
+			if d.PostgresSource == "" {
+				d.PostgresSource = source
+			}
+		case "cache.key-value":
+			d.Redis = true
+			if finding.Name != "" {
+				d.RedisInstances = append(d.RedisInstances, finding.Name)
+			}
+			if d.RedisSource == "" {
+				d.RedisSource = source
 			}
 		}
 	}
-	d.SecretCandidates = uniqueSorted(d.SecretCandidates)
+	d.EnvFiles = uniqueSorted(d.EnvFiles)
+	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
+	d.RedisInstances = uniqueSorted(d.RedisInstances)
 	return d, nil
 }
 
@@ -379,24 +338,16 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		services, err := detectComposeServices(compose)
+		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
 		if err != nil {
 			return err
 		}
-		workloadServices = nil
-		for _, service := range services {
-			if !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
-				workloadServices = append(workloadServices, service.Name)
-			}
-		}
-		workloadServices = uniqueSorted(workloadServices)
+		workloadServices = append([]string(nil), analysis.WorkloadServices...)
 	}
 
 	defaults := []bool{d.Postgres, d.Redis, len(d.SecretCandidates) > 0}
-	if !defaults[0] && !defaults[1] && !defaults[2] {
-		defaults[0] = true
-	}
-	selected, err := promptCapabilityList(reader, out, defaults)
+	allowNone := len(workloadServices) > 0
+	selected, err := promptCapabilityList(reader, out, defaults, allowNone)
 	if err != nil {
 		return err
 	}
@@ -434,7 +385,7 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		required = uniqueSorted(required)
 	}
 
-	m := application.New(name, environment, selected[0], selected[1], selected[2])
+	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], compose != "" && len(workloadServices) > 0)
 	if len(postgresInstances) > 0 {
 		m = application.WithPostgresInstances(m, postgresInstances...)
 	}
@@ -464,15 +415,33 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	return writeRepositoryManifest(m, out)
 }
 
+func detectedApplicationManifest(name, environment string, postgres, redis, secrets, hasWorkload bool) application.Manifest {
+	if !postgres && !redis && !secrets && hasWorkload {
+		if environment == "" {
+			environment = "dev"
+		}
+		return application.Manifest{
+			Version:     application.CurrentVersion,
+			Name:        name,
+			Environment: environment,
+		}
+	}
+	return application.New(name, environment, postgres, redis, secrets)
+}
+
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
 	if quick && len(d.ComposeCandidates) > 1 {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
 	postgres, redis, secrets := d.Postgres, d.Redis, len(d.SecretCandidates) > 0
-	if !postgres && !redis && !secrets {
-		postgres = true
+	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
+	if quick && !postgres && !redis && !secrets && !hasWorkload {
+		return application.Manifest{}, usageError(
+			"no unambiguous application requirements were detected",
+			"Run 'baha app init' interactively or use explicit capability flags.",
+		)
 	}
-	m := application.New(d.Name, "dev", postgres, redis, secrets)
+	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, secrets, hasWorkload)
 	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
 		m = application.WithPostgresInstances(m, postgresNamed...)
 	}
@@ -527,7 +496,7 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	}
 }
 
-func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) ([]bool, error) {
+func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
 	labels := []string{"PostgreSQL", "Valkey / Redis", "Managed Secrets"}
 	fmt.Fprintln(out, "\nSelect required services (Enter keeps detected/default selection; otherwise enter numbers such as 1,3):")
 	for i, label := range labels {
@@ -542,7 +511,11 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) 
 		return nil, err
 	}
 	if strings.TrimSpace(line) == "" {
-		return append([]bool(nil), defaults...), nil
+		selected := append([]bool(nil), defaults...)
+		if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+			return nil, errors.New("select at least one backend capability or configure an application workload")
+		}
+		return selected, nil
 	}
 	selected := make([]bool, len(labels))
 	for _, raw := range strings.Split(line, ",") {
@@ -552,8 +525,8 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) 
 		}
 		selected[n-1] = true
 	}
-	if !selected[0] && !selected[1] && !selected[2] {
-		return nil, errors.New("select at least one backend capability")
+	if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
 }
