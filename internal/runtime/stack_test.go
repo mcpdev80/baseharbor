@@ -250,3 +250,17 @@ func TestDataDirDoesNotSwitchLegacyRuntimeSelection(t *testing.T) {
 		t.Fatalf("global runtime directory unexpectedly materialized: %v", err)
 	}
 }
+
+
+func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "baseharbor-runtime")
+	t.Setenv("BASEHARBOR_STATE_DIR", override)
+
+	dataDir, err := DataDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataDir != override {
+		t.Fatalf("data dir = %q, want override %q", dataDir, override)
+	}
+}
