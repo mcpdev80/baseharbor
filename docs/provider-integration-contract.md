@@ -36,13 +36,22 @@ BaseHarbor owns the hard semantics. A provider may declare that it implements a 
 BaseHarbor reuses open standards for infrastructure plumbing where they fit:
 
 - **gRPC + Protocol Buffers**: language-neutral external provider API transport.
-- **OCI artifacts and OCI Distribution**: registry-neutral packaging and distribution.
+- **OCI Image/Distribution specifications**: registry-neutral provider packaging and distribution.
+- **JSON Schema 2020-12**: provider configuration schema declaration and validation.
 - **Open Service Broker API concepts**: useful lifecycle concepts around catalog/provision/update/bind/unbind/deprovision.
 - **Service Binding concepts**: useful representation patterns for application-facing bindings.
 
 These building blocks do not replace BaseHarbor's own capability, lifecycle, ownership, security or verification rules.
 
 The public compatibility contract must not depend on HashiCorp go-plugin, Kubernetes, Docker, GitHub, a specific cloud provider or a BaseHarbor-operated registry.
+
+## GraphQL boundary
+
+GraphQL is **not** the BaseHarbor provider lifecycle protocol.
+
+GraphQL is optimized for client-driven data querying and schema evolution. Provider lifecycle needs strongly defined commands, deadlines, cancellation, transport status, idempotency and long-running operation semantics. The external provider boundary therefore remains gRPC/Protocol Buffers.
+
+GraphQL may be evaluated later for a user-facing/control-plane query API or Web UI backend, but it must remain an adapter over the same BaseHarbor core and must not become a second provider lifecycle implementation.
 
 ## Version axes
 
@@ -140,24 +149,62 @@ The schema is part of the contract foundation; v1 of this architecture prerequis
 
 Those are deliberately deferred until real provider implementations have further proven the contract.
 
+## RPC reliability and asynchronous operations
+
+External provider RPCs must follow normal distributed-systems safety rules:
+
+- every call has an explicit deadline; BaseHarbor must never wait indefinitely;
+- cancellation is propagated and providers must stop work when safely possible;
+- read-only calls may be retried according to gRPC status/retry policy;
+- mutating calls are not blindly retried and require an idempotency key;
+- repeating an identical mutation with the same idempotency key must not create duplicate provider resources;
+- transport/protocol failures use standard gRPC status codes;
+- BaseHarbor domain state and operator-facing diagnostics remain structured response data;
+- external providers expose the standard gRPC Health Checking service for transport/service health;
+- local external providers should prefer a Unix domain socket rather than an unauthenticated TCP listener;
+- remote provider endpoints require TLS and should use mTLS or equivalent workload identity where practical.
+
+Provision, bind, unbind, update, backup, restore and destroy may be long-running. They therefore return a stable operation identity which BaseHarbor can poll through `GetOperation`; cancellation is best-effort through `CancelOperation`.
+
+A provider may complete an operation immediately, but the API must not require lifecycle work to fit inside one synchronous RPC.
+
+## Protocol Buffer evolution
+
+`baseharbor.provider.v1` follows additive protobuf evolution rules:
+
+- existing field numbers are never changed or reused;
+- removed fields and enum values reserve their old numbers and names;
+- new v1 fields are additive and optional/forward-compatible;
+- enum zero values remain explicit `UNSPECIFIED` states;
+- breaking wire or semantic changes require a new provider protocol major version;
+- implementation code must tolerate unknown fields and enum values where the language runtime permits it.
+
 ## OCI packaging and distribution
 
-Future external providers should be publishable through normal OCI registries.
+Future external providers must be publishable through normal OCI registries such as GHCR, Quay, Harbor, Artifactory and private OCI-compatible registries. BaseHarbor must not require a proprietary account or central BaseHarbor registry.
 
-Examples include GHCR, Quay, Harbor, Artifactory and private OCI-compatible registries.
+OCI handling is **digest-first**:
 
-BaseHarbor must not require a proprietary account or central BaseHarbor registry.
+- tags are convenient mutable discovery aliases;
+- installation/lock state records and verifies the resolved manifest digest;
+- updates resolve a new digest explicitly rather than trusting that a tag is immutable.
 
-Provider packages should eventually carry:
+For a runnable provider distributed as a container, prefer a normal OCI Image. Multi-platform providers use an OCI Image Index with explicit platform descriptors.
+
+Generic non-container provider packages may use OCI artifact guidance with a BaseHarbor-specific RFC 6838 media type/`artifactType`; large metadata belongs in referenced blobs/config rather than oversized annotations.
+
+OCI `subject` + Referrers are the preferred association mechanism for signatures, SBOMs and provenance. Clients must honor the OCI Distribution compatibility fallback when the Referrers API is unavailable.
+
+Supply-chain policy must support standard verification mechanisms rather than inventing BaseHarbor signatures. Sigstore/cosign or Notation-style signatures and in-toto/SLSA provenance are the preferred open directions. Verification policy decides which identities/issuers/provenance are trusted before a provider is executed.
+
+Provider packages carry or reference:
 
 - provider protocol version;
 - implemented capability specifications;
 - immutable digest;
-- provider metadata;
+- provider metadata/configuration schema;
 - platform/runtime metadata where needed;
-- standard signature/provenance references where practical.
-
-The exact OCI artifact manifest/media type is intentionally deferred until the external loader is implemented.
+- signature, SBOM and provenance referrers where available.
 
 ## Bindings and secrets
 
@@ -167,7 +214,13 @@ Secret material is not normal provider metadata.
 
 Provider responses, diagnostics, registry state and portable application intent must never contain plaintext passwords, tokens, private keys or credential-bearing URLs.
 
-When a binding needs secret material, the provider contract should return a stable credential/secret reference for BaseHarbor to resolve at a trusted boundary.
+When a binding needs secret material, the provider contract returns a stable credential/secret reference for BaseHarbor to resolve at a trusted boundary. The protobuf schema uses a `oneof` so a binding is either a non-secret public value or a credential reference, never both.
+
+## Provider configuration schema
+
+Provider-specific operator configuration uses **JSON Schema 2020-12**. Each external provider advertises its schema through `Describe`.
+
+The schema describes operator/deployment configuration only. It must not smuggle provider-specific fields into portable application intent and must not contain secret values. Secret inputs use BaseHarbor credential references.
 
 ## Ownership and placement
 
