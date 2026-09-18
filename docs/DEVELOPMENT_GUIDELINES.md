@@ -416,6 +416,13 @@ Rules:
 - Provider metadata, diagnostics and normal bindings must not contain plaintext secret material.
 - Future external providers remain language- and registry-neutral; the public boundary is the versioned protocol/specification, not a Go SDK or vendor-specific plugin framework.
 - gRPC/Protocol Buffers and OCI distribution are the selected open-standard direction for future external provider transport and packaging; implementing a dynamic loader requires a separate demonstrated need.
+- GraphQL must not be used as the provider lifecycle protocol; it may only be considered later as a control-plane/UI adapter over the shared core.
+- External provider RPCs require explicit deadlines, cancellation propagation and standard gRPC status semantics; mutating calls require idempotency keys and must support asynchronous operation identities where work can outlive one RPC.
+- External providers expose standard gRPC health checking; local external providers prefer Unix domain sockets, while remote providers require TLS and should use mTLS or equivalent workload identity.
+- Protobuf schemas evolve additively within one major version: never renumber or reuse field/enum numbers, and reserve removed numbers/names.
+- Provider operator configuration uses JSON Schema 2020-12 rather than a proprietary schema language.
+- OCI consumption is digest-first; tags are discovery aliases only. Runnable multi-platform providers use OCI Image Index, while generic artifacts follow OCI artifactType/media-type guidance.
+- OCI subject/referrers are the preferred attachment mechanism for signatures, SBOMs and provenance, with standard OCI fallback behavior. Supply-chain verification should support open mechanisms such as Sigstore/Notation and in-toto/SLSA rather than BaseHarbor-specific signatures.
 
 See `docs/provider-integration-contract.md` and `spec/capabilities/`.
 
