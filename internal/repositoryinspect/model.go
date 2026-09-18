@@ -77,3 +77,12 @@ type Detector interface {
 type Engine struct {
 	Detectors []Detector
 }
+
+
+type ComposeAnalysis struct {
+	WorkloadServices []string       `json:"workload_services,omitempty"`
+	PostgresInstances []string      `json:"postgres_instances,omitempty"`
+	RedisInstances    []string      `json:"redis_instances,omitempty"`
+	Ports             []PortEvidence `json:"ports,omitempty"`
+	HealthChecks      []Evidence    `json:"health_checks,omitempty"`
+}
