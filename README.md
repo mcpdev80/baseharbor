@@ -14,15 +14,16 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The latest published stable release is **v0.4.0**. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The latest published stable release is **v0.4.1**. Compose remains the complete runtime implementation, while v0.4 establishes the portable application-contract, runtime-provider and declarative-input seams that future Kubernetes/OpenShift providers will consume.
 
-The v0.4.0 line includes:
+The v0.4.1 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
 - user-global control-plane runtime state that survives application checkout changes;
 - repository-owned Manifest v1 `baseharbor.yaml` application contracts;
 - a provider-neutral `PortableContract` compatibility adapter for logical application intent;
+- a reusable capability/provider/resource/binding core with fail-closed negotiation and machine-readable lifecycle results;
 - explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
 - Compose as the current runtime provider behind an explicit provider/capability seam;
 - protected deployment-owned runtime-provider state and fail-closed unsupported-provider behavior;
@@ -62,8 +63,8 @@ curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/in
 For production automation, pin both installer and requested version to the immutable published release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.4.0/scripts/install.sh \
-  | bash -s -- v0.4.0
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/v0.4.1/scripts/install.sh \
+  | bash -s -- v0.4.1
 ```
 
 The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
