@@ -122,9 +122,9 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.0-Grenze
+## v0.4.1-Grenze
 
-v0.4.0 bleibt zur Laufzeit Compose-only. Es fuehrt den providerneutralen `PortableContract`, typisierte Runtime-Provider-Auswahl/Capability-Negotiation und deklarative Input-Aufloesung ein, aber noch kein neues generisches oeffentliches Capability-/Provider-Manifest.
+v0.4.1 bleibt zur Laufzeit Compose-only. Zusaetzlich zum `PortableContract` und der Runtime-Provider-Grenze aus v0.4.0 fuehrt es den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, fail-closed Capability-Provider-Negotiation, maschinenlesbare Lifecycle-Ergebnisse und geschuetzte Runtime-Metadaten fuer aufgeloeste PostgreSQL-, Valkey- und OpenBao-Bindings ein. Ein neues generisches oeffentliches Capability-/Provider-Manifest wird weiterhin nicht eingefuehrt.
 
 Die operative Vollstaendigkeit des Compose-Providers bleibt erhalten; neu sind die Architekturgrenzen fuer spaetere Provider ohne Bruch der Manifest-v1-Kompatibilitaet.
 
