@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Guided `app init` now consumes the shared repository inspection engine instead of owning a separate CLI-only detector.
 - Workload-only repositories no longer receive an invented PostgreSQL default when the workload itself is sufficient application intent.
 - Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
+- `app init --quick` now fails closed when only Suggested/Possible evidence exists and no explicit workload is detected, instead of inventing a backend requirement.
 
 ### Architecture
 
