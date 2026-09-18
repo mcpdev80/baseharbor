@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-18
+
+### Added
+
+- Persistent provider registry for shared, application-scoped and external/BYO provider instances.
+- Explicit provider ownership and lifecycle semantics for update, backup and destroy planning.
+- Deterministic shared-provider reuse and fail-closed duplicate shared-provider detection.
+- External provider bindings without BaseHarbor taking ownership of provider lifecycle.
+
+### Changed
+
+- PostgreSQL and Valkey are registered as BaseHarbor-owned application-scoped providers.
+- Control-plane OpenBao is registered once as a BaseHarbor-owned shared provider reusable by multiple applications.
+- Successful `app apply` and `app up` reconcile provider registry state; successful `app destroy` releases application bindings and application-owned provider records.
+
+### Security
+
+- Application-scoped providers cannot be bound across application ownership boundaries.
+- Corrupt, duplicate or ambiguous provider registry state fails closed.
+- Registry updates are serialized and persisted atomically with owner-only permissions.
+- External provider records contain non-secret references only.
+
+### Compatibility
+
+- Manifest v1 is unchanged; provider placement remains deployment/operator state.
+- Existing v0.4.1 applications are adopted on their next successful `baha app apply` or `baha app up`.
+
 ## [0.4.1] - 2026-09-18
 
 ### Added
@@ -157,7 +184,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
