@@ -207,3 +207,19 @@ func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 		t.Fatalf("workload = %#v", m.Workload)
 	}
 }
+
+
+func TestQuickInitDoesNotPromoteSuggestedCapability(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "package.json"), `{"dependencies":{"pg":"latest"}}`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "no unambiguous application requirements were detected") {
+		t.Fatalf("expected fail-closed quick init, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, application.RepositoryManifestName)); !os.IsNotExist(statErr) {
+		t.Fatalf("manifest should not be written from suggested evidence, stat err=%v", statErr)
+	}
+}
