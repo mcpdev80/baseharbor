@@ -71,7 +71,7 @@ Provider/runtime identities may include the environment to preserve isolation, b
 
 ## Portable contract versus deployment/runtime state
 
-The repository-owned `baseharbor.yaml` contains portable application requirements and remains the desired-state source for the application contract.
+The repository-owned `baseharbor.yaml` Manifest v1 remains the desired-state compatibility source. v0.4 translates its portable application intent into `PortableContract`, while provider-specific compatibility fields stay outside that provider-neutral view.
 
 Compose-specific deployment realization is stored separately in protected BaseHarbor runtime state. In v0.4 this protected deployment state includes details such as:
 
@@ -81,7 +81,7 @@ Compose-specific deployment realization is stored separately in protected BaseHa
 - automatically selected workload host-port fallbacks;
 - generated Compose overrides and runtime identity material.
 
-These values are operational realization, not new portable application requirements. They must not leak back into the common manifest merely because Compose currently needs them.
+These values are operational realization, not portable application requirements. They must not be promoted into `PortableContract` merely because Compose currently needs them.
 
 ## Principles
 
