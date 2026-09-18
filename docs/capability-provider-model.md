@@ -18,7 +18,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 
 ## Component matrix
 
-| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.1 | Replacement paths / alternatives | Architecture note |
+| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.2 | Replacement paths / alternatives | Architecture note |
 | --- | --- | --- | --- | --- | --- |
 | Relational SQL database | Manifest v1 PostgreSQL compatibility input normalized to `database.sql` in `PortableContract` | PostgreSQL | Implemented | external PostgreSQL, managed PostgreSQL/RDS-style services, compatible enterprise PostgreSQL platforms; other SQL engines only where the declared capability permits their semantics | PostgreSQL is the current reference provider, not the permanent conceptual capability name |
 | Cache / key-value | Manifest v1 Redis/Valkey compatibility input normalized to `cache.key-value` in `PortableContract` | Valkey | Implemented | Redis, Dragonfly, managed Redis/Valkey; other KV systems only through a capability with matching semantics | Protocol/feature requirements must be explicit enough to avoid false interchangeability |
@@ -125,9 +125,9 @@ A future provider interface must describe more than a product name. Providers ne
 
 If the selected provider cannot satisfy a requested guarantee, BaseHarbor must reject the plan rather than silently reduce the guarantee.
 
-## v0.4.1 boundary
+## v0.4.2 boundary
 
-v0.4.1 remains Compose-only at runtime. In addition to the v0.4.0 `PortableContract` and runtime-provider seam, it introduces the shared capability/provider/resource/binding domain core, fail-closed capability-provider negotiation, machine-readable lifecycle result types, and protected runtime metadata for resolved PostgreSQL, Valkey and OpenBao capability bindings. It does not introduce a new generic public capability/provider manifest schema.
+v0.4.2 remains Compose-only at runtime. It includes the v0.4.1 capability/provider/resource/binding core and adds protected provider registry, placement and ownership semantics for shared, application-scoped and external providers. It does not introduce a new generic public capability/provider manifest schema.
 
 It preserves the concrete operational completeness of the Compose provider and adds the architectural seams required for future providers without changing the public Manifest v1 compatibility surface.
 
