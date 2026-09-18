@@ -109,6 +109,17 @@ Every subsequent reference provider must become evidence for the same open ecosy
 
 The prerequisite deliberately does not implement a dynamic plugin loader. It defines versioned capability semantics, provider lifecycle metadata, conformance and the future language-neutral/registry-neutral boundary first.
 
+## v0.4.3 repository inspection
+
+v0.4.3 makes repository inspection a shared, read-only core capability.
+
+- `baha app inspect [PATH]` exposes human-readable evidence.
+- `--json` exposes the same structured result for future control surfaces.
+- evidence is classified as Detected / Suggested / Possible;
+- detectors are registered behind a shared detector interface so later capability releases can extend inference incrementally;
+- current PostgreSQL/Valkey detection and guided `app init` reuse the same engine;
+- inspection never mutates repository/runtime state and never emits environment secret values.
+
 ## Next architecture tracks
 
 ### v0.5 – Compose platform capabilities
