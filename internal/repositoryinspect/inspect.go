@@ -255,7 +255,11 @@ func detectComposeServices(data []byte) []composeService {
 				continue
 			}
 			current = name
-			items[name] = &composeService{Name: name}
+			item := &composeService{Name: name}
+			lowerName := strings.ToLower(name)
+			item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
+			item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
+			items[name] = item
 			inPorts = false
 			continue
 		}
@@ -267,6 +271,9 @@ func detectComposeServices(data []byte) []composeService {
 		switch {
 		case strings.HasPrefix(lower, "image:"):
 			item.HasImage = true
+			image := strings.TrimSpace(strings.TrimPrefix(lower, "image:"))
+			item.Postgres = item.Postgres || strings.Contains(image, "postgres") || strings.Contains(image, "postgresql")
+			item.Redis = item.Redis || strings.Contains(image, "redis") || strings.Contains(image, "valkey")
 		case strings.HasPrefix(lower, "build:"):
 			item.HasBuild = true
 		case lower == "ports:" || strings.HasPrefix(lower, "ports:"):
@@ -285,13 +292,6 @@ func detectComposeServices(data []byte) []composeService {
 			if value != "" {
 				item.Ports = append(item.Ports, value)
 			}
-		}
-		combined := strings.ToLower(current + " " + trim)
-		if strings.Contains(combined, "postgres") || strings.Contains(combined, "postgresql") {
-			item.Postgres = true
-		}
-		if strings.Contains(combined, "redis") || strings.Contains(combined, "valkey") {
-			item.Redis = true
 		}
 	}
 	result := make([]composeService, 0, len(items))
