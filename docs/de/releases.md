@@ -4,10 +4,10 @@ BaseHarbor verwendet Semantic Versioning mit Git-Tags im Format `vX.Y.Z`.
 
 ## `0.x`-Stabilitaet
 
-Waehrend der `0.x`-Serie gelten Patch-Releases als rueckwaertskompatible Fehler-/Security-Fixes. Minor-Releases duerfen bewusst dokumentierte Breaking Changes enthalten. Anwendungen sollen deshalb nicht `main` verfolgen, sondern einen kompatiblen Versionsbereich pinnen, zum Beispiel fuer die v0.3-Linie:
+Waehrend der `0.x`-Serie gelten Patch-Releases als rueckwaertskompatible Fehler-/Security-Fixes. Minor-Releases duerfen bewusst dokumentierte Breaking Changes enthalten. Anwendungen sollen deshalb nicht `main` verfolgen, sondern einen kompatiblen Versionsbereich pinnen, zum Beispiel fuer die v0.4-Linie:
 
 ```text
->=0.3.0 <0.4.0
+>=0.4.0 <0.5.0
 ```
 
 ## Release-Kanaele

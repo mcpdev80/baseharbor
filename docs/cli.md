@@ -146,7 +146,7 @@ baha app init mailflow \
 
 If the name is omitted from the explicit path, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
 
-For repository deployments, v0.3 additionally initializes protected deployment/runtime state for the current Compose realization. Interactive setup may request a **Public FQDN** and TLS mode. Existing/BYOC certificate mode accepts a source directory, validates the matching certificate/key pair and FQDN coverage, and normalizes the pair into owner-only BaseHarbor state. These deployment details do not become portable fields in `baseharbor.yaml`.
+In v0.4, repository deployments initialize protected deployment/runtime state for the current Compose realization through the declarative input resolver. Interactive setup may request a **Public FQDN** and TLS mode. Existing/BYOC certificate mode accepts a source directory, validates the matching certificate/key pair and FQDN coverage, and normalizes the pair into owner-only BaseHarbor state. These deployment details do not become portable fields in `baseharbor.yaml`.
 
 Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
 
@@ -209,7 +209,7 @@ See [application-contract.md](application-contract.md).
 
 ## Trusted-local developer access
 
-The v0.3 trusted-local workflow can open normal clients and application workload tooling through logical BaseHarbor resource/service names:
+The current trusted-local workflow can open normal clients and application workload tooling through logical BaseHarbor resource/service names:
 
 ```bash
 baha app psql [INSTANCE]
@@ -259,7 +259,7 @@ baha app tls update
 
 `baha app status` reports TLS mode, expiry, source/update information when deployment TLS state exists. `baha app doctor` adds certificate/key/FQDN/expiry diagnostics.
 
-ACME automation, OpenBao PKI issuance and provider-neutral certificate lifecycle contracts are future work; v0.3 does not claim them.
+ACME automation, OpenBao PKI issuance and provider-neutral certificate lifecycle contracts are future work; v0.4 does not claim them.
 
 ## Dynamic runtime identity
 

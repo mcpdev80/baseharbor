@@ -1,6 +1,6 @@
 # Repository-first Workflow
 
-Der bevorzugte BaseHarbor-Vertrag liegt direkt im Repository der Anwendung als `baseharbor.yaml`. Diese Datei enthaelt nur deklarative, portable Anforderungen und darf committed werden. Secret-Werte, generierte Zugangsdaten, Deployment-TLS-Material und Laufzeitstatus bleiben ausserhalb von Git.
+Der bevorzugte BaseHarbor-Vertrag liegt direkt im Repository der Anwendung als `baseharbor.yaml`. Manifest v1 bleibt der oeffentliche Kompatibilitaetsvertrag; v0.4 uebersetzt daraus portablen Intent in `PortableContract`. Generierter Deployment-/Runtime-State bleibt ausserhalb von Git. Secret-Werte, generierte Zugangsdaten, Deployment-TLS-Material und Laufzeitstatus bleiben ausserhalb von Git.
 
 ## Manifest erzeugen
 
@@ -36,13 +36,13 @@ baha app init mailflow \
 
 Ohne Namen verwendet `baha app init` den aktuellen Verzeichnisnamen, sofern er als Anwendungsslug gueltig ist.
 
-## Deployment-Init in v0.3
+## Deployment-Init in v0.4
 
 Repository-Deployments koennen zusaetzlich geschuetzten Compose-spezifischen Deployment-State erhalten. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden.
 
 Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und schreibt normalisierte owner-only Dateien in BaseHarbor-State. Automatisch gewaehlt Host-Port-Fallbacks fuer konfigurierbare Compose-Publisher werden ebenfalls geschuetzt persistiert.
 
-Diese Werte sind Deployment-/Provider-Details und gehoeren nicht in den portablen `baseharbor.yaml`-Contract.
+Diese Werte sind Deployment-/Provider-Details und gehoeren nicht in den providerneutralen `PortableContract`.
 
 ## Danach aus dem Repository arbeiten
 
@@ -63,7 +63,7 @@ Der Anwendungsname muss dabei normalerweise nicht wiederholt werden.
 
 BaseHarbor ersetzt die Compose-Topologie der Anwendung nicht. Bei einem vorhandenen Compose-Workload werden nur die tatsaechlich benoetigten BaseHarbor-Verbindungen ueber geschuetzte generierte Overrides ergaenzt. Bestehende Anwendungsnetzwerke und anwendungseigene Volumes bleiben erhalten.
 
-Ein expliziter Compose-Workload kann in v0.3 auch als Workload-only-Anwendung ohne kuenstliche PostgreSQL-/Valkey-Abhaengigkeit betrieben werden. BaseHarbor erfindet dafuer keine Backend-Services, Credentials oder Netzwerke.
+Ein expliziter Compose-Workload kann auch als Workload-only-Anwendung ohne kuenstliche PostgreSQL-/Valkey-Abhaengigkeit betrieben werden. BaseHarbor erfindet dafuer keine Backend-Services, Credentials oder Netzwerke.
 
 Host-Prozesse erhalten Loopback-Endpunkte, Container erhalten containerfaehige DNS-Endpunkte. Die Anwendung konsumiert weiterhin normale Variablen wie `DATABASE_URL` oder `REDIS_URL`.
 

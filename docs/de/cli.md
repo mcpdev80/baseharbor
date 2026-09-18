@@ -96,7 +96,7 @@ baha app init mailflow \
 
 Mehrere Instanzen sind mehrere logische Services und keine HA-Replikate.
 
-Repository-Deployments initialisieren in v0.3 zusaetzlich geschuetzten Deployment-State. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden. Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und normalisiert die Dateien in owner-only BaseHarbor-State. Diese Deployment-Details gehoeren nicht in den portablen `baseharbor.yaml`-Contract.
+Repository-Deployments initialisieren in v0.4 geschuetzten Deployment-State ueber den deklarativen Input-Resolver. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden. Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und normalisiert die Dateien in owner-only BaseHarbor-State. Diese Deployment-Details gehoeren nicht in den providerneutralen `PortableContract`; Manifest v1 bleibt der oeffentliche Kompatibilitaetsvertrag.
 
 Danach:
 

@@ -52,6 +52,7 @@ nav:
   - Einstieg: repository-application-workflow.md
   - Anwendungsvertrag: application-contract.md
   - CLI: cli.md
+  - Input-Aufloesung: input-resolution.md
   - Entwicklerzugriff: developer-access.md
   - Control Plane: runtime-compose.md
   - Secrets: secrets-and-openbao.md

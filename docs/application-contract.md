@@ -12,15 +12,15 @@ A second design test is equally important:
 
 `app.name` is the stable logical application identity. `app.environment` is deployment context, not part of the application's intrinsic identity.
 
-The same logical application can therefore be instantiated as `dev`, `test`, `staging`, `production` or a customer-specific deployment without being redefined as a different application. In v0.3.0 Compose uses the environment value for runtime isolation and naming. Future providers such as Kubernetes or OpenShift may realize the same logical requirements differently.
+The same logical application can therefore be instantiated as `dev`, `test`, `staging`, `production` or a customer-specific deployment without being redefined as a different application. In the current Compose implementation, the environment value is used for runtime isolation and naming. Future providers such as Kubernetes or OpenShift may realize the same logical requirements differently.
 
 Provider-specific implementation details such as Compose project names, networks, host ports, volumes or OpenBao paths are not portable application requirements and must not become application dependencies.
 
 ## Portable application contract versus deployment state
 
-`baseharbor.yaml` is the portable, repository-owned desired-state contract. It describes application requirements that should survive a future change of runtime/provider.
+`baseharbor.yaml` Manifest v1 is the supported repository-owned compatibility contract. BaseHarbor translates its portable application intent into the provider-neutral `PortableContract`; Compose-specific compatibility fields are not part of that portable view.
 
-The current Compose deployment may also need operator/runtime inputs that are **not** portable application requirements. In v0.3 these are stored separately in protected BaseHarbor runtime state and can include:
+The current Compose deployment may also need operator/runtime inputs that are **not** portable application requirements. In v0.4 these remain stored separately in protected BaseHarbor runtime state and can include:
 
 - the public FQDN used for the current deployment;
 - the selected deployment TLS mode;
@@ -28,7 +28,7 @@ The current Compose deployment may also need operator/runtime inputs that are **
 - automatically selected host-port fallbacks for configurable Compose publishers;
 - generated Compose overrides and runtime identity material.
 
-Those values must not be copied into the portable manifest merely because the Compose provider currently needs them. Future Kubernetes/OpenShift providers may realize the same application requirements through entirely different primitives.
+Those values must not be added to portable application intent merely because the Compose provider currently needs them. Future Kubernetes/OpenShift providers may realize the same application requirements through entirely different primitives.
 
 ## Required secrets
 
@@ -157,9 +157,9 @@ Multiple logical instances are not an HA mechanism. A `primary` PostgreSQL insta
 
 ## Workload-only applications
 
-A repository may explicitly declare an application-owned Compose workload without also requesting an artificial managed PostgreSQL or Valkey dependency. This is a valid v0.3 application shape when the workload is explicit.
+A repository may explicitly declare an application-owned Compose workload without also requesting an artificial managed PostgreSQL or Valkey dependency. This remains a valid application shape when the workload is explicit.
 
-BaseHarbor does not invent backend environment variables, backend networks, volumes or credentials for workload-only applications. A manifest with neither a managed capability nor an explicit workload remains invalid. Managed-secrets-only applications remain unsupported where the current v0.3 runtime broker requires a materialized managed backend.
+BaseHarbor does not invent backend environment variables, backend networks, volumes or credentials for workload-only applications. A manifest with neither a managed capability nor an explicit workload remains invalid. Managed-secrets-only applications remain unsupported where the current runtime broker requires a materialized managed backend.
 
 ## Native runtime contract
 
@@ -273,7 +273,7 @@ For repository Compose workloads, readiness also includes selected service state
 
 ## Deployment TLS is not an application dependency
 
-v0.3 supports an existing/BYOC certificate lifecycle for the current repository Compose deployment. `baha app tls update --check` is read-only; `baha app tls update` validates the source certificate/key pair and FQDN, refuses downgrades, installs owner-only normalized files, restarts the workload when required and verifies readiness.
+The current Compose implementation supports an existing/BYOC certificate lifecycle for the repository deployment. `baha app tls update --check` is read-only; `baha app tls update` validates the source certificate/key pair and FQDN, refuses downgrades, installs owner-only normalized files, restarts the workload when required and verifies readiness.
 
 This does not turn certificate source directories, Compose TLS files or Caddy details into portable application requirements. BaseHarbor-managed ACME issuance, OpenBao PKI issuance, automatic rotation and provider-neutral `tls.certificate` intent remain future work.
 

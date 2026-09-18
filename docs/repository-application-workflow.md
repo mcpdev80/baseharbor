@@ -2,7 +2,7 @@
 
 BaseHarbor treats `baseharbor.yaml` in an application repository as the preferred application contract.
 
-The repository contains only declarative requirements. Secret values, generated credentials, deployment TLS material, runtime environment files and service state do not belong in Git.
+The repository contract contains declarative desired state; provider-specific compatibility fields may exist in Manifest v1, while generated runtime/deployment state remains outside Git. Secret values, generated credentials, deployment TLS material, runtime environment files and service state do not belong in Git.
 
 ## Repository layout
 
@@ -53,9 +53,9 @@ baha app init mailflow \
 
 When `NAME` is omitted, `baha app init` uses the current directory name when it is a valid application slug.
 
-## Deployment/runtime initialization in v0.3
+## Deployment/runtime initialization in v0.4
 
-After the portable application contract is known, repository deployments may need Compose-specific operator/runtime inputs. v0.3 keeps those separate from `baseharbor.yaml`.
+After Manifest v1 has been resolved into portable application intent, repository deployments may need Compose-specific operator/runtime inputs. v0.4 keeps those in protected deployment state and outside `PortableContract`.
 
 Interactive setup may request a **Public FQDN** and deployment TLS mode. Existing/BYOC certificate mode accepts one certificate source directory, detects and validates a matching certificate/key pair including FQDN coverage, and normalizes the material into owner-only BaseHarbor state.
 

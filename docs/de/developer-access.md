@@ -1,6 +1,6 @@
 # Entwicklerzugriff
 
-BaseHarbor v0.3 ergänzt eine lokale Entwicklerzugriffsschicht für den täglichen Compose-Betrieb. Entwickler arbeiten mit logischen Anwendungs-, Ressourcen- und Service-Namen statt mit generierten Ports, Container-Namen oder OpenBao-Interna.
+BaseHarbor bietet eine lokale Entwicklerzugriffsschicht für den täglichen Compose-Betrieb. Entwickler arbeiten mit logischen Anwendungs-, Ressourcen- und Service-Namen statt mit generierten Ports, Container-Namen oder OpenBao-Interna.
 
 ## Datenbank- und Cache-Shells
 
@@ -48,7 +48,7 @@ Explizites Anzeigen ist eine getrennte Aktion:
 baha app creds postgres --reveal
 ```
 
-Der lokale v0.3-Pfad verwendet noch keine verwaltete Production-Policy mit OIDC/RBAC/JIT. Die Action-Grenze ist aber so aufgebaut, dass spätere Environment-Policies dieselben Befehle kontrollieren können, ohne den Entwickler-Workflow umzubenennen.
+Der lokale Pfad verwendet noch keine verwaltete Production-Policy mit OIDC/RBAC/JIT. Die Action-Grenze ist aber so aufgebaut, dass spätere Environment-Policies dieselben Befehle kontrollieren können, ohne den Entwickler-Workflow umzubenennen.
 
 ## Workload-Logs
 

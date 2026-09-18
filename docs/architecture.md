@@ -41,6 +41,40 @@ For example, an application may require a SQL database, S3-compatible object sto
 
 This is a hard architecture rule. Every bundled/default component must have a provider boundary and a documented replacement path. See [Capability and provider model](capability-provider-model.md) and ADR [0005](decisions/0005-capabilities-not-products.md).
 
+## Shared core and control surfaces
+
+BaseHarbor is designed as **one shared application/lifecycle core with multiple control surfaces**.
+
+```text
+                         BaseHarbor Core
+              +--------------------------------+
+              | PortableContract                |
+              | input resolution                |
+              | plan / preflight / apply        |
+              | verify / status / diagnostics   |
+              | recovery / update semantics     |
+              | provider selection/capabilities |
+              +---------------+----------------+
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+          v                   v                   v
+       baha CLI            HTTP API        Operator controllers
+                              |
+                              v
+                       lightweight Web UI
+```
+
+`baha` remains the primary local developer/operator interface. Future HTTP API, Web UI and Kubernetes/OpenShift Operator surfaces must reuse the same domain models and lifecycle semantics rather than reimplementing them.
+
+The Web UI is intentionally a thin client over the BaseHarbor API. It must not shell out to `baha`, bypass lifecycle validation or implement its own readiness/security rules.
+
+A future Kubernetes/OpenShift Operator reconciles BaseHarbor desired state through the same application/provider model. It must use idempotent reconciliation and provider-native observation rather than wrapping imperative CLI commands.
+
+Lifecycle results should be machine-readable before presentation. CLI output, API responses, Web UI views and Operator status/conditions are different renderings of the same underlying state and verification results.
+
+See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
+
 ## Control plane and application stacks
 
 The BaseHarbor control plane is shared. Application data-plane resources are isolated by default.
@@ -71,9 +105,9 @@ Provider/runtime identities may include the environment to preserve isolation, b
 
 ## Portable contract versus deployment/runtime state
 
-The repository-owned `baseharbor.yaml` contains portable application requirements and remains the desired-state source for the application contract.
+The repository-owned `baseharbor.yaml` Manifest v1 remains the desired-state compatibility source. v0.4 translates its portable application intent into `PortableContract`, while provider-specific compatibility fields stay outside that provider-neutral view.
 
-Compose-specific deployment realization is stored separately in protected BaseHarbor runtime state. In v0.3 this includes deployment details such as:
+Compose-specific deployment realization is stored separately in protected BaseHarbor runtime state. In v0.4 this protected deployment state includes details such as:
 
 - selected/public FQDN used for local HTTP Host and TLS ServerName verification;
 - TLS mode for the current repository deployment;
@@ -81,11 +115,11 @@ Compose-specific deployment realization is stored separately in protected BaseHa
 - automatically selected workload host-port fallbacks;
 - generated Compose overrides and runtime identity material.
 
-These values are operational realization, not new portable application requirements. They must not leak back into the common manifest merely because Compose currently needs them.
+These values are operational realization, not portable application requirements. They must not be promoted into `PortableContract` merely because Compose currently needs them.
 
 ## Principles
 
-1. One operational entry point through the `baha` binary.
+1. One shared application/lifecycle core with multiple control surfaces; `baha` is the primary local interface, while future API/Web UI and Operator surfaces reuse the same domain behavior.
 2. Applications remain independent and keep all business/domain logic.
 3. Application contracts describe capabilities, not concrete infrastructure products.
 4. Provider selection is environment/platform-owned and replaceable.
@@ -99,6 +133,7 @@ These values are operational realization, not new portable application requireme
 12. Compose is the complete current provider and remains first-class; future Kubernetes/OpenShift providers must preserve logical application requirements rather than redefine them.
 13. Environment/risk policy and deployment topology are separate concepts.
 14. Observability is integrated through open standards rather than a proprietary telemetry stack.
+15. CLI, HTTP API, Web UI and Operator are adapters over shared domain/lifecycle services; business logic must not be duplicated in presentation layers.
 
 ## Application lifecycle model
 
@@ -122,7 +157,7 @@ Verify actual state
 Ready / Failed truthfully
 ```
 
-The current v0.3.0 application manifest remains intentionally small and Compose-focused:
+Manifest v1 remains intentionally small and Compose-oriented as a compatibility surface, while v0.4 translates its portable intent through `PortableContract`:
 
 ```yaml
 version: 1
@@ -146,7 +181,7 @@ The product-oriented field names that exist in Manifest v1 are the current pre-v
 
 ## Runtime truth and verification
 
-BaseHarbor v0.3 treats runtime truth as more than container state:
+BaseHarbor v0.4 continues to treat runtime truth as more than container state:
 
 - PostgreSQL and Valkey use real protocol verification;
 - selected Compose workload services distinguish running/healthy, starting, unhealthy, exited and missing states;
@@ -163,19 +198,21 @@ Backup is supported together with restore, not as an isolated archive feature. R
 
 Application source update is strict fast-forward only. BaseHarbor does not reset, stash, rebase, merge divergent history or discard local work. Durable applications require an explicit recovery policy before mutation. BaseHarbor self-update verifies release artifacts, replaces the CLI atomically and retains a recovery binary for rollback if post-update verification fails.
 
-## TLS boundary in v0.3
+## TLS boundary in v0.4
 
-v0.3 implements the existing/BYOC certificate lifecycle for repository Compose deployments, including certificate/key/FQDN validation, downgrade prevention, protected installation, workload restart and readiness verification.
+v0.4 retains the existing/BYOC certificate lifecycle for repository Compose deployments, including certificate/key/FQDN validation, downgrade prevention, protected installation, workload restart and readiness verification.
 
 It does **not** introduce a provider-neutral `tls.certificate` manifest capability, BaseHarbor-managed ACME issuance, OpenBao PKI issuance, automatic certificate rotation, cert-manager integration or Kubernetes/OpenShift ingress realization. Those remain future provider/capability work.
 
-## `baha` as the primary product interface
+## `baha` as the primary local interface
 
-`baha` is not a thin wrapper around Compose. It is the stable operator/developer interface for BaseHarbor lifecycle, diagnostics, recovery, updates and application resources. Compose is the current implementation target behind that interface.
+`baha` is not a thin wrapper around Compose. It is the stable primary local operator/developer interface for BaseHarbor lifecycle, diagnostics, recovery, updates and application resources. Compose is the current implementation target behind that interface.
+
+This does not make the CLI the permanent home of BaseHarbor business logic. Shared lifecycle, status, diagnostics, input-resolution and policy behavior belongs below the CLI so future API/Web UI and Operator surfaces can expose the same semantics.
 
 ## Security and operations direction
 
-Implemented in the v0.3 Compose line:
+Implemented in the current Compose line:
 
 - OpenBao-backed managed application secrets;
 - scoped runtime identity and mTLS broker isolation;

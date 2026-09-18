@@ -6,15 +6,15 @@ Eine Anwendung beschreibt, welche Backend-Faehigkeiten und Secret-Namen sie beno
 
 `app.name` ist die stabile logische Identitaet der Anwendung. `app.environment` beschreibt den Deployment-Kontext und ist **kein** Bestandteil der fachlichen Anwendungsidentitaet.
 
-Dieselbe Anwendung kann deshalb als `dev`, `test`, `staging`, `production` oder kundenspezifische Instanz betrieben werden, ohne als neue Anwendung definiert zu werden. In v0.3.0 nutzt der Compose-Provider den Environment-Wert fuer Isolation und Runtime-Namen. Spaetere Provider wie Kubernetes oder OpenShift duerfen dieselben logischen Anforderungen anders realisieren.
+Dieselbe Anwendung kann deshalb als `dev`, `test`, `staging`, `production` oder kundenspezifische Instanz betrieben werden, ohne als neue Anwendung definiert zu werden. In der aktuellen Compose-Implementierung wird der Environment-Wert fuer Isolation und Runtime-Namen verwendet. Spaetere Provider wie Kubernetes oder OpenShift duerfen dieselben logischen Anforderungen anders realisieren.
 
 Provider-spezifische Details wie Compose-Projektnamen, Netzwerke, Host-Ports, Volumes oder OpenBao-Pfade gehoeren nicht zum portablen Anwendungsvertrag.
 
 ## Portabler Contract und Deployment-State
 
-`baseharbor.yaml` ist der repository-eigene portable Desired-State-Vertrag. Compose-spezifische Operator-/Runtime-Inputs werden davon getrennt in geschuetztem BaseHarbor-State gehalten.
+`baseharbor.yaml` Manifest v1 ist der unterstuetzte repository-eigene Kompatibilitaetsvertrag. BaseHarbor uebersetzt daraus den portablen Anwendungs-Intent in den providerneutralen `PortableContract`; Compose-spezifische Kompatibilitaetsfelder gehoeren nicht in diesen portablen View.
 
-Dazu gehoeren in v0.3 beispielsweise:
+Dazu gehoeren in v0.4 beispielsweise:
 
 - Public FQDN des aktuellen Deployments;
 - Deployment-TLS-Modus;
@@ -22,7 +22,7 @@ Dazu gehoeren in v0.3 beispielsweise:
 - automatisch ausgewaehlte Host-Port-Fallbacks;
 - generierte Compose-Overrides und Runtime-Identity-Material.
 
-Diese Werte duerfen nicht nur deshalb in das portable Manifest wandern, weil Compose sie aktuell benoetigt.
+Diese Werte duerfen nicht nur deshalb in den portablen Anwendungs-Intent wandern, weil Compose sie aktuell benoetigt.
 
 ```yaml
 version: 1
@@ -67,7 +67,7 @@ Jede Instanz erhaelt eigene Zugangsdaten, persistenten Zustand und Bindings. Meh
 
 ## Workload-only Anwendungen
 
-Ein explizit deklarierter repository-eigener Compose-Workload kann in v0.3 auch ohne kuenstliche PostgreSQL- oder Valkey-Abhaengigkeit eine gueltige Anwendung sein. BaseHarbor erfindet fuer diesen Fall keine Backend-Services, Credentials oder Netzwerke.
+Ein explizit deklarierter repository-eigener Compose-Workload kann auch ohne kuenstliche PostgreSQL- oder Valkey-Abhaengigkeit eine gueltige Anwendung sein. BaseHarbor erfindet fuer diesen Fall keine Backend-Services, Credentials oder Netzwerke.
 
 Ein Manifest ohne verwaltete Capability und ohne expliziten Workload bleibt ungueltig. Managed-Secrets-only bleibt dort ungestuetzt, wo der aktuelle Runtime Broker ein materialisiertes Managed Backend benoetigt.
 
@@ -101,7 +101,7 @@ Redirects gelten als erreichbare Exposition, 5xx oder nicht erreichbare Endpunkt
 
 ## Deployment-TLS ist kein App-Produktvertrag
 
-v0.3 unterstuetzt den Existing/BYOC-Zertifikats-Lifecycle fuer das aktuelle Repository-Compose-Deployment. `baha app tls update --check` ist read-only. `baha app tls update` validiert Quelle, Key-Pair und FQDN, verhindert Downgrades, installiert owner-only Dateien, startet bei Bedarf den Workload neu und verifiziert Readiness.
+Die aktuelle Compose-Implementierung unterstuetzt den Existing/BYOC-Zertifikats-Lifecycle fuer das aktuelle Repository-Compose-Deployment. `baha app tls update --check` ist read-only. `baha app tls update` validiert Quelle, Key-Pair und FQDN, verhindert Downgrades, installiert owner-only Dateien, startet bei Bedarf den Workload neu und verifiziert Readiness.
 
 Das macht Zertifikatsverzeichnisse, Caddy-Details oder Compose-TLS-Dateien nicht zu portablen App-Anforderungen. BaseHarbor-gesteuertes ACME, OpenBao-PKI-Issuance, automatische Rotation und providerneutrale TLS-Capabilities bleiben Future Work.
 

@@ -1,114 +1,111 @@
-# v0.3.0 pre-release documentation audit
+# v0.4.0 pre-release documentation audit
 
-This document is the current documentation and release-scope gate for BaseHarbor `v0.3.0`. The historical v0.2.0 audit is preserved under `docs/release-audits/v0.2.0.md`.
+This document is the current documentation and release-scope gate for BaseHarbor `v0.4.0`. The historical v0.3.0 audit is preserved under `docs/release-audits/v0.3.0.md`.
 
 ## Evidence basis
 
-The v0.3.0 scope was reviewed against the actual repository history, not only the latest pull requests. `release/v0.3.0` is 159 commits ahead of `v0.2.0` at the start of this audit.
+The v0.4 scope was reviewed against the implementation, architecture decisions, public documentation, issue acceptance criteria and exact-head CI evidence.
 
-The implemented v0.3 Compose scope includes, at minimum:
+The release-preparation head `7cefb4b581ee250e62f90a03fc9393b3fa5e8d60` passed all 10 release-preparation workflows before merge, including:
 
-- trusted-local developer access (`psql`, Redis/Valkey clients, masked credentials, logs, shell and exec);
-- health-aware service-level repository workload truth shared by `show`, `status` and `doctor`;
-- active application-owned HTTP/HTTPS exposure readiness;
-- application overview plus protected backup/recovery metadata;
-- guided encrypted backup and restore with verified recovery and fail-closed READY semantics;
-- strict fast-forward Git-backed application update with explicit recovery policy for durable state;
-- guarded BaseHarbor self-update with release-artifact verification, atomic replacement and rollback;
-- explicit workload-only Compose applications without invented managed backend dependencies;
-- configurable workload host-port fallback, including IPv4 and IPv6 Docker bind-conflict forms;
-- protected repository deployment initialization for Public FQDN and TLS mode;
-- existing/BYOC certificate validation, update checking, downgrade protection, protected installation, reload and readiness verification;
-- Linux terminal directory completion for certificate source selection without a new readline dependency.
+- main CI;
+- release snapshot;
+- developer journey;
+- real MailFlow acceptance including backup -> destroy -> restore;
+- PostgreSQL backup acceptance;
+- OpenBao backup acceptance;
+- application backup/restore acceptance;
+- runtime broker acceptance;
+- runtime broker performance;
+- documentation/pages build.
 
-The detailed release summary is maintained in `CHANGELOG.md`.
+Release preparation was merged to `main` as `993c5c0102efd50935946f35c8b96aec816f763b`.
 
-## Architecture alignment
+A published `v0.4.0` release must still be created from that exact release-ready source or from a later documentation-only correction that itself passes the complete release gate. Until the immutable tag and release exist, `v0.3.0` remains the latest published stable release.
 
-`app.name` remains stable logical application identity. `app.environment` remains deployment context.
+## Implemented v0.4 scope
 
-`baseharbor.yaml` remains the portable, repository-owned application desired-state contract. Compose-specific realization remains provider/operator state and must not be promoted into the common manifest merely because the current provider needs it.
+v0.4 adds the architecture and DX seams needed to evolve beyond the current Compose runtime without changing the logical application contract:
 
-For v0.3, protected deployment/runtime state may contain:
+- provider-neutral `PortableContract` compatibility view for Manifest v1 application intent;
+- explicit separation between runtime-provider selection and capability-provider selection;
+- deployment-owned runtime provider and profile state;
+- runtime capability negotiation and fail-closed unsupported-provider behavior;
+- centralized guards preventing application runtime commands from falling through into Compose-specific code when an unsupported provider is selected;
+- reusable declarative input resolution for default, generated, external and conditional values;
+- resolver-driven repository deployment initialization shared by `baha app init` and repository-aware `baha up`;
+- explicit non-secret automation input through `--input NAME=VALUE`;
+- contract-evolution/versioning rules that preserve Manifest v1 compatibility while requiring new versions for incompatible required semantics.
 
-- Public FQDN;
-- deployment TLS mode;
-- normalized existing/BYOC certificate and key material;
-- automatically selected published-port fallbacks;
-- generated Compose overrides and runtime identity material.
-
-This is consistent with ADR 0005: application contracts describe capabilities/portable requirements, while concrete product/runtime realization belongs behind provider/environment boundaries.
-
-Compose is the complete v0.3 runtime provider and remains first-class. The following are explicitly **future work**, not v0.3 claims:
-
-- Kubernetes and OpenShift runtime providers;
-- HA/topology profiles;
-- generic runtime/capability provider schema in the application manifest;
-- provider-neutral `ingress.http` or `tls.certificate` capabilities;
-- BaseHarbor-managed ACME issuance/renewal;
-- OpenBao PKI issuance/rotation for application ingress certificates;
-- object-storage provider implementation;
-- managed-production OIDC/RBAC/JIT access policy.
-
-v0.3 does verify application-owned HTTP/TLS exposure and does manage existing/BYOC certificate state for the current Compose deployment. That must not be described as a BaseHarbor-managed ingress or generic certificate provider.
+Compose remains the only complete runtime implementation in v0.4. Kubernetes and OpenShift are future providers, not release claims.
 
 ## Development-guideline alignment
 
+### Scope and architecture
+
+- Changes were incremental rather than a runtime rewrite.
+- Application requirements, deployment state, runtime providers and capability providers remain separate responsibilities.
+- Manifest v1 remains a compatibility surface; provider-specific runtime objects are not added to the portable application contract.
+- No speculative Kubernetes/OpenShift implementation or generic plugin framework was introduced.
+- Stable concepts use typed domain models for provider kind, runtime profile, runtime capabilities and portable contract requirements.
+
 ### Product interface and lifecycle
 
-- `baha` remains the primary operator/developer product interface.
-- read-only checks are distinct from mutation (`app update --check`, `update --check`, `app tls update --check`).
-- mutating paths keep preflight/validation before mutation and capability/readiness verification afterward.
-- success is not inferred from a started container alone.
+- `baha` remains the stable product interface.
+- Existing v0.3 Compose workflows remain compatible.
+- Application runtime mutation paths continue to use preflight/verification semantics.
+- Provider selection is resolved before guarded runtime operations.
+- Unsupported providers or capabilities fail clearly before mutation instead of silently degrading to Compose.
 
-### Fail-closed behavior
+### Security and fail-closed behavior
 
-- missing/unusable required secrets block workload startup;
-- ambiguous repository/Compose selection does not become an implicit guess;
-- dirty, ahead or diverged Git application updates do not mutate source;
-- TLS mismatch/downgrade or failed recovery does not become a successful update;
-- malformed/wrong-identity/wrong-password recovery archives stop before destructive restore work where applicable;
-- restore still fails when the verified application boundary does not become READY inside the bounded readiness window.
+- Runtime provider/profile state is protected deployment state, not committed application configuration.
+- Unknown provider/profile values fail closed.
+- Secret input values are explicitly marked, render redacted and are excluded from generic persistable values.
+- `--input NAME=VALUE` is intentionally limited to declared non-secret deployment inputs.
+- Existing secret storage, runtime identity, backup/restore and TLS security boundaries remain separate from generic input resolution.
+- Backup remains supported only with exercised restore and post-restore verification.
 
-### Secrets and sensitive state
+### Documentation
 
-- application manifests store secret names, not values;
-- guided backup/restore does not accept passwords as normal argv values;
-- status/show/doctor and update metadata do not persist or print secret values or credential-bearing URLs;
-- generated runtime, certificate and credential material remains protected/owner-only.
+Canonical documentation must distinguish:
 
-### Backup and restore
+- Manifest v1 compatibility from the internal provider-neutral `PortableContract`;
+- current Compose implementation from future Kubernetes/OpenShift providers;
+- runtime-provider selection from SQL/cache/secrets capability-provider selection;
+- deployment/operator inputs from portable application requirements;
+- implemented existing/BYOC TLS lifecycle from future managed ACME/PKI/provider-neutral TLS capabilities;
+- release-ready source from an actually published stable GitHub release.
 
-Backup is paired with exercised restore. The real MailFlow recovery path has been used to drive release fixes, including IPv6 published-port conflict handling and the bounded post-restore readiness window. The final release still requires the repository's automated real-product backup/restore acceptance on the exact release-preparation head.
+Historical ADRs and release audits remain historical and are not rewritten to pretend they were authored for v0.4.
 
-### Scope and maintainability
+## Maintained documentation surface
 
-The v0.3 changes remain incremental around the existing Compose provider. Future provider-neutral abstractions, Kubernetes/OpenShift, HA and managed ingress/PKI are not pulled into this release merely to anticipate later roadmap phases.
+The release gate covers at minimum:
 
-## Documentation gate
-
-Before the release-preparation branch is considered ready:
-
-1. README and canonical English documentation must describe v0.3 current behavior consistently.
-2. Maintained German documentation must not contradict the canonical English contract.
-3. `CHANGELOG.md` must contain a dated `0.3.0` section covering the actual release scope.
-4. The CLI reference must include the v0.3 public command surface, including developer access, application update, BaseHarbor update and deployment TLS update.
-5. Architecture/application-contract docs must separate portable application requirements from Compose deployment/runtime state.
-6. Documentation must distinguish application-owned HTTP/TLS readiness and existing/BYOC lifecycle from future managed ingress/ACME/PKI capabilities.
-7. Historical ADR/release statements must remain historical rather than being rewritten as if they were authored for v0.3.
-8. The release-documentation change itself must contain no unrelated runtime or feature implementation.
+- `README.md`;
+- `CHANGELOG.md`;
+- `docs/cli.md`;
+- `docs/application-contract.md`;
+- `docs/architecture.md`;
+- `docs/capability-provider-model.md`;
+- `docs/input-resolution.md`;
+- `docs/roadmap.md`;
+- `docs/releases.md`;
+- maintained German documentation under `docs/de/`;
+- ADRs 0005 through 0008;
+- executable CLI help and acceptance workflows.
 
 ## Final release gate
 
-Documentation alignment does not by itself make the release green.
+Before publishing `v0.4.0`:
 
-Before tagging `v0.3.0`:
+1. documentation and code must agree on current behavior;
+2. all required workflows must succeed on the exact final release-preparation head;
+3. merge the release-preparation/fix PR only after that exact head is green;
+4. create immutable tag `v0.4.0` on that exact green main commit;
+5. let the release workflow validate tag/source/changelog consistency and publish artifacts;
+6. verify Linux amd64/arm64 archives, checksums, build provenance and matching runtime image;
+7. only then describe `v0.4.0` as the current published stable release.
 
-1. run all required CI and real-product acceptance gates on the exact final release-preparation head;
-2. inspect failures before rerunning and fix deterministic defects rather than retrying them blindly;
-3. merge the final release-preparation PR to `main` only after the required gates are green;
-4. tag `v0.3.0` on that exact green `main` commit;
-5. let the release workflow validate source/tag/changelog consistency and publish artifacts/provenance;
-6. verify released amd64/arm64 archives, checksums, build provenance and `ghcr.io/mcpdev80/baseharbor-runtime:0.3.0` version coupling before declaring the release usable.
-
-A tag must never be moved after publication. A bad published release is corrected with a new patch version.
+A published tag must never be moved. A bad release is corrected with a new patch version.
