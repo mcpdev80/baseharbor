@@ -18,7 +18,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 		return nil
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-	mtlsFiles, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files)
+	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
 	}
@@ -29,6 +29,14 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 	project := runtimebroker.ProjectName(m)
 	if err := compose.ConfigProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate runtime secret broker: %w", err)
+	}
+	if identityChanged {
+		// Runtime identity files are installed atomically. Existing containers can
+		// otherwise retain the old bind-mounted inode, so an actual rotation must
+		// recreate the broker before readiness is evaluated.
+		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+			return fmt.Errorf("restart runtime secret broker after mTLS rotation: %w", err)
+		}
 	}
 	if err := compose.UpProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("start runtime secret broker: %w", err)
