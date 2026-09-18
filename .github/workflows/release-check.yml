@@ -12,6 +12,7 @@ on:
       - 'CHANGELOG.md'
       - 'scripts/install.sh'
       - 'docs/releases.md'
+      - 'docs/releases/**'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +42,22 @@ jobs:
 
       - name: Validate GoReleaser configuration
         run: goreleaser check
+
+      - name: Validate curated release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+          test -n "$version"
+          notes="docs/releases/v${version}.md"
+          test -s "$notes"
+          grep -Fq '# BaseHarbor v' "$notes"
+          grep -Fq '## Added' "$notes"
+          grep -Fq '## Changed' "$notes"
+          grep -Fq '## Security' "$notes"
+          grep -Fq '## Deprecated' "$notes"
+          grep -Fq '## Removed' "$notes"
+          grep -Fq '## Compatibility & upgrade notes' "$notes"
 
       - name: Build release snapshot
         run: goreleaser release --snapshot --clean --skip=publish
