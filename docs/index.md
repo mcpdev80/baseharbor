@@ -23,6 +23,7 @@ The README is a product overview and quick entry point. Detailed behavior, opera
 - [ADR: portable contract/provider seam](decisions/0006-portable-contract-provider-seam.md)
 - [ADR: runtime provider selection](decisions/0007-runtime-provider-selection.md)
 - [ADR: application contract evolution](decisions/0008-application-contract-evolution.md)
+- [ADR: shared core with CLI, API/Web UI and Operator control surfaces](decisions/0009-shared-core-multiple-control-surfaces.md)
 - [Authentication](authentication.md)
 - [Authentication and API errors](authentication-and-api-errors.md)
 - [Application runtime identity](application-runtime-identity.md)
