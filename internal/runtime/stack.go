@@ -100,10 +100,17 @@ func StateDir(stateDir string) (string, error) {
 }
 
 // DataDir resolves the BaseHarbor data root that owns runtime-global metadata.
-// It deliberately derives from the already-selected runtime state directory so
-// creating sibling metadata cannot change legacy/global runtime selection.
+// Explicit state-directory overrides remain self-contained. Without an
+// override, metadata is stored beside runtime/ so creating it cannot change
+// legacy/global runtime selection.
 func DataDir(stateDir string) (string, error) {
-	runtimeDir, err := resolveStateDir(stateDir)
+	if stateDir != "" {
+		return filepath.Clean(stateDir), nil
+	}
+	if override := os.Getenv("BASEHARBOR_STATE_DIR"); override != "" {
+		return filepath.Clean(override), nil
+	}
+	runtimeDir, err := resolveStateDir("")
 	if err != nil {
 		return "", err
 	}
