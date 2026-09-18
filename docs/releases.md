@@ -81,6 +81,6 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 ## Consumer guidance
 
-A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.0` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
+A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.1` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
 
-Applications moving from `v0.3.x` to `v0.4.0` keep Manifest v1 and the existing Compose developer journey. The v0.4 changes primarily establish the portable contract, runtime-provider and declarative-input seams that future providers will consume.
+Applications moving through the v0.4 line keep Manifest v1 and the existing Compose developer journey. v0.4.1 adds the shared capability/provider/resource/binding domain and machine-readable lifecycle foundation behind that compatibility surface.

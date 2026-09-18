@@ -186,6 +186,8 @@ VALKEY_URL=redis://...
 
 A developer may point normal framework or IDE dotenv support at that file. The application itself only sees standard environment variables and native service protocols.
 
+In v0.4.1 the protected runtime metadata additionally records the resolved logical capability, provider and workload binding. This metadata is for BaseHarbor control surfaces; applications continue to consume the same standard environment variables and files.
+
 BaseHarbor also materializes file bindings:
 
 ```text

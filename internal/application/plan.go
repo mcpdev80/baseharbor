@@ -20,6 +20,10 @@ func BuildPlan(m Manifest) (Plan, error) {
 		return Plan{}, err
 	}
 
+	if _, err := ResolveCapabilityResources(contract); err != nil {
+		return Plan{}, err
+	}
+
 	p := Plan{Application: m.Name, Environment: m.Environment}
 	if HasManagedRuntimeServices(m) {
 		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})

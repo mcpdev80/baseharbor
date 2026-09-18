@@ -73,6 +73,8 @@ A future Kubernetes/OpenShift Operator reconciles BaseHarbor desired state throu
 
 Lifecycle results should be machine-readable before presentation. CLI output, API responses, Web UI views and Operator status/conditions are different renderings of the same underlying state and verification results.
 
+v0.4.1 introduces this foundation for application capabilities as typed capability/provider/resource/binding models plus structured lifecycle steps and diagnostics. The reusable capability lifecycle is non-interactive and fail-closed; prompting remains a control-surface concern.
+
 See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
 
 ## Control plane and application stacks

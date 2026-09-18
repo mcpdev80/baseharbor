@@ -1,22 +1,18 @@
 package application
 
-// CapabilityKind identifies a portable application requirement. Capability
-// kinds describe what an application needs, not which product or runtime
-// provider satisfies it.
-type CapabilityKind string
+import "github.com/mcpdev80/baseharbor/internal/capability"
+
+// CapabilityKind and CapabilityRequirement remain aliases in the application
+// package so existing v0.4 callers keep their source-compatible contract while
+// the reusable capability domain moves into the shared core.
+type CapabilityKind = capability.Kind
 
 const (
-	CapabilitySQL      CapabilityKind = "database.sql"
-	CapabilityKeyValue CapabilityKind = "cache.key-value"
+	CapabilitySQL      CapabilityKind = capability.SQL
+	CapabilityKeyValue CapabilityKind = capability.KeyValue
 )
 
-// CapabilityRequirement is one stable logical resource requested by an
-// application. Name is application-owned identity; provider-specific topology,
-// object names, ports and credentials are intentionally absent.
-type CapabilityRequirement struct {
-	Kind CapabilityKind
-	Name string
-}
+type CapabilityRequirement = capability.Requirement
 
 // SecretContract describes secret intent without selecting a concrete secret
 // backend or delivery mechanism. Required values remain names/generation intent

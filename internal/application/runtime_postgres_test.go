@@ -66,7 +66,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 
 func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
-	m := New("demo", "dev", true, true, false)
+	m := New("demo", "dev", true, true, true)
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 
 func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
-	m := New("demo", "dev", true, true, false)
+	m := New("demo", "dev", true, true, true)
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -170,6 +170,25 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 		}
 		if info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("binding %s is accessible by group or others: %o", path, info.Mode().Perm())
+		}
+	}
+
+	metadata, err := os.ReadFile(filepath.Join(files.Bindings, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataText := string(metadata)
+	for _, wanted := range []string{
+		"\"kind\": \"database.sql\"",
+		"\"provider\": \"postgresql\"",
+		"\"kind\": \"cache.key-value\"",
+		"\"provider\": \"valkey\"",
+		"\"kind\": \"secrets\"",
+		"\"provider\": \"openbao\"",
+		"\"workload\": \"application/demo\"",
+	} {
+		if !strings.Contains(metadataText, wanted) {
+			t.Fatalf("runtime metadata missing %q:\n%s", wanted, metadataText)
 		}
 	}
 }

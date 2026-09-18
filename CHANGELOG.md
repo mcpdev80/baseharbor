@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-18
+
+### Added
+
+- A reusable capability-provider domain core with typed capability requirements, provider descriptors, logical resources and workload bindings.
+- Machine-readable capability lifecycle results for `plan -> preflight -> apply -> bind -> verify`, including structured diagnostics suitable for CLI, future Web UI/API and future Operator consumers.
+- Reference capability descriptors for PostgreSQL (`database.sql`), Valkey (`cache.key-value`) and OpenBao (`secrets`).
+- Protected runtime binding metadata now records resolved logical capability/provider/workload bindings alongside the existing standard connection bindings.
+
+### Changed
+
+- Existing Manifest v1 capability types now reuse the shared capability domain while remaining source-compatible inside the application package.
+- Application planning resolves current PostgreSQL, Valkey and OpenBao requirements through fail-closed capability/provider negotiation before runtime mutation begins.
+- Capability preflight completes for all planned resources before the reusable lifecycle permits provisioning mutation.
+
+### Security
+
+- Unsupported capability/provider combinations fail before mutation.
+- Capability diagnostics and runtime metadata contain logical identities and provider names only; secret values and credential-bearing provider configuration remain outside the shared domain model.
+
+### Compatibility
+
+- Manifest v1, the current Compose developer workflow and existing v0.4 runtime behavior remain compatible.
+- Provider registry/ownership policy, additional capability providers and Kubernetes/OpenShift/cloud implementations remain intentionally deferred to later v0.4.x issues.
+
 ## [0.4.0] - 2026-09-18
 
 ### Added
@@ -132,7 +157,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0

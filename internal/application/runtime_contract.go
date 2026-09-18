@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 const loopbackHost = "127.0.0.1"
@@ -20,10 +22,11 @@ type RuntimeContract struct {
 }
 
 type runtimeMetadata struct {
-	Version     int                          `json:"version"`
-	Application string                       `json:"application"`
-	Environment string                       `json:"environment"`
-	Services    map[string]runtimeServiceRef `json:"services"`
+	Version      int                          `json:"version"`
+	Application  string                       `json:"application"`
+	Environment  string                       `json:"environment"`
+	Services     map[string]runtimeServiceRef `json:"services"`
+	Capabilities []capability.Binding         `json:"capabilities,omitempty"`
 }
 
 type runtimeServiceRef struct {
@@ -122,12 +125,18 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		return RuntimeContract{}, fmt.Errorf("write application environment contract: %w", err)
 	}
 
+	capabilityBindings, err := CapabilityBindings(m)
+	if err != nil {
+		return RuntimeContract{}, fmt.Errorf("resolve application capability bindings: %w", err)
+	}
+
 	metadataPath := filepath.Join(bindingsDir, "metadata.json")
 	metadata, err := json.MarshalIndent(runtimeMetadata{
-		Version:     1,
-		Application: m.Name,
-		Environment: m.Environment,
-		Services:    serviceRefs,
+		Version:      1,
+		Application:  m.Name,
+		Environment:  m.Environment,
+		Services:     serviceRefs,
+		Capabilities: capabilityBindings,
 	}, "", "  ")
 	if err != nil {
 		return RuntimeContract{}, fmt.Errorf("encode application binding metadata: %w", err)
