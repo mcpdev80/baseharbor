@@ -2,8 +2,8 @@ package capability
 
 // Reference providers describe the capability products already used by the
 // current Compose implementation. They are descriptors only: existing
-// provisioning remains authoritative until it is migrated behind the shared
-// lifecycle in later v0.4.1 commits.
+// provisioning remains authoritative while the shared capability and provider
+// registry layers describe portable intent, placement and ownership.
 var (
 	PostgreSQL = Provider{
 		Kind:         ProviderPostgreSQL,
