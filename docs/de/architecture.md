@@ -50,9 +50,9 @@ Die vollständige Matrix steht unter [Capability- und Provider-Modell](capabilit
 
 ## Portabler Vertrag und Deployment-State
 
-`baseharbor.yaml` ist der repository-eigene portable Desired-State-Vertrag. Compose-spezifische Deployment-Details bleiben davon getrennt und werden in geschütztem BaseHarbor-State gehalten.
+`baseharbor.yaml` Manifest v1 bleibt der repository-eigene Desired-State-Kompatibilitaetsvertrag. v0.4 uebersetzt daraus portablen Anwendungs-Intent in den providerneutralen `PortableContract`; Compose-spezifische Kompatibilitaets- und Deployment-Details bleiben ausserhalb dieses Views und werden in geschuetztem BaseHarbor-State gehalten.
 
-Zu diesem Deployment-State gehören in v0.3 unter anderem:
+Zu diesem Deployment-State gehoeren in v0.4 unter anderem:
 
 - Public FQDN für die aktuelle Compose-Realisierung;
 - TLS-Modus des Deployments;
@@ -70,9 +70,9 @@ Mehrere benannte PostgreSQL- oder Valkey-Instanzen sind mehrere unabhängige log
 
 Compose-Projektnamen, Netzwerke, Host-Ports, Volumes und generierte Overrides sind Implementierungsdetails des aktuellen Providers. Spätere Kubernetes-Ressourcennamen, Ingresses oder OpenShift-Routes wären ebenfalls Providerdetails und dürfen nicht zu fachlichen Abhängigkeiten der Anwendung werden.
 
-Das aktuelle Manifest v1 enthält noch produktorientierte Felder für PostgreSQL/Redis/Valkey. Das ist der bestehende pre-v1-Compose-Contract von v0.3.0 und keine Vorgabe dafür, dass zukünftige providerneutrale Contracts Produktnamen verwenden müssen.
+Manifest v1 enthaelt aus Kompatibilitaetsgruenden weiterhin produktorientierte PostgreSQL/Redis/Valkey-Felder. v0.4 normalisiert deren portablen Intent intern zu `database.sql` und `cache.key-value`; die Produktnamen sind keine Vorgabe fuer spaetere Contract-Versionen.
 
-## Runtime-Truth in v0.3
+## Runtime-Truth in v0.4
 
 BaseHarbor bewertet nicht nur Containerstatus:
 
@@ -93,12 +93,12 @@ Git-basierte Application Updates sind ausschließlich strict fast-forward. BaseH
 
 BaseHarbor-Self-Update prüft Release-Artefakte, ersetzt die CLI atomar und hält eine Recovery-Binary für Rollback bereit.
 
-## TLS-Grenze in v0.3
+## TLS-Grenze in v0.4
 
-v0.3 implementiert für Repository-Compose-Deployments den Existing/BYOC-Zertifikats-Lifecycle: Zertifikat/Key/FQDN-Prüfung, Downgrade-Schutz, geschützte Installation, Workload-Restart und Readiness-Verifikation.
+v0.4 behaelt fuer Repository-Compose-Deployments den Existing/BYOC-Zertifikats-Lifecycle: Zertifikat/Key/FQDN-Prüfung, Downgrade-Schutz, geschützte Installation, Workload-Restart und Readiness-Verifikation.
 
-Nicht Teil von v0.3 sind ein providerneutraler `tls.certificate`-Manifest-Contract, BaseHarbor-gesteuertes ACME, OpenBao-PKI-Issuance, automatische Rotation oder Kubernetes/OpenShift-TLS-Provider.
+Nicht Teil von v0.4 sind ein providerneutraler `tls.certificate`-Manifest-Contract, BaseHarbor-gesteuertes ACME, OpenBao-PKI-Issuance, automatische Rotation oder Kubernetes/OpenShift-TLS-Provider.
 
-## Bewusste Grenzen von v0.3.0
+## Bewusste Grenzen von v0.4.0
 
-Der aktuelle Standard bleibt Single-Node/Compose. HA, Kubernetes, OpenShift, providerneutrale Ingress-/TLS-Capabilities, Object Storage und Managed-Production-Identity/Policy werden separat entwickelt und versioniert. Diese zukünftigen Fähigkeiten sind Architekturziele, keine impliziten Versprechen für v0.3.0.
+Der aktuelle Standard bleibt Single-Node/Compose. HA, Kubernetes, OpenShift, providerneutrale Ingress-/TLS-Capabilities, Object Storage und Managed-Production-Identity/Policy werden separat entwickelt und versioniert. Diese zukuenftigen Faehigkeiten sind Architekturziele, keine impliziten Versprechen fuer v0.4.0.
