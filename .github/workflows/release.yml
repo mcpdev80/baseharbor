@@ -38,6 +38,11 @@ jobs:
             echo "CHANGELOG.md must contain a ## [$version] release section before tagging." >&2
             exit 1
           }
+          notes="docs/releases/${tag}.md"
+          test -s "$notes" || {
+            echo "Human-readable release notes are required at $notes." >&2
+            exit 1
+          }
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -53,7 +58,7 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --clean --release-notes docs/releases/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
