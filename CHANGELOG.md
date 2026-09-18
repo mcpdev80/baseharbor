@@ -15,7 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Architecture
 
+- Provider protocol hardening now defines asynchronous operations, explicit unbind, idempotent mutations, deadline/cancellation rules, gRPC health/security expectations and safe protobuf evolution.
+- Provider configuration uses JSON Schema 2020-12; GraphQL is explicitly reserved for possible future control-plane/query use rather than provider lifecycle.
 - Future external provider transport is based on gRPC/Protocol Buffers and future package distribution on OCI standards, without introducing a dynamic plugin loader yet.
+- Future provider distribution is digest-first, multi-platform through OCI Image Index, and uses OCI subject/referrers plus standard signature/SBOM/provenance mechanisms instead of proprietary BaseHarbor formats.
 - All subsequent capability/provider integrations must use the shared lifecycle/registry contract and add capability-specific conformance rather than product-specific lifecycle paths.
 
 ## [0.4.2] - 2026-09-18
