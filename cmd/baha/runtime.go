@@ -8,10 +8,12 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -274,6 +276,64 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime stopped")
+	return nil
+}
+
+func runtimeDestroy(parent context.Context, args []string, out io.Writer) error {
+	confirmed := false
+	for _, arg := range args {
+		switch arg {
+		case "--yes":
+			confirmed = true
+		default:
+			return usageError("unknown argument "+arg, "Usage: baha destroy [--yes]")
+		}
+	}
+
+	files, err := bhruntime.ExistingFiles("")
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
+	if err := application.CheckControlPlaneDestroySafe(); err != nil {
+		return fmt.Errorf("global destroy preflight: %w", err)
+	}
+	runtimeDir, err := bhruntime.StateDir("")
+	if err != nil {
+		return err
+	}
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Global BaseHarbor destroy plan")
+	fmt.Fprintln(out, "  control plane: Compose project baseharbor (containers, network and BaseHarbor-owned volumes)")
+	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
+	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
+	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
+	if !confirmed {
+		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the global BaseHarbor control plane.")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(parent, time.Minute)
+	defer cancel()
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return err
+	}
+	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
+		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
+	}
+	if err := os.RemoveAll(runtimeDir); err != nil {
+		return fmt.Errorf("remove BaseHarbor runtime state: %w", err)
+	}
+	for _, name := range []string{"provider-registry.json", "provider-registry.json.lock"} {
+		path := filepath.Join(dataDir, name)
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove BaseHarbor provider registry state: %w", err)
+		}
+	}
+	fmt.Fprintln(out, "BaseHarbor global control plane was permanently destroyed.")
 	return nil
 }
 
