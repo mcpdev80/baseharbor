@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-18
+
 ### Added
 
 - Read-only repository inspection core with extensible detectors and structured Detected/Suggested/Possible evidence.
@@ -25,7 +27,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
 
 ### Architecture
-
 
 - Provider protocol hardening now defines asynchronous operations, explicit unbind, idempotent mutations, deadline/cancellation rules, gRPC health/security expectations and safe protobuf evolution.
 - Provider configuration uses JSON Schema 2020-12; GraphQL is explicitly reserved for possible future control-plane/query use rather than provider lifecycle.
@@ -211,7 +212,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
