@@ -14,7 +14,7 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.1 line keeps Compose as the complete runtime implementation while adding the reusable capability/provider/resource/binding core needed for later provider work. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.2 line keeps Compose as the complete runtime implementation while adding provider registry, placement and ownership semantics behind the unchanged Manifest v1 workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
 The v0.4.1 line includes:
 
@@ -24,6 +24,7 @@ The v0.4.1 line includes:
 - repository-owned Manifest v1 `baseharbor.yaml` application contracts;
 - a provider-neutral `PortableContract` compatibility adapter for logical application intent;
 - a reusable capability/provider/resource/binding core with fail-closed negotiation and machine-readable lifecycle results;
+- a protected provider registry supporting shared, application-scoped and external/BYO provider instances without moving provider placement into application intent;
 - explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
 - Compose as the current runtime provider behind an explicit provider/capability seam;
 - protected deployment-owned runtime-provider state and fail-closed unsupported-provider behavior;
