@@ -13,19 +13,19 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 3. Ein mitgelieferter oder bevorzugter Provider ist eine Implementierungsentscheidung, keine Eigenschaft der Anwendung.
 4. Fuer jeden Default-Provider muss mindestens ein dokumentierter Austauschpfad existieren.
 5. Ein Provider-Wechsel muss den angeforderten Contract erfuellen oder klar fehlschlagen; Security, Haltbarkeit oder Verfuegbarkeit duerfen nie still reduziert werden.
-6. Compose ist in v0.3 der vollstaendige Implementierungsfokus. Kubernetes/OpenShift werden spaeter als Provider ergaenzt, ohne die logische Capability der Anwendung neu zu definieren.
-7. Deployment-spezifische Umsetzung in v0.3 erzeugt nicht automatisch eine neue portable Application Capability.
+6. Compose bleibt in v0.4 die vollstaendige Runtime-Implementierung, jetzt hinter einer expliziten Runtime-Provider-/Capability-Negotiation-Grenze. Kubernetes/OpenShift folgen spaeter und muessen denselben logischen Intent erhalten.
+7. Deployment-spezifische Umsetzung erzeugt nicht automatisch eine neue portable Application Capability; `PortableContract` wird nur bewusst und versioniert erweitert.
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.3.0 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.0 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
-| Relationale SQL-Datenbank | aktueller Manifest-v1-PostgreSQL-Contract; spaeter `database.sql` | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
-| Cache / Key-Value | aktueller Manifest-v1-Redis/Valkey-Contract; spaeter `cache.key-value` | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
+| Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
+| Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
 | Secrets | `secrets` / benoetigte Secret-Namen + policy-gesteuerte Auslieferung | OpenBao | implementiert | Vault, Cloud Secret Stores, externe Provider-Adapter | Der App-Contract kennt Secret-Anforderungen, aber keine OpenBao-Pfade oder AppRoles |
-| HTTP-Ingress / Reverse Proxy | spaeter `ingress.http` | kein BaseHarbor-managed Provider in v0.3; app-eigene Compose-Exposition wird beobachtet | portable Capability geplant; app-eigene HTTP/HTTPS-Readiness implementiert | Caddy, Traefik, nginx, HAProxy, Kubernetes Gateway/Ingress, OpenShift Route | v0.3 prueft konventionelle app-eigene Publisher, provisioniert aber keinen BaseHarbor-Ingress |
+| HTTP-Ingress / Reverse Proxy | spaeter `ingress.http` | kein BaseHarbor-managed Ingress-Provider in v0.4; app-eigene Compose-Exposition wird beobachtet | portable Capability geplant; app-eigene HTTP/HTTPS-Readiness implementiert | Caddy, Traefik, nginx, HAProxy, Kubernetes Gateway/Ingress, OpenShift Route | v0.4 prueft konventionelle app-eigene Publisher, provisioniert aber keinen BaseHarbor-Ingress |
 | Object Storage | spaeter `object-storage.s3` / S3 API | SeaweedFS als geplanter Referenz-/Default-Provider | geplant | Garage, Ceph RGW, AWS S3 und kompatible Managed Services | S3 ist die Anwendungsgrenze; Topologie und Implementierung bleiben Provider-Sache |
-| TLS-Zertifikats-Lifecycle | spaeter `tls.certificate` / X.509-Identitaet | providerabhaengig | Existing/BYOC fuer Repository-Compose-Deployment implementiert; portable Capability geplant | vorhandene/BYOC-Zertifikate, OpenBao PKI, ACME-Provider, cert-manager, OpenShift Service CA, Cloud-Zertifikatsdienste | v0.3 validiert/importiert/aktualisiert Existing-Zertifikate als Deployment-State; ACME/PKI/providerneutraler Intent bleiben Future Work |
+| TLS-Zertifikats-Lifecycle | spaeter `tls.certificate` / X.509-Identitaet | providerabhaengig | Existing/BYOC fuer Repository-Compose-Deployment implementiert; portable Capability geplant | vorhandene/BYOC-Zertifikate, OpenBao PKI, ACME-Provider, cert-manager, OpenShift Service CA, Cloud-Zertifikatsdienste | v0.4 validiert/importiert/aktualisiert Existing-Zertifikate als Deployment-State; ACME/PKI/providerneutraler Intent bleiben Future Work |
 | Externe Secret-Projektion | Provider-Integration, kein portabler App-Produktname | kein globaler Pflichtprovider | geplant/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao Workload Identity, plattformnative Secret-Projektion | ESO darf niemals Teil des Application Contracts werden |
 | Identity / SSO | spaeter `identity.oidc` / OIDC/OAuth2 | kein fest verdrahtetes Produkt | geplant | Authentik, Zitadel, Entra ID, Google Workspace, GitHub oder andere OIDC-Provider | BaseHarbor wertet Identity Claims aus; Apps duerfen nicht von einem konkreten IdP-Produkt abhaengen |
 | Metrics | spaeter `metrics.openmetrics` | Prometheus als Referenz-/Default-Kandidat | geplant | VictoriaMetrics, Mimir und kompatible Backends | Collection, Query und Storage muessen austauschbar bleiben |
@@ -103,7 +103,7 @@ providers:
   ingress: openshift-route
 ```
 
-Der genaue Dateiname bzw. das Schema der Environment-Konfiguration wird von v0.3.0 bewusst noch nicht festgeschrieben. Die Architekturtrennung ist dagegen verbindlich.
+Das spaetere Environment-/Provider-Policy-Schema wird in v0.4.0 bewusst noch nicht festgeschrieben. Deployment-eigener Runtime-Provider/Profile-State existiert bereits; breitere Environment-Policy bleibt Future Work.
 
 ## Provider-Conformance
 
@@ -122,10 +122,10 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.3.0-Grenze
+## v0.4.0-Grenze
 
-v0.3.0 bleibt Compose-only und fuehrt **nicht** das zukuenftige generische Capability-/Provider-Manifest ein.
+v0.4.0 bleibt zur Laufzeit Compose-only. Es fuehrt den providerneutralen `PortableContract`, typisierte Runtime-Provider-Auswahl/Capability-Negotiation und deklarative Input-Aufloesung ein, aber noch kein neues generisches oeffentliches Capability-/Provider-Manifest.
 
-Neu ist die operative Vollstaendigkeit des aktuellen Providers: Trusted-local Developer Access, Health-/Exposure-Truth, verifiziertes Backup/Restore, abgesicherte Updates, Workload-only Apps, Deployment-FQDN/TLS-State, Existing/BYOC-TLS-Lifecycle und sicherer Port-Fallback.
+Die operative Vollstaendigkeit des Compose-Providers bleibt erhalten; neu sind die Architekturgrenzen fuer spaetere Provider ohne Bruch der Manifest-v1-Kompatibilitaet.
 
-Diese Features duerfen nicht als Erlaubnis verstanden werden, Compose-Produkt-/Runtime-Details in einen zukuenftigen portablen App-Contract zu schreiben. Provider-Seam, generisches Capability-Schema, Kubernetes/OpenShift, HA, Managed Ingress, ACME/PKI-Automation und Object-Storage-Provider bleiben Future Work.
+Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Neues oeffentliches Capability-Schema, weitere Capability-Provider, HA, Managed Ingress, ACME/PKI-Automation und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
