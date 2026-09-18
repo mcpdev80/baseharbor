@@ -26,25 +26,13 @@ var (
 		Protocol:     ProviderProtocolV1,
 		Provider:     PostgreSQL,
 		Capabilities: []SpecificationID{SQLV1.ID},
-		Optional: OptionalLifecycleSupport{
-			Status:  true,
-			Update:  true,
-			Backup:  true,
-			Restore: true,
-			Destroy: true,
-		},
+		Optional:     OptionalLifecycleSupport{},
 	}
 	ValkeyIntegration = IntegrationDescriptor{
 		Protocol:     ProviderProtocolV1,
 		Provider:     Valkey,
 		Capabilities: []SpecificationID{KeyValueV1.ID},
-		Optional: OptionalLifecycleSupport{
-			Status:  true,
-			Update:  true,
-			Backup:  false,
-			Restore: false,
-			Destroy: true,
-		},
+		Optional:     OptionalLifecycleSupport{},
 	}
 	OpenBaoIntegration = IntegrationDescriptor{
 		Protocol:     ProviderProtocolV1,
