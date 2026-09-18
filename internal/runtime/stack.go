@@ -94,6 +94,11 @@ func ExistingFiles(stateDir string) (Files, error) {
 	return files, nil
 }
 
+// StateDir resolves the authoritative BaseHarbor runtime state directory without mutating it.
+func StateDir(stateDir string) (string, error) {
+	return resolveStateDir(stateDir)
+}
+
 func resolveStateDir(stateDir string) (string, error) {
 	if stateDir != "" {
 		return filepath.Clean(stateDir), nil
