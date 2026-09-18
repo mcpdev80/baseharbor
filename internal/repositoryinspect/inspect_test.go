@@ -156,7 +156,7 @@ func (staticDetector) Detect(context.Context, Snapshot) ([]Finding, error) {
 	return []Finding{{
 		Capability: "example.custom",
 		Confidence: ConfidenceDetected,
-		Evidence: []Evidence{{Kind: EvidenceConfig, Path: "marker.conf", Detail: "test marker"}},
+		Evidence:   []Evidence{{Kind: EvidenceConfig, Path: "marker.conf", Detail: "test marker"}},
 	}}, nil
 }
 
@@ -186,7 +186,6 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 		t.Fatal(err)
 	}
 }
-
 
 func TestInspectDoesNotExposeEnvValues(t *testing.T) {
 	root := t.TempDir()
