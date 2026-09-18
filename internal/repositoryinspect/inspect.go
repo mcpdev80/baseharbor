@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 const maxInspectionFileSize = 2 << 20
@@ -62,18 +64,43 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		result.Application = "app"
 	}
 
+	var manifest *application.Manifest
 	if _, ok := snapshot.Files["baseharbor.yaml"]; ok {
 		result.ExistingManifest = "baseharbor.yaml"
+		loaded, err := application.LoadManifestFile(filepath.Join(absRoot, application.RepositoryManifestName))
+		if err != nil {
+			return Result{}, fmt.Errorf("load existing BaseHarbor manifest: %w", err)
+		}
+		manifest = &loaded
+		result.Application = loaded.Name
+		result.RequiredSecrets = append([]string(nil), application.RequiredSecretNames(loaded)...)
+		manifestEvidence := []Evidence{{Kind: EvidenceManifest, Path: application.RepositoryManifestName, Detail: "declared by BaseHarbor application contract"}}
+		if loaded.Services.Postgres {
+			for _, name := range application.PostgresInstanceNames(loaded) {
+				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.sql", Name: name, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+			}
+		}
+		if loaded.Services.Redis {
+			for _, name := range application.RedisInstanceNames(loaded) {
+				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+			}
+		}
+		if loaded.Services.Secrets {
+			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "secrets", Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+		}
 	}
 
 	result.ComposeCandidates = artifactPaths(artifacts, "compose")
-	if len(result.ComposeCandidates) == 1 {
+	if manifest != nil && strings.TrimSpace(manifest.Workload.Compose) != "" {
+		result.SelectedCompose = filepath.ToSlash(manifest.Workload.Compose)
+		result.WorkloadServices = append([]string(nil), manifest.Workload.Services...)
+	} else if len(result.ComposeCandidates) == 1 {
 		result.SelectedCompose = result.ComposeCandidates[0]
 	}
 	for _, rel := range result.ComposeCandidates {
 		services := detectComposeServices(snapshot.Files[rel])
 		for _, service := range services {
-			if rel == result.SelectedCompose && !service.Postgres && !service.Redis &&
+			if manifest == nil && rel == result.SelectedCompose && !service.Postgres && !service.Redis &&
 				(service.HasBuild || service.HasImage || service.HasPorts) {
 				result.WorkloadServices = append(result.WorkloadServices, service.Name)
 			}
