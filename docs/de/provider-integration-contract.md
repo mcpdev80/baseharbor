@@ -36,13 +36,22 @@ BaseHarbor definiert die verbindliche Semantik. Ein Provider darf erklaeren, das
 BaseHarbor verwendet offene Standards dort, wo sie Infrastruktur-Plumbing bereits sinnvoll loesen:
 
 - **gRPC + Protocol Buffers** fuer die sprachneutrale externe Provider-API.
-- **OCI Artifacts und OCI Distribution** fuer registry-neutrales Packaging und Distribution.
+- **OCI Image/Distribution Specifications** fuer registry-neutrales Provider-Packaging und Distribution.
+- **JSON Schema 2020-12** fuer Provider-Konfiguration und Validierung.
 - **Open Service Broker API Konzepte** als Input fuer Provision/Update/Bind/Deprovision-Semantik.
 - **Service Binding Konzepte** als Input fuer Workload Bindings.
 
 Diese Bausteine ersetzen nicht die BaseHarbor-Regeln fuer Capabilities, Lifecycle, Ownership, Security und Verification.
 
 Der oeffentliche Compatibility Contract darf nicht von HashiCorp go-plugin, Kubernetes, Docker, GitHub, einem Cloud-Anbieter oder einer proprietaeren BaseHarbor Registry abhaengen.
+
+## GraphQL-Grenze
+
+GraphQL ist **nicht** das Provider-Lifecycle-Protokoll von BaseHarbor.
+
+Provider-Lifecycle benoetigt klar definierte Commands, Deadlines, Cancellation, Transport-Status, Idempotenz und Long-Running-Operations. Dafuer bleibt gRPC/Protocol Buffers die externe Provider-Grenze.
+
+GraphQL kann spaeter fuer eine benutzerorientierte Control-Plane-/Web-UI-Query-API evaluiert werden, bleibt dann aber nur Adapter ueber dem gemeinsamen BaseHarbor Core.
 
 ## Versionierung
 
@@ -108,17 +117,45 @@ Sie beschreibt die kuenftige sprachneutrale gRPC-Grenze.
 
 Diese Architektur-Voraussetzung implementiert bewusst noch keinen externen Loader, OCI-Download oder gRPC-Runtime-Client. Eigene Provider bleiben zunaechst eingebaut und dienen als Reference Implementations.
 
+## RPC-Zuverlaessigkeit und Long-Running Operations
+
+- Jeder RPC bekommt eine explizite Deadline.
+- Cancellation wird propagiert.
+- Read-only Calls duerfen kontrolliert retryt werden.
+- Mutierende Calls werden nicht blind retryt und benoetigen einen Idempotency Key.
+- Gleicher Input + gleicher Idempotency Key darf keine doppelten Ressourcen erzeugen.
+- Transport-/Protocol-Fehler verwenden gRPC Status Codes; BaseHarbor-Diagnostics bleiben strukturierte Domain-Daten.
+- Externe Provider stellen den standardisierten gRPC Health Service bereit.
+- Lokale Provider bevorzugen Unix Domain Sockets.
+- Remote Provider verwenden TLS und nach Moeglichkeit mTLS bzw. gleichwertige Workload Identity.
+
+Provision, Bind, Unbind, Update, Backup, Restore und Destroy duerfen asynchron laufen und liefern eine stabile Operation-ID fuer `GetOperation`; `CancelOperation` ist best-effort.
+
+## Protocol-Buffer-Evolution
+
+Innerhalb `baseharbor.provider.v1` werden Field Numbers niemals geaendert oder wiederverwendet. Entfernte Felder/Enum-Werte werden reserviert. Neue v1-Felder sind additiv. Breaking Wire- oder Semantik-Aenderungen benoetigen eine neue Protocol-Major-Version.
+
 ## OCI Distribution
 
-Kuenftige externe Provider sollen ueber normale OCI Registries verteilt werden koennen, z. B. GHCR, Quay, Harbor, Artifactory oder private OCI-kompatible Registries.
+Kuenftige externe Provider werden ueber normale OCI Registries verteilt, z. B. GHCR, Quay, Harbor, Artifactory oder private OCI-kompatible Registries. Ein BaseHarbor-Login oder eine zentrale proprietaere Registry ist nicht erforderlich.
 
-Ein BaseHarbor-Login oder eine zentrale proprietaere Registry darf nicht erforderlich sein.
+OCI wird **digest-first** behandelt: Tags dienen nur als veraenderliche Discovery-Aliase; installierter/gelockter State speichert und prueft den aufgeloesten Manifest-Digest.
+
+Lauffaehige Container-Provider verwenden bevorzugt normale OCI Images. Multi-Platform Provider verwenden einen OCI Image Index.
+
+Generische Nicht-Container-Pakete koennen OCI Artifact Guidance mit eigenem RFC-6838-Media-Type/`artifactType` nutzen.
+
+Signaturen, SBOMs und Provenance werden ueber OCI `subject`/Referrers assoziiert; Clients beachten den OCI-Fallback, falls die Referrers API nicht verfuegbar ist. Fuer Supply-Chain-Verifikation werden offene Mechanismen wie Sigstore/cosign bzw. Notation und in-toto/SLSA bevorzugt, keine proprietaere BaseHarbor-Signatur.
+
+## Provider-Konfigurationsschema
+
+Provider-spezifische Operator-Konfiguration verwendet **JSON Schema 2020-12** und wird ueber `Describe` bekanntgegeben. Sie bleibt Deployment-/Operator-State und wird nicht Teil des portablen Application Intent. Secret-Werte gehoeren nicht in das Schema oder normale Config-Payloads.
 
 ## Secrets
 
 Plaintext-Secrets gehoeren weder in Provider-Metadaten, Diagnostics, Registry-State noch in den portablen Application Contract.
 
-Bindings mit Secret-Bedarf verwenden stabile Credential-/Secret-Referenzen, die BaseHarbor an einer vertrauenswuerdigen Grenze aufloest.
+Bindings mit Secret-Bedarf verwenden stabile Credential-/Secret-Referenzen, die BaseHarbor an einer vertrauenswuerdigen Grenze aufloest. Das Proto-`oneof` erzwingt die Trennung zwischen oeffentlichem Wert und Credential-Referenz.
 
 ## Ownership
 
