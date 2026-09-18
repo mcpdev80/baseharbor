@@ -338,6 +338,7 @@ func keyValueSignals() signalSet {
 
 func detectCapability(ctx context.Context, snapshot Snapshot, capability string, signals signalSet) []Finding {
 	var detected, suggested, possible []Evidence
+	namedDetected := map[string][]Evidence{}
 	for path, data := range snapshot.Files {
 		if ctx.Err() != nil {
 			break
@@ -347,19 +348,28 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		if isComposeFile(base) {
 			for _, service := range detectComposeServices(data) {
 				matches := false
+				instanceKind := ""
 				switch capability {
 				case "database.sql":
 					matches = service.Postgres
+					instanceKind = "postgres"
 				case "cache.key-value":
 					matches = service.Redis
+					instanceKind = "redis"
 				default:
 					matches = containsAny(strings.ToLower(service.Name), signals.compose)
 				}
 				if matches {
-					detected = append(detected, Evidence{
+					evidence := Evidence{
 						Kind: EvidenceCompose, Path: path,
 						Detail: "compose service " + service.Name + " matches " + capability,
-					})
+					}
+					if instanceKind != "" {
+						name := detectedLogicalInstanceName(service.Name, instanceKind)
+						namedDetected[name] = append(namedDetected[name], evidence)
+					} else {
+						detected = append(detected, evidence)
+					}
 				}
 			}
 		}
@@ -391,16 +401,33 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 			})
 		}
 	}
-	switch {
-	case len(detected) > 0:
-		return []Finding{{Capability: capability, Confidence: ConfidenceDetected, Evidence: uniqueEvidence(detected)}}
-	case len(suggested) > 0:
-		return []Finding{{Capability: capability, Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested)}}
-	case len(possible) > 0:
-		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
-	default:
-		return nil
+
+	var findings []Finding
+	for name, evidence := range namedDetected {
+		findings = append(findings, Finding{
+			Capability: capability,
+			Name:       name,
+			Confidence: ConfidenceDetected,
+			Evidence:   uniqueEvidence(evidence),
+		})
 	}
+	if len(detected) > 0 {
+		findings = append(findings, Finding{
+			Capability: capability,
+			Confidence: ConfidenceDetected,
+			Evidence:   uniqueEvidence(detected),
+		})
+	}
+	if len(findings) > 0 {
+		return findings
+	}
+	if len(suggested) > 0 {
+		return []Finding{{Capability: capability, Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested)}}
+	}
+	if len(possible) > 0 {
+		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
+	}
+	return nil
 }
 
 func readEnvNames(data []byte) []string {
@@ -668,4 +695,28 @@ func ParsePublishedPort(value string) (int, bool) {
 		return 0, false
 	}
 	return port, true
+}
+
+
+func detectedLogicalInstanceName(serviceName, kind string) string {
+	name := slugify(serviceName)
+	prefixes := []string{kind + "-"}
+	suffixes := []string{"-" + kind}
+	if kind == "postgres" {
+		prefixes = append(prefixes, "postgresql-", "pg-")
+		suffixes = append(suffixes, "-postgresql", "-pg")
+	} else {
+		prefixes = append(prefixes, "valkey-", "redis-")
+		suffixes = append(suffixes, "-valkey", "-redis")
+	}
+	for _, prefix := range prefixes {
+		name = strings.TrimPrefix(name, prefix)
+	}
+	for _, suffix := range suffixes {
+		name = strings.TrimSuffix(name, suffix)
+	}
+	if name == "" {
+		return slugify(serviceName)
+	}
+	return name
 }
