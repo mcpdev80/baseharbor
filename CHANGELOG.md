@@ -8,12 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Read-only repository inspection core with extensible detectors and structured Detected/Suggested/Possible evidence.
+- `baha app inspect [PATH]` with human-readable and `--json` machine-readable output.
+- Detection evidence for Compose/Dockerfile, dependency manifests, env variable names, source imports, configuration endpoint patterns, ports and health checks.
+- Secret-safe repository snapshots that discard env values and skip symlinked/generated/vendor trees.
+
 - Provider Integration Contract v1 with versioned capability specifications and a shared semantic boundary for built-in and future external providers.
 - Initial capability specifications for `database.sql/v1`, `cache.key-value/v1` and `secrets/v1`.
 - Versioned Protocol Buffers schema for the future language-neutral external provider API.
 - Static provider contract conformance foundation and reference integration descriptors for PostgreSQL, Valkey and OpenBao.
 
+### Changed
+
+- Guided `app init` now consumes the shared repository inspection engine instead of owning a separate CLI-only detector.
+- Workload-only repositories no longer receive an invented PostgreSQL default when the workload itself is sufficient application intent.
+- Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
+
 ### Architecture
+
 
 - Provider protocol hardening now defines asynchronous operations, explicit unbind, idempotent mutations, deadline/cancellation rules, gRPC health/security expectations and safe protobuf evolution.
 - Provider configuration uses JSON Schema 2020-12; GraphQL is explicitly reserved for possible future control-plane/query use rather than provider lifecycle.
