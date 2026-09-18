@@ -17,7 +17,7 @@ BaseHarbor ist eine sichere, modulare und selbst gehostete Backend-Infrastruktur
 - [Architektur](architecture.md)
 - [Capability- und Provider-Modell](capability-provider-model.md)
 - [ADR: Application Contracts beschreiben Capabilities statt Produkte](decisions/0005-capabilities-not-products.md)
-- [ADR: gemeinsamer Core fuer CLI, API/WebGUI und Operator](../decisions/0009-shared-core-multiple-control-surfaces.md)
+- [ADR: gemeinsamer Core fuer CLI, API/WebGUI und Operator](https://github.com/mcpdev80/baseharbor/blob/main/docs/decisions/0009-shared-core-multiple-control-surfaces.md)
 - [Roadmap](roadmap.md)
 
 Die englische Dokumentation ist die kanonische Quelle für den öffentlichen Vertrag. Diese deutsche Fassung wird zusammen mit ihr gepflegt. Bei Abweichungen gelten Code, Acceptance-Tests und die englische Release-Dokumentation als unmittelbare Referenz.
