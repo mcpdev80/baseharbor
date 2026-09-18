@@ -346,10 +346,8 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	}
 
 	defaults := []bool{d.Postgres, d.Redis, len(d.SecretCandidates) > 0}
-	if !defaults[0] && !defaults[1] && !defaults[2] {
-		defaults[0] = true
-	}
-	selected, err := promptCapabilityList(reader, out, defaults)
+	allowNone := len(workloadServices) > 0
+	selected, err := promptCapabilityList(reader, out, defaults, allowNone)
 	if err != nil {
 		return err
 	}
@@ -422,7 +420,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
 	postgres, redis, secrets := d.Postgres, d.Redis, len(d.SecretCandidates) > 0
-	if !postgres && !redis && !secrets {
+	if !postgres && !redis && !secrets && len(d.WorkloadServices) == 0 {
 		postgres = true
 	}
 	m := application.New(d.Name, "dev", postgres, redis, secrets)
@@ -480,7 +478,7 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	}
 }
 
-func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) ([]bool, error) {
+func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
 	labels := []string{"PostgreSQL", "Valkey / Redis", "Managed Secrets"}
 	fmt.Fprintln(out, "\nSelect required services (Enter keeps detected/default selection; otherwise enter numbers such as 1,3):")
 	for i, label := range labels {
@@ -505,8 +503,8 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool) 
 		}
 		selected[n-1] = true
 	}
-	if !selected[0] && !selected[1] && !selected[2] {
-		return nil, errors.New("select at least one backend capability")
+	if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
 }
