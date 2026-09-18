@@ -10,12 +10,39 @@ import (
 
 const providerRegistryFile = "provider-registry.json"
 
-func ReconcileReferenceProviderRegistry(m Manifest) error {
+func referenceProviderRegistryStore() (capability.RegistryStore, error) {
 	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return capability.RegistryStore{}, err
+	}
+	return capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}, nil
+}
+
+// CheckReferenceProviderRegistry validates the protected provider registry and
+// simulates the desired application reconciliation without writing it. Lifecycle
+// callers use this during preflight so invalid provider metadata fails before
+// any runtime or workload mutation.
+func CheckReferenceProviderRegistry(m Manifest) error {
+	store, err := referenceProviderRegistryStore()
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	registry.ReleaseManagedApplication(m.Name)
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		return err
+	}
+	return registry.Validate()
+}
+
+func ReconcileReferenceProviderRegistry(m Manifest) error {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return err
+	}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseManagedApplication(m.Name)
 		return registerReferenceProviders(registry, m)
@@ -23,11 +50,10 @@ func ReconcileReferenceProviderRegistry(m Manifest) error {
 }
 
 func ReleaseApplicationProviderRegistry(m Manifest) error {
-	dataDir, err := bhruntime.DataDir("")
+	store, err := referenceProviderRegistryStore()
 	if err != nil {
 		return err
 	}
-	store := capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseApplication(m.Name)
 		return nil
