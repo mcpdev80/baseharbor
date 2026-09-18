@@ -41,6 +41,40 @@ For example, an application may require a SQL database, S3-compatible object sto
 
 This is a hard architecture rule. Every bundled/default component must have a provider boundary and a documented replacement path. See [Capability and provider model](capability-provider-model.md) and ADR [0005](decisions/0005-capabilities-not-products.md).
 
+## Shared core and control surfaces
+
+BaseHarbor is designed as **one shared application/lifecycle core with multiple control surfaces**.
+
+```text
+                         BaseHarbor Core
+              +--------------------------------+
+              | PortableContract                |
+              | input resolution                |
+              | plan / preflight / apply        |
+              | verify / status / diagnostics   |
+              | recovery / update semantics     |
+              | provider selection/capabilities |
+              +---------------+----------------+
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+          v                   v                   v
+       baha CLI            HTTP API        Operator controllers
+                              |
+                              v
+                       lightweight Web UI
+```
+
+`baha` remains the primary local developer/operator interface. Future HTTP API, Web UI and Kubernetes/OpenShift Operator surfaces must reuse the same domain models and lifecycle semantics rather than reimplementing them.
+
+The Web UI is intentionally a thin client over the BaseHarbor API. It must not shell out to `baha`, bypass lifecycle validation or implement its own readiness/security rules.
+
+A future Kubernetes/OpenShift Operator reconciles BaseHarbor desired state through the same application/provider model. It must use idempotent reconciliation and provider-native observation rather than wrapping imperative CLI commands.
+
+Lifecycle results should be machine-readable before presentation. CLI output, API responses, Web UI views and Operator status/conditions are different renderings of the same underlying state and verification results.
+
+See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
+
 ## Control plane and application stacks
 
 The BaseHarbor control plane is shared. Application data-plane resources are isolated by default.
@@ -85,7 +119,7 @@ These values are operational realization, not portable application requirements.
 
 ## Principles
 
-1. One operational entry point through the `baha` binary.
+1. One shared application/lifecycle core with multiple control surfaces; `baha` is the primary local interface, while future API/Web UI and Operator surfaces reuse the same domain behavior.
 2. Applications remain independent and keep all business/domain logic.
 3. Application contracts describe capabilities, not concrete infrastructure products.
 4. Provider selection is environment/platform-owned and replaceable.
@@ -99,6 +133,7 @@ These values are operational realization, not portable application requirements.
 12. Compose is the complete current provider and remains first-class; future Kubernetes/OpenShift providers must preserve logical application requirements rather than redefine them.
 13. Environment/risk policy and deployment topology are separate concepts.
 14. Observability is integrated through open standards rather than a proprietary telemetry stack.
+15. CLI, HTTP API, Web UI and Operator are adapters over shared domain/lifecycle services; business logic must not be duplicated in presentation layers.
 
 ## Application lifecycle model
 
@@ -169,9 +204,11 @@ v0.4 retains the existing/BYOC certificate lifecycle for repository Compose depl
 
 It does **not** introduce a provider-neutral `tls.certificate` manifest capability, BaseHarbor-managed ACME issuance, OpenBao PKI issuance, automatic certificate rotation, cert-manager integration or Kubernetes/OpenShift ingress realization. Those remain future provider/capability work.
 
-## `baha` as the primary product interface
+## `baha` as the primary local interface
 
-`baha` is not a thin wrapper around Compose. It is the stable operator/developer interface for BaseHarbor lifecycle, diagnostics, recovery, updates and application resources. Compose is the current implementation target behind that interface.
+`baha` is not a thin wrapper around Compose. It is the stable primary local operator/developer interface for BaseHarbor lifecycle, diagnostics, recovery, updates and application resources. Compose is the current implementation target behind that interface.
+
+This does not make the CLI the permanent home of BaseHarbor business logic. Shared lifecycle, status, diagnostics, input-resolution and policy behavior belongs below the CLI so future API/Web UI and Operator surfaces can expose the same semantics.
 
 ## Security and operations direction
 
