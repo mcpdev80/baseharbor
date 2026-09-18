@@ -346,13 +346,20 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		base := strings.ToLower(filepath.Base(path))
 		if isComposeFile(base) {
 			for _, service := range detectComposeServices(data) {
-				combined := strings.ToLower(service.Name + " " + string(data))
-				if containsAny(combined, signals.compose) {
+				matches := false
+				switch capability {
+				case "database.sql":
+					matches = service.Postgres
+				case "cache.key-value":
+					matches = service.Redis
+				default:
+					matches = containsAny(strings.ToLower(service.Name), signals.compose)
+				}
+				if matches {
 					detected = append(detected, Evidence{
 						Kind: EvidenceCompose, Path: path,
 						Detail: "compose service " + service.Name + " matches " + capability,
 					})
-					break
 				}
 			}
 		}
