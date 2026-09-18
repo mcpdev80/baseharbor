@@ -362,6 +362,26 @@ Keep workflows compact and avoid unnecessary parallel jobs or repeated validatio
 
 Where practical, validate locally or with repository-provided tooling before pushing a PR update.
 
+### Documentation-only validation
+
+Documentation-only changes should not consume the full runtime/acceptance matrix when they cannot affect executable behavior.
+
+A change is documentation-only only when every changed file is limited to documentation surfaces such as:
+
+- `docs/**`;
+- `README.md`;
+- `CHANGELOG.md`;
+- MkDocs configuration and documentation-only dependency files.
+
+For those changes:
+
+- run the documentation/site build and other lightweight documentation checks;
+- do not run MailFlow, runtime-broker, backup/restore or other expensive product acceptance solely because prose changed;
+- preserve truthful claims: documentation may describe behavior only when the relevant product code has already been validated;
+- if executable code, runtime/deployment configuration, CI/release workflow logic, generated runtime assets or dependencies change, the change is **not** documentation-only and the relevant full validation applies.
+
+A release may carry a documentation-only correction after a previously fully validated product head without rerunning unrelated expensive acceptance jobs, provided the executable tree and runtime/release implementation are unchanged and the documentation gate passes. Release-tag validation must still verify source/tag/changelog/release-note consistency.
+
 ## 24. Human readability wins
 
 When choosing between two correct designs, prefer the one a new contributor can understand faster.
