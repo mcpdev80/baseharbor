@@ -281,7 +281,7 @@ func detectComposeServices(data []byte) []composeService {
 			}
 		}
 		if inPorts && strings.HasPrefix(trim, "-") {
-			value := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trim, "-")), ""'")
+			value := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trim, "-")), "\"'")
 			if value != "" {
 				item.Ports = append(item.Ports, value)
 			}
