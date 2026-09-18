@@ -558,7 +558,7 @@ func containsAny(value string, needles []string) bool {
 func containsAnyToken(value string, needles []string) bool {
 	for _, needle := range needles {
 		n := strings.ToLower(needle)
-		if strings.Contains(value, """+n+""") ||
+		if strings.Contains(value, "\""+n+"\"") ||
 			strings.Contains(value, "'"+n+"'") ||
 			strings.Contains(value, "/"+n) ||
 			strings.Contains(value, n+"/") ||
@@ -574,10 +574,10 @@ func containsAnyToken(value string, needles []string) bool {
 func mergeFindings(current []Finding, incoming []Finding) []Finding {
 	index := map[string]int{}
 	for i, finding := range current {
-		index[finding.Capability+" "+finding.Name] = i
+		index[finding.Capability+"\x00"+finding.Name] = i
 	}
 	for _, finding := range incoming {
-		key := finding.Capability + " " + finding.Name
+		key := finding.Capability + "\x00" + finding.Name
 		if i, exists := index[key]; exists {
 			if confidenceRank(finding.Confidence) > confidenceRank(current[i].Confidence) {
 				current[i].Confidence = finding.Confidence
@@ -609,7 +609,7 @@ func uniqueEvidence(items []Evidence) []Evidence {
 	seen := map[string]struct{}{}
 	result := make([]Evidence, 0, len(items))
 	for _, item := range items {
-		key := string(item.Kind) + " " + item.Path + " " + item.Detail
+		key := string(item.Kind) + "\x00" + item.Path + "\x00" + item.Detail
 		if _, exists := seen[key]; exists {
 			continue
 		}
@@ -696,7 +696,7 @@ func MarshalJSONResult(result Result) ([]byte, error) {
 // ParsePublishedPort extracts the host-side numeric port from common Compose
 // short syntax. It is intentionally conservative and returns false on ambiguity.
 func ParsePublishedPort(value string) (int, bool) {
-	value = strings.TrimSpace(strings.Trim(value, ""'"))
+	value = strings.TrimSpace(strings.Trim(value, "\"'"))
 	parts := strings.Split(value, ":")
 	if len(parts) < 2 {
 		return 0, false
