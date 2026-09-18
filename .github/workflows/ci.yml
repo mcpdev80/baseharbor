@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/provider-integration-contract-v1]
     paths-ignore:
       - 'docs/**'
       - 'README.md'
