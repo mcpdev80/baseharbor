@@ -712,7 +712,6 @@ func ParsePublishedPort(value string) (int, bool) {
 	return port, true
 }
 
-
 func detectedLogicalInstanceName(serviceName, kind string) string {
 	name := slugify(serviceName)
 	prefixes := []string{kind + "-"}
@@ -735,7 +734,6 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	}
 	return name
 }
-
 
 func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	if strings.TrimSpace(rel) == "" {
@@ -790,7 +788,6 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	return analysis, nil
 }
 
-
 func inspectDockerfile(data []byte, path string) ([]PortEvidence, []Evidence) {
 	var ports []PortEvidence
 	var health []Evidence
@@ -814,7 +811,6 @@ func inspectDockerfile(data []byte, path string) ([]PortEvidence, []Evidence) {
 	}
 	return ports, health
 }
-
 
 func envNamesOnly(data []byte) []byte {
 	var b strings.Builder
