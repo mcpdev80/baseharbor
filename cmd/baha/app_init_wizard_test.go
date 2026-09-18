@@ -203,7 +203,7 @@ func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 	if m.Services.Postgres || m.Services.Redis || m.Services.Secrets {
 		t.Fatalf("quick init invented backend capability: %#v", m.Services)
 	}
-	if m.Workload == nil || len(m.Workload.Services) != 1 || m.Workload.Services[0] != "api" {
+	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "api" {
 		t.Fatalf("workload = %#v", m.Workload)
 	}
 }
