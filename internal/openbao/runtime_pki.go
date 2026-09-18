@@ -1,6 +1,7 @@
 package openbao
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -38,26 +39,26 @@ type RuntimeMTLSFiles struct {
 // client identity from a BaseHarbor-internal CA. The CA private key is stored in
 // the manager-only OpenBao namespace and is never persisted in application or
 // control-plane filesystem state.
-func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles) (RuntimeMTLSFiles, error) {
+func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles) (RuntimeMTLSFiles, bool, error) {
 	if err := validateApplicationIdentity(identity); err != nil {
-		return RuntimeMTLSFiles{}, err
+		return RuntimeMTLSFiles{}, false, err
 	}
 	credentials, err := LoadAdminCredentials(platformFiles)
 	if err != nil {
-		return RuntimeMTLSFiles{}, err
+		return RuntimeMTLSFiles{}, false, err
 	}
 	managerToken, err := loginManager(ctx, executor, platformFiles, credentials)
 	if err != nil {
-		return RuntimeMTLSFiles{}, fmt.Errorf("authenticate OpenBao manager for runtime PKI: %w", err)
+		return RuntimeMTLSFiles{}, false, fmt.Errorf("authenticate OpenBao manager for runtime PKI: %w", err)
 	}
 	caCert, caKey, err := ensureRuntimeCA(ctx, executor, platformFiles, managerToken)
 	if err != nil {
-		return RuntimeMTLSFiles{}, err
+		return RuntimeMTLSFiles{}, false, err
 	}
 
 	bindingDir := filepath.Join(appFiles.Bindings, "runtime-identity")
 	if err := os.MkdirAll(bindingDir, 0o700); err != nil {
-		return RuntimeMTLSFiles{}, fmt.Errorf("create runtime mTLS binding directory: %w", err)
+		return RuntimeMTLSFiles{}, false, fmt.Errorf("create runtime mTLS binding directory: %w", err)
 	}
 	files := RuntimeMTLSFiles{
 		CA:         filepath.Join(bindingDir, "ca.pem"),
@@ -66,13 +67,20 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		ClientCert: filepath.Join(bindingDir, "client-cert.pem"),
 		ClientKey:  filepath.Join(bindingDir, "client-key.pem"),
 	}
+	valid, err := runtimeMTLSIdentityValid(files, caCert, identity)
+	if err != nil {
+		return RuntimeMTLSFiles{}, false, err
+	}
+	if valid {
+		return files, false, nil
+	}
 	brokerCert, brokerKey, err := issueRuntimeCertificate(caCert, caKey, identity, true)
 	if err != nil {
-		return RuntimeMTLSFiles{}, err
+		return RuntimeMTLSFiles{}, false, err
 	}
 	clientCert, clientKey, err := issueRuntimeCertificate(caCert, caKey, identity, false)
 	if err != nil {
-		return RuntimeMTLSFiles{}, err
+		return RuntimeMTLSFiles{}, false, err
 	}
 	for path, data := range map[string][]byte{
 		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw}),
@@ -82,10 +90,95 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		files.ClientKey:  clientKey,
 	} {
 		if err := writeRuntimeIdentityFile(path, data); err != nil {
-			return RuntimeMTLSFiles{}, err
+			return RuntimeMTLSFiles{}, false, err
 		}
 	}
-	return files, nil
+	return files, true, nil
+}
+
+func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, identity ApplicationIdentity) (bool, error) {
+	caPEM, err := os.ReadFile(files.CA)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read runtime mTLS CA: %w", err)
+	}
+	caBlock, _ := pem.Decode(caPEM)
+	if caBlock == nil || caBlock.Type != "CERTIFICATE" {
+		return false, nil
+	}
+	storedCA, err := x509.ParseCertificate(caBlock.Bytes)
+	if err != nil || !bytes.Equal(storedCA.Raw, ca.Raw) {
+		return false, nil
+	}
+
+	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-secrets", "")
+	if err != nil || !brokerOK {
+		return false, err
+	}
+	expectedURI := "spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment
+	clientOK, err := runtimeIdentityPairValid(files.ClientCert, files.ClientKey, ca, x509.ExtKeyUsageClientAuth, "", expectedURI)
+	if err != nil || !clientOK {
+		return false, err
+	}
+	return true, nil
+}
+
+func runtimeIdentityPairValid(certPath, keyPath string, ca *x509.Certificate, usage x509.ExtKeyUsage, dnsName, uri string) (bool, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read runtime identity certificate: %w", err)
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read runtime identity key: %w", err)
+	}
+	certBlock, _ := pem.Decode(certPEM)
+	keyBlock, _ := pem.Decode(keyPEM)
+	if certBlock == nil || certBlock.Type != "CERTIFICATE" || keyBlock == nil || keyBlock.Type != "PRIVATE KEY" {
+		return false, nil
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil || time.Now().Add(24*time.Hour).After(cert.NotAfter) {
+		return false, nil
+	}
+	parsedKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return false, nil
+	}
+	key, ok := parsedKey.(*ecdsa.PrivateKey)
+	if !ok || !key.PublicKey.Equal(cert.PublicKey) {
+		return false, nil
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	opts := x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{usage}}
+	if dnsName != "" {
+		opts.DNSName = dnsName
+	}
+	if _, err := cert.Verify(opts); err != nil {
+		return false, nil
+	}
+	if uri != "" {
+		found := false
+		for _, candidate := range cert.URIs {
+			if candidate.String() == uri {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func ensureRuntimeCA(ctx context.Context, executor Executor, files bhruntime.Files, token string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
