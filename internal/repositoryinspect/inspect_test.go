@@ -322,3 +322,88 @@ workload:
 		t.Fatalf("SecretCandidates = %#v", result.SecretCandidates)
 	}
 }
+
+
+func TestInspectDetectsEvolvingCapabilitiesAndRuntimeIntent(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "baseharbor.yaml", `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+`)
+	writeTestFile(t, root, ".env.example", "REDIS_URL=\nOTEL_EXPORTER_OTLP_ENDPOINT=\n")
+	writeTestFile(t, root, "api.go", `package api
+func routes() {
+	router.GET("/metrics", metricsHandler)
+}
+func storage(client *S3Client) {
+	client.CreateBucket("tenant")
+}
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertReconciliationState(t, result, "database.sql", ReconciliationStale)
+	assertReconciliationState(t, result, "cache.key-value", ReconciliationNew)
+	assertReconciliationState(t, result, "metrics.openmetrics", ReconciliationNew)
+	assertReconciliationState(t, result, "telemetry.otlp", ReconciliationNew)
+	assertReconciliationState(t, result, "object-storage.s3", ReconciliationNew)
+
+	for _, finding := range result.Findings {
+		if finding.Capability == "object-storage.s3" {
+			if finding.Direction != DirectionConsume {
+				t.Fatalf("S3 direction = %q", finding.Direction)
+			}
+			if len(finding.Operations) != 1 || finding.Operations[0] != RuntimeCreate {
+				t.Fatalf("S3 runtime operations = %#v", finding.Operations)
+			}
+			return
+		}
+	}
+	t.Fatal("S3 runtime capability finding missing")
+}
+
+func TestReconciliationNeverTreatsMissingEvidenceAsRemoval(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "baseharbor.yaml", `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertReconciliationState(t, result, "database.sql", ReconciliationStale)
+
+	data, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "postgres:") {
+		t.Fatalf("inspection removed declared capability: %s", data)
+	}
+}
+
+func assertReconciliationState(t *testing.T, result Result, capability string, want ReconciliationState) {
+	t.Helper()
+	for _, item := range result.Reconciliation {
+		if item.Capability == capability {
+			if item.State != want {
+				t.Fatalf("%s state = %q, want %q: %#v", capability, item.State, want, result.Reconciliation)
+			}
+			return
+		}
+	}
+	t.Fatalf("reconciliation item %s missing: %#v", capability, result.Reconciliation)
+}
