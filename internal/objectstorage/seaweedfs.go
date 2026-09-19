@@ -430,10 +430,6 @@ func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
 }
 
 func signedS3Request(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
-	base, err := url.Parse(endpoint)
-	if err != nil {
-		return 0, nil, err
-	}
 	path := "/"
 	if bucket != "" {
 		path += escapePath(bucket)
@@ -441,7 +437,22 @@ func signedS3Request(ctx context.Context, client *http.Client, endpoint, method,
 	if key != "" {
 		path += "/" + escapePath(key)
 	}
+	return signedAWSRequest(ctx, client, endpoint, "s3", method, path, "", credentials, payload)
+}
+
+func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, service, method, path, contentType string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
+	base, err := url.Parse(endpoint)
+	if err != nil {
+		return 0, nil, err
+	}
+	if strings.TrimSpace(service) == "" {
+		return 0, nil, errors.New("AWS SigV4 service is required")
+	}
+	if path == "" {
+		path = "/"
+	}
 	base.Path = path
+	base.RawQuery = ""
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
@@ -451,12 +462,12 @@ func signedS3Request(ctx context.Context, client *http.Client, endpoint, method,
 	canonicalHeaders := "host:" + host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 	canonicalRequest := method + "\n" + base.EscapedPath() + "\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
-	scope := dateStamp + "/us-east-1/s3/aws4_request"
+	scope := dateStamp + "/us-east-1/" + service + "/aws4_request"
 	requestHash := sha256.Sum256([]byte(canonicalRequest))
 	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(requestHash[:])
 	kDate := hmacSHA256([]byte("AWS4"+credentials.SecretAccessKey), dateStamp)
 	kRegion := hmacSHA256(kDate, "us-east-1")
-	kService := hmacSHA256(kRegion, "s3")
+	kService := hmacSHA256(kRegion, service)
 	kSigning := hmacSHA256(kService, "aws4_request")
 	signature := hex.EncodeToString(hmacSHA256(kSigning, stringToSign))
 	authorization := "AWS4-HMAC-SHA256 Credential=" + credentials.AccessKeyID + "/" + scope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature
@@ -468,6 +479,9 @@ func signedS3Request(ctx context.Context, client *http.Client, endpoint, method,
 	req.Header.Set("X-Amz-Date", amzDate)
 	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
 	req.Header.Set("Authorization", authorization)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
