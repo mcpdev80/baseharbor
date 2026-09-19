@@ -54,6 +54,43 @@ type ProviderFiles struct {
 	Env     string
 }
 
+func EnsureSharedProvider(ctx context.Context, runtime Runtime) (ProviderFiles, AdminCredentials, string, error) {
+	if runtime == nil {
+		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
+	}
+	files, err := EnsureProviderFiles()
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	if err := runtime.ConfigProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
+	}
+	if err := runtime.UpProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	if err := waitS3(ctx, &http.Client{Timeout: 10 * time.Second}, endpoint); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
+	}
+	credentials, credentialPath, err := EnsureAdminCredentials(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	command := fmt.Sprintf(
+		"s3.configure -access_key=%s -secret_key=%s -user=baseharbor-runtime-admin -actions=Admin,Read,Write,List,Tagging -apply",
+		credentials.AccessKeyID,
+		credentials.SecretAccessKey,
+	)
+	input := []byte(command + "\n")
+	if _, err := runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", errors.New("configure SeaweedFS runtime admin identity failed")
+	}
+	return files, credentials, credentialPath, nil
+}
+
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
 	return &Driver{runtime: runtime, app: app, files: files, client: &http.Client{Timeout: 10 * time.Second}, createdBuckets: map[string]struct{}{}}
 }
@@ -77,22 +114,9 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, err := EnsureProviderFiles()
+	providerFiles, _, _, err := EnsureSharedProvider(ctx, d.runtime)
 	if err != nil {
 		return err
-	}
-	if err := d.runtime.ConfigProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env); err != nil {
-		return fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
-	}
-	if err := d.runtime.UpProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env); err != nil {
-		return fmt.Errorf("start SeaweedFS provider: %w", err)
-	}
-	endpoint, err := providerEndpoint(providerFiles)
-	if err != nil {
-		return err
-	}
-	if err := waitS3(ctx, d.client, endpoint); err != nil {
-		return fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
 
 	credentials, err := application.LoadObjectStorageCredentials(d.files, resource.Name)
@@ -339,7 +363,7 @@ func providerComposeYAML() string {
   seaweedfs:
     image: chrislusf/seaweedfs:4.47
     restart: unless-stopped
-    command: server -s3 -iam=true
+    command: server -s3 -iam=true -s3.iam.readOnly=false
     ports:
       - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8333"
     volumes:
