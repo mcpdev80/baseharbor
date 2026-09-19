@@ -115,17 +115,17 @@ paths:
               $ref: '#/components/schemas/CreateResourceRequest'
       responses:
         '200':
-          description: Existing idempotent resource returned.
+          description: Existing idempotent operation returned.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceOperation'
+                $ref: '#/components/schemas/Operation'
         '202':
           description: Resource provisioning accepted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceOperation'
+                $ref: '#/components/schemas/Operation'
         default:
           $ref: '#/components/responses/Problem'
   /runtime/v1/resources/{resourceId}:
@@ -149,14 +149,18 @@ paths:
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
+        '200':
+          description: Existing idempotent delete operation returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
         '202':
           description: Deletion accepted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceOperation'
-        '204':
-          description: Resource already absent.
+                $ref: '#/components/schemas/Operation'
         default:
           $ref: '#/components/responses/Problem'
   /runtime/v1/resources/{resourceId}/binding:
@@ -171,7 +175,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Binding'
+                $ref: '#/components/schemas/RuntimeBindingResponse'
         default:
           $ref: '#/components/responses/Problem'
   /runtime/v1/operations/{operationId}:
@@ -296,7 +300,7 @@ components:
       properties:
         capability:
           type: string
-          examples: [object-storage.s3]
+          examples: [object-storage.s3/v1]
         operations:
           type: array
           uniqueItems: true
@@ -311,7 +315,7 @@ components:
         capability:
           type: string
           minLength: 1
-          examples: [object-storage.s3]
+          examples: [object-storage.s3/v1]
         name:
           type: string
           minLength: 1
@@ -321,15 +325,6 @@ components:
           type: object
           additionalProperties: true
           description: Capability-versioned portable parameters only; provider-specific fields are forbidden.
-    ResourceOperation:
-      type: object
-      additionalProperties: false
-      required: [resource, operation]
-      properties:
-        resource:
-          $ref: '#/components/schemas/Resource'
-        operation:
-          $ref: '#/components/schemas/Operation'
     Resource:
       type: object
       additionalProperties: false
@@ -338,7 +333,7 @@ components:
         id:
           type: string
           minLength: 1
-          examples: [object-storage.s3/user-4711]
+          examples: [res-s3-0123456789abcdef01234567]
         capability:
           type: string
           minLength: 1
@@ -348,23 +343,45 @@ components:
         state:
           type: string
           enum: [provisioning, ready, deleting, failed]
-    Binding:
+    RuntimeBindingResponse:
       type: object
-      description: |
-        Provider-neutral application-facing binding metadata. Secret material must not be returned
-        through normal metadata fields; credentials use the BaseHarbor secure-binding/runtime-identity path.
-      additionalProperties: true
-      required: [resource_id, capability]
+      additionalProperties: false
+      required: [resource_id, capability, binding]
       properties:
         resource_id:
           type: string
         capability:
           type: string
+          examples: [object-storage.s3/v1]
+        binding:
+          description: |
+            Capability-specific application binding. This endpoint is authenticated and may return
+            scoped credential material required to consume the resource. Credentials are never copied
+            into operation state, resource metadata, logs, metrics or the portable application manifest.
+          oneOf:
+            - $ref: '#/components/schemas/S3RuntimeBinding'
+    S3RuntimeBinding:
+      type: object
+      additionalProperties: false
+      required: [resource_id, endpoint, bucket, region, access_key_id, secret_access_key]
+      properties:
+        resource_id:
+          type: string
         endpoint:
           type: string
-        metadata:
-          type: object
-          additionalProperties: true
+          description: S3-compatible endpoint reachable by the authorized workload.
+        bucket:
+          type: string
+        region:
+          type: string
+          examples: [us-east-1]
+        access_key_id:
+          type: string
+          description: Resource-scoped S3 access key identifier. Treat as sensitive binding material.
+        secret_access_key:
+          type: string
+          format: password
+          description: Resource-scoped S3 secret access key. Treat as secret material.
     Operation:
       type: object
       additionalProperties: false
