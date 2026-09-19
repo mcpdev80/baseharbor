@@ -564,11 +564,15 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 		if err := runtime.DestroyProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
 			return fmt.Errorf("destroy shared Prometheus project %s: %w", instance.Placement.Project, err)
 		}
-		if err := os.RemoveAll(instance.Files.Dir); err != nil {
-			return err
-		}
 	}
-	return nil
+	if len(instances) == 0 {
+		return nil
+	}
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(dataDir, "providers", "prometheus", "shared"))
 }
 
 func ExistingSharedProviderFiles() (ProviderFiles, error) {
