@@ -193,3 +193,20 @@ Human OIDC/RBAC/MFA/JIT/Breakglass bleibt ein separates v0.6-Thema fuer Plattfor
 
 
 v0.4.6 fuehrt die erste providerneutrale S3-Object-Storage-Implementierung auf denselben gemeinsamen Lifecycle- und Secure-Binding-Grundlagen ein. Logische Buckets werden auf `object-storage.s3/v1` abgebildet; SeaweedFS ist ein lazy shared Compose-Referenzprovider und keine Application Identity. Provider-State besitzt physische Bucket-/IAM-/Topologie-Details; Application-facing Readiness wird mit einem authentifizierten SigV4-Put/Get verifiziert.
+
+## OTLP-Telemetrie-Fundament in v0.4.7
+
+v0.4.7 fuehrt `telemetry.otlp/v1` als providerneutrale Transport-Capability ein. OpenTelemetry ist Oekosystem und Instrumentierungsmodell; OTLP ist die portable Protokollgrenze. Der OpenTelemetry Collector ist nur der erste verwaltete Compose-Referenzprovider.
+
+Anwendungen deklarieren die exportierten Telemetrie-Signale und verwenden normale OpenTelemetry-Konfiguration:
+
+```text
+OTEL_EXPORTER_OTLP_ENDPOINT
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_SERVICE_NAME
+OTEL_RESOURCE_ATTRIBUTES
+```
+
+Managed-Collector-Platzierung ist lazy/shared. Externe OTLP-Ziele verwenden dieselbe Capability und bleiben lifecycle-seitig extern owned. BaseHarbor verifiziert einen echten OTLP-HTTP/Protobuf-Export statt nur einen laufenden Collector-Prozess.
+
+Die gemeinsame Resource Identity verwendet Standard-OpenTelemetry-Attribute fuer Service und Environment sowie BaseHarbor-Attribute fuer Application, logische Telemetrie-Ressource und Provider. OTLP-Transport startet nicht implizit Prometheus, Loki, Tempo, Grafana oder andere Observability-Produkte.
