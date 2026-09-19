@@ -109,7 +109,7 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 	}
 	found := false
 	for _, binding := range registry.Bindings {
-		if binding.Resource.Kind == capability.ExposureHTTP && binding.Resource.Name == "public" && binding.ProviderInstance == instance.ID {
+		if binding.Resource.Kind == capability.ExposureHTTP && binding.Resource.Name == "public" && binding.ProviderInstanceID == instance.ID {
 			found = true
 			break
 		}
