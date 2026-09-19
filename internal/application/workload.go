@@ -233,7 +233,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 			if HasOTLPTelemetry(m) {
 				fmt.Fprintf(&b, "      OTEL_SERVICE_NAME: %s\n", strconv.Quote(service))
-				fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote(telemetryResourceAttributes(m, service)))
+				fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote(telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])))
 			}
 		}
 		_, exposed := exposedServices[service]
@@ -338,7 +338,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
-		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "")
+		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
 	}
 
 	redis := RedisInstanceNames(m)
