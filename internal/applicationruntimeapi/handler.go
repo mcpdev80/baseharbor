@@ -99,7 +99,7 @@ func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"capabilities": []map[string]any{
 			{
-				"capability": "secrets",
+				"capability": "secrets/v1",
 				"operations": []string{
 					"runtime.create",
 					"runtime.get",
