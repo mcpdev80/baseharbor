@@ -55,7 +55,6 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 	}
 }
 
-
 func TestCapabilityBindingsUseLogicalServiceForHTTPExposure(t *testing.T) {
 	m := New("frontend", "production", false, false, false)
 	m.Services.Postgres = false

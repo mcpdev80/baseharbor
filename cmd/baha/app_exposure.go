@@ -141,7 +141,6 @@ func destroyManagedExposure(ctx context.Context, compose bhruntime.Compose, m ap
 	return nil
 }
 
-
 func managedExposureRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) bool {
 	if len(m.Exposures) == 0 {
 		return false

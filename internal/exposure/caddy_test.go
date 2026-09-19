@@ -38,7 +38,7 @@ func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t 
 func TestHTTPSRequiresExistingTLS(t *testing.T) {
 	m := application.Manifest{
 		Version: 1, Name: "demo", Environment: "dev",
-		Workload: application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "https"}},
 	}
 	driver := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.example", TLSMode: "acme"})

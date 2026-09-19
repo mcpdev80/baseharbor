@@ -284,7 +284,7 @@ exposure:
 
 	m := application.Manifest{
 		Version: application.CurrentVersion, Name: "exposure-fail-ci", Environment: "dev",
-		Workload: application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{Name: "broken", Service: "web", Port: 9099, Protocol: "http", Visibility: "internal"}},
 	}
 	project := exposure.ProjectName(m)

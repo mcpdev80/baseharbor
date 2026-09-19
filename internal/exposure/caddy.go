@@ -32,9 +32,9 @@ type Deployment struct {
 }
 
 type Route struct {
-	Name          string `json:"name"`
-	Service       string `json:"service"`
-	TargetPort    int    `json:"target_port"`
+	Name           string `json:"name"`
+	Service        string `json:"service"`
+	TargetPort     int    `json:"target_port"`
 	Protocol       string `json:"protocol"`
 	Visibility     string `json:"visibility"`
 	PublishedPort  int    `json:"published_port"`

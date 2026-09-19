@@ -4,10 +4,10 @@ import "testing"
 
 func TestApplicationComponentsStopped(t *testing.T) {
 	tests := []struct {
-		name          string
-		managed       []string
-		workload      []string
-		workloadFound bool
+		name            string
+		managed         []string
+		workload        []string
+		workloadFound   bool
 		brokerRunning   bool
 		exposureRunning bool
 		want            bool

@@ -11,7 +11,7 @@ type adapterTestDriver struct {
 
 func (d *adapterTestDriver) Descriptor() Provider                               { return d.provider }
 func (d *adapterTestDriver) Preflight(context.Context, Resource, Binding) error { return nil }
-func (d *adapterTestDriver) Provision(context.Context, Resource, Binding) error          { return nil }
+func (d *adapterTestDriver) Provision(context.Context, Resource, Binding) error { return nil }
 func (d *adapterTestDriver) Bind(context.Context, Resource, Binding) error      { return nil }
 func (d *adapterTestDriver) Verify(context.Context, Resource, Binding) error    { return nil }
 
