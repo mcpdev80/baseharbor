@@ -449,6 +449,19 @@ OpenAPI is the canonical contract for application-facing Runtime Resource API en
 
 See ADR 0010.
 
+## GitHub Actions execution policy
+
+GitHub Actions are intentionally **manual by default** to avoid unnecessary CI consumption during active development.
+
+Rules:
+
+- every non-release workflow must use `workflow_dispatch` as its normal standalone trigger;
+- reusable workflows may additionally use `workflow_call`, but must not add automatic `push`, `pull_request`, `schedule`, or generic `create` triggers;
+- the release workflow is the only workflow allowed to start automatically, and only for a release tag;
+- release-only supporting work such as the multi-architecture runtime image must be invoked from the release workflow via `workflow_call`, not by its own PR/push/tag automation;
+- development and pre-PR validation should run on the designated external test runner rather than GitHub Actions;
+- do not open a pull request early merely to obtain CI feedback; open it when the implementation is ready for its final repository review.
+
 ## Mandatory task release footer
 
 Every implementation task that can contribute to a BaseHarbor release must carry the following release requirements in its task/issue description and must satisfy them before release:
