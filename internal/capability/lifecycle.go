@@ -43,7 +43,7 @@ type HTTPExposureBinding struct {
 	Visibility string `json:"visibility"`
 }
 
-type Binding struct {
+type ObjectStorageS3Binding struct {\n\tBucket string `json:"bucket"`\n}\n\ntype Binding struct {
 	Resource     Resource             `json:"resource"`
 	Workload     string               `json:"workload"`
 	HTTPExposure *HTTPExposureBinding `json:"http_exposure,omitempty"`
