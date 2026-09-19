@@ -1,0 +1,36 @@
+name: v044-gofmt-once
+
+on:
+  push:
+    branches:
+      - feat/v044-endpoint-exposure
+    paths:
+      - .github/workflows/v044-gofmt-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feat/v044-endpoint-exposure
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Format changed Go files
+        run: |
+          gofmt -w             cmd/baha/app_exposure.go             cmd/baha/app_exposure_integration_test.go             cmd/baha/app_observe_test.go             internal/application/capability_model_test.go             internal/application/network.go             internal/capability/integration_contract_test.go             internal/exposure/caddy.go             internal/exposure/caddy_test.go
+      - name: Commit formatting if needed
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             cmd/baha/app_exposure.go             cmd/baha/app_exposure_integration_test.go             cmd/baha/app_observe_test.go             internal/application/capability_model_test.go             internal/application/network.go             internal/capability/integration_contract_test.go             internal/exposure/caddy.go             internal/exposure/caddy_test.go
+          git commit -m "style: gofmt v0.4.4 endpoint exposure changes"
+          git push origin HEAD:feat/v044-endpoint-exposure
