@@ -136,6 +136,9 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			}
 			binding.ObjectStorageS3 = &value
 		}
+		if request.Requirement.Kind == TelemetryOTLP && request.TelemetryOTLP == nil {
+			return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s is required", application, request.Requirement.Name)
+		}
 		if request.TelemetryOTLP != nil {
 			value := *request.TelemetryOTLP
 			value.Direction = strings.TrimSpace(value.Direction)
