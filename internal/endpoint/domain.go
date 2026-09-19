@@ -24,9 +24,16 @@ type Endpoint struct {
 // ExposureStatus is machine-readable readiness for one observed or managed HTTP
 // exposure.
 type ExposureStatus struct {
-	Endpoint
-	Ready  bool   `json:"ready"`
-	Detail string `json:"detail,omitempty"`
+	Service string `json:"service"`
+	Scheme  string `json:"scheme"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
+	Ready   bool   `json:"ready"`
+	Detail  string `json:"detail,omitempty"`
+}
+
+func exposureStatus(ep Endpoint) ExposureStatus {
+	return ExposureStatus{Service: ep.Service, Scheme: ep.Scheme, Host: ep.Host, Port: ep.Port}
 }
 
 func (e Endpoint) Validate() error {
@@ -80,7 +87,7 @@ func IsLoopbackHost(host string) bool {
 }
 
 func ProbeHTTP(ctx context.Context, ep Endpoint) ExposureStatus {
-	status := ExposureStatus{Endpoint: ep}
+	status := exposureStatus(ep)
 	if err := ep.Validate(); err != nil {
 		status.Detail = "invalid endpoint"
 		return status
@@ -128,7 +135,7 @@ func ProbeHTTP(ctx context.Context, ep Endpoint) ExposureStatus {
 // local/runtime address. This supports hostname-bound TLS without conflating
 // endpoint identity with runtime placement.
 func ProbeHTTPDialTarget(ctx context.Context, logical Endpoint, dialHost string, dialPort int) ExposureStatus {
-	status := ExposureStatus{Endpoint: logical}
+	status := exposureStatus(logical)
 	if err := logical.Validate(); err != nil || strings.TrimSpace(dialHost) == "" || dialPort < 1 || dialPort > 65535 {
 		status.Detail = "invalid endpoint"
 		return status
