@@ -52,7 +52,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
 					required := []bhruntime.RuntimeCapability{bhruntime.CapabilityWorkloadLifecycle}
-					if m.Services.Secrets {
+					if m.Services.Secrets || application.HasObjectStorage(m) {
 						required = append(required, bhruntime.CapabilityServiceExec)
 					}
 					var err error
