@@ -171,14 +171,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					}},
 				)
 			}
-			if application.HasObjectStorage(m) {
-				driver := objectstorage.NewDriver(compose, m, files)
-				for _, bucket := range application.ObjectStorageBucketNames(m) {
-					if err := driver.DestroyBucket(ctx, bucket); err != nil {
-						return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
-					}
-				}
-			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
@@ -260,6 +252,14 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 				if len(remaining) != 0 {
 					return fmt.Errorf("verify application runtime destruction: %d managed resources remain", len(remaining))
+				}
+			}
+			if application.HasObjectStorage(m) {
+				driver := objectstorage.NewDriver(compose, m, files)
+				for _, bucket := range application.ObjectStorageBucketNames(m) {
+					if err := driver.DestroyBucket(ctx, bucket); err != nil {
+						return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
+					}
 				}
 			}
 			if m.Services.Secrets {
