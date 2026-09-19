@@ -10,3 +10,12 @@ package application
 func ApplicationBackendNetworkName(m Manifest) string {
 	return RuntimeProjectName(m) + "_default"
 }
+
+
+// ApplicationExposureNetworkName returns the stable Compose network used to
+// connect explicitly exposed workload endpoints to the selected exposure
+// provider. It is separate from the managed backend network because endpoint
+// exposure must also work for workload-only applications.
+func ApplicationExposureNetworkName(m Manifest) string {
+	return "baseharbor-exposure-" + m.Name + "-" + m.Environment + "_default"
+}
