@@ -98,3 +98,15 @@ func TestProviderPlacementNameTokenIsStableAndSafe(t *testing.T) {
 		t.Fatalf("token contains unsafe separators: %q", a)
 	}
 }
+
+
+func TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt(t *testing.T) {
+	t.Setenv(ProviderSharingBoundaryEnv(capability.ProviderOpenBao), "team-a")
+	_, err := ResolveProviderPlacement(
+		Manifest{Name: "demo", Environment: "dev"},
+		capability.ProviderOpenBao,
+	)
+	if err == nil || !strings.Contains(err.Error(), "named shared boundaries are implemented for Prometheus only") {
+		t.Fatalf("expected unsupported adapter boundary rejection, got %v", err)
+	}
+}
