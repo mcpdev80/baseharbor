@@ -64,6 +64,10 @@ func appUpCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "connectivity policy", Run: func(context.Context) error {
+					_, err := application.LoadConnectivityRules()
+					return err
+				}},
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
@@ -140,6 +144,18 @@ func appUpCommand(store application.Store) *cli.Command {
 				return errors.New("application up preflight failed")
 			}
 
+			if err := application.RefreshRuntimeCompose(m, files); err != nil {
+				return err
+			}
+			if application.HasManagedRuntimeServices(m) {
+				project := application.RuntimeProjectName(m)
+				if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
+					return err
+				}
+			}
+			if err := ensureConnectivityNetworksForManifest(ctx, compose, m); err != nil {
+				return fmt.Errorf("converge connectivity networks: %w", err)
+			}
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
 				if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
