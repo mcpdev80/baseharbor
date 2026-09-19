@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -30,8 +31,8 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 		"cap_drop:",
 		"- ALL",
 		"no-new-privileges:true",
-		"name: baseharbor-metrics",
-		"name: baseharbor-prometheus-data",
+		"name: " + strconv.Quote(application.MetricsProviderNetworkName(application.Manifest{Name: "demo", Environment: "dev"}, capability.ScopeShared)),
+		"name: " + strconv.Quote("baseharbor-prometheus-data"),
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Prometheus compose missing %q:\n%s", want, text)
@@ -50,6 +51,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	configText := string(config)
 	if !strings.Contains(configText, "file_sd_configs:") ||
 		!strings.Contains(configText, "/etc/prometheus/targets/*.json") ||
+		!strings.Contains(configText, "/etc/prometheus/runtime-targets/*/*.json") ||
 		!strings.Contains(configText, "target_label: __metrics_path__") {
 		t.Fatalf("Prometheus config does not use dynamic file discovery/path relabeling:\n%s", configText)
 	}
@@ -135,5 +137,70 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	betaPath := filepath.Join(files.TargetsDir, targetFileName(beta, "application"))
 	if _, err := os.Stat(betaPath); err != nil {
 		t.Fatalf("beta target was removed while pruning alpha: %v", err)
+	}
+}
+
+
+func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsProviderScopeEnv, "shared")
+	t.Setenv(application.MetricsEnabledEnv, "true")
+
+	alpha := application.New("alpha", "dev", false, false, false)
+	alpha.Services.Postgres = false
+	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
+
+	beta := alpha
+	beta.Name = "beta"
+
+	if _, err := EnsureProviderFiles(alpha); err != nil {
+		t.Fatal(err)
+	}
+	files, err := EnsureProviderFiles(beta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	alphaNetwork := application.MetricsProviderNetworkName(alpha, capability.ScopeShared)
+	betaNetwork := application.MetricsProviderNetworkName(beta, capability.ScopeShared)
+	if alphaNetwork == betaNetwork {
+		t.Fatalf("metrics networks collide: %q", alphaNetwork)
+	}
+	for _, network := range []string{alphaNetwork, betaNetwork} {
+		if !strings.Contains(text, "name: "+strconv.Quote(network)) {
+			t.Fatalf("shared provider missing isolated network %q:\n%s", network, text)
+		}
+	}
+	if strings.Contains(text, "name: \"baseharbor-metrics\"") {
+		t.Fatalf("shared provider reintroduced flat application metrics network:\n%s", text)
+	}
+}
+
+func TestApplicationScopedPlacementIsIsolated(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsProviderScopeEnv, "application")
+	t.Setenv(application.MetricsEnabledEnv, "true")
+
+	alpha := application.New("alpha", "dev", false, false, false)
+	beta := application.New("beta", "dev", false, false, false)
+
+	a, err := PlacementFor(alpha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := PlacementFor(beta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Project == b.Project || a.Network == b.Network || a.Volume == b.Volume || a.Dir == b.Dir {
+		t.Fatalf("application-scoped placements are not isolated: alpha=%#v beta=%#v", a, b)
+	}
+	if a.Scope != capability.ScopeApplication || b.Scope != capability.ScopeApplication {
+		t.Fatalf("unexpected scopes: alpha=%s beta=%s", a.Scope, b.Scope)
 	}
 }
