@@ -441,6 +441,102 @@ func SharedProbeManifest() application.Manifest {
 	return application.Manifest{Name: "shared-probe", Environment: "dev"}
 }
 
+type SharedProviderInstance struct {
+	Placement Placement
+	Files     ProviderFiles
+}
+
+func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(dataDir, "providers", "prometheus", "shared")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var instances []SharedProviderInstance
+	if files, err := providerFilesAt(root); err == nil {
+		instances = append(instances, SharedProviderInstance{
+			Placement: Placement{
+				Scope:   capability.ScopeShared,
+				Project: ProviderProject,
+				Volume:  "baseharbor-prometheus-data",
+				Dir:     root,
+			},
+			Files: files,
+		})
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		token := entry.Name()
+		dir := filepath.Join(root, token)
+		files, err := providerFilesAt(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		instances = append(instances, SharedProviderInstance{
+			Placement: Placement{
+				Scope:   capability.ScopeShared,
+				Project: ProviderProject + "-" + token,
+				Volume:  "baseharbor-prometheus-data-" + token,
+				Dir:     dir,
+			},
+			Files: files,
+		})
+	}
+	sort.Slice(instances, func(i, j int) bool {
+		return instances[i].Placement.Project < instances[j].Placement.Project
+	})
+	return instances, nil
+}
+
+func providerFilesAt(dir string) (ProviderFiles, error) {
+	files := ProviderFiles{
+		Dir:           dir,
+		Compose:       filepath.Join(dir, "compose.yaml"),
+		Env:           filepath.Join(dir, "runtime.env"),
+		Config:        filepath.Join(dir, "prometheus.yml"),
+		TargetsDir:    filepath.Join(dir, "targets"),
+		Registrations: filepath.Join(dir, "registrations.json"),
+	}
+	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
+		if _, err := os.Stat(path); err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+	return files, nil
+}
+
+func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
+	instances, err := ExistingSharedProviderInstances()
+	if err != nil {
+		return err
+	}
+	for _, instance := range instances {
+		if err := runtime.DestroyProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
+			return fmt.Errorf("destroy shared Prometheus project %s: %w", instance.Placement.Project, err)
+		}
+		if err := os.RemoveAll(instance.Files.Dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ExistingSharedProviderFiles() (ProviderFiles, error) {
 	m := SharedProbeManifest()
 	placement, err := PlacementFor(m)
