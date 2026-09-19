@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"errors"
 	"testing"
 )
 
@@ -113,7 +112,6 @@ func TestRunStopsAfterVerificationFailure(t *testing.T) {
 		t.Fatalf("verification result = %#v", last)
 	}
 }
-
 
 func TestPrepareCompletesAllPreflightBeforeMutation(t *testing.T) {
 	var calls []string
