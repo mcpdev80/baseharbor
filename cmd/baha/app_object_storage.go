@@ -11,9 +11,12 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+func requiresRuntimeObjectStorageExecutor(m application.Manifest) bool {
+	return application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
+}
+
 func requiresObjectStorageProviderAdmin(m application.Manifest) bool {
-	return application.HasObjectStorage(m) ||
-		application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
+	return application.HasObjectStorage(m) || requiresRuntimeObjectStorageExecutor(m)
 }
 
 type managedObjectStorageExecution struct {
