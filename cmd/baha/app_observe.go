@@ -65,7 +65,8 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 				}
 			}
-			if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning) {
+			exposureRunning := managedExposureRunning(ctx, compose, m, files)
+			if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning, exposureRunning) {
 				fmt.Fprintln(out, "State: STOPPED (persistent application state is preserved)")
 				return nil
 			}
@@ -169,6 +170,16 @@ func appStatusCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "[FAIL] workload          repository Compose integration could not be resolved: %v\n", workloadErr)
 				ready = false
 			}
+			if len(m.Exposures) > 0 {
+				lines, exposureErr := inspectManagedExposure(ctx, compose, m, files)
+				for _, line := range lines {
+					fmt.Fprintln(out, line)
+				}
+				if exposureErr != nil {
+					fmt.Fprintf(out, "[FAIL] managed-exposure  %v\n", exposureErr)
+					ready = false
+				}
+			}
 			if !ready {
 				return errors.New("application is not ready")
 			}
@@ -250,6 +261,15 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					}
 					return nil
 				}},
+			}
+			if len(m.Exposures) > 0 {
+				checks = append(checks, preflight.Check{Name: "managed HTTP exposure", Run: func(ctx context.Context) error {
+					if runtimeErr != nil {
+						return runtimeErr
+					}
+					_, _, err := inspectManagedExposure(ctx, compose, m, files)
+					return err
+				}})
 			}
 			if m.Services.Postgres {
 				checks = append(checks,
@@ -367,8 +387,8 @@ func containsString(values []string, wanted string) bool {
 	return false
 }
 
-func applicationComponentsStopped(managedRunning, workloadRunning []string, workloadFound, brokerRunning bool) bool {
-	if len(managedRunning) != 0 || brokerRunning {
+func applicationComponentsStopped(managedRunning, workloadRunning []string, workloadFound, brokerRunning, exposureRunning bool) bool {
+	if len(managedRunning) != 0 || brokerRunning || exposureRunning {
 		return false
 	}
 	if workloadFound && len(workloadRunning) != 0 {
