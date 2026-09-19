@@ -53,6 +53,7 @@ type Config struct {
 	RuntimeExecutorCertFile string
 	RuntimeExecutorKeyFile  string
 	RuntimeOperationsDir    string
+	RuntimeMetricsTargetsDir string
 	RuntimeDocsListenAddr   string
 	ShutdownTimeout         time.Duration
 }
