@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -74,6 +75,9 @@ func appDownCommand(store application.Store) *cli.Command {
 					return err
 				}
 				fmt.Fprintln(out, "[OK] managed-exposure  Caddy exposure provider stopped")
+			}
+			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
+				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
 			}
 			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
@@ -171,9 +175,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 						return err
 					}},
 				)
-			}
-			if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
-				return fmt.Errorf("remove application metrics targets: %w", err)
 			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -274,6 +275,21 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
+			}
+			metricsPolicy, err := application.MetricsPolicy(m)
+			if err != nil {
+				return err
+			}
+			switch metricsPolicy.ProviderScope {
+			case capability.ScopeShared:
+				if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
+					return fmt.Errorf("remove application metrics targets: %w", err)
+				}
+			case capability.ScopeApplication:
+				if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
+					return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
+				}
+			case capability.ScopeExternal:
 			}
 			if err := resolved.Store.Delete(m.Name); err != nil {
 				return err
