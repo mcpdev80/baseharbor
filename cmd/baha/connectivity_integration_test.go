@@ -60,7 +60,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
     environment:
       POSTGRES_DB: source
       POSTGRES_USER: source
-      POSTGRES_PASSWORD: source-only
+      POSTGRES_HOST_AUTH_METHOD: trust
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
