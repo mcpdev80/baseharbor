@@ -153,3 +153,21 @@ func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing
 		t.Fatalf("non-exposed service joined exposure network:\n%s", got)
 	}
 }
+
+
+func TestRuntimeOnlyWorkloadAttachesToBrokerBackendNetwork(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"baseharbor-backend:", "external: true", "name: " + ApplicationBackendNetworkName(m)} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime-only workload override missing %q:\n%s", want, got)
+		}
+	}
+}
