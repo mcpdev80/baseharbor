@@ -27,6 +27,9 @@ func DefaultEngine() Engine {
 	return Engine{Detectors: []Detector{
 		sqlDetector{},
 		keyValueDetector{},
+		objectStorageDetector{},
+		openMetricsDetector{},
+		otlpDetector{},
 	}}
 }
 
@@ -77,16 +80,25 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		manifestEvidence := []Evidence{{Kind: EvidenceManifest, Path: application.RepositoryManifestName, Detail: "declared by BaseHarbor application contract"}}
 		if loaded.Services.Postgres {
 			for _, name := range application.PostgresInstanceNames(loaded) {
-				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.sql", Name: name, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.sql", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 			}
 		}
 		if loaded.Services.Redis {
 			for _, name := range application.RedisInstanceNames(loaded) {
-				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 			}
 		}
 		if loaded.Services.Secrets {
-			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "secrets", Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "secrets", Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+		}
+		for _, name := range application.ObjectStorageBucketNames(loaded) {
+			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "object-storage.s3", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+		}
+		for _, exposure := range loaded.Exposures {
+			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "exposure.http", Name: exposure.Name, Direction: DirectionProvide, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+		}
+		if application.HasOTLPTelemetry(loaded) {
+			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "telemetry.otlp", Name: "default", Direction: DirectionExport, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 		}
 	}
 
@@ -146,6 +158,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		result.Findings = mergeFindings(result.Findings, findings)
 	}
+	result.Declared, result.Reconciliation = Reconcile(result.Findings, manifest)
 	sortResult(&result)
 	return result, nil
 }
@@ -609,9 +622,14 @@ func mergeFindings(current []Finding, incoming []Finding) []Finding {
 			if confidenceRank(finding.Confidence) > confidenceRank(current[i].Confidence) {
 				current[i].Confidence = finding.Confidence
 			}
+			if current[i].Direction == "" {
+				current[i].Direction = finding.Direction
+			}
+			current[i].Operations = uniqueRuntimeOperations(append(current[i].Operations, finding.Operations...))
 			current[i].Evidence = uniqueEvidence(append(current[i].Evidence, finding.Evidence...))
 			continue
 		}
+		finding.Operations = uniqueRuntimeOperations(finding.Operations)
 		finding.Evidence = uniqueEvidence(finding.Evidence)
 		current = append(current, finding)
 		index[key] = len(current) - 1
