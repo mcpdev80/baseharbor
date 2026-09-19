@@ -423,3 +423,40 @@ A future Operator's installation scope is not the same thing as provider placeme
 Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
 
 Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
+
+## Progressive disclosure and explicit operator control
+
+BaseHarbor must be simple by default without becoming restrictive.
+
+The normal developer path should require only application intent and should use safe, explainable defaults:
+
+```text
+developer declares capability
+        |
+        v
+BaseHarbor detects/resolves sensible defaults
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Advanced users and operators must still be able to override deployment decisions explicitly where the platform supports them, including provider selection, provider placement, optional sharing boundary, lifecycle ownership where applicable, external provider references, isolation/deployment policy and supported provider/runtime options.
+
+The control model is therefore progressive disclosure:
+
+```text
+simple path
+  -> automatic safe defaults
+
+advanced path
+  -> explicit deployment/operator policy
+
+expert path
+  -> fully specified supported provider/runtime realization
+```
+
+Explicit control must not require polluting the portable application contract with infrastructure details. Portable application intent remains product-neutral; concrete infrastructure choices belong to deployment/operator configuration and control surfaces.
+
+BaseHarbor must show the resolved plan before mutation so users can see what defaults were selected and can override supported decisions deliberately. Explicit user/operator configuration wins over defaults, but never bypasses capability conformance, security boundaries, validation or fail-closed behavior.
+
+The goal is: easy when the user does not care about infrastructure details, precise when the user does.
