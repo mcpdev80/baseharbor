@@ -84,3 +84,25 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 		t.Fatal("expected missing external endpoint to fail closed")
 	}
 }
+
+func TestExternalOTLPPreflightRejectsCredentialBearingEndpoint(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://user:secret@otel.example.test",
+		"https://otel.example.test?token=secret",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			t.Setenv(application.OTLPEndpointEnv, endpoint)
+			m := application.WithOTLPTelemetry(application.Manifest{
+				Version: 1, Name: "demo", Environment: "test",
+				Workload: application.WorkloadConfig{Services: []string{"api"}},
+			}, "traces")
+			d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
+			resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
+			binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: []string{"traces"}}}
+			if err := d.Preflight(context.Background(), resource, binding); err == nil {
+				t.Fatal("expected credential-bearing endpoint to fail closed")
+			}
+		})
+	}
+}
+
