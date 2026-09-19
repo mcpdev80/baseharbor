@@ -102,6 +102,54 @@ message WorkloadBinding {
   // Capability-owned, provider-neutral binding semantics. Providers must
   // interpret this only according to the declared versioned capability spec.
   HttpExposureBinding http_exposure = 3;
+  SecureBinding security = 4;
+}
+
+message WorkloadIdentityBinding {
+  // Standards-based identity subject where available, for example a SPIFFE ID.
+  string subject = 1;
+  // Stable opaque BaseHarbor reference to identity material. Never secret data.
+  string reference = 2;
+}
+
+message CredentialReference {
+  string name = 1;
+  // Opaque reference resolved only at the trusted runtime/provider boundary.
+  string reference = 2;
+}
+
+message TrustMaterialReference {
+  string name = 1;
+  // Opaque reference to trust material such as a CA bundle.
+  string reference = 2;
+  string format = 3;
+}
+
+message AuthorizationMetadata {
+  string audience = 1;
+  repeated string scopes = 2;
+}
+
+message SecretReference {
+  string name = 1;
+  // Opaque reference only. Secret values are forbidden.
+  string reference = 2;
+}
+
+message SecurityLifecycleSupport {
+  bool renewable = 1;
+  bool rotatable = 2;
+  bool revocable = 3;
+}
+
+message SecureBinding {
+  WorkloadIdentityBinding identity = 1;
+  repeated CredentialReference credentials = 2;
+  repeated TrustMaterialReference trust = 3;
+  repeated AuthorizationMetadata authorization = 4;
+  repeated SecretReference secrets = 5;
+  SecurityLifecycleSupport lifecycle = 6;
+  repeated Diagnostic diagnostics = 7;
 }
 
 // Mutating operations require a stable idempotency key. Repeating the same
