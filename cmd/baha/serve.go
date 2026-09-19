@@ -49,11 +49,11 @@ func runtimeExecutorConfigFromEnv() runtimeexecutor.Config {
 func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 	audiences := splitNonEmpty(os.Getenv("BASEHARBOR_API_OIDC_AUDIENCES"))
 	return controlplaneruntime.Config{
-		ListenAddr:             os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
-		DatabaseURL:            os.Getenv("BASEHARBOR_API_DATABASE_URL"),
-		OIDCIssuer:             os.Getenv("BASEHARBOR_API_OIDC_ISSUER"),
-		OIDCAudiences:          audiences,
-		TLSCertFile:            os.Getenv("BASEHARBOR_API_TLS_CERT_FILE"),
+		ListenAddr:              os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
+		DatabaseURL:             os.Getenv("BASEHARBOR_API_DATABASE_URL"),
+		OIDCIssuer:              os.Getenv("BASEHARBOR_API_OIDC_ISSUER"),
+		OIDCAudiences:           audiences,
+		TLSCertFile:             os.Getenv("BASEHARBOR_API_TLS_CERT_FILE"),
 		TLSKeyFile:              os.Getenv("BASEHARBOR_API_TLS_KEY_FILE"),
 		TLSClientCAFile:         os.Getenv("BASEHARBOR_API_TLS_CLIENT_CA_FILE"),
 		RuntimeAppName:          os.Getenv("BASEHARBOR_RUNTIME_APP_NAME"),
