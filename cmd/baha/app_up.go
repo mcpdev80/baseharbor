@@ -53,7 +53,7 @@ func appUpCommand(store application.Store) *cli.Command {
 						bhruntime.CapabilityWorkloadLifecycle,
 						bhruntime.CapabilityResourceOwnership,
 					}
-					if m.Services.Secrets || application.HasObjectStorage(m) {
+					if m.Services.Secrets || requiresObjectStorageProviderAdmin(m) {
 						required = append(required, bhruntime.CapabilityServiceExec)
 					}
 					var err error
