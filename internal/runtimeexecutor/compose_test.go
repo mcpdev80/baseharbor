@@ -35,7 +35,6 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 	}
 }
 
-
 func TestProjectContainerReadableSecretPreservesProtectedSource(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "executor")
