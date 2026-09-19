@@ -34,6 +34,7 @@ type RuntimeRequirements struct {
 
 type RuntimePermission struct {
 	Capability string
+	Services   []string
 	Operations []string
 }
 
@@ -171,9 +172,10 @@ func WithOTLPTelemetry(m Manifest, signals ...string) Manifest {
 
 func HasOTLPTelemetry(m Manifest) bool { return m.Telemetry.OTLP != nil }
 
-func WithRuntimePermission(m Manifest, capabilityID string, operations ...string) Manifest {
+func WithRuntimePermission(m Manifest, capabilityID string, services []string, operations ...string) Manifest {
 	m.Runtime.Permissions = append(m.Runtime.Permissions, RuntimePermission{
 		Capability: strings.TrimSpace(capabilityID),
+		Services:   append([]string(nil), services...),
 		Operations: append([]string(nil), operations...),
 	})
 	return m
@@ -325,14 +327,18 @@ func (m Manifest) Validate() error {
 	if err := validateOTLPTelemetry(m.Workload, m.Telemetry.OTLP); err != nil {
 		return err
 	}
-	if err := validateRuntimePermissions(m.Runtime.Permissions); err != nil {
+	if err := validateRuntimePermissions(m.Workload, m.Runtime.Permissions); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateRuntimePermissions(permissions []RuntimePermission) error {
+func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePermission) error {
 	seenCapabilities := map[string]struct{}{}
+	selectedServices := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		selectedServices[service] = struct{}{}
+	}
 	for _, permission := range permissions {
 		spec, err := capability.ParseSpecificationID(capability.SpecificationID(strings.TrimSpace(permission.Capability)))
 		if err != nil {
@@ -343,6 +349,24 @@ func validateRuntimePermissions(permissions []RuntimePermission) error {
 			return fmt.Errorf("duplicate runtime permission capability %q", canonical)
 		}
 		seenCapabilities[canonical] = struct{}{}
+		if len(permission.Services) == 0 {
+			return fmt.Errorf("runtime permission %q requires at least one workload service", canonical)
+		}
+		seenServices := map[string]struct{}{}
+		for _, service := range permission.Services {
+			if err := validateComposeServiceName(service); err != nil {
+				return fmt.Errorf("runtime permission %q: %w", canonical, err)
+			}
+			if _, exists := seenServices[service]; exists {
+				return fmt.Errorf("runtime permission %q repeats workload service %q", canonical, service)
+			}
+			seenServices[service] = struct{}{}
+			if len(selectedServices) > 0 {
+				if _, exists := selectedServices[service]; !exists {
+					return fmt.Errorf("runtime permission %q targets workload service %q which is not selected", canonical, service)
+				}
+			}
+		}
 		if len(permission.Operations) == 0 {
 			return fmt.Errorf("runtime permission %q requires at least one operation", canonical)
 		}
@@ -577,6 +601,12 @@ func (m Manifest) YAML() string {
 		b.WriteString("runtime:\n  permissions:\n")
 		for _, permission := range permissions {
 			fmt.Fprintf(&b, "    - capability: %s\n", permission.Capability)
+			services := append([]string(nil), permission.Services...)
+			sort.Strings(services)
+			b.WriteString("      services:\n")
+			for _, service := range services {
+				fmt.Fprintf(&b, "        - %s\n", service)
+			}
 			operations := append([]string(nil), permission.Operations...)
 			sort.Strings(operations)
 			b.WriteString("      operations:\n")
@@ -666,7 +696,7 @@ func ParseYAML(input string) (Manifest, error) {
 	telemetryField := ""
 	runtimeField := ""
 	runtimePermissionIndex := -1
-	runtimePermissionOperations := false
+	runtimePermissionList := ""
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
 	for s.Scan() {
@@ -690,7 +720,7 @@ func ParseYAML(input string) (Manifest, error) {
 			telemetryField = ""
 			runtimeField = ""
 			runtimePermissionIndex = -1
-			runtimePermissionOperations = false
+			runtimePermissionList = ""
 			switch {
 			case strings.HasPrefix(trim, "version:"):
 				v, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trim, "version:")))
@@ -832,7 +862,7 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				m.Runtime.Permissions = append(m.Runtime.Permissions, RuntimePermission{Capability: strings.TrimSpace(value)})
 				runtimePermissionIndex = len(m.Runtime.Permissions) - 1
-				runtimePermissionOperations = false
+				runtimePermissionList = ""
 				continue
 			}
 			if section == "exposure" && exposureField == "http" && strings.HasPrefix(trim, "- ") {
@@ -847,9 +877,15 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 6:
-			if section == "runtime" && runtimeField == "permissions" && runtimePermissionIndex >= 0 && trim == "operations:" {
-				runtimePermissionOperations = true
-				continue
+			if section == "runtime" && runtimeField == "permissions" && runtimePermissionIndex >= 0 {
+				switch trim {
+				case "services:":
+					runtimePermissionList = "services"
+					continue
+				case "operations:":
+					runtimePermissionList = "operations"
+					continue
+				}
 			}
 			if section == "telemetry" && telemetryField == "otlp-signals" && strings.HasPrefix(trim, "- ") {
 				if m.Telemetry.OTLP == nil {
@@ -926,12 +962,16 @@ func ParseYAML(input string) (Manifest, error) {
 				m.Services.ObjectStorage = true
 			}
 		case 8:
-			if section == "runtime" && runtimeField == "permissions" && runtimePermissionIndex >= 0 && runtimePermissionOperations && strings.HasPrefix(trim, "- ") {
-				m.Runtime.Permissions[runtimePermissionIndex].Operations = append(
-					m.Runtime.Permissions[runtimePermissionIndex].Operations,
-					strings.TrimSpace(strings.TrimPrefix(trim, "- ")),
-				)
-				continue
+			if section == "runtime" && runtimeField == "permissions" && runtimePermissionIndex >= 0 && strings.HasPrefix(trim, "- ") {
+				value := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+				switch runtimePermissionList {
+				case "services":
+					m.Runtime.Permissions[runtimePermissionIndex].Services = append(m.Runtime.Permissions[runtimePermissionIndex].Services, value)
+					continue
+				case "operations":
+					m.Runtime.Permissions[runtimePermissionIndex].Operations = append(m.Runtime.Permissions[runtimePermissionIndex].Operations, value)
+					continue
+				}
 			}
 			if section != "secrets" || secretField != "required" || secretIndex < 0 || !secretGenerate || m.Secrets.Required[secretIndex].Generate == nil {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
