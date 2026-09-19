@@ -89,7 +89,14 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 	if err != nil {
 		return err
 	}
+	metricsEnabled, err := MetricsCollectionEnabled(m)
+	if err != nil {
+		return err
+	}
 	for _, resource := range resources {
+		if resource.Kind == capability.Metrics && !metricsEnabled {
+			continue
+		}
 		var instance capability.ProviderInstance
 		switch resource.Provider {
 		case capability.ProviderPostgreSQL:
@@ -119,6 +126,13 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			instance = capability.ProviderInstance{
 				ID:        "opentelemetry-collector/shared",
 				Provider:  capability.OTelCollector,
+				Scope:     capability.ScopeShared,
+				Ownership: capability.OwnershipBaseHarbor,
+			}
+		case capability.ProviderPrometheus:
+			instance = capability.ProviderInstance{
+				ID:        "prometheus/shared",
+				Provider:  capability.Prometheus,
 				Scope:     capability.ScopeShared,
 				Ownership: capability.OwnershipBaseHarbor,
 			}
