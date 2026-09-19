@@ -259,6 +259,9 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
 		return err
 	}
+	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+		return fmt.Errorf("resume shared platform runtime: %w", err)
+	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
@@ -276,10 +279,165 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
+	if err := suspendSharedPlatformRuntime(ctx, compose, out); err != nil {
+		return fmt.Errorf("suspend shared platform runtime: %w", err)
+	}
 	if err := compose.Down(ctx, files.Compose, files.Env); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime stopped")
+	return nil
+}
+
+func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
+	rules, err := application.LoadConnectivityRules()
+	if err != nil {
+		return err
+	}
+	if len(rules) > 0 {
+		containers, err := compose.ListComposeContainers(ctx)
+		if err != nil {
+			return err
+		}
+		for _, rule := range rules {
+			if err := suspendConnectivityRule(ctx, compose, rule, containers); err != nil {
+				return err
+			}
+		}
+		fmt.Fprintf(out, "[OK] connectivity       suspended %d platform connection(s); policy preserved\n", len(rules))
+	}
+
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
+		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("stop shared runtime provider executor: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor stopped")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+		return err
+	} else {
+		for _, instance := range instances {
+			if err := compose.DownProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
+				return fmt.Errorf("stop shared Prometheus project %s: %w", instance.Placement.Project, err)
+			}
+		}
+		if len(instances) > 0 {
+			fmt.Fprintf(out, "[OK] metrics            %d shared Prometheus provider(s) stopped\n", len(instances))
+		}
+	}
+	if files, err := telemetry.ExistingProviderFiles(); err == nil {
+		if err := compose.DownProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("stop shared telemetry provider: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector stopped")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
+		if err := compose.DownProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("stop shared object-storage provider: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider stopped")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
+	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
+		if err := compose.ConfigProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("validate shared object-storage provider: %w", err)
+		}
+		if err := compose.UpProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("start shared object-storage provider: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider resumed")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if files, err := telemetry.ExistingProviderFiles(); err == nil {
+		if err := compose.ConfigProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("validate shared telemetry provider: %w", err)
+		}
+		if err := compose.UpProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("start shared telemetry provider: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector resumed")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+		return err
+	} else {
+		for _, instance := range instances {
+			if err := compose.ConfigProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
+				return fmt.Errorf("validate shared Prometheus project %s: %w", instance.Placement.Project, err)
+			}
+			if err := compose.UpProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
+				return fmt.Errorf("start shared Prometheus project %s: %w", instance.Placement.Project, err)
+			}
+		}
+		if len(instances) > 0 {
+			fmt.Fprintf(out, "[OK] metrics            %d shared Prometheus provider(s) resumed\n", len(instances))
+		}
+	}
+
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
+		if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("validate shared runtime provider executor: %w", err)
+		}
+		if err := compose.UpProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("start shared runtime provider executor: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor resumed")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if err := reconcileAllConnectivity(ctx, out, compose); err != nil {
+		return err
+	}
+	return nil
+}
+
+func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhruntime.Compose) error {
+	rules, err := application.LoadConnectivityRules()
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	containers, err := compose.ListComposeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers)
+		targetContainers := containersForResolvedEndpoint(rule.Target, containers)
+		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
+			continue
+		}
+		targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, rule.Target, containers)
+		if err != nil {
+			return err
+		}
+		if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
+	}
 	return nil
 }
 
