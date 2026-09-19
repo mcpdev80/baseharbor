@@ -198,13 +198,21 @@ Runtime-/Provider-Implementierung
 
 Die kanonischen Placement-Scopes bleiben exakt `application`, `shared` und `external`. Eine Sharing Boundary ist eine optionale Eigenschaft von `shared` und kein vierter Scope.
 
-Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben.
+Placement hat strikte Provider-Instanz-Semantik:
 
-Provider-Implementierungen deklarieren, welche Placements sie unterstuetzen. Wenn die Policy ein Placement aufloest, das der ausgewaehlte Provider nicht erfuellen kann, bricht BaseHarbor vor jeder Mutation fail-closed ab, statt still auf ein anderes Placement auszuweichen.
+- `application`: genau eine von BaseHarbor verwaltete Provider-Instanz fuer exakt eine Application/Environment. In der Compose-Runtime bedeutet das einen dedizierten Provider-Container/-Project mit eigenem Provider-State; die Instanz wird niemals von einer anderen Application wiederverwendet.
+- `shared`: genau eine BaseHarbor Platform-/Core-Runtime-Provider-Instanz, die lazy beim ersten Bedarf erzeugt wird und von einer oder mehreren explizit autorisierten Applications wiederverwendet werden kann. Ein Provider bleibt `shared`, auch wenn ihn aktuell nur eine Application nutzt.
+- `external`: eine ausserhalb von BaseHarbor betriebene Provider-Instanz. BaseHarbor kann sie anbinden, besitzt oder provisioniert ihren Lifecycle aber nicht.
 
-Der portable Application Contract enthaelt weder Provider-Placement noch Sharing Boundary, Lifecycle Ownership oder Runtime-Isolationsmechanik. Der Entwickler beschreibt weiterhin nur die benoetigten Capabilities. BaseHarbor und Deployment Policy loesen die Infrastrukturdetails auf.
+Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Platform-Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben. Das Teilen des Provider-Prozesses bedeutet niemals automatisch geteilte logische Application-Ressourcen, Credentials, Daten oder Netzwerkzugriffe.
 
-Placement bleibt ausserdem von Runtime-spezifischer Isolation getrennt. Heute kann Compose Grenzen ueber Projekte, Netze und Volumes realisieren. Spaetere Kubernetes-/OpenShift-Runtimes koennen dieselben logischen Grenzen auf Namespaces/Projects, clusterweite Infrastruktur, Helm Releases, Operators, NetworkPolicies oder andere native Mechanismen abbilden, ohne den Application Intent zu aendern.
+Shared Provider sind on-demand Platform-Infrastruktur und keine pauschalen Bootstrap-Abhaengigkeiten. Existiert bereits eine kompatible Shared-Instanz in der BaseHarbor Platform-/Core-Runtime, wird sie wiederverwendet statt eine weitere Provider-Instanz zu starten.
+
+Provider-Implementierungen deklarieren, welche Placements ihr aktueller Adapter tatsaechlich unterstuetzt. Wenn eine Policy ein Placement aufloest, das der ausgewaehlte Provider-Adapter nicht wahrheitsgemaess realisieren kann, bricht BaseHarbor vor jeder Mutation fail-closed ab, statt still auf ein anderes Placement auszuweichen.
+
+Der portable Application Contract enthaelt weder Provider-Placement noch Sharing Boundary, Lifecycle Ownership oder Runtime-Realisierungsmechanik. Der Entwickler beschreibt weiterhin nur die benoetigten Capabilities. BaseHarbor und Deployment Policy loesen die Infrastrukturdetails auf.
+
+Die Placement-Semantik bleibt runtime-unabhaengig, auch wenn die Realisierung unterschiedlich ist. Compose realisiert einen `application` Provider als dedizierten Container/Project und einen `shared` Provider als BaseHarbor Platform-/Core-Runtime-Infrastruktur. Spaetere Kubernetes-/OpenShift-Runtimes koennen dieselbe Semantik mit dedizierten/geteilten plattformnativen Ressourcen, Namespaces/Projects, Operatoren oder anderen Isolationsmechanismen umsetzen, ohne den Application Intent zu veraendern.
 
 Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provider-Placement oder Resource-Scope. Ein clusterweit installierter Operator kann application-scoped oder sharing-boundary-scoped Ressourcen verwalten.
 
