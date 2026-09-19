@@ -231,3 +231,52 @@ func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
 	}
 }
 
+type recordingRuntime struct {
+	destroyed []string
+}
+
+func (r *recordingRuntime) ConfigProject(context.Context, string, string, string) error  { return nil }
+func (r *recordingRuntime) UpProject(context.Context, string, string, string) error      { return nil }
+func (r *recordingRuntime) DownProject(context.Context, string, string, string) error    { return nil }
+func (r *recordingRuntime) DestroyProject(_ context.Context, project, _, _ string) error {
+	r.destroyed = append(r.destroyed, project)
+	return nil
+}
+
+func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
+
+	m := application.New("alpha", "dev", false, false, false)
+	for _, boundary := range []string{"", "team-a", "team-b"} {
+		t.Setenv(application.ProviderSharingBoundaryEnv(capability.ProviderPrometheus), boundary)
+		if _, err := EnsureProviderFiles(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	instances, err := ExistingSharedProviderInstances()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instances) != 3 {
+		t.Fatalf("shared provider instances=%d want=3: %#v", len(instances), instances)
+	}
+
+	runtime := &recordingRuntime{}
+	if err := DestroyAllSharedProviders(context.Background(), runtime); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.destroyed) != 3 {
+		t.Fatalf("destroyed projects=%#v", runtime.destroyed)
+	}
+	instances, err = ExistingSharedProviderInstances()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instances) != 0 {
+		t.Fatalf("shared provider state remains: %#v", instances)
+	}
+}
+
