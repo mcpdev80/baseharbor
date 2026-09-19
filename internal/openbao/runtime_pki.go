@@ -113,7 +113,7 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 		return false, nil
 	}
 
-	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-secrets", "")
+	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-runtime", "")
 	if err != nil || !brokerOK {
 		return false, err
 	}
