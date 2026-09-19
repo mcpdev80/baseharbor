@@ -1,6 +1,6 @@
 # Runtime broker security properties
 
-The MVP runtime-secret broker is intentionally designed around blast-radius reduction rather than one shared multi-tenant service.
+The Application Runtime Broker is intentionally designed around blast-radius reduction rather than one shared multi-tenant service.
 
 A compromise of one application broker must not grant access to:
 
