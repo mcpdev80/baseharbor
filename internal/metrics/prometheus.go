@@ -27,6 +27,48 @@ const (
 	ProviderImage   = "prom/prometheus:v3.14.0"
 )
 
+type Placement struct {
+	Scope   capability.ProviderScope
+	Project string
+	Network string
+	Volume  string
+	Dir     string
+}
+
+func PlacementFor(m application.Manifest) (Placement, error) {
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return Placement{}, err
+	}
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Placement{}, err
+	}
+	switch policy.ProviderScope {
+	case capability.ScopeShared:
+		return Placement{
+			Scope: capability.ScopeShared,
+			Project: ProviderProject,
+			Network: ProviderNetwork,
+			Volume: "baseharbor-prometheus-data",
+			Dir: filepath.Join(dataDir, "providers", "prometheus", "shared"),
+		}, nil
+	case capability.ScopeApplication:
+		suffix := m.Name + "-" + m.Environment
+		return Placement{
+			Scope: capability.ScopeApplication,
+			Project: "baseharbor-metrics-" + suffix,
+			Network: application.MetricsProviderNetworkName(m, capability.ScopeApplication),
+			Volume: "baseharbor-prometheus-data-" + suffix,
+			Dir: filepath.Join(dataDir, "providers", "prometheus", "applications", m.Name, m.Environment),
+		}, nil
+	case capability.ScopeExternal:
+		return Placement{Scope: capability.ScopeExternal}, nil
+	default:
+		return Placement{}, fmt.Errorf("unsupported metrics provider scope %q", policy.ProviderScope)
+	}
+}
+
 type Runtime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
