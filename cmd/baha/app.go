@@ -31,7 +31,7 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "create",
 			Summary: "Create an application manifest in BaseHarbor state",
-			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
+			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 			Long:    "Creates legacy/BaseHarbor-managed declarative application state only; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default PostgreSQL instance is enabled.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				m, err := manifestFromCreateArgs(args)
@@ -200,7 +200,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -248,7 +248,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "--postgres-instance", "--redis-instance", "--require-secret":
+		case "--environment", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
@@ -260,11 +260,24 @@ func hasCreateName(args []string) bool {
 }
 
 func manifestFromCreateArgs(args []string) (application.Manifest, error) {
-	name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs(args)
+	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs(args)
 	if err != nil {
 		return application.Manifest{}, err
 	}
-	m := application.New(name, environment, postgres || len(postgresInstances) > 0, redis || len(redisInstances) > 0, secrets)
+	if !postgres && len(postgresInstances) == 0 && !redis && len(redisInstances) == 0 && !objectStorage && len(objectStorageBuckets) == 0 && !secrets {
+		postgres = true
+	}
+	m := application.Manifest{
+		Version:     application.CurrentVersion,
+		Name:        name,
+		Environment: environment,
+		Services: application.Services{
+			Postgres:      postgres || len(postgresInstances) > 0,
+			Redis:         redis || len(redisInstances) > 0,
+			ObjectStorage: objectStorage || len(objectStorageBuckets) > 0,
+			Secrets:       secrets,
+		},
+	}
 	if len(postgresInstances) > 0 {
 		if postgres {
 			postgresInstances = append(postgresInstances, "default")
@@ -277,6 +290,12 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 		}
 		m = application.WithRedisInstances(m, redisInstances...)
 	}
+	if len(objectStorageBuckets) > 0 {
+		if objectStorage {
+			objectStorageBuckets = append(objectStorageBuckets, "default")
+		}
+		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
+	}
 	m = application.WithRequiredSecrets(m, required...)
 	if err := m.Validate(); err != nil {
 		return application.Manifest{}, err
@@ -284,7 +303,7 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	return m, nil
 }
 
-func parseCreateArgs(args []string) (name, environment string, postgres, redis, secrets bool, postgresInstances, redisInstances, required []string, err error) {
+func parseCreateArgs(args []string) (name, environment string, postgres, redis, objectStorage, secrets bool, postgresInstances, redisInstances, objectStorageBuckets, required []string, err error) {
 	environment = "dev"
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -293,7 +312,7 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			postgres = true
 		case arg == "--postgres-instance":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, nil, nil, usageError("--postgres-instance requires a name", "Example: --postgres-instance analytics")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--postgres-instance requires a name", "Example: --postgres-instance analytics")
 			}
 			i++
 			postgresInstances = append(postgresInstances, args[i])
@@ -303,17 +322,27 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			redis = true
 		case arg == "--redis-instance":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, nil, nil, usageError("--redis-instance requires a name", "Example: --redis-instance sessions")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--redis-instance requires a name", "Example: --redis-instance sessions")
 			}
 			i++
 			redisInstances = append(redisInstances, args[i])
 		case strings.HasPrefix(arg, "--redis-instance="):
 			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--redis-instance="))
+		case arg == "--s3":
+			objectStorage = true
+		case arg == "--s3-bucket":
+			if i+1 >= len(args) {
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--s3-bucket requires a name", "Example: --s3-bucket assets")
+			}
+			i++
+			objectStorageBuckets = append(objectStorageBuckets, args[i])
+		case strings.HasPrefix(arg, "--s3-bucket="):
+			objectStorageBuckets = append(objectStorageBuckets, strings.TrimPrefix(arg, "--s3-bucket="))
 		case arg == "--secrets":
 			secrets = true
 		case arg == "--require-secret":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, nil, nil, usageError("--require-secret requires a name", "Example: --require-secret OPENAI_API_KEY")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--require-secret requires a name", "Example: --require-secret OPENAI_API_KEY")
 			}
 			i++
 			required = append(required, args[i])
@@ -323,25 +352,25 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			secrets = true
 		case arg == "--environment":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
 			}
 			i++
 			environment = args[i]
 		case strings.HasPrefix(arg, "--environment="):
 			environment = strings.TrimPrefix(arg, "--environment=")
 		case strings.HasPrefix(arg, "-"):
-			return "", "", false, false, false, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
+			return "", "", false, false, false, false, nil, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
 		default:
 			if name != "" {
-				return "", "", false, false, false, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --postgres")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --postgres")
 			}
 			name = arg
 		}
 	}
 	if name == "" {
-		return "", "", false, false, false, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
+		return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
 	}
-	return name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, nil
+	return name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, nil
 }
 
 func serviceNames(m application.Manifest) string {
@@ -358,6 +387,13 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, "redis")
 		} else {
 			names = append(names, fmt.Sprintf("redis(%d)", count))
+		}
+	}
+	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "s3")
+		} else {
+			names = append(names, fmt.Sprintf("s3(%d)", count))
 		}
 	}
 	if m.Services.Secrets {
