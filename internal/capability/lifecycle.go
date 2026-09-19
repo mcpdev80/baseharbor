@@ -36,9 +36,17 @@ type Diagnostic struct {
 	Message  string   `json:"message"`
 }
 
+type HTTPExposureBinding struct {
+	Service    string `json:"service"`
+	TargetPort int    `json:"target_port"`
+	Protocol   string `json:"protocol"`
+	Visibility string `json:"visibility"`
+}
+
 type Binding struct {
-	Resource Resource `json:"resource"`
-	Workload string   `json:"workload"`
+	Resource     Resource             `json:"resource"`
+	Workload     string               `json:"workload"`
+	HTTPExposure *HTTPExposureBinding `json:"http_exposure,omitempty"`
 }
 
 type PlanItem struct {
@@ -69,15 +77,16 @@ type Result struct {
 type Driver interface {
 	Descriptor() Provider
 	Preflight(context.Context, Resource, Binding) error
-	Provision(context.Context, Resource) error
+	Provision(context.Context, Resource, Binding) error
 	Bind(context.Context, Resource, Binding) error
 	Verify(context.Context, Resource, Binding) error
 }
 
 type Request struct {
-	Requirement Requirement
-	Workload    string
-	Driver      Driver
+	Requirement  Requirement
+	Workload     string
+	HTTPExposure *HTTPExposureBinding
+	Driver       Driver
 }
 
 func BuildPlan(application string, requests []Request) (Plan, error) {
@@ -100,6 +109,10 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			return Plan{}, fmt.Errorf("capability binding for %s/%s: workload is required", application, request.Requirement.Name)
 		}
 		binding := Binding{Resource: resource, Workload: workload}
+		if request.HTTPExposure != nil {
+			value := *request.HTTPExposure
+			binding.HTTPExposure = &value
+		}
 		plan.Items = append(plan.Items, PlanItem{Resource: resource, Binding: binding})
 	}
 	return plan, nil
@@ -141,7 +154,7 @@ func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
 	}
 	for i, item := range e.result.Plan.Items {
 		driver := e.requests[i].Driver
-		if err := driver.Provision(ctx, item.Resource); err != nil {
+		if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
