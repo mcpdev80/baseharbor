@@ -16,12 +16,12 @@ import (
 )
 
 type RuntimeResourceBinding struct {
-	ResourceID      string
-	Endpoint        string
-	Bucket          string
-	Region          string
-	AccessKeyID     string
-	SecretAccessKey string
+	ResourceID      string `json:"resource_id"`
+	Endpoint        string `json:"endpoint"`
+	Bucket          string `json:"bucket"`
+	Region          string `json:"region"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
 }
 
 type RuntimeResourceManager struct {
