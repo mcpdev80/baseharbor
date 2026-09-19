@@ -50,6 +50,29 @@ Aktuelle semantische Detectoren erkennen neben PostgreSQL/Redis auch S3-kompatib
 
 Repository-first `baha up` verwendet denselben Reconciliation-Core vor der Convergence. Neu erkannte oder unklare Capabilities und Runtime-Operations-Hinweise werden sichtbar gemeldet, aber `baseharbor.yaml` wird nicht automatisch umgeschrieben und es werden keine Runtime-Berechtigungen vergeben.
 
+## Metrics-Collection-Policy
+
+Ein Repository kann eine oder mehrere providerneutrale `metrics/v1`-Sources deklarieren:
+
+```yaml
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+Damit wird **nicht** Prometheus angefordert. Deklariert wird ein von der Anwendung bereitgestellter OpenMetrics-kompatibler HTTP-Endpunkt.
+
+Die Compose-Collection-Policy gehoert zum Deployment:
+
+- `dev` / `development`: standardmaessig aktiv;
+- Test/Staging/Produktion: standardmaessig deaktiviert;
+- `BASEHARBOR_METRICS_ENABLED=true|false`: expliziter Operator-Override.
+
+Bei aktiver Collection konvergieren `baha app apply` und `baha app up` den shared Prometheus-Referenzprovider lazy, registrieren Targets automatisch, starten den Workload und verlangen danach einen echten erfolgreichen Scrape, bevor der Metrics-Pfad als bereit gilt. Grafana, Loki und Tempo werden nicht gestartet.
+
 ## Control Plane
 
 ```bash
