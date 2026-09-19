@@ -205,3 +205,29 @@ Der aktuelle SeaweedFS-Provider erstellt fuer jeden logischen Bucket eine eigene
 Repository-Workloads verwenden den internen Compose-Endpoint ueber das BaseHarbor-eigene Object-Storage-Integrationsnetz; Host-Prozesse verwenden den geschuetzten Loopback-Endpoint. Beide Adressen sind Deployment-State und keine portable Application Identity.
 
 Backup/Restore erfasst Object-Inhalte noch nicht. v0.4.6 verweigert deshalb `baha app backup` und `baha app restore` fuer Anwendungen mit Managed Object Storage, statt eine unvollstaendige Recovery-Einheit zu erzeugen oder zu akzeptieren.
+
+## OTLP-Telemetrie-Export in v0.4.7
+
+Anwendungen koennen providerneutralen OTLP-Export deklarieren:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - api
+    - worker
+
+telemetry:
+  otlp:
+    signals:
+      - traces
+      - metrics
+```
+
+Die ausgewaehlten Workload-Services erhalten normale OpenTelemetry-Environment-Variablen. Es gibt keine BaseHarbor-spezifische Telemetrie-API und der Application Contract nennt weder Collector noch Tempo, Prometheus, Loki oder Grafana.
+
+Das aktuelle v1-Binding verwendet OTLP HTTP/Protobuf Export. BaseHarbor kann es ueber den shared Managed OpenTelemetry Collector oder einen externen OTLP-Endpunkt aus Deployment-State erfuellen. Provider-Endpunkte und Authorization-Material sind kein portabler Application Intent.
+
+Ein externes Ziel kann ueber `BASEHARBOR_OTLP_ENDPOINT` im Deployment-Environment gesetzt werden. Optionale sensitive OTLP-Header verwenden `BASEHARBOR_OTLP_HEADERS` und werden nur an der vertrauenswuerdigen Workload-/Provider-Grenze injiziert; sie landen nicht in `baseharbor.yaml`.
+
+OTLP-Transport allein provisioniert niemals automatisch Prometheus, Loki, Tempo oder Grafana.
