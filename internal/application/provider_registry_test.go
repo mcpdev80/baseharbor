@@ -224,3 +224,25 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 		t.Fatalf("PostgreSQL provider not registered: %v", err)
 	}
 }
+
+
+func TestReferenceProviderInstancePreservesExternalReference(t *testing.T) {
+	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "otel-prod")
+
+	m := Manifest{Name: "demo", Environment: "production"}
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.TelemetryOTLP,
+		Name:        "default",
+		Provider:    capability.ProviderExternalOTLP,
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.Scope != capability.ScopeExternal ||
+		instance.Ownership != capability.OwnershipExternal ||
+		instance.Reference != "otel-prod" {
+		t.Fatalf("external provider instance=%#v", instance)
+	}
+}
