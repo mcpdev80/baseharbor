@@ -159,6 +159,47 @@ func connectionsCommand() *cli.Command {
 	}
 }
 
+func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compose bhruntime.Compose, m application.Manifest) error {
+	rules, err := application.LoadConnectivityRules()
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	containers, err := compose.ListComposeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
+			continue
+		}
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers)
+		targetContainers := containersForResolvedEndpoint(rule.Target, containers)
+		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
+			continue
+		}
+		network := application.ConnectivityNetworkName(rule)
+		if err := compose.EnsureManagedNetwork(ctx, network); err != nil {
+			return err
+		}
+		for _, container := range sourceContainers {
+			if err := compose.ConnectManagedNetwork(ctx, network, container, ""); err != nil {
+				return fmt.Errorf("attach connectivity source %s: %w", container, err)
+			}
+		}
+		alias := application.ConnectivityTargetAlias(rule)
+		for _, container := range targetContainers {
+			if err := compose.ConnectManagedNetwork(ctx, network, container, alias); err != nil {
+				return fmt.Errorf("attach connectivity target %s: %w", container, err)
+			}
+		}
+		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
+	}
+	return nil
+}
+
 func ensureConnectivityNetworksForManifest(ctx context.Context, compose bhruntime.Compose, m application.Manifest) error {
 	rules, err := application.LoadConnectivityRules()
 	if err != nil {
