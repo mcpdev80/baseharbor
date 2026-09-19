@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.5 portable application foundation
+## Current v0.4.6 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -31,7 +31,7 @@ Implemented foundations include:
 - a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
 - Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
-- one or multiple named logical Valkey/Redis-protocol resources;
+- one or multiple named logical Valkey/Redis-protocol resources;\n- one or multiple logical S3 buckets through `object-storage.s3/v1`;\n- SeaweedFS as the current lazy shared Compose S3 reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
 - managed/generated secret intent without embedding secret values in the application contract;
 - provider-neutral `secure-binding/v1` semantics for workload identity, credential/trust/secret references, least-privilege authorization metadata and security lifecycle declarations;
 - explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
@@ -95,7 +95,7 @@ Implemented in v0.4:
 
 Still future:
 
-- additional capability-provider implementations and S3/object-storage realization;
+- additional capability-provider implementations and additional S3/object-storage providers/provider-selection policy;\n- BaseHarbor recovery of object-storage contents (v0.4.6 backup/restore fails closed for S3 applications instead of claiming incomplete recovery);
 - additional traffic/exposure providers and broader provider-neutral TLS/certificate lifecycle beyond the current `exposure.http/v1` + existing/BYOC path;
 - BaseHarbor-managed ACME issuance/renewal;
 - OpenBao PKI issuance/rotation for application ingress certificates;
@@ -132,7 +132,7 @@ Expand the portable capability model while keeping Compose as the production imp
 - capability-provider boundaries for relational SQL, cache/key-value, secrets, S3-compatible object storage and exposure;
 - replaceable reference providers rather than product lock-in;
 - provider conformance and explicit capability negotiation;
-- object storage reference implementation, with SeaweedFS/Ceph RGW/external S3-style providers evaluated behind the same logical contract;
+- additional object-storage implementations such as Ceph RGW/external S3 behind the implemented `object-storage.s3/v1` contract;
 - further provider-neutral exposure/TLS intent without leaking Compose details.
 
 ### v0.6 – Environments, policy, identity and topology intent
