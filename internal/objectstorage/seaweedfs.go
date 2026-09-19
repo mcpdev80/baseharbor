@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -87,54 +86,53 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if err := d.runtime.UpProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env); err != nil {
 		return fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
-	admin, endpoint, err := providerAdmin(providerFiles)
+	endpoint, err := providerEndpoint(providerFiles)
 	if err != nil {
 		return err
 	}
-	if err := waitS3(ctx, d.client, endpoint, admin); err != nil {
+	if err := waitS3(ctx, d.client, endpoint); err != nil {
 		return fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
-	physical := PhysicalBucketName(d.app, resource.Name)
-	headStatus, _, headErr := signedS3Request(ctx, d.client, endpoint, http.MethodHead, physical, "", admin, nil)
-	if headErr != nil {
-		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, headErr)
-	}
-	if headStatus >= 200 && headStatus < 300 {
-		return nil
-	}
-	if headStatus != http.StatusNotFound {
-		return fmt.Errorf("inspect S3 bucket %s: unexpected HTTP status %d", resource.Name, headStatus)
-	}
-	status, _, err := signedS3Request(ctx, d.client, endpoint, http.MethodPut, physical, "", admin, nil)
-	if err != nil {
-		return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
-	}
-	if status != http.StatusOK && status != http.StatusNoContent {
-		return fmt.Errorf("create S3 bucket %s: unexpected HTTP status %d", resource.Name, status)
-	}
-	d.createdBuckets[resource.Name] = struct{}{}
-	return nil
-}
 
-func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, err := ExistingProviderFiles()
-	if err != nil {
-		return err
-	}
 	credentials, err := application.LoadObjectStorageCredentials(d.files, resource.Name)
 	if err != nil {
 		return err
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
-	command := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
+	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
 		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
-	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+command); err != nil {
+	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
-	_, endpoint, err := providerAdmin(providerFiles)
+
+	status, _, err := signedS3Request(ctx, d.client, endpoint, http.MethodHead, physical, "", credentials, nil)
+	if err != nil {
+		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, err)
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	if status != http.StatusNotFound {
+		return fmt.Errorf("inspect S3 bucket %s: unexpected HTTP status %d", resource.Name, status)
+	}
+	create := fmt.Sprintf("s3.bucket.create -name=%s -owner=%s", physical, physical)
+	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+create); err != nil {
+		return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
+	}
+	d.createdBuckets[resource.Name] = struct{}{}
+	return nil
+}
+
+func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capability.Binding) error {
+	providerFiles, err := ExistingProviderFiles()
 	if err != nil {
 		return err
 	}
+	endpoint, err := providerEndpoint(providerFiles)
+	if err != nil {
+		return err
+	}
+	physical := PhysicalBucketName(d.app, resource.Name)
 	if err := application.MaterializeObjectStorageBinding(d.app, d.files, resource.Name, physical, endpoint); err != nil {
 		return fmt.Errorf("materialize S3 application binding: %w", err)
 	}
@@ -150,7 +148,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	if err != nil {
 		return err
 	}
-	_, endpoint, err := providerAdmin(providerFiles)
+	endpoint, err := providerEndpoint(providerFiles)
 	if err != nil {
 		return err
 	}
@@ -199,9 +197,13 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 		return err
 	}
 	physical := PhysicalBucketName(d.app, logicalBucket)
-	command := fmt.Sprintf("s3.bucket.delete -name=%s -apply", physical)
+	command := fmt.Sprintf("s3.bucket.delete -name=%s", physical)
 	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+command); err != nil {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
+	}
+	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", physical)
+	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+revoke); err != nil {
+		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
 	}
 	return nil
 }
@@ -234,20 +236,6 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return ProviderFiles{}, err
-	}
-	if values["BASEHARBOR_SEAWEEDFS_ACCESS_KEY"] == "" {
-		value, err := randomToken(12)
-		if err != nil {
-			return ProviderFiles{}, err
-		}
-		values["BASEHARBOR_SEAWEEDFS_ACCESS_KEY"] = "BHADMIN" + value
-	}
-	if values["BASEHARBOR_SEAWEEDFS_SECRET_KEY"] == "" {
-		value, err := randomToken(32)
-		if err != nil {
-			return ProviderFiles{}, err
-		}
-		values["BASEHARBOR_SEAWEEDFS_SECRET_KEY"] = value
 	}
 	if values["BASEHARBOR_SEAWEEDFS_PORT"] == "" {
 		port, err := allocatePort()
@@ -302,10 +290,7 @@ func providerComposeYAML() string {
   seaweedfs:
     image: chrislusf/seaweedfs:4.47
     restart: unless-stopped
-    command: server -s3
-    environment:
-      AWS_ACCESS_KEY_ID: ${BASEHARBOR_SEAWEEDFS_ACCESS_KEY}
-      AWS_SECRET_ACCESS_KEY: ${BASEHARBOR_SEAWEEDFS_SECRET_KEY}
+    command: server -s3 -iam=true
     ports:
       - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8333"
     volumes:
@@ -324,39 +309,41 @@ networks:
 `
 }
 
-func providerAdmin(files ProviderFiles) (application.ObjectStorageCredentials, string, error) {
+func providerEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
-		return application.ObjectStorageCredentials{}, "", err
+		return "", err
 	}
 	values, err := parseEnv(data)
 	if err != nil {
-		return application.ObjectStorageCredentials{}, "", err
+		return "", err
 	}
 	port := values["BASEHARBOR_SEAWEEDFS_PORT"]
-	if _, err := strconv.Atoi(port); err != nil {
-		return application.ObjectStorageCredentials{}, "", fmt.Errorf("invalid SeaweedFS provider port")
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("invalid SeaweedFS provider port")
 	}
-	credentials := application.ObjectStorageCredentials{AccessKeyID: values["BASEHARBOR_SEAWEEDFS_ACCESS_KEY"], SecretAccessKey: values["BASEHARBOR_SEAWEEDFS_SECRET_KEY"]}
-	if credentials.AccessKeyID == "" || credentials.SecretAccessKey == "" {
-		return application.ObjectStorageCredentials{}, "", errors.New("SeaweedFS provider credentials are incomplete")
-	}
-	return credentials, "http://127.0.0.1:" + port, nil
+	return "http://127.0.0.1:" + port, nil
 }
 
-func waitS3(ctx context.Context, client *http.Client, endpoint string, credentials application.ObjectStorageCredentials) error {
+func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var last error
 	for {
-		status, _, err := signedS3Request(ctx, client, endpoint, http.MethodGet, "", "", credentials, nil)
-		if err == nil && status >= 200 && status < 300 {
-			return nil
-		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/", nil)
 		if err != nil {
-			last = err
+			return err
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode < http.StatusInternalServerError {
+				return nil
+			}
+			last = fmt.Errorf("HTTP %d", resp.StatusCode)
 		} else {
-			last = fmt.Errorf("HTTP %d", status)
+			last = err
 		}
 		select {
 		case <-ctx.Done():
@@ -464,14 +451,6 @@ func writeEnv(path string, values map[string]string) error {
 		return err
 	}
 	return os.Chmod(path, 0o600)
-}
-
-func randomToken(size int) (string, error) {
-	buf := make([]byte, size)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate SeaweedFS provider secret: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func allocatePort() (int, error) {
