@@ -28,6 +28,11 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 		t.Fatalf("detect Compose runtime: %v", err)
 	}
 	defer func() {
+		// Keep failed provider state alive until the acceptance workflow has
+		// captured container status/logs. GitHub-hosted runners are ephemeral.
+		if t.Failed() {
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
 		if err := DestroySharedProvider(cleanupCtx, compose); err != nil {
