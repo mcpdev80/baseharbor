@@ -395,7 +395,9 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	}
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
-	b.WriteString("    external: true\n")
+	if application.HasManagedRuntimeServices(m) {
+		b.WriteString("    external: true\n")
+	}
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
 	if m.Services.Secrets {
 		b.WriteString("  secrets:\n")
