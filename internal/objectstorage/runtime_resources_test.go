@@ -13,11 +13,11 @@ import (
 )
 
 type fakeRuntimeS3IAM struct {
-	mu              sync.Mutex
-	buckets         map[string]bool
-	users           map[string]bool
-	keys            map[string][]IAMAccessKey
-	createKeyCalls  int
+	mu             sync.Mutex
+	buckets        map[string]bool
+	users          map[string]bool
+	keys           map[string][]IAMAccessKey
+	createKeyCalls int
 }
 
 func newFakeRuntimeS3IAM() *fakeRuntimeS3IAM {
