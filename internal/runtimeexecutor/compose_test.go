@@ -24,7 +24,7 @@ func TestComposeYAMLInitializesStateVolumeBeforeExecutor(t *testing.T) {
 		"network_mode: \"none\"",
 		"- CHOWN",
 		"condition: service_completed_successfully",
-		"chown 65532:65532 /var/lib/baseharbor/runtime-resources",
+		"chmod 700 /var/lib/baseharbor/runtime-resources && chown 65532:65532 /var/lib/baseharbor/runtime-resources",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime executor compose missing %q:\n%s", want, got)
