@@ -30,7 +30,7 @@ services:
 
 	var out, errOut bytes.Buffer
 	reportRepositoryContractEvolution(context.Background(), &out, &errOut, resolvedApplication{
-		ManifestPath: manifestPath,
+		ManifestPath:   manifestPath,
 		FromRepository: true,
 	})
 	if errOut.Len() != 0 {
@@ -62,7 +62,7 @@ services:
 
 	var out bytes.Buffer
 	reportRepositoryContractEvolution(context.Background(), &out, &bytes.Buffer{}, resolvedApplication{
-		ManifestPath: manifestPath,
+		ManifestPath:   manifestPath,
 		FromRepository: true,
 	})
 	if !strings.Contains(out.String(), "runtime.create") {
