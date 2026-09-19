@@ -155,3 +155,28 @@ Siehe [Provider Integration Contract v1](provider-integration-contract.md).
 v0.4.3 verschiebt Repository-Verstaendnis in einen gemeinsamen, read-only Core. CLI-Inspection und gefuehrtes `app init` verwenden dieselbe deterministische Detector Engine mit Detected/Suggested/Possible-Confidence und maschinenlesbaren Ergebnissen fuer spaetere Control Surfaces.
 
 Inspection ist keine Mutation und keine AI-Abhaengigkeit. Spaetere Capability-Releases erweitern die Engine ueber registrierbare Detektoren statt eigene CLI-Sonderlogik aufzubauen.
+
+
+## Endpoint- und Exposure-Fundament in v0.4.4
+
+v0.4.4 zieht HTTP/HTTPS-Endpoint-Identitaet und Readiness in einen gemeinsamen Endpoint-Core. Die logische Identitaet basiert auf Workload-Service-Namen und Protokoll-/Adressmetadaten; generierte Compose-Container-Namen sind niemals anwendungsseitige Identitaet.
+
+Endpoint-Erkennung bedeutet keine Exposure-Ownership:
+
+```text
+app-eigener Endpoint
+  -> erkennen
+  -> beobachten
+  -> verifizieren
+
+explizites exposure.http/v1
+  -> Provider aufloesen
+  -> alle Preflights
+  -> provisionieren
+  -> logischen Endpoint binden
+  -> Ende-zu-Ende verifizieren
+```
+
+Der erste verwaltete Compose-Exposure-Provider ist Caddy. Er besitzt ein separates application-scoped Provider-Projekt/-Netz und verbindet nur explizit exponierte Workload-Services ueber den von BaseHarbor erzeugten Override. Die Compose-Quelldatei und app-eigene Volumes werden nicht uebernommen.
+
+Derselbe `exposure.http/v1`-Intent soll spaeter ohne Aenderung am Application Contract auf andere Provider abgebildet werden koennen.
