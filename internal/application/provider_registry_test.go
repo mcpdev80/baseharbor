@@ -147,3 +147,65 @@ func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T)
 		t.Fatalf("Prometheus instance = %#v", instance)
 	}
 }
+
+func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "true")
+	m := New("runtime-metrics", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithRuntimePermission(m, string(capability.MetricsV1.ID), []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+
+	registry := capability.NewRegistry()
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(registry.Instances) != 1 {
+		t.Fatalf("instances=%#v", registry.Instances)
+	}
+	if len(registry.Bindings) != 1 {
+		t.Fatalf("bindings=%#v", registry.Bindings)
+	}
+	binding := registry.Bindings[0]
+	if binding.Resource.Kind != capability.Metrics ||
+		binding.Resource.Name != runtimeMetricsRegistryResource ||
+		binding.ProviderInstanceID != "prometheus/shared" {
+		t.Fatalf("runtime metrics binding=%#v", binding)
+	}
+}
+
+func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	t.Setenv(MetricsEnabledEnv, "true")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	if err := ReconcileReferenceProviderRegistry(m); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(ProviderScopeEnv(capability.ProviderPrometheus), "application")
+	desired, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desired.Scope != capability.ScopeApplication {
+		t.Fatalf("desired placement=%#v", desired)
+	}
+
+	registered, found, err := RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("registered Prometheus placement not found")
+	}
+	if registered.Scope != capability.ScopeShared {
+		t.Fatalf("registered placement changed with desired override: %#v", registered)
+	}
+}
+
