@@ -30,7 +30,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return nil, fmt.Errorf("external metrics scope is selected but no external collection adapter is configured")
 	}
 
-	if len(m.Metrics.Sources) == 0 || !enabled {
+	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
+	if (len(m.Metrics.Sources) == 0 && !runtimeMetrics) || !enabled {
 		if _, err := metricsprovider.ExistingProviderFiles(m); err == nil {
 			return &managedMetricsExecution{
 				driver:   metricsprovider.NewDriver(compose, m),
@@ -39,6 +40,13 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 			}, nil
 		}
 		return nil, nil
+	}
+	if len(m.Metrics.Sources) == 0 && runtimeMetrics {
+		return &managedMetricsExecution{
+			driver:   metricsprovider.NewDriver(compose, m),
+			manifest: m,
+			enabled:  true,
+		}, nil
 	}
 
 	driver := metricsprovider.NewDriver(compose, m)
@@ -73,12 +81,21 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 	if prepared == nil {
 		return nil
 	}
-	if !prepared.enabled || prepared.execution == nil {
+	if !prepared.enabled {
 		if err := metricsprovider.PruneApplicationTargets(prepared.manifest, nil); err != nil {
 			return err
 		}
-		if len(prepared.manifest.Metrics.Sources) > 0 && !prepared.enabled {
+		if len(prepared.manifest.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(prepared.manifest) {
 			fmt.Fprintf(out, "[SKIP] metrics            collection disabled by deployment policy for %s\n", prepared.manifest.Name)
+		}
+		return nil
+	}
+	if prepared.execution == nil {
+		if application.HasRuntimeMetricsPermissions(prepared.manifest) {
+			if err := prepared.driver.Provision(ctx, capability.Resource{}, capability.Binding{}); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "[OK] metrics-provider    runtime source collection ready for %s\n", prepared.manifest.Name)
 		}
 		return nil
 	}
