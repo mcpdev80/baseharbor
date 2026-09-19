@@ -339,6 +339,11 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
+		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
+			if headers := strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS")); headers != "" {
+				env["OTEL_EXPORTER_OTLP_HEADERS"] = headers
+			}
+		}
 	}
 
 	redis := RedisInstanceNames(m)
