@@ -31,7 +31,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 		"cap_drop:",
 		"- ALL",
 		"no-new-privileges:true",
-		"name: " + strconv.Quote(application.MetricsProviderNetworkName(application.Manifest{Name: "demo", Environment: "dev"}, capability.ScopeShared)),
+		"name: " + strconv.Quote(application.MetricsProviderNetworkName(application.Manifest{Name: "demo", Environment: "dev"})),
 		"name: " + strconv.Quote("baseharbor-prometheus-data"),
 	} {
 		if !strings.Contains(text, want) {
@@ -143,7 +143,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 
 func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	t.Setenv(application.MetricsProviderScopeEnv, "shared")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
 	t.Setenv(application.MetricsEnabledEnv, "true")
 
 	alpha := application.New("alpha", "dev", false, false, false)
@@ -166,8 +166,8 @@ func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	alphaNetwork := application.MetricsProviderNetworkName(alpha, capability.ScopeShared)
-	betaNetwork := application.MetricsProviderNetworkName(beta, capability.ScopeShared)
+	alphaNetwork := application.MetricsProviderNetworkName(alpha)
+	betaNetwork := application.MetricsProviderNetworkName(beta)
 	if alphaNetwork == betaNetwork {
 		t.Fatalf("metrics networks collide: %q", alphaNetwork)
 	}
@@ -183,7 +183,7 @@ func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 
 func TestApplicationScopedPlacementIsIsolated(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	t.Setenv(application.MetricsProviderScopeEnv, "application")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "application")
 	t.Setenv(application.MetricsEnabledEnv, "true")
 
 	alpha := application.New("alpha", "dev", false, false, false)
@@ -204,3 +204,30 @@ func TestApplicationScopedPlacementIsIsolated(t *testing.T) {
 		t.Fatalf("unexpected scopes: alpha=%s beta=%s", a.Scope, b.Scope)
 	}
 }
+
+func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
+
+	m := application.New("alpha", "dev", false, false, false)
+	t.Setenv(application.ProviderSharingBoundaryEnv(capability.ProviderPrometheus), "team-a")
+	a, err := PlacementFor(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(application.ProviderSharingBoundaryEnv(capability.ProviderPrometheus), "team-b")
+	b, err := PlacementFor(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if a.Project == b.Project || a.Volume == b.Volume || a.Dir == b.Dir {
+		t.Fatalf("sharing boundaries are not isolated: a=%#v b=%#v", a, b)
+	}
+	if a.Scope != capability.ScopeShared || b.Scope != capability.ScopeShared {
+		t.Fatalf("unexpected scopes: a=%s b=%s", a.Scope, b.Scope)
+	}
+}
+
