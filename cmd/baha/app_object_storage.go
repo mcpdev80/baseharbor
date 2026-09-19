@@ -12,14 +12,16 @@ import (
 )
 
 type managedObjectStorageExecution struct {
-	execution *capability.Execution
-	driver    *objectstorage.Driver
-	manifest  application.Manifest
+	execution      *capability.Execution
+	driver         *objectstorage.Driver
+	manifest       application.Manifest
+	runtimeEnabled bool
 }
 
 func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedObjectStorageExecution, error) {
 	m := resolved.Manifest
-	if !application.HasObjectStorage(m) {
+	runtimeEnabled := application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
+	if !application.HasObjectStorage(m) && !runtimeEnabled {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
@@ -35,24 +37,37 @@ func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose,
 			Driver:          driver,
 		})
 	}
-	execution, _, err := capability.Prepare(ctx, m.Name, requests)
-	if err != nil {
-		return nil, err
+	var execution *capability.Execution
+	if len(requests) > 0 {
+		var err error
+		execution, _, err = capability.Prepare(ctx, m.Name, requests)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return &managedObjectStorageExecution{execution: execution, driver: driver, manifest: m}, nil
+	return &managedObjectStorageExecution{execution: execution, driver: driver, manifest: m, runtimeEnabled: runtimeEnabled}, nil
 }
 
 func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *managedObjectStorageExecution) error {
 	if prepared == nil {
 		return nil
 	}
-	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
-		prepared.driver.Rollback(context.WithoutCancel(ctx))
-		return err
+	if prepared.execution != nil {
+		if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
+			prepared.driver.Rollback(context.WithoutCancel(ctx))
+			return err
+		}
+		if _, err := prepared.execution.Verify(ctx); err != nil {
+			prepared.driver.Rollback(context.WithoutCancel(ctx))
+			return err
+		}
+	} else if prepared.runtimeEnabled {
+		if _, _, _, err := prepared.driver.EnsureSharedProvider(ctx); err != nil {
+			return err
+		}
 	}
-	if _, err := prepared.execution.Verify(ctx); err != nil {
-		prepared.driver.Rollback(context.WithoutCancel(ctx))
-		return err
+	if prepared.runtimeEnabled {
+		fmt.Fprintln(out, "[OK] runtime-resource   object-storage.s3/v1 provider and IAM ready")
 	}
 	for _, bucket := range application.ObjectStorageBucketNames(prepared.manifest) {
 		fmt.Fprintf(out, "[OK] object-storage    %s authenticated S3 Put/Get succeeded\n", bucket)
