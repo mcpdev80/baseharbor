@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
+	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -491,6 +492,15 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
 		return err
+	}
+	if relays, err := connectivityrelay.ExistingInstances(); err != nil {
+		return fmt.Errorf("inspect connectivity relay state: %w", err)
+	} else {
+		for _, relay := range relays {
+			if err := compose.DestroyProject(ctx, relay.Project, relay.Compose, relay.Env); err != nil {
+				return fmt.Errorf("destroy connectivity relay project %s: %w", relay.Project, err)
+			}
+		}
 	}
 	if err := runtimeexecutor.DestroyShared(ctx, compose, dataDir); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
