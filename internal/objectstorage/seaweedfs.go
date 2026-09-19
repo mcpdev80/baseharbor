@@ -72,9 +72,6 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	if err := binding.Security.Validate(); err != nil {
 		return err
 	}
-	if _, err := application.LoadObjectStorageCredentials(d.files, binding.ObjectStorageS3.Bucket); err != nil {
-		return fmt.Errorf("S3 credentials preflight: %w", err)
-	}
 	return nil
 }
 
