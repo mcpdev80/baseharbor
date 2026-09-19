@@ -20,13 +20,18 @@ type managedMetricsExecution struct {
 
 func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedMetricsExecution, error) {
 	m := resolved.Manifest
-	enabled, err := application.MetricsCollectionEnabled(m)
+	policy, err := application.MetricsPolicy(m)
 	if err != nil {
 		return nil, err
 	}
+	enabled := policy.Enabled
+
+	if policy.ProviderScope == capability.ScopeExternal && enabled && len(m.Metrics.Sources) > 0 {
+		return nil, fmt.Errorf("external metrics scope is selected but no external collection adapter is configured")
+	}
 
 	if len(m.Metrics.Sources) == 0 || !enabled {
-		if _, err := metricsprovider.ExistingProviderFiles(); err == nil {
+		if _, err := metricsprovider.ExistingProviderFiles(m); err == nil {
 			return &managedMetricsExecution{
 				driver:   metricsprovider.NewDriver(compose, m),
 				manifest: m,
