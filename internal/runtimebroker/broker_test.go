@@ -236,6 +236,7 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 		write("runtime-token"),
 		"",
 		write("permissions.json"),
+		write("service-tokens.json"),
 		"baseharbor-runtime:test",
 		"",
 	)
