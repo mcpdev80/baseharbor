@@ -475,7 +475,9 @@ Runtime providers realize the same policy with their native isolation mechanisms
 BaseHarbor connectivity policy
         |
         +-- Compose
-        |     -> narrowly scoped network attachment/path
+        |     -> dedicated source-side link network
+        |     -> hardened BaseHarbor TCP relay
+        |     -> target remains on its own network
         |
         +-- Kubernetes
         |     -> NetworkPolicy
@@ -483,6 +485,8 @@ BaseHarbor connectivity policy
         +-- OpenShift
               -> NetworkPolicy / platform-native equivalent
 ```
+
+The Compose realization preserves directionality. BaseHarbor does **not** attach source and target containers to one common bridge network. Only the source service joins a connection-specific link network. A hardened relay from the version-matched BaseHarbor Runtime image joins that source link plus one existing target network and forwards only the resolved target TCP port. The target service never joins the source link, so the policy does not create a reciprocal network path. The relay has no host-published port, no container-runtime socket, runs non-root, uses a read-only root filesystem, drops Linux capabilities and enables `no-new-privileges`.
 
 The policy is independent from provider placement. For example, both applications may keep application-scoped PostgreSQL/OpenBao providers while `app-a/api -> app-b/sql` is the only cross-application path permitted. Likewise, a shared provider does not by itself create application-to-application connectivity.
 
