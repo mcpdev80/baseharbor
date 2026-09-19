@@ -10,8 +10,8 @@ BaseHarbor is currently in the `0.x` series.
 
 During `0.x`:
 
-- patch releases (`0.4.0` -> `0.4.1`) are backward-compatible bug and security fixes;
-- minor releases (`0.4.x` -> `0.5.0`) may contain intentionally documented breaking changes;
+- patch releases (`0.4.0` -> `0.4.1`) stay backward-compatible within the active minor line and may contain fixes, security hardening and additive capabilities;
+- minor releases (`0.4.x` -> `0.5.0`) may contain intentionally documented breaking changes or larger contract shifts;
 - every breaking change must be called out in `CHANGELOG.md` and GitHub Release notes;
 - consumers should pin an explicit compatible range instead of tracking `main`.
 
