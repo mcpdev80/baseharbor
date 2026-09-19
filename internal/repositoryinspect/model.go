@@ -12,6 +12,34 @@ const (
 	ConfidencePossible  Confidence = "possible"
 )
 
+type Direction string
+
+const (
+	DirectionConsume   Direction = "consume"
+	DirectionProvide   Direction = "provide"
+	DirectionExport    Direction = "export"
+	DirectionReceive   Direction = "receive"
+	DirectionProvision Direction = "provision"
+)
+
+type RuntimeOperation string
+
+const (
+	RuntimeCreate RuntimeOperation = "runtime.create"
+	RuntimeGet    RuntimeOperation = "runtime.get"
+	RuntimeDelete RuntimeOperation = "runtime.delete"
+	RuntimeRotate RuntimeOperation = "runtime.rotate"
+)
+
+type ReconciliationState string
+
+const (
+	ReconciliationSatisfied ReconciliationState = "satisfied"
+	ReconciliationNew       ReconciliationState = "new"
+	ReconciliationStale     ReconciliationState = "stale"
+	ReconciliationAmbiguous ReconciliationState = "ambiguous"
+)
+
 type EvidenceKind string
 
 const (
@@ -23,6 +51,8 @@ const (
 	EvidencePort       EvidenceKind = "port"
 	EvidenceHealth     EvidenceKind = "healthcheck"
 	EvidenceConfig     EvidenceKind = "config"
+	EvidenceEndpoint   EvidenceKind = "endpoint"
+	EvidenceCall       EvidenceKind = "call"
 )
 
 type Evidence struct {
@@ -32,10 +62,28 @@ type Evidence struct {
 }
 
 type Finding struct {
-	Capability string     `json:"capability"`
-	Name       string     `json:"name,omitempty"`
-	Confidence Confidence `json:"confidence"`
-	Evidence   []Evidence `json:"evidence"`
+	Capability string             `json:"capability"`
+	Name       string             `json:"name,omitempty"`
+	Direction  Direction          `json:"direction,omitempty"`
+	Operations []RuntimeOperation `json:"operations,omitempty"`
+	Confidence Confidence         `json:"confidence"`
+	Evidence   []Evidence         `json:"evidence"`
+}
+
+type CapabilityIntent struct {
+	Capability string    `json:"capability"`
+	Name       string    `json:"name,omitempty"`
+	Direction  Direction `json:"direction,omitempty"`
+}
+
+type ReconciliationItem struct {
+	Capability string             `json:"capability"`
+	Name       string             `json:"name,omitempty"`
+	Direction  Direction          `json:"direction,omitempty"`
+	State      ReconciliationState `json:"state"`
+	Operations []RuntimeOperation `json:"operations,omitempty"`
+	Confidence Confidence         `json:"confidence,omitempty"`
+	Evidence   []Evidence         `json:"evidence,omitempty"`
 }
 
 type Artifact struct {
@@ -62,7 +110,9 @@ type Result struct {
 	SecretCandidates  []string          `json:"secret_candidates,omitempty"`
 	SecretSources     map[string]string `json:"secret_sources,omitempty"`
 	Ports             []PortEvidence    `json:"ports,omitempty"`
-	HealthChecks      []Evidence        `json:"health_checks,omitempty"`
+	HealthChecks      []Evidence            `json:"health_checks,omitempty"`
+	Declared          []CapabilityIntent    `json:"declared_capabilities,omitempty"`
+	Reconciliation    []ReconciliationItem  `json:"reconciliation,omitempty"`
 }
 
 type Snapshot struct {
