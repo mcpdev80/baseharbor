@@ -7,13 +7,13 @@ import "fmt"
 // provisioning remains authoritative while the shared capability and provider
 // registry layers describe portable intent, placement and ownership.
 var (
-	PostgreSQL = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
-	Valkey     = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
-	OpenBao    = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
-	Caddy      = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
-	SeaweedFS      = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
+	PostgreSQL    = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
+	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
+	OpenBao       = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
+	Caddy         = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
+	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
 	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
-	ExternalOTLP   = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
+	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
 )
 
 var (
