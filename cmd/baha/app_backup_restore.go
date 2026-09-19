@@ -94,7 +94,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 				return err
 			}
 			brokerStopped := false
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 					if workloadStopped {
 						_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
@@ -278,7 +278,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
 				return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
 					return err
 				}
@@ -304,7 +304,7 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 	var result error
 	if brokerStopped {
 		if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, resolved.Manifest, files); err != nil {
-			result = errors.Join(result, fmt.Errorf("restart secret broker after backup: %w", err))
+			result = errors.Join(result, fmt.Errorf("restart application runtime broker after backup: %w", err))
 		}
 	}
 	if workloadStopped && result == nil {
@@ -361,7 +361,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 	if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 		return err
 	}
-	if m.Services.Secrets {
+	if application.RequiresRuntimeBroker(m) {
 		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 			return err
 		}
