@@ -58,6 +58,11 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 		}
 	}
 
+	adminProjection, err := projectContainerReadableSecret(dir, adminCredentialsPath, "s3-admin.env", "S3 admin credentials")
+	if err != nil {
+		return Files{}, err
+	}
+
 	image := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	if image == "" {
 		image = DefaultImage
@@ -74,7 +79,7 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err := os.Chmod(envPath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor environment: %w", err)
 	}
-	content := composeYAML(image, identity, adminCredentialsPath)
+	content := composeYAML(image, identity, adminProjection)
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime executor compose file: %w", err)
 	}
@@ -82,6 +87,40 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 		return Files{}, fmt.Errorf("protect runtime executor compose file: %w", err)
 	}
 	return Files{Dir: dir, Compose: composePath, Env: envPath, Image: image}, nil
+}
+
+func projectContainerReadableSecret(dir, source, targetName, label string) (string, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return "", fmt.Errorf("inspect %s: %w", label, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s must be a regular file", label)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("%s is accessible by group or others (%o)", label, info.Mode().Perm())
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", label, err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("%s is empty", label)
+	}
+	path := filepath.Join(dir, targetName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", fmt.Errorf("write %s projection: %w", label, err)
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("prepare %s projection: %w", label, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("install %s projection: %w", label, err)
+	}
+	return path, nil
 }
 
 func ExistingFiles(dataDir string) (Files, error) {
