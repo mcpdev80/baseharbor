@@ -312,7 +312,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		return err
 	}
 	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+		if err := compose.StopProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared runtime provider executor: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor stopped")
@@ -323,7 +323,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		return err
 	} else {
 		for _, instance := range instances {
-			if err := compose.DownProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
+			if err := compose.StopProject(ctx, instance.Placement.Project, instance.Files.Compose, instance.Files.Env); err != nil {
 				return fmt.Errorf("stop shared Prometheus project %s: %w", instance.Placement.Project, err)
 			}
 		}
@@ -332,7 +332,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		}
 	}
 	if files, err := telemetry.ExistingProviderFiles(); err == nil {
-		if err := compose.DownProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.StopProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared telemetry provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector stopped")
@@ -340,7 +340,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		return err
 	}
 	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
-		if err := compose.DownProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.StopProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared object-storage provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider stopped")
