@@ -175,6 +175,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 			"baseharbor_environment":  d.app.Environment,
 			"baseharbor_service":      binding.Metrics.Service,
 			"baseharbor_source":       resource.Name,
+			"baseharbor_source_class": string(application.MetricsSourceApplication),
 			"baseharbor_metrics_path": binding.Metrics.Path,
 		},
 	}
