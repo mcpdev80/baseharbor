@@ -18,12 +18,12 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.2 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.4 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
 | Secrets | `secrets` / benoetigte Secret-Namen + policy-gesteuerte Auslieferung | OpenBao | implementiert | Vault, Cloud Secret Stores, externe Provider-Adapter | Der App-Contract kennt Secret-Anforderungen, aber keine OpenBao-Pfade oder AppRoles |
-| HTTP-Ingress / Reverse Proxy | spaeter `ingress.http` | kein BaseHarbor-managed Ingress-Provider in v0.4; app-eigene Compose-Exposition wird beobachtet | portable Capability geplant; app-eigene HTTP/HTTPS-Readiness implementiert | Caddy, Traefik, nginx, HAProxy, Kubernetes Gateway/Ingress, OpenShift Route | v0.4 prueft konventionelle app-eigene Publisher, provisioniert aber keinen BaseHarbor-Ingress |
+| HTTP/HTTPS-Exposition | `exposure.http/v1` | Caddy als Compose-Referenzprovider | in v0.4.4 implementiert; app-eigene Publisher bleiben beobachtet und werden nicht lifecycle-seitig uebernommen | Traefik, Kubernetes Gateway API/Ingress, OpenShift Route, Cloud-Traffic-Provider | Managed Exposure ist expliziter portabler Intent; Host-Ports, FQDNs, TLS-Dateien, Netze und Proxy-Konfiguration bleiben Deployment-/Provider-State |
 | Object Storage | spaeter `object-storage.s3` / S3 API | SeaweedFS als geplanter Referenz-/Default-Provider | geplant | Garage, Ceph RGW, AWS S3 und kompatible Managed Services | S3 ist die Anwendungsgrenze; Topologie und Implementierung bleiben Provider-Sache |
 | TLS-Zertifikats-Lifecycle | spaeter `tls.certificate` / X.509-Identitaet | providerabhaengig | Existing/BYOC fuer Repository-Compose-Deployment implementiert; portable Capability geplant | vorhandene/BYOC-Zertifikate, OpenBao PKI, ACME-Provider, cert-manager, OpenShift Service CA, Cloud-Zertifikatsdienste | v0.4 validiert/importiert/aktualisiert Existing-Zertifikate als Deployment-State; ACME/PKI/providerneutraler Intent bleiben Future Work |
 | Externe Secret-Projektion | Provider-Integration, kein portabler App-Produktname | kein globaler Pflichtprovider | geplant/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao Workload Identity, plattformnative Secret-Projektion | ESO darf niemals Teil des Application Contracts werden |
@@ -49,7 +49,7 @@ database.sql        -> PostgreSQL / Managed PostgreSQL
 cache.key-value     -> Valkey / Redis / Managed Redis
 object-storage.s3   -> SeaweedFS / Ceph RGW / AWS S3
 secrets             -> OpenBao / Vault / Cloud Secret Store
-ingress.http        -> Caddy / Kubernetes Gateway / OpenShift Route
+exposure.http       -> Caddy / Traefik / Kubernetes Gateway / OpenShift Route
 ```
 
 Ein OpenShift-Runtime-Provider bedeutet deshalb nicht, dass jede Capability OpenShift-native sein muss. Ein Enterprise-Kunde kann OpenShift-Workloads mit einem externen PostgreSQL-Cluster, Vault und Ceph RGW kombinieren.
@@ -89,7 +89,7 @@ providers:
   cache: valkey
   objectStorage: seaweedfs
   secrets: openbao
-  ingress: caddy
+  exposure: caddy
 ```
 
 Enterprise-Mapping:
@@ -100,7 +100,7 @@ providers:
   cache: managed-redis
   objectStorage: ceph-rgw
   secrets: vault
-  ingress: openshift-route
+  exposure: openshift-route
 ```
 
 Das spaetere Environment-/Provider-Policy-Schema wird in v0.4.0 bewusst noch nicht festgeschrieben. Deployment-eigener Runtime-Provider/Profile-State existiert bereits; breitere Environment-Policy bleibt Future Work.
@@ -122,13 +122,13 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.2-Grenze
+## v0.4.4-Grenze
 
-v0.4.2 bleibt zur Laufzeit Compose-only. Es umfasst den Capability-/Provider-/Resource-/Binding-Core aus v0.4.1 und ergaenzt geschuetzte Provider-Registry-, Placement- und Ownership-Semantik fuer shared, application-scoped und externe Provider. Ein neues generisches oeffentliches Capability-/Provider-Manifest wird weiterhin nicht eingefuehrt.
+v0.4.4 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection und mit `exposure.http/v1` plus Caddy als Compose-Referenzprovider die erste verwaltete Traffic-Capability.
 
-Die operative Vollstaendigkeit des Compose-Providers bleibt erhalten; neu sind die Architekturgrenzen fuer spaetere Provider ohne Bruch der Manifest-v1-Kompatibilitaet.
+Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure ist additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State.
 
-Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Neues oeffentliches Capability-Schema, weitere Capability-Provider, HA, Managed Ingress, ACME/PKI-Automation und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
+Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. S3/Object Storage, weitere Provider, HA-Profile, Managed ACME/OpenBao-PKI-Zertifikatsausstellung und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
 
 
 ## Provider-Registry in v0.4.2
@@ -159,6 +159,7 @@ Aktuelle versionierte Reference Claims:
 - PostgreSQL: `database.sql/v1`
 - Valkey: `cache.key-value/v1`
 - OpenBao: `secrets/v1`
+- Caddy: `exposure.http/v1`
 
 Neue S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provider definieren bzw. implementieren versionierte Capability Specifications. Produktdetails duerfen dadurch nicht in den portablen Application Contract gelangen.
 
