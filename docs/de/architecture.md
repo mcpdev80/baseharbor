@@ -180,3 +180,13 @@ explizites exposure.http/v1
 Der erste verwaltete Compose-Exposure-Provider ist Caddy. Er besitzt ein separates application-scoped Proxy-Projekt. Das stabile Exposure-Integrationsnetz gehoert dagegen zum von BaseHarbor erzeugten Workload-Override; nur explizit exponierte Workload-Services werden daran angebunden und Caddy konsumiert dieses Netz extern. Die Compose-Quelldatei und app-eigene Volumes werden nicht uebernommen.
 
 Derselbe `exposure.http/v1`-Intent soll spaeter ohne Aenderung am Application Contract auf andere Provider abgebildet werden koennen.
+
+## Secure-Binding-Fundament in v0.4.5
+
+v0.4.5 fuehrt unterhalb von CLI- und Runtime-spezifischem Code eine gemeinsame Security-Binding-Domain ein. Capability Bindings koennen nun providerneutral Workload-Identitaet, Credential-Referenzen, Trust-Referenzen, Authorization-Metadaten, Secret-Referenzen, Lifecycle-Unterstuetzung und Security-Diagnostik tragen.
+
+Der bestehende Compose-/OpenBao-Pfad bleibt autoritativ. Sein Client-Zertifikat verwendet bereits das SPIFFE-Subject `spiffe://baseharbor/apps/<application>/<environment>`; v0.4.5 bildet diese stabile Identitaet semantisch ab, ohne Zertifikatspfade, AppRoles, SecretIDs, Policies oder Secret-Werte offenzulegen.
+
+Der Lifecycle validiert Secure-Binding-Metadaten bereits bei der Plan-Erstellung vor jedem Provider-Preflight und vor Mutation. Spaetere SQL-, S3-, Messaging-, Vector-, AI- und MCP-Provider verwenden damit dieselbe Security-Grenze statt eigenes Credential-Plumbing zu erfinden.
+
+Human OIDC/RBAC/MFA/JIT/Breakglass bleibt ein separates v0.6-Thema fuer Plattformzugriff. Vollstaendige Cross-Provider-Rotation bleibt spaetere Lifecycle-Arbeit.
