@@ -340,6 +340,13 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			}
 		}
 	}
+	if HasOTLPTelemetry(m) {
+		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT"} {
+			if values[key] != "" {
+				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+			}
+		}
+	}
 	return b.String()
 }
 
