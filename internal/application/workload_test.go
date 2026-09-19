@@ -184,7 +184,6 @@ func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *te
 	}
 }
 
-
 func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("demo", "dev", false, false, false)
