@@ -123,7 +123,7 @@ func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminC
 	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 	b.WriteString("    user: \"0:0\"\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-c\"]\n")
-	b.WriteString("    command: [\"chown 65532:65532 /var/lib/baseharbor/runtime-resources && chmod 700 /var/lib/baseharbor/runtime-resources\"]\n")
+	b.WriteString("    command: [\"chmod 700 /var/lib/baseharbor/runtime-resources && chown 65532:65532 /var/lib/baseharbor/runtime-resources\"]\n")
 	b.WriteString("    network_mode: \"none\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop:\n")
