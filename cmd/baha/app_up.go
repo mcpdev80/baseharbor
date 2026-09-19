@@ -36,6 +36,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
+			var managedExposure *managedExposureExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
