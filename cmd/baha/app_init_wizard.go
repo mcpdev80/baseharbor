@@ -49,7 +49,7 @@ func appGuidedInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Detect the current project and create baseharbor.yaml",
-		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			quick := false
@@ -345,14 +345,14 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		workloadServices = append([]string(nil), analysis.WorkloadServices...)
 	}
 
-	defaults := []bool{d.Postgres, d.Redis, len(d.SecretCandidates) > 0}
+	defaults := []bool{d.Postgres, d.Redis, false, len(d.SecretCandidates) > 0}
 	allowNone := len(workloadServices) > 0
 	selected, err := promptCapabilityList(reader, out, defaults, allowNone)
 	if err != nil {
 		return err
 	}
 
-	var postgresInstances, redisInstances []string
+	var postgresInstances, redisInstances, objectStorageBuckets []string
 	if selected[0] {
 		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.PostgresInstances)
 		if err != nil {
@@ -365,9 +365,18 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 			return err
 		}
 	}
+	if selected[2] {
+		objectStorageBuckets, err = promptServiceInstances(reader, out, "S3 buckets", nil)
+		if err != nil {
+			return err
+		}
+		if len(objectStorageBuckets) == 0 {
+			objectStorageBuckets = []string{"default"}
+		}
+	}
 
 	required := []string(nil)
-	if selected[2] {
+	if selected[3] {
 		required, err = promptSecretCandidates(reader, out, d.SecretCandidates, d.SecretSources)
 		if err != nil {
 			return err
@@ -385,12 +394,15 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		required = uniqueSorted(required)
 	}
 
-	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], compose != "" && len(workloadServices) > 0)
+	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
 	if len(postgresInstances) > 0 {
 		m = application.WithPostgresInstances(m, postgresInstances...)
 	}
 	if len(redisInstances) > 0 {
 		m = application.WithRedisInstances(m, redisInstances...)
+	}
+	if len(objectStorageBuckets) > 0 {
+		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
 	}
 	m = application.WithRequiredSecrets(m, required...)
 	if compose != "" && len(workloadServices) > 0 {
@@ -415,18 +427,21 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	return writeRepositoryManifest(m, out)
 }
 
-func detectedApplicationManifest(name, environment string, postgres, redis, secrets, hasWorkload bool) application.Manifest {
-	if !postgres && !redis && !secrets && hasWorkload {
-		if environment == "" {
-			environment = "dev"
-		}
-		return application.Manifest{
-			Version:     application.CurrentVersion,
-			Name:        name,
-			Environment: environment,
-		}
+func detectedApplicationManifest(name, environment string, postgres, redis, objectStorage, secrets, hasWorkload bool) application.Manifest {
+	if environment == "" {
+		environment = "dev"
 	}
-	return application.New(name, environment, postgres, redis, secrets)
+	return application.Manifest{
+		Version:     application.CurrentVersion,
+		Name:        name,
+		Environment: environment,
+		Services: application.Services{
+			Postgres:      postgres,
+			Redis:         redis,
+			ObjectStorage: objectStorage,
+			Secrets:       secrets,
+		},
+	}
 }
 
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
@@ -445,7 +460,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 			"Run 'baha app init' interactively or use explicit capability flags.",
 		)
 	}
-	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, secrets, hasWorkload)
+	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, false, secrets, hasWorkload)
 	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
 		m = application.WithPostgresInstances(m, postgresNamed...)
 	}
@@ -503,7 +518,7 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 }
 
 func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
-	labels := []string{"PostgreSQL", "Valkey / Redis", "Managed Secrets"}
+	labels := []string{"PostgreSQL", "Valkey / Redis", "S3-compatible Object Storage", "Managed Secrets"}
 	fmt.Fprintln(out, "\nSelect required services (Enter keeps detected/default selection; otherwise enter numbers such as 1,3):")
 	for i, label := range labels {
 		mark := " "
@@ -518,7 +533,7 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 	}
 	if strings.TrimSpace(line) == "" {
 		selected := append([]bool(nil), defaults...)
-		if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+		if !selected[0] && !selected[1] && !selected[2] && !selected[3] && !allowNone {
 			return nil, errors.New("select at least one backend capability or configure an application workload")
 		}
 		return selected, nil
@@ -531,7 +546,7 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		}
 		selected[n-1] = true
 	}
-	if !selected[0] && !selected[1] && !selected[2] && !allowNone {
+	if !selected[0] && !selected[1] && !selected[2] && !selected[3] && !allowNone {
 		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
