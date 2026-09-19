@@ -25,7 +25,6 @@ import (
 const (
 	ProviderProject = "baseharbor-metrics"
 	ProviderService = "prometheus"
-	ProviderNetwork = "baseharbor-metrics"
 	ProviderImage   = "prom/prometheus:v3.14.0"
 )
 
