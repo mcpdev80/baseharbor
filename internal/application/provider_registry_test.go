@@ -209,3 +209,18 @@ func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) 
 	}
 }
 
+
+
+func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "definitely-not-a-bool")
+	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
+
+	m := New("database-only", "production", true, false, false)
+	registry := capability.NewRegistry()
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		t.Fatalf("unrelated metrics policy broke database-only provider registration: %v", err)
+	}
+	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, m.Name, ""); err != nil {
+		t.Fatalf("PostgreSQL provider not registered: %v", err)
+	}
+}
