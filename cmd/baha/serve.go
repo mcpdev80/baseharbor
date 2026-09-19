@@ -63,6 +63,7 @@ func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 		RuntimeCredentialsFile:  os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE"),
 		RuntimeTokenFile:        os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE"),
 		RuntimePermissionsFile:  os.Getenv("BASEHARBOR_RUNTIME_PERMISSIONS_FILE"),
+		RuntimeServiceTokensFile: os.Getenv("BASEHARBOR_RUNTIME_SERVICE_TOKENS_FILE"),
 		RuntimeExecutorURL:      os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_URL"),
 		RuntimeExecutorCAFile:   os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CA_FILE"),
 		RuntimeExecutorCertFile: os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CERT_FILE"),
