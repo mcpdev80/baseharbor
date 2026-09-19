@@ -154,7 +154,7 @@ func TestBoundRuntimeHandlerListsCurrentCapabilities(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("capabilities status/body = %d %q", res.Code, res.Body.String())
 	}
-	for _, want := range []string{"\"capability\":\"secrets\"", "runtime.create", "runtime.get", "runtime.rotate", "runtime.delete"} {
+	for _, want := range []string{"\"capability\":\"secrets/v1\"", "runtime.create", "runtime.get", "runtime.rotate", "runtime.delete"} {
 		if !strings.Contains(res.Body.String(), want) {
 			t.Fatalf("capabilities missing %q: %s", want, res.Body.String())
 		}
