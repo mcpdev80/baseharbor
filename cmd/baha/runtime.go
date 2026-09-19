@@ -317,7 +317,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if _, err := telemetry.ExistingProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  telemetry: shared OpenTelemetry Collector provider (container and network)")
 	}
-	if _, err := metricsprovider.ExistingProviderFiles(); err == nil {
+	if _, err := metricsprovider.ExistingSharedProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  metrics: shared Prometheus provider (container, network and BaseHarbor-owned volume)")
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
