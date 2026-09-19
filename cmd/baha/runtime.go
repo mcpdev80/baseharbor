@@ -19,6 +19,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/health"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
@@ -109,7 +110,7 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
 		}
-		return runtimeUp(parent, out)
+		return runtimeUpExisting(parent, out, opts.RecoveryFile)
 	}
 
 	postgresPort, err := selectControlPlanePort(out, "PostgreSQL", "--postgres-port", opts.PostgresPort, bhruntime.DefaultPostgresPort, 15432)
@@ -239,33 +240,127 @@ func firstAvailablePort(start int) int {
 }
 
 func runtimeUp(parent context.Context, out io.Writer) error {
-	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
+	return runtimeUpExisting(parent, out, "")
 }
 
 func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports) error {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.EnsureFilesWithPorts("", ports)
-	if err != nil {
-		return err
-	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
-		return err
-	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
-		return err
-	}
-	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
-		return fmt.Errorf("resume shared platform runtime: %w", err)
-	}
+	_ = compose
+	_ = files
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
+}
+
+func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+
+	files, err := bhruntime.ExistingFiles("")
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
+	cfg, err := bhruntime.LoadConfig(files.Env)
+	if err != nil {
+		return err
+	}
+	compose, files, err := startControlPlaneRuntime(ctx, out, bhruntime.Ports{Postgres: cfg.PostgresPort, OpenBao: cfg.OpenBaoPort})
+	if err != nil {
+		return err
+	}
+	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, strings.TrimSpace(recoveryFile), out); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")
+	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
+	return nil
+}
+
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	files, err := bhruntime.EnsureFilesWithPorts("", ports)
+	if err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, fmt.Errorf("resume shared platform runtime: %w", err)
+	}
+	return compose, files, nil
+}
+
+func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files, recoveryFile string, out io.Writer) error {
+	var state platformopenbao.State
+	var inspectErr error
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		state, inspectErr = platformopenbao.Inspect(ctx, compose, files)
+		if inspectErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("verify OpenBao after control-plane start: %w", inspectErr)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+
+	if !state.Initialized {
+		fmt.Fprintln(out, "BaseHarbor control-plane runtime started; OpenBao is not initialized yet.")
+		fmt.Fprintln(out, "next: run 'baha openbao bootstrap --recovery-file PATH'")
+		return nil
+	}
+	if state.Sealed {
+		if recoveryFile == "" {
+			return usageError(
+				"OpenBao is initialized but sealed after the control-plane restart",
+				"Re-run 'baha up --recovery-file /secure/openbao-recovery.json'. BaseHarbor will not unseal OpenBao without operator-held recovery material.",
+			)
+		}
+		fmt.Fprintln(out, "OpenBao is sealed; unsealing from the operator recovery file...")
+		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
+			return fmt.Errorf("unseal OpenBao after control-plane start: %w", err)
+		}
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao manager authentication after control-plane start: %w", err)
+	}
+
+	var formatted string
+	var ok bool
+	for {
+		formatted, ok = health.Format(health.RuntimeChecks())
+		if ok {
+			fmt.Fprint(out, formatted)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			fmt.Fprint(out, formatted)
+			return errors.New("control-plane runtime started but did not become ready")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func runtimeDown(parent context.Context, out io.Writer) error {
