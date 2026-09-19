@@ -1,6 +1,7 @@
 package exposure
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -19,15 +20,18 @@ func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
 	}
 }
 
-func TestComposeUsesWorkloadNetworkAndNoProviderVolume(t *testing.T) {
+func TestComposeOwnsStableExposureNetworkAndNoProviderVolume(t *testing.T) {
 	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
-	state := State{Version: 1, Project: ProjectName(m), Network: application.WorkloadProjectName(m) + "_default", Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", PublishedPort: 18080}}}
+	state := State{Version: 1, Project: ProjectName(m), Network: application.ApplicationExposureNetworkName(m), Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", PublishedPort: 18080}}}
 	got := composeYAML(state, Files{Dir: "/tmp/provider"})
-	if !strings.Contains(got, "external: true") || !strings.Contains(got, state.Network) {
-		t.Fatalf("Compose does not join application workload network:\n%s", got)
+	if strings.Contains(got, "external: true") {
+		t.Fatalf("Caddy provider must own its Compose default network:\n%s", got)
 	}
 	if strings.Contains(got, "volumes:\n  ") {
 		t.Fatalf("provider must not create persistent named volumes:\n%s", got)
+	}
+	if state.Network != "baseharbor-exposure-demo-dev_default" {
+		t.Fatalf("unexpected stable exposure network %q", state.Network)
 	}
 }
 
@@ -39,7 +43,7 @@ func TestHTTPSRequiresExistingTLS(t *testing.T) {
 	}
 	driver := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.example", TLSMode: "acme"})
 	resource := capabilityResource(m, "public")
-	if err := driver.Preflight(t.Context(), resource, bindingFor(resource, "web")); err == nil || !strings.Contains(err.Error(), "existing/BYOC") {
+	if err := driver.Preflight(context.Background(), resource, bindingFor(resource, "web")); err == nil || !strings.Contains(err.Error(), "existing/BYOC") {
 		t.Fatalf("expected managed HTTPS TLS boundary, got %v", err)
 	}
 }
