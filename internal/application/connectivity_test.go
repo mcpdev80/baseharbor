@@ -97,3 +97,29 @@ func TestApplicationDestroyRequiresConnectivityRelease(t *testing.T) {
 		t.Fatalf("unrelated app blocked: %v", err)
 	}
 }
+
+
+func TestConnectivityTargetAliasIsStableUniqueAndDNSBounded(t *testing.T) {
+	a := testConnectivityRule()
+	b := a
+	b.Target.Port = 15432
+
+	aliasA := ConnectivityTargetAlias(a)
+	aliasA2 := ConnectivityTargetAlias(a)
+	aliasB := ConnectivityTargetAlias(b)
+	if aliasA != aliasA2 {
+		t.Fatalf("target alias is not stable: %q != %q", aliasA, aliasA2)
+	}
+	if aliasA == aliasB {
+		t.Fatalf("target aliases collide across target ports: %q", aliasA)
+	}
+	if len(aliasA) > 63 {
+		t.Fatalf("target alias exceeds DNS label limit: %d %q", len(aliasA), aliasA)
+	}
+
+	long := a
+	long.Target.Application = strings.Repeat("verylong", 20)
+	if got := ConnectivityTargetAlias(long); len(got) > 63 {
+		t.Fatalf("long target alias exceeds DNS label limit: %d %q", len(got), got)
+	}
+}
