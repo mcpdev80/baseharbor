@@ -31,7 +31,7 @@ type ExecuteRequest struct {
 }
 
 type ExecuteResponse struct {
-	ResourceID string                         `json:"resource_id,omitempty"`
+	ResourceID string                                `json:"resource_id,omitempty"`
 	Binding    *objectstorage.RuntimeResourceBinding `json:"binding,omitempty"`
 }
 
