@@ -200,7 +200,6 @@ func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 	}
 }
 
-
 func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
 	m := New("demo", "dev", true, false, false)
 	yaml := m.YAML()
