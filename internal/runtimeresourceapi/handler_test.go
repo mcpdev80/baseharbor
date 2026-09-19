@@ -24,6 +24,10 @@ func (denyAuthorizer) AuthorizeRuntimeOperation(string, string, string) error {
 	return errors.New("denied")
 }
 
+var testExecutor = runtimeoperation.ExecutorFunc(func(context.Context, runtimeoperation.Request) (runtimeoperation.Result, error) {
+	return runtimeoperation.Result{}, nil
+})
+
 func TestAsyncCreateAndOperationStatus(t *testing.T) {
 	release := make(chan struct{})
 	manager, err := runtimeoperation.New(t.TempDir(), map[string]runtimeoperation.Executor{
@@ -39,7 +43,7 @@ func TestAsyncCreateAndOperationStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := New("demo", manager, allowAuthorizer{})
+	h, err := New("demo", manager, allowAuthorizer{}, testExecutor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +86,7 @@ func TestCreateRequiresAuthorizationAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	denied, err := New("demo", manager, denyAuthorizer{})
+	denied, err := New("demo", manager, denyAuthorizer{}, testExecutor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +98,7 @@ func TestCreateRequiresAuthorizationAndIdempotency(t *testing.T) {
 		t.Fatalf("denied status = %d", res.Code)
 	}
 
-	allowed, err := New("demo", manager, allowAuthorizer{})
+	allowed, err := New("demo", manager, allowAuthorizer{}, testExecutor)
 	if err != nil {
 		t.Fatal(err)
 	}
