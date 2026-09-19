@@ -203,13 +203,13 @@ func runtimeResourceIdentity(applicationName, environment, name string) runtimeR
 	token := hex.EncodeToString(sum[:])
 	manifest := application.Manifest{Name: applicationName, Environment: environment}
 	return runtimeResourceState{
-		ResourceID: "res-s3-" + token[:24],
-		Application: applicationName,
-		Environment: environment,
-		Name: name,
+		ResourceID:     "res-s3-" + token[:24],
+		Application:    applicationName,
+		Environment:    environment,
+		Name:           name,
 		PhysicalBucket: PhysicalBucketName(manifest, name),
-		UserName: "bh-runtime-" + token[:24],
-		PolicyName: "bh-runtime-s3-" + token[:16],
+		UserName:       "bh-runtime-" + token[:24],
+		PolicyName:     "bh-runtime-s3-" + token[:16],
 	}
 }
 
