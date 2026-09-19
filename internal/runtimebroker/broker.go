@@ -313,6 +313,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("    networks:\n")
 	b.WriteString("      backend:\n")
 	b.WriteString("        aliases:\n")
+	b.WriteString("          - baseharbor-runtime\n")
 	b.WriteString("          - baseharbor-secrets\n")
 	b.WriteString("      secrets: {}\n")
 	b.WriteString("\nsecrets:\n")
