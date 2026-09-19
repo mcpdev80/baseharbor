@@ -375,7 +375,9 @@ Runtime Provider setzen dieselbe Policy mit ihren nativen Isolationsmechanismen 
 BaseHarbor Connectivity Policy
         |
         +-- Compose
-        |     -> eng begrenzte Netzwerk-Anbindung / Verbindung
+        |     -> dediziertes Source-Link-Netz
+        |     -> gehaerteter BaseHarbor-TCP-Relay
+        |     -> Target bleibt in seinem eigenen Netz
         |
         +-- Kubernetes
         |     -> NetworkPolicy
@@ -383,6 +385,8 @@ BaseHarbor Connectivity Policy
         +-- OpenShift
               -> NetworkPolicy / plattformnative Entsprechung
 ```
+
+Die Compose-Realisierung erhaelt die Richtung technisch. BaseHarbor haengt Source und Target **nicht** gemeinsam an dasselbe Bridge-Netz. Nur der Source-Service kommt in ein verbindungsspezifisches Link-Netz. Ein gehaerteter Relay aus dem versionsgleichen BaseHarbor-Runtime-Image haengt an diesem Source-Link sowie an genau einem vorhandenen Target-Netz und leitet nur auf den aufgeloesten Target-TCP-Port weiter. Der Target-Service kommt niemals in das Source-Link-Netz; dadurch entsteht kein reziproker Netzwerkpfad. Der Relay besitzt keinen Host-Port und keinen Container-Runtime-Socket, laeuft non-root, verwendet ein read-only Root-Filesystem, droppt Linux-Capabilities und setzt `no-new-privileges`.
 
 Die Policy ist unabhaengig vom Provider-Placement. Zum Beispiel koennen beide Applications ihre PostgreSQL-/OpenBao-Provider `application`-scoped behalten, waehrend nur `app-a/api -> app-b/sql` als Cross-Application-Pfad erlaubt wird. Umgekehrt erzeugt ein `shared` Provider niemals automatisch Application-zu-Application-Connectivity.
 
