@@ -1,6 +1,7 @@
 name: runtime-image
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
