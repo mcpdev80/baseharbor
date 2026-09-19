@@ -35,6 +35,7 @@ const (
 	ProviderCaddy      ProviderKind = "caddy"
 	ProviderSeaweedFS  ProviderKind = "seaweedfs"
 	ProviderOTelCollector ProviderKind = "opentelemetry-collector"
+	ProviderExternalOTLP   ProviderKind = "external-otlp"
 )
 
 // Provider describes the capability surface of one provider implementation.
