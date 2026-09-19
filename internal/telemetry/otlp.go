@@ -61,10 +61,7 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 }
 
 func (d *Driver) Descriptor() capability.Provider {
-	if strings.TrimSpace(d.externalEndpoint) != "" {
-		return capability.ExternalOTLP
-	}
-	return capability.OTelCollector
+	return application.TelemetryProviderForDeployment()
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
