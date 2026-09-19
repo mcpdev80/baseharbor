@@ -380,3 +380,46 @@ Repository-first `baha up` reuses this reconciliation path and reports newly det
 
 This foundation intentionally does not add the public runtime resource API yet. It defines the semantics that such an API must reuse. See ADR 0010.
 
+## Provider placement, sharing boundaries and runtime isolation
+
+Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
+
+```text
+Application intent
+        |
+        v
+Capability
+        |
+        v
+Provider resolution
+        |
+        v
+Provider placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optional sharing boundary
+        |
+        v
+Isolation / deployment boundary
+        |
+        v
+Runtime/provider implementation
+```
+
+The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary.
+
+Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-isolation mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+Placement must also remain independent from runtime-specific isolation. Today Compose may realize boundaries through projects, networks and volumes. Future Kubernetes/OpenShift runtimes may map them to namespaces/projects, cluster-scoped infrastructure, Helm releases, Operators, NetworkPolicies or other platform-native mechanisms without changing application intent.
+
+A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
+
+Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
+
+Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
