@@ -27,6 +27,7 @@ func serveCommand(store application.Store) *cli.Command {
 				return connectivityrelay.Run(ctx, connectivityrelay.Config{
 					ListenAddr: os.Getenv("BASEHARBOR_RELAY_LISTEN_ADDR"),
 					TargetAddr: os.Getenv("BASEHARBOR_RELAY_TARGET_ADDR"),
+					HealthAddr: os.Getenv("BASEHARBOR_RELAY_HEALTH_ADDR"),
 				})
 			}
 			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_MODE")), "true") {
