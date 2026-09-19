@@ -350,7 +350,7 @@ func storage(client *S3Client) {
 
 	assertReconciliationState(t, result, "database.sql", ReconciliationStale)
 	assertReconciliationState(t, result, "cache.key-value", ReconciliationNew)
-	assertReconciliationState(t, result, "metrics.openmetrics", ReconciliationNew)
+	assertReconciliationState(t, result, "metrics", ReconciliationNew)
 	assertReconciliationState(t, result, "telemetry.otlp", ReconciliationNew)
 	assertReconciliationState(t, result, "object-storage.s3", ReconciliationNew)
 
