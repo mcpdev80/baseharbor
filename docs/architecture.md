@@ -410,7 +410,30 @@ Runtime/provider implementation
 
 The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
 
-A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary.
+Placement has concrete ownership and runtime consequences:
+
+```text
+shared
+  -> one BaseHarbor platform/core-runtime provider instance
+  -> not owned by any single application
+  -> may serve one or multiple explicitly authorized applications
+  -> created lazily when a capability needs it
+
+application
+  -> one dedicated provider instance for exactly one application/environment
+  -> on Compose this means a dedicated provider container/project with its own state
+  -> never reused by another application
+
+external
+  -> provider instance is operated outside BaseHarbor
+  -> BaseHarbor binds to it but does not own or provision its lifecycle
+```
+
+A provider does **not** stop being `shared` merely because only one application currently consumes it. `shared` describes the provider instance's platform ownership and reuse boundary, not the current consumer count. Therefore a shared Prometheus, PostgreSQL, OpenBao, object-storage or telemetry provider belongs to the BaseHarbor platform/core-runtime area even when it currently serves only one application. Conversely, `application` always means a dedicated provider instance for that application.
+
+Shared providers are on-demand platform infrastructure, not unconditional bootstrap dependencies. The minimal BaseHarbor control plane stays small; an optional shared provider is added to the platform/core runtime only when an application capability resolves to that shared provider. If the platform already has a compatible shared provider instance, BaseHarbor reuses that instance instead of starting a duplicate.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary. Sharing a physical provider instance never implies sharing an application's logical resources, credentials, data or network access.
 
 Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
 
