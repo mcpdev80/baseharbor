@@ -71,11 +71,15 @@ Static and runtime resources remain under the same logical capability and provid
 
 The application-facing Runtime Resource API uses HTTP/JSON with a versioned OpenAPI 3.1 contract. OpenAPI is normative; Swagger UI, Scalar, Redoc or another renderer is presentation only.
 
+The application-facing Runtime Resource API is hosted by the per-application **Application Runtime Broker**, which also carries managed-secret runtime routes. The canonical internal endpoint is `https://baseharbor-runtime:8443`; the previous `baseharbor-secrets` DNS alias remains for compatibility.
+
 Interactive documentation follows deployment policy:
 
 - development: enabled by default;
 - test/staging: disabled by default and opt-in;
 - production: disabled by default and opt-in.
+
+Development documentation is served by a separate embedded Swagger/OpenAPI listener and published only on an automatically allocated host-loopback port. It does not proxy or bypass the mTLS Runtime API.
 
 This setting is not application intent and must not become a portable `baseharbor.yaml` field. Enabling interactive documentation never changes API authentication/authorization.
 
