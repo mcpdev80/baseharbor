@@ -25,11 +25,11 @@ type RuntimeResourceBinding struct {
 }
 
 type RuntimeResourceManager struct {
-	dir       string
-	endpoint  string
-	client    *http.Client
-	admin     AdminCredentials
-	iam       *IAMClient
+	dir      string
+	endpoint string
+	client   *http.Client
+	admin    AdminCredentials
+	iam      *IAMClient
 }
 
 type runtimeResourceState struct {
