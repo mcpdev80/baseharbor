@@ -48,7 +48,24 @@ func RequiredSecretUsesFileBinding(name string) bool {
 // centralized here so new authorized runtime capabilities can extend the
 // requirement without duplicating lifecycle conditionals throughout the CLI.
 func RequiresRuntimeBroker(m Manifest) bool {
-	return m.Services.Secrets
+	return m.Services.Secrets || len(m.Runtime.Permissions) > 0
+}
+
+func RuntimeAuthorizedServices(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, permission := range m.Runtime.Permissions {
+		for _, service := range permission.Services {
+			if strings.TrimSpace(service) != "" {
+				seen[service] = struct{}{}
+			}
+		}
+	}
+	services := make([]string, 0, len(seen))
+	for service := range seen {
+		services = append(services, service)
+	}
+	sort.Strings(services)
+	return services
 }
 
 func HasRequiredFileSecrets(m Manifest) bool {
@@ -93,7 +110,7 @@ func ConfiguredRuntimeAPIURL() (string, bool, error) {
 // injected through ordinary environment file paths plus Compose secret mounts;
 // applications do not configure certificates, keys or broker topology.
 func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFiles, files RuntimeFiles, plan WorkloadBindingPlan) (string, bool, error) {
-	if !m.Services.Secrets || len(workload.Services) == 0 || plan.Empty() {
+	if !RequiresRuntimeBroker(m) || len(workload.Services) == 0 || plan.Empty() {
 		return "", false, nil
 	}
 	path := filepath.Join(files.Dir, "workload.runtime-identity.override.yaml")
