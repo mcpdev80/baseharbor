@@ -238,7 +238,7 @@ func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.Postgres = false
 	m = WithWorkload(m, "compose.yaml", "api")
-	m = WithRuntimePermission(m, "object-storage.s3/v1", "runtime.create", "runtime.get", "runtime.delete")
+	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
 	got, err := ParseYAML(m.YAML())
 	if err != nil {
@@ -256,6 +256,8 @@ func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 		"runtime:\n",
 		"  permissions:\n",
 		"    - capability: object-storage.s3/v1\n",
+		"      services:\n",
+		"        - api\n",
 		"      operations:\n",
 		"        - runtime.create\n",
 	} {
@@ -268,10 +270,10 @@ func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
 	base := New("demo", "dev", true, false, false)
 	cases := []RuntimePermission{
-		{Capability: "object-storage.s3/v9", Operations: []string{"runtime.create"}},
-		{Capability: "object-storage.s3/v1", Operations: nil},
-		{Capability: "object-storage.s3/v1", Operations: []string{"create"}},
-		{Capability: "object-storage.s3/v1", Operations: []string{"runtime.create", "runtime.create"}},
+		{Capability: "object-storage.s3/v9", Services: []string{"api"}, Operations: []string{"runtime.create"}},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: nil},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: []string{"create"}},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: []string{"runtime.create", "runtime.create"}},
 	}
 	for _, permission := range cases {
 		m := base
