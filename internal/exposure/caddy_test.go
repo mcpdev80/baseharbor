@@ -20,12 +20,12 @@ func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
 	}
 }
 
-func TestComposeOwnsStableExposureNetworkAndNoProviderVolume(t *testing.T) {
+func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t *testing.T) {
 	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
 	state := State{Version: 1, Project: ProjectName(m), Network: application.ApplicationExposureNetworkName(m), Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", PublishedPort: 18080}}}
 	got := composeYAML(state, Files{Dir: "/tmp/provider"})
-	if strings.Contains(got, "external: true") {
-		t.Fatalf("Caddy provider must own its Compose default network:\n%s", got)
+	if !strings.Contains(got, "external: true") || !strings.Contains(got, "name: "+state.Network) {
+		t.Fatalf("Caddy provider must consume the stable exposure network externally:\n%s", got)
 	}
 	if strings.Contains(got, "volumes:\n  ") {
 		t.Fatalf("provider must not create persistent named volumes:\n%s", got)
