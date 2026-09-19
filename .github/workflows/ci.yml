@@ -66,7 +66,8 @@ jobs:
       - name: Verify directed cross-application connectivity
         env:
           BASEHARBOR_CONNECTIVITY_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestDirectedCrossApplicationConnectivityInCI      - name: Vet
+        run: go test ./cmd/baha -run TestDirectedCrossApplicationConnectivityInCI -count=1 -v
+      - name: Vet
         run: go vet ./...
       - name: Validate compose
         run: |
