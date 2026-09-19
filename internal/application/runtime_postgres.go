@@ -41,6 +41,17 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 	return nil
 }
 
+func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
+	dir := filepath.Join(store.Root, m.Name, "runtime")
+	return RuntimeFiles{
+		Dir:            dir,
+		Compose:        filepath.Join(dir, "compose.yaml"),
+		Env:            filepath.Join(dir, "runtime.env"),
+		ApplicationEnv: filepath.Join(dir, "application.env"),
+		Bindings:       filepath.Join(dir, "bindings"),
+	}
+}
+
 func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := m.Validate(); err != nil {
 		return RuntimeFiles{}, err
@@ -49,16 +60,9 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 		return RuntimeFiles{}, err
 	}
 
-	dir := filepath.Join(store.Root, m.Name, "runtime")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	files := RuntimeFilesFor(store, m)
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
-	}
-	files := RuntimeFiles{
-		Dir:            dir,
-		Compose:        filepath.Join(dir, "compose.yaml"),
-		Env:            filepath.Join(dir, "runtime.env"),
-		ApplicationEnv: filepath.Join(dir, "application.env"),
-		Bindings:       filepath.Join(dir, "bindings"),
 	}
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
