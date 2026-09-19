@@ -146,11 +146,15 @@ func appUpCommand(store application.Store) *cli.Command {
 				}
 			}
 			printRuntimeReady(out, m)
+			if err := provisionManagedExposure(ctx, managedExposure); err != nil {
+				return fmt.Errorf("provision managed HTTP exposure: %w", err)
+			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+				rollbackManagedExposure(ctx, managedExposure)
 				return err
 			}
-			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
-				return fmt.Errorf("converge managed HTTP exposure: %w", err)
+			if err := verifyManagedExposure(ctx, out, managedExposure); err != nil {
+				return fmt.Errorf("verify managed HTTP exposure: %w", err)
 			}
 			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
