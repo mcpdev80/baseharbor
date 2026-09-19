@@ -73,7 +73,7 @@ func (c *IAMClient) CreateAccessKey(ctx context.Context, user string) (IAMAccess
 	var response struct {
 		Result struct {
 			AccessKey struct {
-				AccessKeyID string `xml:"AccessKeyId"`
+				AccessKeyID     string `xml:"AccessKeyId"`
 				SecretAccessKey string `xml:"SecretAccessKey"`
 			} `xml:"AccessKey"`
 		} `xml:"CreateAccessKeyResult"`
@@ -82,7 +82,7 @@ func (c *IAMClient) CreateAccessKey(ctx context.Context, user string) (IAMAccess
 		return IAMAccessKey{}, errors.New("decode SeaweedFS IAM CreateAccessKey response")
 	}
 	result := IAMAccessKey{
-		AccessKeyID: strings.TrimSpace(response.Result.AccessKey.AccessKeyID),
+		AccessKeyID:     strings.TrimSpace(response.Result.AccessKey.AccessKeyID),
 		SecretAccessKey: strings.TrimSpace(response.Result.AccessKey.SecretAccessKey),
 	}
 	if result.AccessKeyID == "" || result.SecretAccessKey == "" {
