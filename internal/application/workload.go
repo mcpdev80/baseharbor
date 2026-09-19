@@ -211,6 +211,8 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		return "", err
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
+	runtimeBroker := RequiresRuntimeBroker(m)
+	backendNetwork := managedRuntime || runtimeBroker
 	objectStorage := HasObjectStorage(m)
 	telemetryManaged := HasOTLPTelemetry(m) && values["OTLP_PROVIDER"] == string(capability.ProviderOTelCollector)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
@@ -237,9 +239,9 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 		_, exposed := exposedServices[service]
-		if managedRuntime || objectStorage || telemetryManaged || exposed {
+		if backendNetwork || objectStorage || telemetryManaged || exposed {
 			b.WriteString("    networks:\n")
-			if managedRuntime {
+			if backendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
 			}
 			if objectStorage {
@@ -255,9 +257,9 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 	}
-	if managedRuntime || objectStorage || telemetryManaged || len(exposedServices) > 0 {
+	if backendNetwork || objectStorage || telemetryManaged || len(exposedServices) > 0 {
 		b.WriteString("networks:\n")
-		if managedRuntime {
+		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
 		}
