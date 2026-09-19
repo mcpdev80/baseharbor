@@ -58,6 +58,7 @@ func newHandler(secrets SecretService, verifier RuntimeVerifier, boundApp string
 	h.mux.HandleFunc("PUT /runtime/v1/apps/{app}/secret-refs/resolve", h.rotate)
 	h.mux.HandleFunc("DELETE /runtime/v1/apps/{app}/secret-refs/resolve", h.delete)
 	if boundApp != "" {
+		h.mux.HandleFunc("GET /runtime/v1/capabilities", h.bound(boundApp, h.capabilities))
 		h.mux.HandleFunc("POST /runtime/v1/secrets", h.bound(boundApp, h.create))
 		h.mux.HandleFunc("POST /runtime/v1/secrets/resolve", h.bound(boundApp, h.read))
 		h.mux.HandleFunc("PUT /runtime/v1/secrets/resolve", h.bound(boundApp, h.rotate))
@@ -87,6 +88,27 @@ func (h *Handler) authorize(r *http.Request) *apierror.Error {
 		return apierror.New(apierror.CodeUnauthorized, "", 0)
 	}
 	return nil
+}
+
+func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
+	if err := h.authorize(r); err != nil {
+		writeError(w, err)
+		return
+	}
+	noStore(w)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"capabilities": []map[string]any{
+			{
+				"capability": "secrets",
+				"operations": []string{
+					"runtime.create",
+					"runtime.get",
+					"runtime.rotate",
+					"runtime.delete",
+				},
+			},
+		},
+	})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
