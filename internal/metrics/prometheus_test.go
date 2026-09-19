@@ -232,13 +232,19 @@ func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
 }
 
 type recordingRuntime struct {
-	destroyed []string
+	destroyed    []string
+	missingState bool
 }
 
 func (r *recordingRuntime) ConfigProject(context.Context, string, string, string) error  { return nil }
 func (r *recordingRuntime) UpProject(context.Context, string, string, string) error      { return nil }
 func (r *recordingRuntime) DownProject(context.Context, string, string, string) error    { return nil }
-func (r *recordingRuntime) DestroyProject(_ context.Context, project, _, _ string) error {
+func (r *recordingRuntime) DestroyProject(_ context.Context, project, composeFile, envFile string) error {
+	for _, path := range []string{composeFile, envFile} {
+		if _, err := os.Stat(path); err != nil {
+			r.missingState = true
+		}
+	}
 	r.destroyed = append(r.destroyed, project)
 	return nil
 }
@@ -270,6 +276,9 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 	}
 	if len(runtime.destroyed) != 3 {
 		t.Fatalf("destroyed projects=%#v", runtime.destroyed)
+	}
+	if runtime.missingState {
+		t.Fatal("shared Prometheus state was removed before all provider projects were destroyed")
 	}
 	instances, err = ExistingSharedProviderInstances()
 	if err != nil {
