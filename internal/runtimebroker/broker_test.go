@@ -211,7 +211,7 @@ func TestEnsureDocsPortDisabledOutsideDevelopment(t *testing.T) {
 	}
 }
 
-func TestComposeYAMLInitializesRuntimeOperationVolumeBeforeBroker(t *testing.T) {
+func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name string) string {
 		t.Helper()
@@ -242,16 +242,10 @@ func TestComposeYAMLInitializesRuntimeOperationVolumeBeforeBroker(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{
-		"state-init:",
-		"user: \"0:0\"",
-		"network_mode: \"none\"",
-		"- CHOWN",
-		"condition: service_completed_successfully",
-		"chmod 700 /var/lib/baseharbor/runtime-operations && chown 65532:65532 /var/lib/baseharbor/runtime-operations",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("runtime broker compose missing %q:\n%s", want, got)
-		}
+	if strings.Contains(got, "state-init:") {
+		t.Fatalf("runtime broker compose unexpectedly contains privileged state init service:\n%s", got)
+	}
+	if !strings.Contains(got, "runtime-operations:/var/lib/baseharbor/runtime-operations") {
+		t.Fatalf("runtime broker compose missing persistent operations volume:\n%s", got)
 	}
 }
