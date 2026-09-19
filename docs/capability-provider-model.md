@@ -264,3 +264,37 @@ Explicit control must not require polluting the portable application contract wi
 BaseHarbor must show the resolved plan before mutation so users can see what defaults were selected and can override supported decisions deliberately. Explicit user/operator configuration wins over defaults, but never bypasses capability conformance, security boundaries, validation or fail-closed behavior.
 
 The goal is: easy when the user does not care about infrastructure details, precise when the user does.
+
+## Convention by default, configuration by choice
+
+BaseHarbor follows one UX and architecture principle across all capabilities and runtimes:
+
+> **Convention by default, configuration by choice.**
+
+The default path minimizes decisions. BaseHarbor detects what it can, chooses safe and explainable defaults, shows the resolved plan and proceeds through the normal validation lifecycle.
+
+Users who want more control may progressively override supported deployment decisions without changing portable application intent.
+
+```text
+default
+  -> capabilities only
+  -> safe automatic provider/placement/runtime defaults
+
+advanced
+  -> explicit provider / placement / sharing / external references
+
+expert
+  -> supported naming, topology, runtime and provider realization hints
+```
+
+Examples of optional expert control may include stable resource prefixes, logical hostnames, Compose project/network/volume names, DNS aliases and later Kubernetes/OpenShift namespace/project naming. Ephemeral runtime-generated identities such as replica or Pod instance names remain runtime-owned unless the runtime explicitly supports a safe stable override.
+
+Every configurable field must have explicit semantics:
+
+- stable and safely overridable;
+- hint/template only;
+- generated/runtime-owned and not overridable.
+
+Overrides are accepted only when the active runtime/provider can honor them safely and deterministically. They must never bypass security, ownership, reconciliation, conformance or fail-closed validation.
+
+The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.
