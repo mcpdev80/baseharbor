@@ -445,6 +445,8 @@ Rules:
 
 When a capability can be represented safely by absence, absence is the canonical disabled/default form. Existing compatible input with explicit false values may continue to parse, but new writers should prefer sparse output.
 
+OpenAPI is the canonical contract for application-facing Runtime Resource API endpoints. Interactive Swagger/Scalar-style documentation is enabled by default only for development; test/staging and production require explicit platform/operator opt-in. This exposure policy must stay out of portable application intent and must never weaken authentication or authorization.
+
 See ADR 0009.
 
 ## Mandatory task release footer
