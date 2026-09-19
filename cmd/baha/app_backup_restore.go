@@ -39,6 +39,9 @@ func appBackupCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			if application.HasObjectStorage(m) {
+				return errors.New("application backup does not yet include object-storage contents; refusing to create an incomplete recovery unit")
+			}
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
