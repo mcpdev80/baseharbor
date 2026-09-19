@@ -12,6 +12,7 @@ const (
 	CapabilityKeyValue        CapabilityKind = capability.KeyValue
 	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
+	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -63,6 +64,9 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	for _, exposure := range m.Exposures {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityExposureHTTP, Name: exposure.Name})
+	}
+	if m.Telemetry.OTLP != nil {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityTelemetryOTLP, Name: "default"})
 	}
 	return contract, nil
 }
