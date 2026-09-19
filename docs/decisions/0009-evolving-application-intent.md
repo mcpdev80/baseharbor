@@ -67,7 +67,21 @@ For example, source code that calls an S3-compatible `CreateBucket` operation ca
 
 Static and runtime resources remain under the same logical capability and provider contract. BaseHarbor must not create a parallel SeaweedFS/AWS/Ceph-specific runtime architecture.
 
-### 6. Inspection may be richer than the committed manifest
+### 6. Runtime Resource API uses OpenAPI and environment-scoped interactive docs
+
+The application-facing Runtime Resource API uses HTTP/JSON with a versioned OpenAPI 3.1 contract. OpenAPI is normative; Swagger UI, Scalar, Redoc or another renderer is presentation only.
+
+Interactive documentation follows deployment policy:
+
+- development: enabled by default;
+- test/staging: disabled by default and opt-in;
+- production: disabled by default and opt-in.
+
+This setting is not application intent and must not become a portable `baseharbor.yaml` field. Enabling interactive documentation never changes API authentication/authorization.
+
+Mutating runtime operations require idempotency, may return asynchronous operation identities, and use the existing secure-binding/runtime-identity boundary for credentials.
+
+### 7. Inspection may be richer than the committed manifest
 
 The inspection model may retain evidence paths, confidence, capability direction and runtime-operation hints. The committed application contract stays intentionally smaller and provider-neutral.
 
