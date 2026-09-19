@@ -316,7 +316,7 @@ metrics provider implementation
 
 The current Compose policy enables collection by default only for development environments. Test/staging/production require explicit operator opt-in. Policy is resolved before provider mutation.
 
-Prometheus 3.14.0 is the first shared BaseHarbor-owned Compose provider. It uses file-based service discovery generated from protected BaseHarbor state; operators do not edit scrape targets manually. Only declared source services join the internal `baseharbor-metrics` network. Every app/environment/service receives a deterministic collision-resistant DNS alias so identical Compose service names across applications do not collide.
+Prometheus 3.14.0 is the first BaseHarbor-owned Compose metrics provider. The safe default placement is `shared`, but the same generic provider-placement model also supports an application-scoped Prometheus instance. Shared placement may optionally use a named sharing boundary, allowing selected applications to share one provider while unrelated applications remain outside that provider trust boundary. Prometheus uses file-based service discovery generated from protected BaseHarbor state; operators do not edit scrape targets manually. Each participating application receives its own isolated metrics network, and the selected Prometheus instance is attached only to the explicitly registered application networks. Every app/environment/service receives a deterministic collision-resistant DNS alias so identical Compose service names across applications do not collide.
 
 Target labels include BaseHarbor application, environment, workload service and logical source identity. Readiness requires a real successful scrape visible in Prometheus as `up=1`, not merely a running Prometheus process.
 
