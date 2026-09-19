@@ -41,10 +41,11 @@ type Runtime interface {
 }
 
 type Driver struct {
-	runtime Runtime
-	app     application.Manifest
-	files   application.RuntimeFiles
-	client  *http.Client
+	runtime        Runtime
+	app            application.Manifest
+	files          application.RuntimeFiles
+	client         *http.Client
+	createdBuckets map[string]struct{}
 }
 
 type ProviderFiles struct {
@@ -54,7 +55,7 @@ type ProviderFiles struct {
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
-	return &Driver{runtime: runtime, app: app, files: files, client: &http.Client{Timeout: 10 * time.Second}}
+	return &Driver{runtime: runtime, app: app, files: files, client: &http.Client{Timeout: 10 * time.Second}, createdBuckets: map[string]struct{}{}}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
@@ -94,13 +95,24 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
+	headStatus, _, headErr := signedS3Request(ctx, d.client, endpoint, http.MethodHead, physical, "", admin, nil)
+	if headErr != nil {
+		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, headErr)
+	}
+	if headStatus >= 200 && headStatus < 300 {
+		return nil
+	}
+	if headStatus != http.StatusNotFound {
+		return fmt.Errorf("inspect S3 bucket %s: unexpected HTTP status %d", resource.Name, headStatus)
+	}
 	status, _, err := signedS3Request(ctx, d.client, endpoint, http.MethodPut, physical, "", admin, nil)
 	if err != nil {
 		return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
 	}
-	if status != http.StatusOK && status != http.StatusNoContent && status != http.StatusConflict {
+	if status != http.StatusOK && status != http.StatusNoContent {
 		return fmt.Errorf("create S3 bucket %s: unexpected HTTP status %d", resource.Name, status)
 	}
+	d.createdBuckets[resource.Name] = struct{}{}
 	return nil
 }
 
@@ -170,6 +182,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 		return errors.New("S3 GetObject verification returned unexpected payload")
 	}
 	return nil
+}
+
+func (d *Driver) Rollback(ctx context.Context) {
+	for bucket := range d.createdBuckets {
+		_ = d.DestroyBucket(ctx, bucket)
+	}
 }
 
 func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error {
