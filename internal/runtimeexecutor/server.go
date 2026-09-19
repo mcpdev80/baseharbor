@@ -27,11 +27,11 @@ type Config struct {
 
 func (c Config) Validate() error {
 	for label, value := range map[string]string{
-		"TLS certificate":             c.TLSCertFile,
-		"TLS private key":             c.TLSKeyFile,
-		"TLS client CA":               c.TLSClientCAFile,
-		"S3 endpoint":                 c.S3Endpoint,
-		"S3 admin credentials":        c.AdminCredentials,
+		"TLS certificate":            c.TLSCertFile,
+		"TLS private key":            c.TLSKeyFile,
+		"TLS client CA":              c.TLSClientCAFile,
+		"S3 endpoint":                c.S3Endpoint,
+		"S3 admin credentials":       c.AdminCredentials,
 		"runtime resource state dir": c.StateDir,
 	} {
 		if strings.TrimSpace(value) == "" {
