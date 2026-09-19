@@ -254,8 +254,8 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", fmt.Errorf("write runtime broker permissions: %w", err)
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", fmt.Errorf("protect runtime broker permissions: %w", err)
+	if err := os.Chmod(path, 0o644); err != nil {
+		return "", fmt.Errorf("prepare runtime broker permissions projection: %w", err)
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
