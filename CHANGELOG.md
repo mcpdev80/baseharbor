@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Real `object-storage.s3/v1` application-time create/get/delete execution through a shared mTLS Runtime Provider Executor.
 - Persistent asynchronous runtime-resource operations with idempotent mutation keys and restart/resume reconciliation.
 - Real runtime S3 bindings with bucket-scoped IAM credentials and authenticated native S3 Put/Get consumption.
+- Versioned `metrics/v1` capability specification for application-provided OpenMetrics-compatible HTTP sources.
+- Provider-neutral Manifest v1 metrics source declarations with logical source name, workload service, target port and path.
+- Prometheus 3.14.0 as the first lazy shared Compose metrics provider with automatic file-based target discovery.
+- Real scrape/ingestion verification and manual-only two-application shared-provider acceptance coverage.
 
 ### Changed
 
@@ -27,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `baha app apply` and `baha app up` now lazily start/reuse the shared Runtime Provider Executor whenever an explicit runtime resource permission requires it.
 - Runtime-only applications receive a deterministic broker backend network without requiring artificial PostgreSQL/Valkey services; S3 provider-network access is attached only to workload services explicitly authorized for `object-storage.s3/v1`.
 - Global `baha destroy --yes` removes the BaseHarbor-owned shared Runtime Provider Executor before the shared object-storage provider.
+- Metrics collection is deployment policy rather than application product intent: development defaults on; test/staging/production require explicit opt-in unless overridden with `BASEHARBOR_METRICS_ENABLED`.
+- Only declared metrics-source services join the internal metrics network and receive deterministic collision-resistant provider DNS aliases.
+- Application destroy removes its Prometheus target state; global destroy removes the shared Prometheus provider and BaseHarbor-owned data volume.
 
 ### Security
 
@@ -36,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Broker and executor run without Docker/Podman sockets; the executor has no host-published port and accepts only BaseHarbor SPIFFE/mTLS workload identities.
 - Runtime resource ownership is application/environment scoped; resource IDs cannot be used to read, bind or delete another application's resource.
 - Runtime S3 credentials are excluded from asynchronous operation state, normal resource metadata, logs and manifests and are returned only by the authenticated binding endpoint.
+- Prometheus target state contains endpoint identity and attribution labels only; it does not contain application credentials, provider-global credentials or portable product configuration.
+- Metrics collection does not implicitly provision Grafana, Loki or Tempo.
 
 ## [0.4.7] - 2026-09-19
 
