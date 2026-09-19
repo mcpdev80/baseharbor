@@ -333,6 +333,12 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			key := s3RuntimeKey(bucket, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
+		for _, suffix := range []string{"BUCKET", "HOST_ENDPOINT", "CONTAINER_ENDPOINT"} {
+			key := s3RuntimeKey(bucket, suffix)
+			if values[key] != "" {
+				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+			}
+		}
 	}
 	return b.String()
 }
