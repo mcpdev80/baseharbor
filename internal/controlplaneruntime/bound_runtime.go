@@ -10,10 +10,22 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
 	"github.com/mcpdev80/baseharbor/internal/auth"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/runtimeoperation"
 	"github.com/mcpdev80/baseharbor/internal/runtimeresourceapi"
 )
+
+
+type capabilityExecutorRouter map[string]runtimeoperation.Executor
+
+func (r capabilityExecutorRouter) Execute(ctx context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
+	executor := r[strings.TrimSpace(request.Capability)]
+	if executor == nil {
+		return runtimeoperation.Result{}, errors.New("runtime capability has no executor")
+	}
+	return executor.Execute(ctx, request)
+}
 
 func buildBoundRuntimeHandler(ctx context.Context, cfg Config, secrets applicationruntimeapi.SecretService, verifier applicationruntimeapi.RuntimeVerifier) (http.Handler, error) {
 	mux := http.NewServeMux()
@@ -49,20 +61,46 @@ func buildBoundRuntimeHandler(ctx context.Context, cfg Config, secrets applicati
 	}
 
 	if len(authorizer.Capabilities()) > 0 {
-		executor, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
-			URL:      cfg.RuntimeExecutorURL,
-			CAFile:   cfg.RuntimeExecutorCAFile,
-			CertFile: cfg.RuntimeExecutorCertFile,
-			KeyFile:  cfg.RuntimeExecutorKeyFile,
-		})
-		if err != nil {
-			return nil, err
+		routes := capabilityExecutorRouter{}
+		needsRemoteExecutor := false
+		for capabilityName := range authorizer.Capabilities() {
+			if capabilityName != metricsprovider.RuntimeCapabilityV1 {
+				needsRemoteExecutor = true
+				break
+			}
+		}
+		if needsRemoteExecutor {
+			executor, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
+				URL:      cfg.RuntimeExecutorURL,
+				CAFile:   cfg.RuntimeExecutorCAFile,
+				CertFile: cfg.RuntimeExecutorCertFile,
+				KeyFile:  cfg.RuntimeExecutorKeyFile,
+			})
+			if err != nil {
+				return nil, err
+			}
+			for capabilityName := range authorizer.Capabilities() {
+				if capabilityName != metricsprovider.RuntimeCapabilityV1 {
+					routes[capabilityName] = executor
+				}
+			}
+		}
+		if _, ok := authorizer.Capabilities()[metricsprovider.RuntimeCapabilityV1]; ok {
+			executor, err := metricsprovider.NewRuntimeSourceExecutor(cfg.RuntimeEnvironment, cfg.RuntimeMetricsTargetsDir)
+			if err != nil {
+				return nil, err
+			}
+			routes[metricsprovider.RuntimeCapabilityV1] = executor
 		}
 		executors := map[string]runtimeoperation.Executor{}
-		for capability, operations := range authorizer.Capabilities() {
-			for _, operation := range operations {
+		for capabilityName, allowedOperations := range authorizer.Capabilities() {
+			executor := routes[capabilityName]
+			if executor == nil {
+				return nil, errors.New("runtime capability has no executor")
+			}
+			for _, operation := range allowedOperations {
 				if operation == "runtime.create" || operation == "runtime.delete" {
-					executors[capability+"\x00"+operation] = executor
+					executors[capabilityName+"\x00"+operation] = executor
 				}
 			}
 		}
@@ -73,7 +111,7 @@ func buildBoundRuntimeHandler(ctx context.Context, cfg Config, secrets applicati
 		if err := operations.Resume(ctx); err != nil {
 			return nil, err
 		}
-		resourceHandler, err := runtimeresourceapi.New(cfg.RuntimeAppName, operations, authorizer, executor)
+		resourceHandler, err := runtimeresourceapi.New(cfg.RuntimeAppName, operations, authorizer, routes)
 		if err != nil {
 			return nil, err
 		}
