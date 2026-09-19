@@ -10,10 +10,11 @@ import (
 type Kind string
 
 const (
-	SQL          Kind = "database.sql"
-	KeyValue     Kind = "cache.key-value"
-	Secrets      Kind = "secrets"
-	ExposureHTTP Kind = "exposure.http"\n\tObjectStorageS3 Kind = "object-storage.s3"
+	SQL             Kind = "database.sql"
+	KeyValue        Kind = "cache.key-value"
+	Secrets         Kind = "secrets"
+	ExposureHTTP    Kind = "exposure.http"
+	ObjectStorageS3 Kind = "object-storage.s3"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -30,7 +31,8 @@ const (
 	ProviderPostgreSQL ProviderKind = "postgresql"
 	ProviderValkey     ProviderKind = "valkey"
 	ProviderOpenBao    ProviderKind = "openbao"
-	ProviderCaddy      ProviderKind = "caddy"\n\tProviderSeaweedFS  ProviderKind = "seaweedfs"
+	ProviderCaddy      ProviderKind = "caddy"
+	ProviderSeaweedFS  ProviderKind = "seaweedfs"
 )
 
 // Provider describes the capability surface of one provider implementation.
@@ -84,11 +86,5 @@ func Resolve(application string, requirement Requirement, provider Provider) (Re
 			requirement.Kind,
 		)
 	}
-
-	return Resource{
-		Application: application,
-		Kind:        requirement.Kind,
-		Name:        requirement.Name,
-		Provider:    provider.Kind,
-	}, nil
+	return Resource{Application: application, Kind: requirement.Kind, Name: requirement.Name, Provider: provider.Kind}, nil
 }
