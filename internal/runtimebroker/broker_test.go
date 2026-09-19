@@ -211,7 +211,6 @@ func TestEnsureDocsPortDisabledOutsideDevelopment(t *testing.T) {
 	}
 }
 
-
 func TestComposeYAMLInitializesRuntimeOperationVolumeBeforeBroker(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name string) string {
