@@ -1,25 +1,6 @@
 name: runtime-image
 
 on:
-  pull_request:
-    paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'deploy/control-plane/Dockerfile'
-      - '.github/workflows/runtime-image.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'deploy/control-plane/Dockerfile'
-      - '.github/workflows/runtime-image.yml'
-  create:
   workflow_dispatch:
 
 permissions:
