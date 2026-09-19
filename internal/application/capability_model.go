@@ -44,7 +44,14 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 		return nil, err
 	}
 	bindings := make([]capability.Binding, 0, len(resources))
+	metricsEnabled, err := MetricsCollectionEnabled(m)
+	if err != nil {
+		return nil, err
+	}
 	for _, resource := range resources {
+		if resource.Kind == capability.Metrics && !metricsEnabled {
+			continue
+		}
 		workload := "application/" + contract.Application
 		binding := capability.Binding{Resource: resource, Workload: workload}
 		if resource.Kind == capability.ObjectStorageS3 {
