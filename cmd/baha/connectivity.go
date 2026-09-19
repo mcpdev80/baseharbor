@@ -73,21 +73,22 @@ func connectCommand() *cli.Command {
 			if err := rule.Validate(); err != nil {
 				return err
 			}
-			if err := application.AddConnectivityRule(rule); err != nil {
-				return err
-			}
-			rollbackPolicy := true
-			defer func() {
-				if rollbackPolicy {
-					_ = application.RemoveConnectivityRule(rule)
-				}
-			}()
+
+			fmt.Fprintln(out, "Connectivity plan")
+			fmt.Fprintf(out, "  source: %s\n", formatConnectivityEndpoint(rule.Source))
+			fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
+			fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
+
 			if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
 				_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
 				_ = connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule))
 				return err
 			}
-			rollbackPolicy = false
+			if err := application.AddConnectivityRule(rule); err != nil {
+				_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
+				_ = connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule))
+				return fmt.Errorf("persist connectivity policy after verified convergence: %w", err)
+			}
 			fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
 			fmt.Fprintf(out, "     target alias:      %s\n", application.ConnectivityTargetAlias(rule))
 			return nil
