@@ -41,6 +41,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			var managedExposure *managedExposureExecution
 			var managedObjectStorage *managedObjectStorageExecution
+			var managedTelemetry *managedTelemetryExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -65,6 +66,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "managed object storage provider", Run: func(ctx context.Context) error {
 					var err error
 					managedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved)
+					return err
+				}},
+				{Name: "managed telemetry provider", Run: func(ctx context.Context) error {
+					var err error
+					managedTelemetry, err = prepareManagedTelemetry(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
@@ -162,6 +168,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 
 			printRuntimeReady(out, m)
+			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {
+				return fmt.Errorf("converge managed telemetry: %w", err)
+			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
 			}
