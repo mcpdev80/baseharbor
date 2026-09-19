@@ -31,10 +31,11 @@ type OptionalLifecycleSupport struct {
 }
 
 type IntegrationDescriptor struct {
-	Protocol     string                   `json:"protocol"`
-	Provider     Provider                 `json:"provider"`
-	Capabilities []SpecificationID        `json:"capabilities"`
-	Optional     OptionalLifecycleSupport `json:"optional_lifecycle"`
+	Protocol        string                   `json:"protocol"`
+	Provider        Provider                 `json:"provider"`
+	Capabilities    []SpecificationID        `json:"capabilities"`
+	SupportedScopes []ProviderScope          `json:"supported_scopes"`
+	Optional        OptionalLifecycleSupport `json:"optional_lifecycle"`
 }
 
 func (d IntegrationDescriptor) Validate() error {
@@ -49,6 +50,21 @@ func (d IntegrationDescriptor) Validate() error {
 	}
 	if len(d.Capabilities) == 0 {
 		return fmt.Errorf("provider %q must declare versioned capability specifications", d.Provider.Kind)
+	}
+	if len(d.SupportedScopes) == 0 {
+		return fmt.Errorf("provider %q must declare at least one supported placement scope", d.Provider.Kind)
+	}
+	seenScopes := make(map[ProviderScope]struct{}, len(d.SupportedScopes))
+	for _, scope := range d.SupportedScopes {
+		switch scope {
+		case ScopeShared, ScopeApplication, ScopeExternal:
+		default:
+			return fmt.Errorf("provider %q declares unsupported placement scope %q", d.Provider.Kind, scope)
+		}
+		if _, exists := seenScopes[scope]; exists {
+			return fmt.Errorf("provider %q declares placement scope %q more than once", d.Provider.Kind, scope)
+		}
+		seenScopes[scope] = struct{}{}
 	}
 
 	declared := make(map[Kind]struct{}, len(d.Capabilities))
