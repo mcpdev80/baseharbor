@@ -172,14 +172,13 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
 	}
 	composeYAML := fmt.Sprintf(`services:
   web:
-    image: alpine:3.22
+    image: caddy:2.11.4-alpine
     command:
-      - sh
-      - -ec
-      - |
-        mkdir -p /www
-        printf 'baseharbor-exposure-ok\\n' >/www/index.html
-        exec busybox httpd -f -p %d -h /www
+      - file-server
+      - --root
+      - /usr/share/caddy
+      - --listen
+      - :%d
     networks:
       - app-internal
 networks:
