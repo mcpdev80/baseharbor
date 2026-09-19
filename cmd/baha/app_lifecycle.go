@@ -152,6 +152,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+				{Name: "connectivity policy", Run: func(context.Context) error {
+					return application.CheckApplicationConnectivityReleased(m)
+				}},
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
