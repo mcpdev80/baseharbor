@@ -100,6 +100,22 @@ v0.4.3 macht Repository-Analyse zu einer gemeinsamen, strikt read-only Core-Funk
 - Environment-Werte werden verworfen und Symlinks nicht verfolgt;
 - Inspection veraendert weder Repository noch Runtime-State.
 
+## Kontinuierliche Application-Evolution vor v0.4.8
+
+Vor der v0.4.8-Metrics-/Prometheus-Implementierung standardisiert BaseHarbor, wie sich Application Intent waehrend der Entwicklung veraendert.
+
+- Manifest-Output ist sparsam: deaktivierte optionale Capabilities werden weggelassen;
+- Repository Inspection ist waehrend der gesamten Entwicklung wiederholbar und nicht nur Initial-Setup;
+- Inspection gleicht Repository-Evidenz gegen den expliziten Contract als `satisfied`/`new`/`ambiguous`/`stale` ab;
+- neu erkannte Anforderungen sind additive Vorschlaege;
+- fehlende Evidenz fuehrt niemals automatisch zum Entfernen einer Capability;
+- Capability-Evidenz traegt Application-Richtung wie `consume`/`provide`/`export` und Runtime-Operations-Hinweise;
+- S3-Runtime-Erzeugungsmuster, OpenMetrics `/metrics` und OTLP-Export sind erste konkrete Beispiele;
+- Runtime-Operations-Evidenz vergibt niemals Authorization;
+- spaeteres Application-Time-Resource-Provisioning muss dieselbe Capability-/Provider-Grenze wiederverwenden.
+
+Das ist ein Architektur-Fundament, keine Prometheus-Implementierung und noch keine oeffentliche Runtime-Resource-API.
+
 ## Geplante Phasen
 
 ### v0.5 - Capability Provider
