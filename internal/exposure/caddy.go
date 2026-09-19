@@ -68,6 +68,7 @@ type Driver struct {
 	provisioned   bool
 	changed       bool
 	previousFiles map[string][]byte
+	planned       map[string]capability.HTTPExposureBinding
 }
 
 func ProjectName(m application.Manifest) string {
@@ -95,35 +96,57 @@ func (d *Driver) IntegrationDescriptor() capability.IntegrationDescriptor {
 }
 
 func (d *Driver) Preflight(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
-	route, ok := d.requirement(resource.Name)
-	if !ok {
-		return fmt.Errorf("HTTP exposure %q is not declared", resource.Name)
+	if resource.Kind != capability.ExposureHTTP {
+		return fmt.Errorf("Caddy cannot preflight capability %q", resource.Kind)
 	}
 	if strings.TrimSpace(d.deployment.Hostname) == "" {
 		return errors.New("managed HTTP exposure requires repository deployment initialization; run 'baha app init'")
 	}
+	if binding.HTTPExposure == nil {
+		return fmt.Errorf("HTTP exposure %q binding metadata is required", resource.Name)
+	}
+	route := *binding.HTTPExposure
+	if strings.TrimSpace(route.Service) == "" || route.TargetPort < 1 || route.TargetPort > 65535 {
+		return fmt.Errorf("HTTP exposure %q has invalid logical endpoint metadata", resource.Name)
+	}
+	if route.Protocol != "http" && route.Protocol != "https" {
+		return fmt.Errorf("HTTP exposure %q protocol %q is unsupported", resource.Name, route.Protocol)
+	}
+	if route.Visibility != "public" && route.Visibility != "internal" {
+		return fmt.Errorf("HTTP exposure %q visibility %q is unsupported", resource.Name, route.Visibility)
+	}
 	if binding.Workload != "service/"+route.Service {
-		return fmt.Errorf("HTTP exposure %q binding targets %q, expected service/%s", route.Name, binding.Workload, route.Service)
+		return fmt.Errorf("HTTP exposure %q binding targets %q, expected service/%s", resource.Name, binding.Workload, route.Service)
 	}
 	if route.Protocol == "https" {
 		if d.deployment.TLSMode != "existing" {
-			return fmt.Errorf("managed HTTPS exposure %q currently requires existing/BYOC TLS; deployment TLS mode is %q", route.Name, d.deployment.TLSMode)
+			return fmt.Errorf("managed HTTPS exposure %q currently requires existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.deployment.TLSMode)
 		}
 		for _, name := range []string{"cert.pem", "key.pem"} {
 			path := filepath.Join(d.deployment.TLSDir, name)
 			info, err := os.Stat(path)
 			if err != nil {
-				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", route.Name, path, err)
+				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
 			}
 			if !info.Mode().IsRegular() {
-				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", route.Name, path)
+				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
 			}
 		}
 	}
-	return capability.RequireIntegrationContract(d.IntegrationDescriptor())
+	if err := capability.RequireIntegrationContract(d.IntegrationDescriptor()); err != nil {
+		return err
+	}
+	if d.planned == nil {
+		d.planned = make(map[string]capability.HTTPExposureBinding)
+	}
+	if previous, exists := d.planned[resource.Name]; exists && previous != route {
+		return fmt.Errorf("HTTP exposure %q has conflicting preflight bindings", resource.Name)
+	}
+	d.planned[resource.Name] = route
+	return nil
 }
 
-func (d *Driver) Provision(ctx context.Context, resource capability.Resource) error {
+func (d *Driver) Provision(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
 	if d.provisioned {
 		return nil
 	}
@@ -305,15 +328,6 @@ func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application
 	return os.RemoveAll(files.Dir)
 }
 
-func (d *Driver) requirement(name string) (application.HTTPExposureRequirement, bool) {
-	for _, route := range d.manifest.Exposures {
-		if route.Name == name {
-			return route, true
-		}
-	}
-	return application.HTTPExposureRequirement{}, false
-}
-
 func (d *Driver) stateRoute(name string) (Route, bool) {
 	for _, route := range d.state.Routes {
 		if route.Name == name {
@@ -342,8 +356,14 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	}
 	used := map[int]struct{}{}
 	var routes []Route
-	for _, requirement := range d.manifest.Exposures {
-		route := Route{Name: requirement.Name, Service: requirement.Service, TargetPort: requirement.Port, Protocol: requirement.Protocol, Visibility: visibility(requirement.Visibility)}
+	plannedNames := make([]string, 0, len(d.planned))
+	for name := range d.planned {
+		plannedNames = append(plannedNames, name)
+	}
+	sort.Strings(plannedNames)
+	for _, name := range plannedNames {
+		requirement := d.planned[name]
+		route := Route{Name: name, Service: requirement.Service, TargetPort: requirement.TargetPort, Protocol: requirement.Protocol, Visibility: requirement.Visibility}
 		if route.Protocol == "https" {
 			certData, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, "cert.pem"))
 			if err != nil {
@@ -451,13 +471,6 @@ func caddyfile(route Route) string {
 		tlsLine = "  tls /certs/cert.pem /certs/key.pem\n"
 	}
 	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
-}
-
-func visibility(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "public"
-	}
-	return strings.TrimSpace(value)
 }
 
 func choosePublishedPort(preferred int, visibility string, used map[int]struct{}) (int, error) {
