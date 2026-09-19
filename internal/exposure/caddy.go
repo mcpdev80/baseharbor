@@ -22,7 +22,7 @@ import (
 
 const (
 	stateVersion = 1
-	caddyImage   = "caddy:2-alpine"
+	caddyImage   = "caddy:2.11.4-alpine"
 )
 
 type Deployment struct {
@@ -154,7 +154,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource) er
 		return fmt.Errorf("validate Caddy exposure provider: %w", err)
 	}
 	if changed && d.wasRunning {
-		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		if err := d.compose.DownProjectRemoveOrphans(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
 			_ = d.Rollback(context.WithoutCancel(ctx))
 			return fmt.Errorf("restart changed Caddy exposure provider: %w", err)
 		}
@@ -173,7 +173,7 @@ func (d *Driver) Rollback(ctx context.Context) error {
 	}
 	var result error
 	if _, err := os.Stat(d.files.Compose); err == nil {
-		if err := d.compose.DownProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
+		if err := d.compose.DownProjectRemoveOrphans(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
@@ -281,7 +281,7 @@ func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.Ru
 	if err != nil {
 		return err
 	}
-	return compose.DownProject(ctx, state.Project, files.Compose, files.Env)
+	return compose.DownProjectRemoveOrphans(ctx, state.Project, files.Compose, files.Env)
 }
 
 func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
@@ -292,7 +292,7 @@ func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application
 	if err != nil {
 		return err
 	}
-	if err := compose.DestroyProject(ctx, state.Project, files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProjectRemoveOrphans(ctx, state.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	return os.RemoveAll(files.Dir)
