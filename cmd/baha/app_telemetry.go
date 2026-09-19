@@ -7,8 +7,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 type managedTelemetryExecution struct {
@@ -26,11 +26,11 @@ func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, res
 	driver := telemetry.NewDriver(compose, m, files)
 	request := capability.Request{
 		Requirement: capability.Requirement{Kind: capability.TelemetryOTLP, Name: "default"},
-		Workload: "application/" + m.Name,
+		Workload:    "application/" + m.Name,
 		TelemetryOTLP: &capability.OTLPTelemetryBinding{
 			Direction: "export",
-			Protocol: "http/protobuf",
-			Signals: append([]string(nil), m.Telemetry.OTLP.Signals...),
+			Protocol:  "http/protobuf",
+			Signals:   append([]string(nil), m.Telemetry.OTLP.Signals...),
 		},
 		Driver: driver,
 	}
