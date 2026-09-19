@@ -118,3 +118,33 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 		t.Fatalf("exposure provider binding missing: %#v", registry.Bindings)
 	}
 }
+
+
+func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
+	m := New("demo", "production", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	t.Setenv(MetricsEnabledEnv, "false")
+	disabled := capability.NewRegistry()
+	if err := registerReferenceProviders(&disabled, m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := disabled.Resolve(capability.ProviderPrometheus, capability.ScopeShared, m.Name, ""); err == nil {
+		t.Fatal("Prometheus registered while metrics collection policy is disabled")
+	}
+
+	t.Setenv(MetricsEnabledEnv, "true")
+	enabled := capability.NewRegistry()
+	if err := registerReferenceProviders(&enabled, m); err != nil {
+		t.Fatal(err)
+	}
+	instance, err := enabled.Resolve(capability.ProviderPrometheus, capability.ScopeShared, m.Name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.ID != "prometheus/shared" {
+		t.Fatalf("Prometheus instance = %#v", instance)
+	}
+}
