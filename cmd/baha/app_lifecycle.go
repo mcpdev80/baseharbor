@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -171,6 +172,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					}},
 				)
 			}
+			if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
+				return fmt.Errorf("remove application metrics targets: %w", err)
+			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
@@ -212,6 +216,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
+			}
+			if len(m.Metrics.Sources) > 0 {
+				fmt.Fprintf(out, "  metrics:    %d application metrics target(s) removed from shared provider state\n", len(m.Metrics.Sources))
 			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
