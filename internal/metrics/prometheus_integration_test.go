@@ -87,7 +87,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 			ctx,
 			"docker", "run", "-d", "--rm",
 			"--name", containerName,
-			"--network", ProviderNetwork,
+			"--network", application.MetricsProviderNetworkName(m),
 			"--network-alias", application.MetricsTargetAlias(m, "api"),
 			"python:3.13-alpine",
 			"sh", "-c", script,
