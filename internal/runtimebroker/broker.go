@@ -305,7 +305,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("      - probe-client-cert\n")
 	b.WriteString("      - probe-client-key\n")
 	b.WriteString("    healthcheck:\n")
-	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-secrets:8443/readyz\"]\n")
+	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
 	b.WriteString("      interval: 5s\n")
 	b.WriteString("      timeout: 5s\n")
 	b.WriteString("      retries: 12\n")
