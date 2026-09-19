@@ -64,7 +64,6 @@ func TestEnsureFilesRejectsInvalidTargetPort(t *testing.T) {
 	}
 }
 
-
 func TestEnsureFilesRejectsUnsafeRelayID(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	_, err := EnsureFiles(RuntimeSpec{
