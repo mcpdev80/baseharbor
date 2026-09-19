@@ -47,11 +47,13 @@ type Config struct {
 	RuntimeCredentialsFile  string
 	RuntimeTokenFile        string
 	RuntimePermissionsFile  string
+	RuntimeServiceTokensFile string
 	RuntimeExecutorURL      string
 	RuntimeExecutorCAFile   string
 	RuntimeExecutorCertFile string
 	RuntimeExecutorKeyFile  string
 	RuntimeOperationsDir    string
+	RuntimeMetricsTargetsDir string
 	RuntimeDocsListenAddr   string
 	ShutdownTimeout         time.Duration
 }

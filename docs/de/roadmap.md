@@ -100,24 +100,28 @@ v0.4.3 macht Repository-Analyse zu einer gemeinsamen, strikt read-only Core-Funk
 - Environment-Werte werden verworfen und Symlinks nicht verfolgt;
 - Inspection veraendert weder Repository noch Runtime-State.
 
-## Kontinuierliche Application-Evolution vor v0.4.8
+## v0.4.8 Metrics-/Prometheus-Track
 
-Vor der v0.4.8-Metrics-/Prometheus-Implementierung standardisiert BaseHarbor, wie sich Application Intent waehrend der Entwicklung veraendert.
+Die Voraussetzungen fuer kontinuierliche Application-Evolution und Runtime-Resource-Ausfuehrung sind abgeschlossen. v0.4.8 fuegt den ersten Metrics-Collection-/Storage-Provider hinzu und behaelt die Trennung zwischen Application Intent und Provider bei.
 
-- Manifest-Output ist sparsam: deaktivierte optionale Capabilities werden weggelassen;
-- Repository Inspection ist waehrend der gesamten Entwicklung wiederholbar und nicht nur Initial-Setup;
-- Inspection gleicht Repository-Evidenz gegen den expliziten Contract als `satisfied`/`new`/`ambiguous`/`stale` ab;
-- neu erkannte Anforderungen sind additive Vorschlaege;
-- fehlende Evidenz fuehrt niemals automatisch zum Entfernen einer Capability;
-- Capability-Evidenz traegt Application-Richtung wie `consume`/`provide`/`export` und Runtime-Operations-Hinweise;
-- S3-Runtime-Erzeugungsmuster, OpenMetrics `/metrics` und OTLP-Export sind erste konkrete Beispiele;
-- Runtime-Operations-Evidenz vergibt niemals Authorization;
-- Application-Time-Resource-Provisioning verwendet dieselbe Capability-/Provider-Grenze;
-- die Runtime Resource API ist fuer explizit autorisierte `object-storage.s3/v1` Create/Get/Delete-Anforderungen ausfuehrbar;
-- ein shared mTLS Runtime Provider Executor haelt provider-globale Credentials aus Anwendungen und per-App Brokern heraus;
-- asynchroner Operation-State ist persistent und nicht abgeschlossene Operationen werden nach Broker-Neustart wieder aufgenommen.
+Im v0.4.8-Development-Track umgesetzt:
 
-Damit ist das Runtime-Resource-Ausfuehrungs-Prerequisite vor v0.4.8 abgeschlossen. Es ist weiterhin keine Prometheus-Implementierung; OpenMetrics-Evidenz bleibt Input fuer den naechsten Capability-Track.
+- versionierte `metrics/v1` Capability Specification;
+- providerneutrale Metrics-Source-Deklarationen mit logischem Source-Namen, Workload-Service, Ziel-Port und Pfad;
+- OpenMetrics-kompatible HTTP-Exposition als v1-Signalformat;
+- Repository Inspection mappt konventionelle `/metrics`-Evidenz auf die kanonische `metrics`-Capability;
+- Deployment-eigene Collection-Policy statt einer portablen `prometheus: true`-Anforderung;
+- Collection in Development standardmaessig aktiv, Test/Staging/Produktion nur per explizitem Operator-Opt-in;
+- Prometheus 3.14.0 als erster lazy shared Compose-Referenzprovider;
+- file-based automatische Target Discovery aus BaseHarbor-State ohne manuelle Prometheus-Target-Pflege;
+- service-spezifische Anbindung an das interne `baseharbor-metrics`-Netz;
+- deterministische kollisionsresistente Target-DNS-Aliase, sodass identische Service-Namen verschiedener Anwendungen getrennt bleiben;
+- Attribution von Application/Environment/Service/Source auf gescrapten Serien;
+- Readiness durch echten erfolgreichen Scrape mit `up=1` statt nur Prozess-Health;
+- manual-only Docker-Acceptance mit zwei isolierten Applications auf einem gemeinsamen Prometheus-Provider;
+- kein implizites Provisioning von Grafana, Loki oder Tempo.
+
+OTLP-Metrics-Export bleibt ein getrenntes `telemetry.otlp/v1`-Transportthema. v0.4.8 definiert OTLP nicht neu und macht Prometheus nicht zur Application Identity.
 
 ## Geplante Phasen
 

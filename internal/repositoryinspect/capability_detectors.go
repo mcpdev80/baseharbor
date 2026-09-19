@@ -81,7 +81,7 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 
 type openMetricsDetector struct{}
 
-func (openMetricsDetector) Name() string { return "metrics.openmetrics" }
+func (openMetricsDetector) Name() string { return "metrics" }
 
 func (openMetricsDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
 	var detected, suggested []Evidence
@@ -118,13 +118,13 @@ func (openMetricsDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Fin
 	}
 	if len(detected) > 0 {
 		return []Finding{{
-			Capability: "metrics.openmetrics", Direction: DirectionProvide,
+			Capability: "metrics", Direction: DirectionProvide,
 			Confidence: ConfidenceDetected, Evidence: uniqueEvidence(append(detected, suggested...)),
 		}}, nil
 	}
 	if len(suggested) > 0 {
 		return []Finding{{
-			Capability: "metrics.openmetrics", Direction: DirectionProvide,
+			Capability: "metrics", Direction: DirectionProvide,
 			Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested),
 		}}, nil
 	}

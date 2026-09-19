@@ -126,24 +126,28 @@ v0.4.3 makes repository inspection a shared, read-only core capability.
 - current PostgreSQL/Valkey detection and guided `app init` reuse the same engine;
 - inspection never mutates repository/runtime state and never emits environment secret values.
 
-## Continuous application evolution foundation before v0.4.8
+## v0.4.8 metrics / Prometheus track
 
-Before the v0.4.8 metrics/Prometheus implementation, BaseHarbor standardizes how application intent changes over time.
+The continuous application-evolution and runtime-resource prerequisites are complete. v0.4.8 adds the first metrics collection/storage provider while preserving the application/provider split.
 
-- manifest output is sparse: disabled optional capabilities are omitted;
-- repository inspection is repeatable throughout development rather than limited to initial setup;
-- inspection reconciles repository evidence with explicit contract state as satisfied/new/ambiguous/stale;
-- newly discovered requirements are additive suggestions;
-- missing evidence never causes automatic capability removal;
-- capability evidence carries application direction such as consume/provide/export and runtime-operation hints;
-- S3 runtime creation patterns, OpenMetrics `/metrics` and OTLP export become first concrete examples;
-- runtime-operation evidence never grants authorization;
-- application-time resource provisioning reuses the existing capability/provider boundary;
-- the Runtime Resource API is executable for explicitly authorized `object-storage.s3/v1` create/get/delete requests;
-- a shared mTLS Runtime Provider Executor keeps provider-global credentials outside applications and per-app brokers;
-- asynchronous operation state is persistent and unfinished operations are reconciled after broker restart.
+Implemented in the v0.4.8 development track:
 
-This completes the runtime-resource execution prerequisite before v0.4.8. It is still not the Prometheus implementation; OpenMetrics evidence remains input for the next capability track.
+- versioned `metrics/v1` Capability Specification;
+- provider-neutral application metrics source declarations using logical source name, workload service, target port and path;
+- OpenMetrics-compatible HTTP exposition as the v1 signal format;
+- repository inspection maps conventional `/metrics` evidence to the canonical `metrics` capability;
+- deployment-owned collection policy instead of a portable `prometheus: true` requirement;
+- development collection enabled by default, with test/staging/production requiring explicit operator opt-in;
+- Prometheus 3.14.0 as the first lazy shared Compose reference provider;
+- file-based automatic target discovery generated from BaseHarbor state, without manual Prometheus target editing;
+- service-scoped attachment to the internal `baseharbor-metrics` network;
+- deterministic collision-resistant target DNS aliases so identical service names across applications remain isolated;
+- BaseHarbor application/environment/service/source attribution on scraped series;
+- readiness based on a real successful scrape visible as `up=1`, not only process health;
+- manual-only Docker acceptance with two isolated application targets sharing one Prometheus provider;
+- no implicit Grafana, Loki or Tempo provisioning.
+
+OTLP metrics export remains a separate `telemetry.otlp/v1` transport concern. v0.4.8 does not redefine OTLP or make Prometheus part of application identity.
 
 ## Next architecture tracks
 

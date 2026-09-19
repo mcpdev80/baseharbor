@@ -13,6 +13,7 @@ const (
 	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
+	CapabilityMetrics         CapabilityKind = capability.Metrics
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -36,6 +37,7 @@ type PortableContract struct {
 	Capabilities []CapabilityRequirement
 	Secrets      SecretContract
 	Exposures    []HTTPExposureRequirement
+	Metrics      []MetricsSourceRequirement
 }
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
@@ -52,6 +54,7 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 			Required: cloneSecretRequirements(m.Secrets.Required),
 		},
 		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
+		Metrics:   append([]MetricsSourceRequirement(nil), m.Metrics.Sources...),
 	}
 	for _, name := range PostgresInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
@@ -67,6 +70,9 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	if m.Telemetry.OTLP != nil {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityTelemetryOTLP, Name: "default"})
+	}
+	for _, source := range m.Metrics.Sources {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMetrics, Name: source.Name})
 	}
 	return contract, nil
 }

@@ -16,6 +16,7 @@ const (
 	ExposureHTTP    Kind = "exposure.http"
 	ObjectStorageS3 Kind = "object-storage.s3"
 	TelemetryOTLP   Kind = "telemetry.otlp"
+	Metrics         Kind = "metrics"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -36,6 +37,7 @@ const (
 	ProviderSeaweedFS     ProviderKind = "seaweedfs"
 	ProviderOTelCollector ProviderKind = "opentelemetry-collector"
 	ProviderExternalOTLP  ProviderKind = "external-otlp"
+	ProviderPrometheus    ProviderKind = "prometheus"
 )
 
 // Provider describes the capability surface of one provider implementation.

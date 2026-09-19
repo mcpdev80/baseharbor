@@ -89,7 +89,14 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 	if err != nil {
 		return err
 	}
+	metricsPolicy, err := MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
 	for _, resource := range resources {
+		if resource.Kind == capability.Metrics && !metricsPolicy.Enabled {
+			continue
+		}
 		var instance capability.ProviderInstance
 		switch resource.Provider {
 		case capability.ProviderPostgreSQL:
@@ -121,6 +128,34 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Provider:  capability.OTelCollector,
 				Scope:     capability.ScopeShared,
 				Ownership: capability.OwnershipBaseHarbor,
+			}
+		case capability.ProviderPrometheus:
+			switch metricsPolicy.ProviderScope {
+			case capability.ScopeShared:
+				instance = capability.ProviderInstance{
+					ID:        "prometheus/shared",
+					Provider:  capability.Prometheus,
+					Scope:     capability.ScopeShared,
+					Ownership: capability.OwnershipBaseHarbor,
+				}
+			case capability.ScopeApplication:
+				instance = capability.ProviderInstance{
+					ID:               fmt.Sprintf("prometheus/%s/%s", m.Name, m.Environment),
+					Provider:         capability.Prometheus,
+					Scope:            capability.ScopeApplication,
+					Ownership:        capability.OwnershipBaseHarbor,
+					OwnerApplication: m.Name,
+				}
+			case capability.ScopeExternal:
+				instance = capability.ProviderInstance{
+					ID:        fmt.Sprintf("prometheus-external/%s/%s", m.Name, m.Environment),
+					Provider:  capability.Prometheus,
+					Scope:     capability.ScopeExternal,
+					Ownership: capability.OwnershipExternal,
+					Reference: metricsPolicy.ExternalReference,
+				}
+			default:
+				return fmt.Errorf("unsupported metrics provider scope %q", metricsPolicy.ProviderScope)
 			}
 		case capability.ProviderExternalOTLP:
 			instance = capability.ProviderInstance{

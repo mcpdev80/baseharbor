@@ -81,6 +81,19 @@ func RotateRuntimeIdentity(m Manifest, files RuntimeFiles) error {
 	if err := os.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("secure rotated application runtime identity token: %w", err)
 	}
+	if identities, err := EnsureRuntimeServiceIdentities(m, files); err != nil {
+		return err
+	} else {
+		for service, path := range identities {
+			token, err := newRuntimeIdentityToken()
+			if err != nil {
+				return err
+			}
+			if err := writeOwnerOnlyFile(path, []byte(token+"\n")); err != nil {
+				return fmt.Errorf("rotate runtime service identity token for %s: %w", service, err)
+			}
+		}
+	}
 	if err := os.Remove(RuntimeIdentityRevokedPath(files)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("clear application runtime identity revocation: %w", err)
 	}
@@ -106,6 +119,53 @@ func RevokeRuntimeIdentity(m Manifest, files RuntimeFiles) error {
 
 func RuntimeIdentityTokenPath(files RuntimeFiles) string {
 	return filepath.Join(files.Bindings, runtimeIdentityBinding, runtimeIdentityTokenFile)
+}
+
+func RuntimeServiceIdentityDir(files RuntimeFiles) string {
+	return filepath.Join(files.Bindings, runtimeIdentityBinding, "services")
+}
+
+func RuntimeServiceIdentityTokenPath(files RuntimeFiles, service string) string {
+	return filepath.Join(RuntimeServiceIdentityDir(files), strings.TrimSpace(service)+".token")
+}
+
+func EnsureRuntimeServiceIdentities(m Manifest, files RuntimeFiles) (map[string]string, error) {
+	services := RuntimeAuthorizedServices(m)
+	if len(services) == 0 {
+		return map[string]string{}, nil
+	}
+	dir := RuntimeServiceIdentityDir(files)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create runtime service identity directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("protect runtime service identity directory: %w", err)
+	}
+	result := make(map[string]string, len(services))
+	for _, service := range services {
+		path := RuntimeServiceIdentityTokenPath(files, service)
+		if data, err := os.ReadFile(path); err == nil {
+			if err := ownerOnlyRuntimeIdentity(path); err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(string(data)) == "" {
+				return nil, fmt.Errorf("runtime service identity token for %s is empty", service)
+			}
+			result[service] = path
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read runtime service identity token for %s: %w", service, err)
+		}
+		token, err := newRuntimeIdentityToken()
+		if err != nil {
+			return nil, err
+		}
+		if err := writeOwnerOnlyFile(path, []byte(token+"\n")); err != nil {
+			return nil, fmt.Errorf("write runtime service identity token for %s: %w", service, err)
+		}
+		result[service] = path
+	}
+	return result, nil
 }
 
 func RuntimeIdentityRevokedPath(files RuntimeFiles) string {

@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates curl \
-    && mkdir -p /var/lib/baseharbor/runtime-operations /var/lib/baseharbor/runtime-resources \
+    && mkdir -p /var/lib/baseharbor/runtime-operations /var/lib/baseharbor/runtime-resources /var/lib/baseharbor/runtime-metrics \
     && chown -R 65532:65532 /var/lib/baseharbor
 COPY --from=build /out/baha /usr/local/bin/baha
 USER 65532:65532

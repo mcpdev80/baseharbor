@@ -246,3 +246,22 @@ Der aktuelle Managed-Compose-Provider ist lazy/shared. Ein externer OTLP-Endpunk
 Conformance verlangt fail-closed Preflight, idempotente Provisionierung/Bindings und einen echten OTLP-HTTP/Protobuf-Export, den der gewaehlte Endpunkt akzeptiert. Ein nur laufender Collector-Prozess reicht nicht.
 
 Das OTLP-Binding ist Capability-owned und in Provider Protocol v1 typisiert. Die Anforderung darf weder Prometheus, Loki, Tempo, Grafana noch andere nicht angeforderte Observability-Produkte implizit provisionieren.
+
+
+## Metrics-/Prometheus-Conformance in v0.4.8
+
+Prometheus ist der erste Reference Provider fuer `metrics/v1`. Die Provider-Grenze bleibt dabei dieselbe wie fuer spaetere VictoriaMetrics-/Mimir- oder Community-Implementierungen.
+
+Conformance verlangt mindestens:
+
+- fail-closed Preflight fuer Direction, Signalformat und Source-Endpunkt;
+- idempotente shared Provider-Provisionierung;
+- automatische Target-Registrierung ohne manuelle Prometheus-Konfiguration;
+- Application-/Environment-/Service-/Source-Attribution;
+- Isolation gleichnamiger Workload-Services verschiedener Anwendungen;
+- echte Scrape-/Ingestion-Verifikation mit erfolgreichem `up=1`;
+- Entfernen nur der zur betroffenen Application gehoerenden Target-Bindings;
+- keine Credentials oder Secret-Werte in Target-State oder normalen Diagnostics;
+- kein implizites Provisioning von Grafana, Loki oder Tempo.
+
+Collection-Policy ist Deployment-/Operator-State. Eine deklarierte `metrics/v1`-Source autorisiert nicht automatisch Collection in jeder Umgebung.
