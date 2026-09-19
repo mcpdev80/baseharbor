@@ -123,3 +123,23 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 	fmt.Fprintf(out, "[OK] metrics            %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	return nil
 }
+
+func printResolvedMetricsPlacement(out io.Writer, m application.Manifest) error {
+	if len(m.Metrics.Sources) == 0 && !application.HasRuntimeMetricsPermissions(m) {
+		return nil
+	}
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Provider placement: prometheus -> %s", placement.Scope)
+	if placement.SharingBoundary != "" {
+		fmt.Fprintf(out, " (sharing-boundary=%s)", placement.SharingBoundary)
+	}
+	if placement.Scope == capability.ScopeExternal && placement.ExternalReference != "" {
+		fmt.Fprintf(out, " (reference=%s)", placement.ExternalReference)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
