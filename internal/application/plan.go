@@ -48,6 +48,12 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated Valkey data volume for %s", capability.Name)},
 				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated authenticated Valkey service for %s", capability.Name)},
 			)
+		case CapabilityExposureHTTP:
+			p.Actions = append(p.Actions, Action{
+				Kind:        "ensure",
+				Resource:    "exposure:" + capability.Name,
+				Description: fmt.Sprintf("ensure managed HTTP exposure %s", capability.Name),
+			})
 		default:
 			return Plan{}, fmt.Errorf("unsupported application capability %q", capability.Kind)
 		}
