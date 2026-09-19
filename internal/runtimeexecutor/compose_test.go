@@ -7,7 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
-func TestComposeYAMLInitializesStateVolumeBeforeExecutor(t *testing.T) {
+func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 	got := composeYAML(
 		"baseharbor-runtime:test",
 		openbao.RuntimeExecutorMTLSFiles{
@@ -18,13 +18,14 @@ func TestComposeYAMLInitializesStateVolumeBeforeExecutor(t *testing.T) {
 		"/tmp/s3-admin.env",
 	)
 
+	if strings.Contains(got, "state-init:") {
+		t.Fatalf("runtime executor compose unexpectedly contains privileged state init service:\n%s", got)
+	}
 	for _, want := range []string{
-		"state-init:",
-		"user: \"0:0\"",
-		"network_mode: \"none\"",
-		"- CHOWN",
-		"condition: service_completed_successfully",
-		"chmod 700 /var/lib/baseharbor/runtime-resources && chown 65532:65532 /var/lib/baseharbor/runtime-resources",
+		"runtime-resource-state:/var/lib/baseharbor/runtime-resources",
+		"read_only: true",
+		"cap_drop:",
+		"- ALL",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime executor compose missing %q:\n%s", want, got)
