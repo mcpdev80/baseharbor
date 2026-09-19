@@ -14,9 +14,9 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.4 line keeps Compose as the complete runtime implementation while adding a provider-neutral endpoint/exposure foundation, the first managed HTTP/HTTPS reference provider, and the v0.4 lifecycle hardening accumulated from real-world regression testing behind the Manifest v1 workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.5 line keeps Compose as the complete runtime implementation while adding a provider-neutral secure-binding and workload-identity foundation on top of the v0.4.4 endpoint/exposure model, without changing the Manifest v1 developer workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
-The v0.4.4 line includes:
+The v0.4.5 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
@@ -38,6 +38,7 @@ The v0.4.4 line includes:
 - application environment/file bindings using standard connection information;
 - managed required/generated secrets with fail-closed workload startup gates;
 - app-scoped dynamic secret references and per-application mTLS runtime broker isolation;
+- provider-neutral `secure-binding/v1` metadata for workload identity, credential/trust/secret references, least-privilege authorization, lifecycle support and machine-readable security diagnostics;
 - service-level, health-aware workload status plus application-owned HTTP/HTTPS exposure readiness;
 - shared logical endpoint/readiness semantics reused by app-owned publishers and managed exposure;
 - optional provider-neutral `exposure.http/v1` intent with public/internal visibility;

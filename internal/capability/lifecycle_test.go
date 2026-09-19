@@ -180,3 +180,52 @@ func (d *recordingDriver) Verify(context.Context, Resource, Binding) error {
 	*d.calls = append(*d.calls, "verify:"+string(d.provider.Kind))
 	return nil
 }
+
+func TestBuildPlanCarriesValidatedSecureBinding(t *testing.T) {
+	driver := &testDriver{provider: PostgreSQL}
+	security := SecureBinding{
+		Identity: &WorkloadIdentityBinding{
+			Subject:   "spiffe://baseharbor/apps/mailflow/production",
+			Reference: "baseharbor://applications/mailflow/production/identities/runtime",
+		},
+		Credentials: []CredentialReference{{
+			Name:      "database",
+			Reference: "baseharbor://applications/mailflow/production/credentials/database",
+		}},
+	}
+	plan, err := BuildPlan("mailflow", []Request{{
+		Requirement: Requirement{Kind: SQL, Name: "primary"},
+		Workload:    "application/mailflow",
+		Security:    &security,
+		Driver:      driver,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 1 || plan.Items[0].Binding.Security == nil {
+		t.Fatalf("plan = %#v", plan)
+	}
+	if plan.Items[0].Binding.Security.Identity == nil ||
+		plan.Items[0].Binding.Security.Identity.Subject != "spiffe://baseharbor/apps/mailflow/production" {
+		t.Fatalf("secure binding = %#v", plan.Items[0].Binding.Security)
+	}
+}
+
+func TestBuildPlanRejectsInvalidSecureBindingBeforeProviderPreflight(t *testing.T) {
+	driver := &testDriver{provider: PostgreSQL}
+	security := SecureBinding{
+		Credentials: []CredentialReference{{Name: "database"}},
+	}
+	_, err := Run(context.Background(), "mailflow", []Request{{
+		Requirement: Requirement{Kind: SQL, Name: "primary"},
+		Workload:    "application/mailflow",
+		Security:    &security,
+		Driver:      driver,
+	}})
+	if err == nil {
+		t.Fatal("Run() error = nil, want secure-binding validation failure")
+	}
+	if driver.preflightCalls != 0 || driver.provisionCalls != 0 || driver.bindCalls != 0 || driver.verifyCalls != 0 {
+		t.Fatal("invalid secure binding reached provider lifecycle")
+	}
+}

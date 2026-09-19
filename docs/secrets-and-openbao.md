@@ -228,3 +228,20 @@ Still outside this MVP slice:
 - OpenBao token renewal/agent integration
 - TLS/PKI for the bundled OpenBao listener itself
 - KMS/HSM/transit auto-unseal profiles
+
+## Provider-neutral secure binding in v0.4.5
+
+The existing OpenBao/runtime-broker implementation now maps into the shared `secure-binding/v1` model.
+
+The application-facing contract still declares only required secret names. Internally, BaseHarbor represents the managed connection with:
+
+- SPIFFE workload identity `spiffe://baseharbor/apps/<app>/<environment>`;
+- an opaque runtime-authentication credential reference;
+- an opaque runtime CA/trust reference;
+- least-privilege `managed-secrets` / `secrets.read` authorization metadata;
+- opaque references for required secret names;
+- declared renewal, rotation and revocation support.
+
+These are references only. OpenBao AppRole names, RoleIDs, SecretIDs, policies, KV paths, certificates, private keys and secret values remain protected provider/runtime state.
+
+The existing OpenBao scope, broker, mTLS, restore and rotation implementation remains authoritative. v0.4.5 standardizes its semantics so later providers can reuse the same security boundary.

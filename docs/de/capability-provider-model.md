@@ -18,11 +18,11 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.4 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.5 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
-| Secrets | `secrets` / benoetigte Secret-Namen + policy-gesteuerte Auslieferung | OpenBao | implementiert | Vault, Cloud Secret Stores, externe Provider-Adapter | Der App-Contract kennt Secret-Anforderungen, aber keine OpenBao-Pfade oder AppRoles |
+| Secrets | `secrets` / benoetigte Secret-Namen + policy-gesteuerte Auslieferung | OpenBao | implementiert; v0.4.5 bildet Identity/Credentials/Trust/Authorization/Secret-Referenzen ueber `secure-binding/v1` ab | Vault, Cloud Secret Stores, externe Provider-Adapter | Der App-Contract kennt Secret-Anforderungen, aber keine OpenBao-Pfade oder AppRoles; Security-Wiring ist providerneutral |
 | HTTP/HTTPS-Exposition | `exposure.http/v1` | Caddy als Compose-Referenzprovider | in v0.4.4 implementiert; app-eigene Publisher bleiben beobachtet und werden nicht lifecycle-seitig uebernommen | Traefik, Kubernetes Gateway API/Ingress, OpenShift Route, Cloud-Traffic-Provider | Managed Exposure ist expliziter portabler Intent; Host-Ports, FQDNs, TLS-Dateien, Netze und Proxy-Konfiguration bleiben Deployment-/Provider-State |
 | Object Storage | spaeter `object-storage.s3` / S3 API | SeaweedFS als geplanter Referenz-/Default-Provider | geplant | Garage, Ceph RGW, AWS S3 und kompatible Managed Services | S3 ist die Anwendungsgrenze; Topologie und Implementierung bleiben Provider-Sache |
 | TLS-Zertifikats-Lifecycle | spaeter `tls.certificate` / X.509-Identitaet | providerabhaengig | Existing/BYOC fuer Repository-Compose-Deployment implementiert; portable Capability geplant | vorhandene/BYOC-Zertifikate, OpenBao PKI, ACME-Provider, cert-manager, OpenShift Service CA, Cloud-Zertifikatsdienste | v0.4 validiert/importiert/aktualisiert Existing-Zertifikate als Deployment-State; ACME/PKI/providerneutraler Intent bleiben Future Work |
@@ -122,9 +122,9 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.4-Grenze
+## v0.4.5-Grenze
 
-v0.4.4 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection und mit `exposure.http/v1` plus Caddy als Compose-Referenzprovider die erste verwaltete Traffic-Capability.
+v0.4.5 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1` sowie mit `secure-binding/v1` eine gemeinsame Security-Grenze fuer Identity, Credentials, Trust, Authorization und Secret-Referenzen.
 
 Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure ist additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State.
 

@@ -18,11 +18,11 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 
 ## Component matrix
 
-| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.4 | Replacement paths / alternatives | Architecture note |
+| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.5 | Replacement paths / alternatives | Architecture note |
 | --- | --- | --- | --- | --- | --- |
 | Relational SQL database | Manifest v1 PostgreSQL compatibility input normalized to `database.sql` in `PortableContract` | PostgreSQL | Implemented | external PostgreSQL, managed PostgreSQL/RDS-style services, compatible enterprise PostgreSQL platforms; other SQL engines only where the declared capability permits their semantics | PostgreSQL is the current reference provider, not the permanent conceptual capability name |
 | Cache / key-value | Manifest v1 Redis/Valkey compatibility input normalized to `cache.key-value` in `PortableContract` | Valkey | Implemented | Redis, Dragonfly, managed Redis/Valkey; other KV systems only through a capability with matching semantics | Protocol/feature requirements must be explicit enough to avoid false interchangeability |
-| Secrets | `secrets` / required secret names + policy-controlled delivery | OpenBao | Implemented | Vault, cloud secret stores, external provider adapters | Application contract declares required secret intent, never OpenBao paths/AppRoles |
+| Secrets | `secrets` / required secret names + policy-controlled delivery | OpenBao | Implemented; v0.4.5 maps identity/credentials/trust/authorization/secret refs through `secure-binding/v1` | Vault, cloud secret stores, external provider adapters | Application contract declares required secret intent, never OpenBao paths/AppRoles; security wiring is provider-neutral |
 | HTTP/HTTPS exposure | `exposure.http/v1` | Caddy reference provider for Compose | Implemented in v0.4.4; application-owned publishers remain observed rather than lifecycle-owned | Traefik, Kubernetes Gateway API/Ingress, OpenShift Route, cloud traffic providers | Managed exposure is explicit portable intent; provider host ports, FQDNs, TLS files, networks and proxy configuration remain deployment/provider state |
 | Object storage | future `object-storage.s3` / S3 API | SeaweedFS planned reference/default | Planned | Garage, Ceph RGW, AWS S3 and compatible managed services | S3 is the application boundary; storage topology and implementation remain provider-owned |
 | TLS certificate lifecycle | future `tls.certificate` / X.509 identity | provider-specific | Deployment-specific existing/BYOC lifecycle implemented; portable capability planned | existing/BYOC certificates, OpenBao PKI, ACME provider, cert-manager, OpenShift Service CA, cloud-native certificate services | v0.4 validates/imports/updates existing certificates for repository Compose deployment state; ACME/PKI/provider-neutral intent remain future work |
@@ -125,9 +125,9 @@ A future provider interface must describe more than a product name. Providers ne
 
 If the selected provider cannot satisfy a requested guarantee, BaseHarbor must reject the plan rather than silently reduce the guarantee.
 
-## v0.4.4 boundary
+## v0.4.5 boundary
 
-v0.4.4 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection and the first managed traffic capability through `exposure.http/v1` with Caddy as the Compose reference provider.
+v0.4.5 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, and the shared `secure-binding/v1` security boundary for identity, credentials, trust, authorization and secret references.
 
 Manifest v1 remains the supported compatibility surface. Managed exposure is additive and explicit; application-owned publishers remain application-owned observation/readiness state.
 

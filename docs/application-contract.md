@@ -372,3 +372,23 @@ The portable fields describe only the application requirement: logical exposure 
 For v0.4.4 the Compose reference provider is Caddy. Managed HTTPS reuses the existing/BYOC deployment TLS state. Managed ACME, OpenBao PKI issuance and automatic certificate renewal remain future work.
 
 `visibility: public` is the canonical default. `visibility: internal` restricts the current Compose reference binding to loopback/local reachability.
+
+## Secure bindings and workload identity in v0.4.5
+
+v0.4.5 adds a provider-neutral secure-binding model below the application manifest. It describes the security material required to connect a workload to a capability without placing provider internals or secret values into portable application intent.
+
+A secure binding can describe:
+
+- workload identity;
+- opaque credential references;
+- trust/CA references;
+- least-privilege authorization metadata;
+- opaque required-secret references;
+- whether renewal, rotation and revocation are supported;
+- machine-readable security diagnostics.
+
+The current managed-secrets path maps its existing runtime identity to the SPIFFE subject `spiffe://baseharbor/apps/<application>/<environment>`. The binding contains only logical references. OpenBao AppRole names, RoleIDs, SecretIDs, KV paths, policy names, private keys and secret values remain protected provider/runtime state.
+
+This is intentionally below Manifest v1. Applications still declare only secret names and capability requirements; they do not configure SPIFFE, OpenBao, certificate files or BaseHarbor credential references.
+
+Secure-binding metadata is validated before provider preflight. Invalid or ambiguous references therefore fail before provider mutation.

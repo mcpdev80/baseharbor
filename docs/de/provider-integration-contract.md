@@ -207,3 +207,19 @@ Provider Protocol v1 transportiert capability-eigene, provider-neutrale Binding-
 - Sichtbarkeit `public|internal`.
 
 Diese Felder werden durch die Capability Specification definiert, nicht durch Caddy oder einen anderen Provider. Provider-spezifische Konfiguration bleibt separate Operator-/Deployment-Konfiguration. Dadurch kann ein spaeterer konformer Provider denselben Application Intent verarbeiten, ohne `baseharbor.yaml` selbst lesen oder von der Go-Implementierung BaseHarbors abhaengen zu muessen.
+
+## Secure-Binding-Semantik
+
+Ab v0.4.5 duerfen Provider-Lifecycle-Bindings das gemeinsame Modell `secure-binding/v1` tragen. Es ist die einheitliche providerneutrale Darstellung fuer Workload-Identitaet, Credential-Referenzen, Trust-Material, Authorization-Metadaten, Secret-Referenzen sowie deklarierte Renewal-/Rotation-/Revocation-Unterstuetzung.
+
+Regeln:
+
+- Plaintext-Credentials, Tokens, Private Keys und Secret-Werte sind im Provider-Protokoll verboten;
+- Provider-spezifische Security-Interna wie OpenBao-Pfade/AppRoles/Policies, Kubernetes-Secret-Namen oder Cloud-Secret-Objekt-IDs bleiben Provider-/Deployment-State;
+- Secure-Binding-Metadaten werden vor dem Provider-Preflight und damit vor Mutation validiert;
+- Shared Provider Infrastructure bedeutet niemals automatisch Shared Authorization;
+- Provider uebersetzen Least-Privilege-Authorization-Metadaten in ihr natives ACL-/Policy-Modell;
+- Security-Diagnostik bleibt maschinenlesbar und secret-safe;
+- `WorkloadBinding.security` in `baseharbor.provider/v1` bildet dieselbe Semantik ab.
+
+Die bestehende OpenBao-/Runtime-Broker-/mTLS-Implementierung ist die erste Referenzrealisierung. v0.4.5 extrahiert deren stabile Semantik, ersetzt sie aber nicht.
