@@ -11,7 +11,8 @@ var (
 	Valkey     = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
 	OpenBao    = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
 	Caddy      = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
-	SeaweedFS  = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
+	SeaweedFS      = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
+	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
 )
 
 var (
@@ -38,6 +39,11 @@ var (
 		Capabilities: []SpecificationID{ObjectStorageS3V1.ID},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
+	OTelCollectorIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: OTelCollector,
+		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+	}
 )
 
 func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) {
@@ -52,6 +58,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return CaddyIntegration, nil
 	case ProviderSeaweedFS:
 		return SeaweedFSIntegration, nil
+	case ProviderOTelCollector:
+		return OTelCollectorIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
