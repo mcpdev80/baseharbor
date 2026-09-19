@@ -47,11 +47,18 @@ type ObjectStorageS3Binding struct {
 	Bucket string `json:"bucket"`
 }
 
+type OTLPTelemetryBinding struct {
+	Direction string   `json:"direction"`
+	Protocol  string   `json:"protocol"`
+	Signals   []string `json:"signals"`
+}
+
 type Binding struct {
 	Resource        Resource                `json:"resource"`
 	Workload        string                  `json:"workload"`
 	HTTPExposure    *HTTPExposureBinding    `json:"http_exposure,omitempty"`
 	ObjectStorageS3 *ObjectStorageS3Binding `json:"object_storage_s3,omitempty"`
+	TelemetryOTLP   *OTLPTelemetryBinding   `json:"telemetry_otlp,omitempty"`
 	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
@@ -93,6 +100,7 @@ type Request struct {
 	Workload        string
 	HTTPExposure    *HTTPExposureBinding
 	ObjectStorageS3 *ObjectStorageS3Binding
+	TelemetryOTLP   *OTLPTelemetryBinding
 	Security        *SecureBinding
 	Driver          Driver
 }
@@ -127,6 +135,35 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 				return Plan{}, fmt.Errorf("capability S3 binding for %s/%s: bucket is required", application, request.Requirement.Name)
 			}
 			binding.ObjectStorageS3 = &value
+		}
+		if request.TelemetryOTLP != nil {
+			value := *request.TelemetryOTLP
+			value.Direction = strings.TrimSpace(value.Direction)
+			value.Protocol = strings.TrimSpace(value.Protocol)
+			if value.Direction != "export" {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: direction must be export", application, request.Requirement.Name)
+			}
+			if value.Protocol != "http/protobuf" {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: unsupported protocol %q", application, request.Requirement.Name, value.Protocol)
+			}
+			if len(value.Signals) == 0 {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: at least one signal is required", application, request.Requirement.Name)
+			}
+			seenSignals := map[string]struct{}{}
+			for _, signal := range value.Signals {
+				signal = strings.TrimSpace(signal)
+				switch signal {
+				case "traces", "metrics", "logs":
+				default:
+					return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: unsupported signal %q", application, request.Requirement.Name, signal)
+				}
+				if _, exists := seenSignals[signal]; exists {
+					return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: duplicate signal %q", application, request.Requirement.Name, signal)
+				}
+				seenSignals[signal] = struct{}{}
+			}
+			value.Signals = append([]string(nil), value.Signals...)
+			binding.TelemetryOTLP = &value
 		}
 		if request.Security != nil {
 			value := *request.Security
