@@ -111,10 +111,21 @@ func MetricsTargetAlias(m Manifest, service string) string {
 	return fmt.Sprintf("bhm-%x", sum[:8])
 }
 
-func MetricsProviderNetworkName(m Manifest, scope capability.ProviderScope) string {
-	if scope == capability.ScopeApplication {
-		sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment))
-		return fmt.Sprintf("baseharbor-metrics-%x", sum[:8])
+func MetricsProviderNetworkName(m Manifest, _ capability.ProviderScope) string {
+	sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment))
+	return fmt.Sprintf("baseharbor-metrics-%x", sum[:8])
+}
+
+func MetricsRuntimeTargetVolumeName(m Manifest) string {
+	sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment))
+	return fmt.Sprintf("baseharbor-metrics-targets-%x", sum[:8])
+}
+
+func HasRuntimeMetricsPermissions(m Manifest) bool {
+	for _, permission := range m.Runtime.Permissions {
+		if strings.TrimSpace(permission.Capability) == string(capability.MetricsV1.ID) {
+			return true
+		}
 	}
-	return "baseharbor-metrics"
+	return false
 }
