@@ -174,6 +174,7 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
   web:
     image: caddy:2.11.4-alpine
     command:
+      - caddy
       - file-server
       - --root
       - /usr/share/caddy
