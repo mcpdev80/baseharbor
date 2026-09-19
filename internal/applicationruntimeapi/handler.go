@@ -40,11 +40,34 @@ func New(secrets SecretService, verifier RuntimeVerifier) (*Handler, error) {
 // do not repeat /apps/{app}. Legacy app-qualified routes remain available for
 // compatibility with existing clients.
 func NewBound(secrets SecretService, verifier RuntimeVerifier, app string) (*Handler, error) {
+	return newBoundHandler(secrets, verifier, app, true)
+}
+
+func NewBoundWithoutCapabilities(secrets SecretService, verifier RuntimeVerifier, app string) (*Handler, error) {
+	return newBoundHandler(secrets, verifier, app, false)
+}
+
+func newBoundHandler(secrets SecretService, verifier RuntimeVerifier, app string, includeCapabilities bool) (*Handler, error) {
 	app = strings.TrimSpace(app)
 	if app == "" {
 		return nil, errors.New("bound application runtime API requires an application")
 	}
-	return newHandler(secrets, verifier, app)
+	if secrets == nil || verifier == nil {
+		return nil, errors.New("application runtime API dependencies are required")
+	}
+	h := &Handler{secrets: secrets, verifier: verifier, mux: http.NewServeMux()}
+	h.mux.HandleFunc("POST /runtime/v1/apps/{app}/secret-refs", h.create)
+	h.mux.HandleFunc("POST /runtime/v1/apps/{app}/secret-refs/resolve", h.read)
+	h.mux.HandleFunc("PUT /runtime/v1/apps/{app}/secret-refs/resolve", h.rotate)
+	h.mux.HandleFunc("DELETE /runtime/v1/apps/{app}/secret-refs/resolve", h.delete)
+	if includeCapabilities {
+		h.mux.HandleFunc("GET /runtime/v1/capabilities", h.bound(app, h.capabilities))
+	}
+	h.mux.HandleFunc("POST /runtime/v1/secrets", h.bound(app, h.create))
+	h.mux.HandleFunc("POST /runtime/v1/secrets/resolve", h.bound(app, h.read))
+	h.mux.HandleFunc("PUT /runtime/v1/secrets/resolve", h.bound(app, h.rotate))
+	h.mux.HandleFunc("DELETE /runtime/v1/secrets/resolve", h.bound(app, h.delete))
+	return h, nil
 }
 
 func newHandler(secrets SecretService, verifier RuntimeVerifier, boundApp string) (*Handler, error) {
