@@ -40,14 +40,16 @@ Published channels:
 
 Every release starts with a release-preparation pull request.
 
-1. Ensure all required CI and real-product acceptance gates are green on the exact release-preparation head.
-2. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
-3. Review compatibility impact and select the SemVer increment.
-4. Merge the release-preparation PR to `main` only after the required gates are green.
-5. Create an immutable tag `vX.Y.Z` on that exact green `main` commit.
-6. Push the tag.
-7. The release workflow validates the tag, changelog section and source, tests the code, publishes artifacts and provenance.
-8. Verify binaries, checksums, provenance and the matching runtime image before declaring the release usable.
+1. Review the final implementation against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
+2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
+3. Ensure all required CI and real-product acceptance gates are green on the **exact release-preparation head**. Prefer local/Hugging Face validation first where practical and use GitHub Actions only where required.
+4. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
+5. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
+6. Review compatibility impact and select the SemVer increment.
+7. Merge the release-preparation PR to `main` only after the required gates are green.
+8. Create an immutable tag `vX.Y.Z` on that exact green `main` commit and push it.
+9. The release workflow must successfully validate the tag/source, test the tagged code, publish the GitHub Release, artifacts and provenance.
+10. Verify the resulting GitHub Release, binaries, checksums, provenance and matching runtime image before declaring the release usable. A pushed tag without a successful published release is not release completion.
 
 Never move a published version tag. Fix a bad release with a new patch release.
 
@@ -81,6 +83,6 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 ## Consumer guidance
 
-A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.3` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
+A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.4` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
 
 Applications moving through the v0.4 line keep Manifest v1 and the existing Compose developer journey. v0.4.3 added the open Provider Integration Contract and deterministic read-only repository inspection. v0.4.4 additively extends Manifest v1 with optional provider-neutral managed HTTP/HTTPS exposure while preserving existing application-owned publishers and Compose compatibility.
