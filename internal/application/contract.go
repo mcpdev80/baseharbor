@@ -8,8 +8,9 @@ import "github.com/mcpdev80/baseharbor/internal/capability"
 type CapabilityKind = capability.Kind
 
 const (
-	CapabilitySQL      CapabilityKind = capability.SQL
-	CapabilityKeyValue CapabilityKind = capability.KeyValue
+	CapabilitySQL          CapabilityKind = capability.SQL
+	CapabilityKeyValue     CapabilityKind = capability.KeyValue
+	CapabilityExposureHTTP CapabilityKind = capability.ExposureHTTP
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -32,6 +33,7 @@ type PortableContract struct {
 	Application  string
 	Capabilities []CapabilityRequirement
 	Secrets      SecretContract
+	Exposures    []HTTPExposureRequirement
 }
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
@@ -49,6 +51,7 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 			Managed:  m.Services.Secrets,
 			Required: cloneSecretRequirements(m.Secrets.Required),
 		},
+		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
 	}
 	for _, name := range PostgresInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
@@ -60,6 +63,12 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
 			Kind: CapabilityKeyValue,
 			Name: name,
+		})
+	}
+	for _, exposure := range m.Exposures {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
+			Kind: CapabilityExposureHTTP,
+			Name: exposure.Name,
 		})
 	}
 
