@@ -277,15 +277,11 @@ func appRestoreCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
-			if err := provisionManagedExposure(ctx, preparedExposure); err != nil {
-				return fmt.Errorf("restore managed HTTP exposure provider: %w", err)
-			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
-				rollbackManagedExposure(ctx, preparedExposure)
 				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 				return fmt.Errorf("start restored application workload: %w", err)
 			}
-			if err := verifyManagedExposure(ctx, out, preparedExposure); err != nil {
+			if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
 				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 				return fmt.Errorf("restore managed HTTP exposure: %w", err)
 			}
@@ -305,26 +301,17 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 			result = errors.Join(result, fmt.Errorf("restart secret broker after backup: %w", err))
 		}
 	}
-
-	var preparedExposure *managedExposureExecution
-	if exposureStopped && result == nil {
-		var err error
-		preparedExposure, err = prepareManagedExposure(ctx, compose, resolved)
-		if err != nil {
-			result = errors.Join(result, fmt.Errorf("prepare managed exposure after backup: %w", err))
-		} else if err := provisionManagedExposure(ctx, preparedExposure); err != nil {
-			result = errors.Join(result, fmt.Errorf("provision managed exposure after backup: %w", err))
-		}
-	}
 	if workloadStopped && result == nil {
 		if _, err := applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files); err != nil {
-			rollbackManagedExposure(ctx, preparedExposure)
 			result = errors.Join(result, fmt.Errorf("restart repository workload after backup: %w", err))
 		}
 	}
 	if exposureStopped && result == nil {
-		if err := verifyManagedExposure(ctx, io.Discard, preparedExposure); err != nil {
-			result = errors.Join(result, fmt.Errorf("verify managed exposure after backup: %w", err))
+		prepared, err := prepareManagedExposure(ctx, compose, resolved)
+		if err != nil {
+			result = errors.Join(result, fmt.Errorf("prepare managed exposure after backup: %w", err))
+		} else if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
+			result = errors.Join(result, fmt.Errorf("restart managed exposure after backup: %w", err))
 		}
 	}
 	return result
