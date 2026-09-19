@@ -124,7 +124,6 @@ func assertBrokerImageState(t *testing.T, dir, want string) {
 	}
 }
 
-
 func TestRuntimeDocsPolicy(t *testing.T) {
 	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "")
 	for _, tc := range []struct {
