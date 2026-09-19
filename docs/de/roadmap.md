@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.3
+## Aktueller Stand v0.4.4
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -42,6 +42,8 @@ Umgesetzt sind unter anderem:
 - explizite non-secret Automation-Inputs ueber `--input NAME=VALUE`;
 - Trusted-local Developer Access;
 - health-aware Workload-Truth inklusive app-eigener HTTP/HTTPS-Readiness;
+- gemeinsame logische Endpoint-/Exposure-Semantik fuer app-eigene Publisher und Managed Exposure;
+- expliziter providerneutraler `exposure.http/v1`-Intent mit application-scoped Caddy als aktuellem Compose-Referenzprovider;
 - verschluesseltes, verifiziertes Backup/Restore;
 - strict fast-forward Application Updates und abgesichertes BaseHarbor-Self-Update;
 - Existing/BYOC-TLS-Lifecycle fuer Compose-Deployments;
@@ -78,7 +80,7 @@ Weiterhin Future Work:
 - breitere Environment-/Policy-Profile;
 - OIDC/RBAC/JIT fuer Managed Production;
 - HA-/Topologieprofile;
-- BaseHarbor-managed Ingress/ACME/PKI;
+- weitere Traffic-/Exposure-Provider und breiterer providerneutraler TLS-/Zertifikats-Lifecycle ueber den aktuellen `exposure.http/v1`- und Existing/BYOC-Pfad hinaus;
 - Kubernetes Runtime Provider;
 - OpenShift Runtime Provider / Enterprise-Spezialisierung.
 

@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.3 portable application foundation
+## Current v0.4.4 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -47,6 +47,8 @@ Implemented foundations include:
 - application workload attachment through generated Compose overrides;
 - trusted-local developer access through database/cache clients, logs, shell and exec;
 - health-aware workload and HTTP/HTTPS exposure readiness;
+- shared logical endpoint/exposure semantics for application-owned publishers and managed exposure;
+- explicit provider-neutral `exposure.http/v1` intent with application-scoped Caddy as the current Compose reference provider;
 - coherent `show`, `status` and `doctor` operator views;
 - guided encrypted backup/restore with verified recovery metadata;
 - strict fast-forward application updates and guarded BaseHarbor self-update;
@@ -93,7 +95,7 @@ Implemented in v0.4:
 Still future:
 
 - additional capability-provider implementations and S3/object-storage realization;
-- provider-neutral ingress/TLS capability implementation;
+- additional traffic/exposure providers and broader provider-neutral TLS/certificate lifecycle beyond the current `exposure.http/v1` + existing/BYOC path;
 - BaseHarbor-managed ACME issuance/renewal;
 - OpenBao PKI issuance/rotation for application ingress certificates;
 - managed environment/policy profiles;
