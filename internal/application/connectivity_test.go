@@ -98,7 +98,6 @@ func TestApplicationDestroyRequiresConnectivityRelease(t *testing.T) {
 	}
 }
 
-
 func TestConnectivityTargetAliasIsStableUniqueAndDNSBounded(t *testing.T) {
 	a := testConnectivityRule()
 	b := a
