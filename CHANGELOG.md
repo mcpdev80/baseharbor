@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-19
+
+### Added
+
+- Shared machine-readable endpoint/exposure core with stable logical workload-service identity and HTTP/HTTPS readiness semantics reusable outside the CLI.
+- Versioned `exposure.http/v1` Capability Specification with provider-neutral logical route, target service/port, transport and `public|internal` visibility intent.
+- Caddy as the first application-scoped Compose reference provider for explicit managed HTTP/HTTPS exposure behind the existing Provider Integration Contract and provider registry.
+- Stable BaseHarbor exposure network attached only to explicitly exposed workload services through generated Compose override state, without rewriting application Compose source.
+- End-to-end managed exposure lifecycle across apply/up, status/doctor, down/destroy, backup/restore and existing/BYOC TLS update.
+
+### Changed
+
+- Existing application-owned HTTP/HTTPS publishers now use the shared endpoint probing core while remaining application-owned observation/readiness state rather than managed exposure.
+- The shared capability lifecycle supports staged prepare/preflight, provision/bind and verify phases so traffic providers can be coordinated around workload convergence without introducing a second lifecycle engine.
+- Managed public exposure binds through the host-facing provider port; managed internal exposure is loopback-only in the Compose reference implementation.
+- Managed HTTPS reuses existing/BYOC deployment TLS state and restarts/reconciles the Caddy provider when protected certificate material changes.
+
+### Security
+
+- Managed exposure preflight completes before traffic-provider mutation and fails closed on invalid provider/TLS prerequisites.
+- Caddy provider convergence snapshots and rolls back BaseHarbor-owned state on failed new/changed realization.
+- Destroy removes only BaseHarbor-owned routing/provider state; application Compose source and application-owned volumes remain untouched.
+- FQDNs, host-published ports, certificate source paths, generated network names and Caddy configuration remain deployment/provider state rather than portable application intent.
+
+### Compatibility
+
+- Manifest version remains `1`; `exposure.http` is an additive optional contract extension. Existing manifests and app-owned publishers continue to work unchanged.
+- Compose remains the complete current runtime provider.
+- Managed ACME, OpenBao PKI issuance, automatic certificate renewal, Traefik, Kubernetes Gateway API/OpenShift Routes, cloud load balancers, service mesh and air-gap/private-registry work remain intentionally deferred.
+
 ### Fixed
 
 - Repository inspection now treats an existing `baseharbor.yaml` as authoritative for application identity, declared capabilities, required secrets and workload selection while keeping heuristic evidence visible as supplemental signals.
