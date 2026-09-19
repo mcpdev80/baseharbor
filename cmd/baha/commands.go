@@ -98,6 +98,9 @@ func rootCommand() *cli.Command {
 		},
 		serveCommand(store),
 		appCmd,
+		connectCommand(),
+		disconnectCommand(),
+		connectionsCommand(),
 		openBaoCommand(),
 		updateCommand(),
 		{
