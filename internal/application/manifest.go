@@ -25,11 +25,13 @@ type Manifest struct {
 }
 
 type Services struct {
-	Postgres          bool
-	Redis             bool
-	Secrets           bool
-	PostgresInstances map[string]ServiceInstance
-	RedisInstances    map[string]ServiceInstance
+	Postgres             bool
+	Redis                bool
+	Secrets              bool
+	ObjectStorage        bool
+	PostgresInstances    map[string]ServiceInstance
+	RedisInstances       map[string]ServiceInstance
+	ObjectStorageBuckets map[string]ServiceInstance
 }
 
 // WorkloadConfig optionally disambiguates an existing application Compose
@@ -110,6 +112,24 @@ func WithRedisInstances(m Manifest, names ...string) Manifest {
 	}
 	m.Services.Redis = true
 	return m
+}
+
+func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.ObjectStorageBuckets == nil {
+		m.Services.ObjectStorageBuckets = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.ObjectStorageBuckets[name] = ServiceInstance{}
+	}
+	m.Services.ObjectStorage = true
+	return m
+}
+
+func ObjectStorageBucketNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
 }
 
 func WithWorkload(m Manifest, compose string, services ...string) Manifest {
@@ -209,7 +229,8 @@ func (m Manifest) Validate() error {
 	}
 	postgres := PostgresInstanceNames(m)
 	redis := RedisInstanceNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) {
+	objectStorage := ObjectStorageBucketNames(m)
+	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) {
 		return fmt.Errorf("at least one backend service or explicit Compose workload must be enabled")
 	}
 	for _, name := range postgres {
@@ -219,6 +240,11 @@ func (m Manifest) Validate() error {
 	}
 	for _, name := range redis {
 		if err := validateSlug("Redis/Valkey instance name", name); err != nil {
+			return err
+		}
+	}
+	for _, name := range objectStorage {
+		if err := validateSlug("object-storage bucket name", name); err != nil {
 			return err
 		}
 	}
@@ -399,6 +425,7 @@ func (m Manifest) YAML() string {
 	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\nservices:\n", m.Version, m.Name, m.Environment)
 	writeServiceYAML(&b, "postgres", m.Services.Postgres, m.Services.PostgresInstances)
 	writeServiceYAML(&b, "redis", m.Services.Redis, m.Services.RedisInstances)
+	writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
 	fmt.Fprintf(&b, "  secrets:\n    enabled: %t\n", m.Services.Secrets)
 	if len(m.Secrets.Required) > 0 {
 		requirements := append([]SecretRequirement(nil), m.Secrets.Required...)
@@ -444,6 +471,18 @@ func (m Manifest) YAML() string {
 		}
 	}
 	return b.String()
+}
+
+func writeObjectStorageYAML(b *strings.Builder, enabled bool, buckets map[string]ServiceInstance) {
+	b.WriteString("  object_storage:\n")
+	if len(buckets) == 0 {
+		fmt.Fprintf(b, "    enabled: %t\n", enabled)
+		return
+	}
+	b.WriteString("    buckets:\n")
+	for _, name := range serviceInstanceNames(true, buckets) {
+		fmt.Fprintf(b, "      %s: {}\n", name)
+	}
 }
 
 func writeServiceYAML(b *strings.Builder, service string, enabled bool, instances map[string]ServiceInstance) {
@@ -532,7 +571,7 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "services" && strings.HasSuffix(trim, ":") {
 				service = strings.TrimSuffix(trim, ":")
-				if service != "postgres" && service != "redis" && service != "secrets" {
+				if service != "postgres" && service != "redis" && service != "object_storage" && service != "secrets" {
 					return Manifest{}, fmt.Errorf("line %d: unsupported service %q", lineNo, service)
 				}
 				continue
@@ -561,8 +600,12 @@ func ParseYAML(input string) (Manifest, error) {
 		case 4:
 			secretGenerate = false
 			if section == "services" && service != "" {
-				if trim == "instances:" && service != "secrets" {
+				if trim == "instances:" && (service == "postgres" || service == "redis") {
 					serviceField = "instances"
+					continue
+				}
+				if trim == "buckets:" && service == "object_storage" {
+					serviceField = "buckets"
 					continue
 				}
 				key, value, ok := strings.Cut(trim, ":")
@@ -578,6 +621,8 @@ func ParseYAML(input string) (Manifest, error) {
 					m.Services.Postgres = enabled
 				case "redis":
 					m.Services.Redis = enabled
+				case "object_storage":
+					m.Services.ObjectStorage = enabled
 				case "secrets":
 					m.Services.Secrets = enabled
 				}
@@ -642,7 +687,13 @@ func ParseYAML(input string) (Manifest, error) {
 				secretGenerate = true
 				continue
 			}
-			if section != "services" || serviceField != "instances" || (service != "postgres" && service != "redis") {
+			if section != "services" || (serviceField != "instances" && serviceField != "buckets") {
+				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
+			}
+			if serviceField == "instances" && service != "postgres" && service != "redis" {
+				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
+			}
+			if serviceField == "buckets" && service != "object_storage" {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
 			name, value, ok := strings.Cut(trim, ":")
@@ -653,18 +704,25 @@ func ParseYAML(input string) (Manifest, error) {
 			if err := validateSlug("service instance name", name); err != nil {
 				return Manifest{}, fmt.Errorf("line %d: %w", lineNo, err)
 			}
-			if service == "postgres" {
+			switch service {
+			case "postgres":
 				if m.Services.PostgresInstances == nil {
 					m.Services.PostgresInstances = map[string]ServiceInstance{}
 				}
 				m.Services.PostgresInstances[name] = ServiceInstance{}
 				m.Services.Postgres = true
-			} else {
+			case "redis":
 				if m.Services.RedisInstances == nil {
 					m.Services.RedisInstances = map[string]ServiceInstance{}
 				}
 				m.Services.RedisInstances[name] = ServiceInstance{}
 				m.Services.Redis = true
+			case "object_storage":
+				if m.Services.ObjectStorageBuckets == nil {
+					m.Services.ObjectStorageBuckets = map[string]ServiceInstance{}
+				}
+				m.Services.ObjectStorageBuckets[name] = ServiceInstance{}
+				m.Services.ObjectStorage = true
 			}
 		case 8:
 			if section != "secrets" || secretField != "required" || secretIndex < 0 || !secretGenerate || m.Secrets.Required[secretIndex].Generate == nil {
