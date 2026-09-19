@@ -41,6 +41,22 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	if err != nil {
 		return Placement{}, err
 	}
+	return placementFromProviderPlacement(m, providerPlacement)
+}
+
+func RegisteredPlacementFor(m application.Manifest) (Placement, bool, error) {
+	providerPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil || !found {
+		return Placement{}, found, err
+	}
+	placement, err := placementFromProviderPlacement(m, providerPlacement)
+	if err != nil {
+		return Placement{}, false, err
+	}
+	return placement, true, nil
+}
+
+func placementFromProviderPlacement(m application.Manifest, providerPlacement capability.ProviderPlacement) (Placement, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
@@ -348,34 +364,37 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err != nil {
 		return ProviderFiles{}, err
 	}
+	return existingProviderFilesForPlacement(placement)
+}
+
+func ExistingRegisteredProviderFiles(m application.Manifest) (ProviderFiles, bool, error) {
+	placement, found, err := RegisteredPlacementFor(m)
+	if err != nil || !found {
+		return ProviderFiles{}, found, err
+	}
+	files, err := existingProviderFilesForPlacement(placement)
+	if err != nil {
+		return ProviderFiles{}, true, err
+	}
+	return files, true, nil
+}
+
+func existingProviderFilesForPlacement(placement Placement) (ProviderFiles, error) {
 	if placement.Scope == capability.ScopeExternal {
 		return ProviderFiles{}, os.ErrNotExist
 	}
-	dir := placement.Dir
-	files := ProviderFiles{
-		Dir:        dir,
-		Compose:    filepath.Join(dir, "compose.yaml"),
-		Env:        filepath.Join(dir, "runtime.env"),
-		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
-		Registrations: filepath.Join(dir, "registrations.json"),
-	}
-	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
-		if _, err := os.Stat(path); err != nil {
-			return ProviderFiles{}, err
-		}
-	}
-	return files, nil
+	return providerFilesAt(placement.Dir)
 }
 
 func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, err := PlacementFor(m)
+	placement, found, err := RegisteredPlacementFor(m)
 	if err != nil {
 		return err
 	}
-	if placement.Scope != capability.ScopeShared {
+	if !found || placement.Scope != capability.ScopeShared {
 		return nil
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := existingProviderFilesForPlacement(placement)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -399,14 +418,14 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m applica
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, err := PlacementFor(m)
+	placement, found, err := RegisteredPlacementFor(m)
 	if err != nil {
 		return err
 	}
-	if placement.Scope != capability.ScopeApplication {
+	if !found || placement.Scope != capability.ScopeApplication {
 		return nil
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := existingProviderFilesForPlacement(placement)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -417,14 +436,14 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, err := PlacementFor(m)
+	placement, found, err := RegisteredPlacementFor(m)
 	if err != nil {
 		return err
 	}
-	if placement.Scope == capability.ScopeExternal {
+	if !found || placement.Scope == capability.ScopeExternal {
 		return nil
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := existingProviderFilesForPlacement(placement)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
