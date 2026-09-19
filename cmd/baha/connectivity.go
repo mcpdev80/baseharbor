@@ -444,8 +444,13 @@ func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.Com
 	if len(matched) == 0 {
 		return "", errors.New("target service is not running")
 	}
+
+	expectedBackend := application.ApplicationBackendNetworkName(application.Manifest{
+		Name:        endpoint.Application,
+		Environment: endpoint.Environment,
+	})
 	common := map[string]int{}
-	owned := map[string]struct{}{}
+	projectOwned := map[string]struct{}{}
 	for _, container := range matched {
 		networks, err := compose.ContainerNetworks(ctx, container.Name)
 		if err != nil {
@@ -453,34 +458,34 @@ func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.Com
 		}
 		for _, network := range networks {
 			common[network]++
-			if network == container.Project+"_default" {
-				return network, nil
+			if network == expectedBackend || network == container.Project+"_default" {
+				if common[network] == len(matched) {
+					return network, nil
+				}
+				continue
 			}
 			owner, err := compose.NetworkProjectOwner(ctx, network)
 			if err == nil && owner == container.Project {
-				owned[network] = struct{}{}
+				projectOwned[network] = struct{}{}
 			}
 		}
 	}
-	if len(owned) > 0 {
-		names := make([]string, 0, len(owned))
-		for name := range owned {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		return names[0], nil
-	}
-	var shared []string
-	for name, count := range common {
-		if count == len(matched) {
-			shared = append(shared, name)
+
+	var ownedCommon []string
+	for network := range projectOwned {
+		if common[network] == len(matched) {
+			ownedCommon = append(ownedCommon, network)
 		}
 	}
-	sort.Strings(shared)
-	if len(shared) == 1 {
-		return shared[0], nil
+	sort.Strings(ownedCommon)
+	switch len(ownedCommon) {
+	case 1:
+		return ownedCommon[0], nil
+	case 0:
+		return "", errors.New("target service has no unambiguous application-owned network")
+	default:
+		return "", fmt.Errorf("target service has multiple application-owned networks (%s); fail closed", strings.Join(ownedCommon, ", "))
 	}
-	return "", errors.New("target network is not unambiguous")
 }
 
 func connectivityServiceMatches(requested, actual string) bool {
