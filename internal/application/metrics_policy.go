@@ -107,7 +107,11 @@ func MetricsCollectionEnabled(m Manifest) (bool, error) {
 }
 
 func MetricsTargetAlias(m Manifest, service string) string {
-	sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment + "\x00" + strings.TrimSpace(service)))
+	return MetricsTargetAliasFor(m.Name, m.Environment, service)
+}
+
+func MetricsTargetAliasFor(applicationName, environment, service string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(applicationName) + "\x00" + strings.TrimSpace(environment) + "\x00" + strings.TrimSpace(service)))
 	return fmt.Sprintf("bhm-%x", sum[:8])
 }
 
