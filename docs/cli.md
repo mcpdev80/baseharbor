@@ -130,6 +130,29 @@ Inspection remains strictly read-only. `stale` never removes contract state, and
 
 Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
 
+## Metrics collection policy
+
+A repository may declare one or more provider-neutral `metrics/v1` sources:
+
+```yaml
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+This does not request Prometheus. It declares an application-provided OpenMetrics-compatible HTTP endpoint.
+
+Compose collection policy is deployment-owned:
+
+- `dev` / `development`: enabled by default;
+- test/staging/production: disabled by default;
+- `BASEHARBOR_METRICS_ENABLED=true|false`: explicit operator override.
+
+When collection is enabled, `baha app apply` and `baha app up` lazily converge the shared Prometheus reference provider, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. Grafana, Loki and Tempo are not started.
+
 ## Repository-first application workflow
 
 The normal developer path can start inside an existing application repository with:
