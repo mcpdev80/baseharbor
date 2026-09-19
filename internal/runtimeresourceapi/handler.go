@@ -117,11 +117,12 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
-		Application:  h.app,
-		CallerService: RuntimeService(r.Context()),
-		Capability:   request.Capability,
-		Operation:    "runtime.get",
-		ResourceName: request.ResourceName,
+		Application:    h.app,
+		CallerService:  request.CallerService,
+		Capability:     request.Capability,
+		Operation:      "runtime.get",
+		ResourceName:   request.ResourceName,
+		Parameters:     request.Parameters,
 	})
 	if err != nil {
 		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist or is not ready")
@@ -170,10 +171,12 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
 		Application:    h.app,
+		CallerService:  request.CallerService,
 		Capability:     request.Capability,
 		Operation:      "runtime.delete",
 		ResourceName:   request.ResourceName,
 		IdempotencyKey: idempotencyKey,
+		Parameters:     request.Parameters,
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "unsupported capability operation") {
@@ -203,6 +206,10 @@ func (h *Handler) resourceRequest(w http.ResponseWriter, r *http.Request, operat
 	}
 	if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "runtime resource lookup failed", "resource state could not be loaded")
+		return runtimeoperation.Request{}, false
+	}
+	if request.Capability == "metrics/v1" && strings.TrimSpace(request.CallerService) != RuntimeService(r.Context()) {
+		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist")
 		return runtimeoperation.Request{}, false
 	}
 	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, RuntimeService(r.Context()), request.Capability, operation); err != nil {
