@@ -108,6 +108,13 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Ownership:        capability.OwnershipBaseHarbor,
 				OwnerApplication: m.Name,
 			}
+		case capability.ProviderSeaweedFS:
+			instance = capability.ProviderInstance{
+				ID:        "seaweedfs/shared",
+				Provider:  capability.SeaweedFS,
+				Scope:     capability.ScopeShared,
+				Ownership: capability.OwnershipBaseHarbor,
+			}
 		case capability.ProviderOpenBao:
 			instance = capability.ProviderInstance{
 				ID:        "openbao/control-plane",
