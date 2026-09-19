@@ -114,6 +114,7 @@ They are nevertheless described through the same semantic contract:
 | PostgreSQL | `database.sql/v1` |
 | Valkey | `cache.key-value/v1` |
 | OpenBao | `secrets/v1` |
+| Caddy | `exposure.http/v1` |
 
 New reference providers such as S3, OTLP, Prometheus, Loki, Tempo, Grafana, messaging, AgentGateway, MCP and vector search must follow the same boundary.
 
@@ -263,9 +264,9 @@ A future vendor-facing conformance tool can build on the same reports.
 
 ## Compatibility
 
-- Manifest v1 is unchanged.
+- Manifest v1 remains version 1 and is additively extended with provider-neutral managed HTTP exposure intent.
 - Compose remains the complete current runtime.
-- Existing PostgreSQL, Valkey and OpenBao provisioning remains authoritative.
+- Existing PostgreSQL, Valkey and OpenBao provisioning remains authoritative; Caddy is the first managed Compose exposure reference provider.
 - No external provider module is required.
 - No Kubernetes/OpenShift/cloud implementation is implied.
 - The v0.4.1 capability lifecycle and v0.4.2 provider registry remain the only provider domain model.
@@ -280,3 +281,17 @@ Every new capability/provider integration must:
 4. keep provider-specific details outside portable application intent;
 5. add capability-specific conformance tests;
 6. preserve the future ability to replace the built-in implementation with a conforming external provider.
+
+
+## HTTP exposure provider boundary
+
+`exposure.http/v1` is the first traffic capability implemented through this provider contract.
+
+BaseHarbor deliberately keeps two paths distinct:
+
+```text
+application-owned publisher -> discover -> observe -> verify
+managed exposure intent      -> resolve -> preflight -> provision -> bind -> verify
+```
+
+Observation never grants BaseHarbor lifecycle ownership. Only explicit managed exposure intent is registered as an application-scoped provider resource. The current Compose reference provider is Caddy; its host ports, network, TLS files and generated configuration remain protected provider/deployment state.
