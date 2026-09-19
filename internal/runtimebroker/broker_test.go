@@ -283,7 +283,6 @@ func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T)
 	}
 }
 
-
 func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name string) string {

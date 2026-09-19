@@ -203,4 +203,3 @@ func printResolvedMetricsPlacement(out io.Writer, m application.Manifest) error 
 	fmt.Fprintln(out)
 	return nil
 }
-

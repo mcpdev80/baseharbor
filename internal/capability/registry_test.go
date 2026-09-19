@@ -270,4 +270,3 @@ func TestProviderPlacementRejectsSharingBoundaryOutsideSharedScope(t *testing.T)
 		t.Fatal("application placement with sharing boundary accepted")
 	}
 }
-

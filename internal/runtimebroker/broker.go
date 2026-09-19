@@ -318,14 +318,14 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	paths := map[string]string{
-		"runtime token":            tokenPath,
-		"runtime permissions":      permissionsPath,
+		"runtime token":              tokenPath,
+		"runtime permissions":        permissionsPath,
 		"runtime service identities": serviceTokensPath,
-		"runtime CA":               mtls.CA,
-		"broker certificate":       mtls.BrokerCert,
-		"broker private key":       mtls.BrokerKey,
-		"probe client certificate": mtls.ClientCert,
-		"probe client private key": mtls.ClientKey,
+		"runtime CA":                 mtls.CA,
+		"broker certificate":         mtls.BrokerCert,
+		"broker private key":         mtls.BrokerKey,
+		"probe client certificate":   mtls.ClientCert,
+		"probe client private key":   mtls.ClientKey,
 	}
 	if m.Services.Secrets {
 		paths["OpenBao credentials"] = credPath

@@ -209,8 +209,6 @@ func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) 
 	}
 }
 
-
-
 func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "definitely-not-a-bool")
 	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
@@ -224,7 +222,6 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 		t.Fatalf("PostgreSQL provider not registered: %v", err)
 	}
 }
-
 
 func TestReferenceProviderInstancePreservesExternalReference(t *testing.T) {
 	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "otel-prod")

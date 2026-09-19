@@ -119,4 +119,3 @@ func TestIntegrationDescriptorRejectsDuplicatePlacementScope(t *testing.T) {
 		t.Fatal("duplicate provider placement scope accepted")
 	}
 }
-

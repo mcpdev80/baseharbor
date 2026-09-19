@@ -114,4 +114,3 @@ func ProviderPlacementNameToken(value string) string {
 	}
 	return fmt.Sprintf("%s-%x", base, sum[:4])
 }
-

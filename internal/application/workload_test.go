@@ -256,8 +256,6 @@ func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
 	}
 }
 
-
-
 func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "not-a-bool")
 	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")

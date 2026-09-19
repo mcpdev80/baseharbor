@@ -195,7 +195,6 @@ func TestCrossApplicationResourceAccessFailsClosed(t *testing.T) {
 	}
 }
 
-
 type serviceAuthorizer struct{}
 
 func (serviceAuthorizer) AuthorizeRuntimeOperation(app, service, capability, operation string) error {

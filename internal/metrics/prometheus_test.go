@@ -140,7 +140,6 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	}
 }
 
-
 func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
@@ -236,9 +235,9 @@ type recordingRuntime struct {
 	missingState bool
 }
 
-func (r *recordingRuntime) ConfigProject(context.Context, string, string, string) error  { return nil }
-func (r *recordingRuntime) UpProject(context.Context, string, string, string) error      { return nil }
-func (r *recordingRuntime) DownProject(context.Context, string, string, string) error    { return nil }
+func (r *recordingRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
+func (r *recordingRuntime) UpProject(context.Context, string, string, string) error     { return nil }
+func (r *recordingRuntime) DownProject(context.Context, string, string, string) error   { return nil }
 func (r *recordingRuntime) DestroyProject(_ context.Context, project, composeFile, envFile string) error {
 	for _, path := range []string{composeFile, envFile} {
 		if _, err := os.Stat(path); err != nil {
@@ -288,4 +287,3 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 		t.Fatalf("shared provider state remains: %#v", instances)
 	}
 }
-

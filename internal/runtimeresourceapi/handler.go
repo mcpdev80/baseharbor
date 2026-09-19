@@ -15,7 +15,6 @@ type Authorizer interface {
 	AuthorizeRuntimeOperation(app, service, capability, operation string) error
 }
 
-
 type runtimeServiceContextKey struct{}
 
 func WithRuntimeService(r *http.Request, service string) *http.Request {
@@ -89,7 +88,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
 		Application:    h.app,
-		CallerService: RuntimeService(r.Context()),
+		CallerService:  RuntimeService(r.Context()),
 		Capability:     request.Capability,
 		Operation:      "runtime.create",
 		ResourceName:   request.Name,
@@ -117,12 +116,12 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
-		Application:    h.app,
-		CallerService:  request.CallerService,
-		Capability:     request.Capability,
-		Operation:      "runtime.get",
-		ResourceName:   request.ResourceName,
-		Parameters:     request.Parameters,
+		Application:   h.app,
+		CallerService: request.CallerService,
+		Capability:    request.Capability,
+		Operation:     "runtime.get",
+		ResourceName:  request.ResourceName,
+		Parameters:    request.Parameters,
 	})
 	if err != nil {
 		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist or is not ready")
@@ -142,11 +141,11 @@ func (h *Handler) binding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
-		Application:  h.app,
+		Application:   h.app,
 		CallerService: RuntimeService(r.Context()),
-		Capability:   request.Capability,
-		Operation:    "runtime.get",
-		ResourceName: request.ResourceName,
+		Capability:    request.Capability,
+		Operation:     "runtime.get",
+		ResourceName:  request.ResourceName,
 	})
 	if err != nil || result.Binding == nil {
 		writeProblem(w, http.StatusNotFound, "runtime resource binding not found", "binding does not exist or is not ready")

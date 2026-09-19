@@ -99,7 +99,6 @@ func TestProviderPlacementNameTokenIsStableAndSafe(t *testing.T) {
 	}
 }
 
-
 func TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt(t *testing.T) {
 	t.Setenv(ProviderSharingBoundaryEnv(capability.ProviderOpenBao), "team-a")
 	_, err := ResolveProviderPlacement(

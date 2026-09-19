@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"syscall"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -606,7 +606,7 @@ func registrationFor(m application.Manifest) sourceRegistration {
 	registration := sourceRegistration{
 		Application: m.Name,
 		Environment: m.Environment,
-		Network: application.MetricsProviderNetworkName(m),
+		Network:     application.MetricsProviderNetworkName(m),
 	}
 	if application.HasRuntimeMetricsPermissions(m) {
 		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeName(m)

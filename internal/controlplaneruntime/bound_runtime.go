@@ -16,7 +16,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeresourceapi"
 )
 
-
 type capabilityExecutorRouter map[string]runtimeoperation.Executor
 
 func (r capabilityExecutorRouter) Execute(ctx context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
@@ -151,7 +150,6 @@ func buildBoundRuntimeHandler(ctx context.Context, cfg Config, secrets applicati
 
 	return mux, nil
 }
-
 
 func requireRuntimeServiceBearer(verifier *runtimeresourceapi.ServiceTokenVerifier, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
