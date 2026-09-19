@@ -79,7 +79,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			} else if stopped {
 				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 					return err
 				}
@@ -238,7 +238,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 					return err
 				}
-				if m.Services.Secrets {
+				if application.RequiresRuntimeBroker(m) {
 					if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 						return err
 					}
