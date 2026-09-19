@@ -118,9 +118,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := ensureConnectivityNetworksForManifest(ctx, compose, m); err != nil {
-				return fmt.Errorf("converge connectivity networks: %w", err)
-			}
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
 				if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
@@ -193,6 +190,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
+			}
+			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 			}
 			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
 				return fmt.Errorf("verify managed metrics ingestion: %w", err)
