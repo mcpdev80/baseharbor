@@ -57,24 +57,42 @@ func connectCommand() *cli.Command {
 			if err := rule.Validate(); err != nil {
 				return err
 			}
+			if err := application.AddConnectivityRule(rule); err != nil {
+				return err
+			}
+			rollbackPolicy := true
+			defer func() {
+				if rollbackPolicy {
+					_ = application.RemoveConnectivityRule(rule)
+				}
+			}()
 			network := application.ConnectivityNetworkName(rule)
 			if err := compose.EnsureManagedNetwork(ctx, network); err != nil {
 				return fmt.Errorf("create connectivity network: %w", err)
 			}
+			connected := make([]string, 0, len(sourceContainers)+len(targetContainers))
+			rollbackRuntime := func() {
+				for _, container := range connected {
+					_ = compose.DisconnectManagedNetwork(context.Background(), network, container)
+				}
+				_ = compose.RemoveManagedNetwork(context.Background(), network)
+			}
 			for _, container := range sourceContainers {
 				if err := compose.ConnectManagedNetwork(ctx, network, container, ""); err != nil {
+					rollbackRuntime()
 					return fmt.Errorf("attach source container %s: %w", container, err)
 				}
+				connected = append(connected, container)
 			}
 			alias := application.ConnectivityTargetAlias(rule)
 			for _, container := range targetContainers {
 				if err := compose.ConnectManagedNetwork(ctx, network, container, alias); err != nil {
+					rollbackRuntime()
 					return fmt.Errorf("attach target container %s: %w", container, err)
 				}
+				connected = append(connected, container)
 			}
-			if err := application.AddConnectivityRule(rule); err != nil {
-				return err
-			}
+			rollbackPolicy = false
 			fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(source), formatConnectivityEndpoint(target))
 			fmt.Fprintf(out, "     target alias:      %s\n", alias)
 			return nil
