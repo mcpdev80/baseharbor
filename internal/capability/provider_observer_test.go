@@ -16,24 +16,32 @@ func (o *recordingProviderObserver) ObserveProviderOperation(observation Provide
 
 type observerDriver struct {
 	provider Provider
-	failAt Phase
+	failAt   Phase
 }
 
 func (d observerDriver) Descriptor() Provider { return d.provider }
 func (d observerDriver) Preflight(context.Context, Resource, Binding) error {
-	if d.failAt == PhasePreflight { return errors.New("preflight failed") }
+	if d.failAt == PhasePreflight {
+		return errors.New("preflight failed")
+	}
 	return nil
 }
 func (d observerDriver) Provision(context.Context, Resource, Binding) error {
-	if d.failAt == PhaseApply { return errors.New("apply failed") }
+	if d.failAt == PhaseApply {
+		return errors.New("apply failed")
+	}
 	return nil
 }
 func (d observerDriver) Bind(context.Context, Resource, Binding) error {
-	if d.failAt == PhaseBind { return errors.New("bind failed") }
+	if d.failAt == PhaseBind {
+		return errors.New("bind failed")
+	}
 	return nil
 }
 func (d observerDriver) Verify(context.Context, Resource, Binding) error {
-	if d.failAt == PhaseVerify { return errors.New("verify failed") }
+	if d.failAt == PhaseVerify {
+		return errors.New("verify failed")
+	}
 	return nil
 }
 
@@ -41,9 +49,9 @@ func TestProviderLifecycleObserverReceivesMetadataOnly(t *testing.T) {
 	observer := &recordingProviderObserver{}
 	request := Request{
 		Requirement: Requirement{Kind: SQL, Name: "primary"},
-		Workload: "application/demo",
-		Driver: observerDriver{provider: PostgreSQL},
-		Observer: observer,
+		Workload:    "application/demo",
+		Driver:      observerDriver{provider: PostgreSQL},
+		Observer:    observer,
 	}
 	if _, err := Run(context.Background(), "demo", []Request{request}); err != nil {
 		t.Fatal(err)
@@ -69,10 +77,10 @@ func TestProviderLifecycleObserverReportsFailureWithoutBindingPayload(t *testing
 	observer := &recordingProviderObserver{}
 	request := Request{
 		Requirement: Requirement{Kind: SQL, Name: "primary"},
-		Workload: "application/demo",
-		Security: &SecureBinding{Credentials: []CredentialReference{{Name:"password", Reference:"baseharbor://applications/demo/prod/sql/primary/credentials/password"}}},
-		Driver: observerDriver{provider: PostgreSQL, failAt: PhaseBind},
-		Observer: observer,
+		Workload:    "application/demo",
+		Security:    &SecureBinding{Credentials: []CredentialReference{{Name: "password", Reference: "baseharbor://applications/demo/prod/sql/primary/credentials/password"}}},
+		Driver:      observerDriver{provider: PostgreSQL, failAt: PhaseBind},
+		Observer:    observer,
 	}
 	_, err := Run(context.Background(), "demo", []Request{request})
 	if err == nil {
