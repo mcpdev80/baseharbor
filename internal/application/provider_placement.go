@@ -1,6 +1,7 @@
 package application
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -88,3 +89,26 @@ func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (cap
 	}
 	return placement, nil
 }
+
+func ProviderPlacementNameToken(value string) string {
+	value = strings.TrimSpace(value)
+	sum := sha256.Sum256([]byte(value))
+	var b strings.Builder
+	for _, r := range strings.ToLower(value) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	base := strings.Trim(b.String(), "-_.")
+	if base == "" {
+		base = "boundary"
+	}
+	if len(base) > 32 {
+		base = base[:32]
+	}
+	return fmt.Sprintf("%s-%x", base, sum[:4])
+}
+
