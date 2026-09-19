@@ -355,6 +355,37 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	return files, nil
 }
 
+func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m application.Manifest) error {
+	placement, err := PlacementFor(m)
+	if err != nil {
+		return err
+	}
+	if placement.Scope != capability.ScopeShared {
+		return nil
+	}
+	files, err := ExistingProviderFiles(m)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	registrations, err := reconcileSharedRegistration(files.Registrations, m, false)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement, registrations)), 0o600); err != nil {
+		return err
+	}
+	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("validate shared Prometheus after application unregister: %w", err)
+	}
+	if err := runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("reconcile shared Prometheus after application unregister: %w", err)
+	}
+	return nil
+}
+
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
 	placement, err := PlacementFor(m)
 	if err != nil {
@@ -558,13 +589,15 @@ func providerComposeYAML(placement Placement, registrations []sourceRegistration
 	b.WriteString("    tmpfs:\n      - /tmp\n")
 	b.WriteString("    cap_drop:\n      - ALL\n")
 	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
-	b.WriteString("    networks:\n")
-	for i := range registrations {
-		fmt.Fprintf(&b, "      - metrics-%d\n", i)
-	}
-	b.WriteString("\nnetworks:\n")
-	for i, registration := range registrations {
-		fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+	if len(registrations) > 0 {
+		b.WriteString("    networks:\n")
+		for i := range registrations {
+			fmt.Fprintf(&b, "      - metrics-%d\n", i)
+		}
+		b.WriteString("\nnetworks:\n")
+		for i, registration := range registrations {
+			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+		}
 	}
 	b.WriteString("\nvolumes:\n")
 	fmt.Fprintf(&b, "  prometheus-data:\n    name: %s\n", strconv.Quote(placement.Volume))
