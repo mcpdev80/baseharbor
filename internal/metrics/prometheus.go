@@ -113,25 +113,32 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	if value.Service == "" || value.Port < 1 || value.Port > 65535 || !strings.HasPrefix(value.Path, "/") {
 		return errors.New("Prometheus metrics binding is incomplete")
 	}
-	enabled, err := application.MetricsCollectionEnabled(d.app)
+	policy, err := application.MetricsPolicy(d.app)
 	if err != nil {
 		return err
 	}
-	if !enabled {
+	if !policy.Enabled {
 		return errors.New("metrics collection is disabled by deployment policy")
+	}
+	if policy.ProviderScope == capability.ScopeExternal {
+		return errors.New("external metrics provider requires an external collection adapter")
 	}
 	return nil
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	files, err := EnsureProviderFiles()
+	placement, err := PlacementFor(d.app)
 	if err != nil {
 		return err
 	}
-	if err := d.runtime.ConfigProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	files, err := EnsureProviderFiles(d.app)
+	if err != nil {
+		return err
+	}
+	if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Prometheus provider configuration: %w", err)
 	}
-	if err := d.runtime.UpProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("start Prometheus provider: %w", err)
 	}
 	endpoint, err := ProviderEndpoint(files)
@@ -145,7 +152,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 	if binding.Metrics == nil {
 		return errors.New("metrics binding is required")
 	}
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(d.app)
 	if err != nil {
 		return err
 	}
@@ -182,7 +189,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(d.app)
 	if err != nil {
 		return err
 	}
@@ -221,7 +228,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(d.app)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -326,7 +333,7 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 }
 
 func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(d.app)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
