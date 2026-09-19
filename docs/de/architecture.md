@@ -190,3 +190,6 @@ Der bestehende Compose-/OpenBao-Pfad bleibt autoritativ. Sein Client-Zertifikat 
 Der Lifecycle validiert Secure-Binding-Metadaten bereits bei der Plan-Erstellung vor jedem Provider-Preflight und vor Mutation. Spaetere SQL-, S3-, Messaging-, Vector-, AI- und MCP-Provider verwenden damit dieselbe Security-Grenze statt eigenes Credential-Plumbing zu erfinden.
 
 Human OIDC/RBAC/MFA/JIT/Breakglass bleibt ein separates v0.6-Thema fuer Plattformzugriff. Vollstaendige Cross-Provider-Rotation bleibt spaetere Lifecycle-Arbeit.
+
+
+v0.4.6 fuehrt die erste providerneutrale S3-Object-Storage-Implementierung auf denselben gemeinsamen Lifecycle- und Secure-Binding-Grundlagen ein. Logische Buckets werden auf `object-storage.s3/v1` abgebildet; SeaweedFS ist ein lazy shared Compose-Referenzprovider und keine Application Identity. Provider-State besitzt physische Bucket-/IAM-/Topologie-Details; Application-facing Readiness wird mit einem authentifizierten SigV4-Put/Get verifiziert.
