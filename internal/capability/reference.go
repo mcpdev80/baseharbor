@@ -14,6 +14,7 @@ var (
 	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
 	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
 	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
+	Prometheus    = Provider{Kind: ProviderPrometheus, Capabilities: []Kind{Metrics}}
 )
 
 var (
@@ -45,6 +46,11 @@ var (
 		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
+	PrometheusIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: Prometheus,
+		Capabilities: []SpecificationID{MetricsV1.ID},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
 		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
@@ -67,6 +73,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return OTelCollectorIntegration, nil
 	case ProviderExternalOTLP:
 		return ExternalOTLPIntegration, nil
+	case ProviderPrometheus:
+		return PrometheusIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
