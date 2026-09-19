@@ -52,10 +52,10 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("load runtime executor client identity: %w", err)
 	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs: roots,
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      roots,
 		Certificates: []tls.Certificate{certificate},
-		ServerName: parsed.Hostname(),
+		ServerName:   parsed.Hostname(),
 	}}
 	return &Client{
 		endpoint: endpoint,
