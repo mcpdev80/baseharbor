@@ -63,6 +63,22 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) Check(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/readyz", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("runtime executor readiness failed with HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) Execute(ctx context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
 	response, err := c.execute(ctx, ExecuteRequest{
 		Capability: request.Capability,
