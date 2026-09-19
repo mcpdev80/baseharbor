@@ -52,7 +52,7 @@ Evidence may describe that an application:
 - `receive`s data;
 - may `provision` logical resources at runtime.
 
-The first concrete examples are PostgreSQL/Redis/S3 consumption, OpenMetrics provision through an application endpoint, and OTLP export.
+The first concrete examples are PostgreSQL/Redis/S3 consumption, OpenMetrics provided through an application endpoint, and OTLP export.
 
 ### 5. Runtime operations belong to the capability, not the product
 
