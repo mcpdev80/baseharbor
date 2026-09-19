@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"syscall"
 	"strings"
 	"time"
 
@@ -77,11 +79,19 @@ type Runtime interface {
 }
 
 type ProviderFiles struct {
-	Dir        string
-	Compose    string
-	Env        string
-	Config     string
-	TargetsDir string
+	Dir           string
+	Compose       string
+	Env           string
+	Config        string
+	TargetsDir    string
+	Registrations string
+}
+
+type sourceRegistration struct {
+	Application   string `json:"application"`
+	Environment   string `json:"environment"`
+	Network       string `json:"network"`
+	RuntimeVolume string `json:"runtime_volume,omitempty"`
 }
 
 type Driver struct {
@@ -277,12 +287,18 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 		return ProviderFiles{}, fmt.Errorf("create Prometheus provider state: %w", err)
 	}
 	files := ProviderFiles{
-		Dir:        dir,
-		Compose:    filepath.Join(dir, "compose.yaml"),
-		Env:        filepath.Join(dir, "runtime.env"),
-		Config:     filepath.Join(dir, "prometheus.yml"),
-		TargetsDir: targetsDir,
+		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
+		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
+		Registrations: filepath.Join(dir, "registrations.json"),
 	}
+	registrations := []sourceRegistration{registrationFor(m)}
+	if placement.Scope == capability.ScopeShared {
+		registrations, err = reconcileSharedRegistration(files.Registrations, m, true)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -309,7 +325,7 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement, registrations)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -328,8 +344,8 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 		Dir:        dir,
 		Compose:    filepath.Join(dir, "compose.yaml"),
 		Env:        filepath.Join(dir, "runtime.env"),
-		Config:     filepath.Join(dir, "prometheus.yml"),
-		TargetsDir: filepath.Join(dir, "targets"),
+		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
+		Registrations: filepath.Join(dir, "registrations.json"),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
 		if _, err := os.Stat(path); err != nil {
@@ -409,6 +425,76 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 	return DestroyProvider(ctx, runtime, m)
 }
 
+func registrationFor(m application.Manifest) sourceRegistration {
+	registration := sourceRegistration{
+		Application: m.Name,
+		Environment: m.Environment,
+		Network: application.MetricsProviderNetworkName(m, capability.ScopeApplication),
+	}
+	if application.HasRuntimeMetricsPermissions(m) {
+		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeName(m)
+	}
+	return registration
+}
+
+func reconcileSharedRegistration(path string, m application.Manifest, present bool) ([]sourceRegistration, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	var registrations []sourceRegistration
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &registrations); err != nil {
+			return nil, errors.New("Prometheus shared registration state is invalid")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	filtered := registrations[:0]
+	for _, registration := range registrations {
+		if registration.Application == m.Name && registration.Environment == m.Environment {
+			continue
+		}
+		filtered = append(filtered, registration)
+	}
+	registrations = filtered
+	if present {
+		registrations = append(registrations, registrationFor(m))
+	}
+	sort.Slice(registrations, func(i, j int) bool {
+		if registrations[i].Application != registrations[j].Application {
+			return registrations[i].Application < registrations[j].Application
+		}
+		return registrations[i].Environment < registrations[j].Environment
+	})
+	data, err := json.MarshalIndent(registrations, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	data = append(data, '\n')
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	return registrations, nil
+}
+
 func ProviderEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
@@ -440,39 +526,54 @@ func targetFileName(m application.Manifest, source string) string {
 	return targetFilePrefix(m) + source + ".json"
 }
 
-func providerComposeYAML(placement Placement) string {
-	return fmt.Sprintf(`services:
-  prometheus:
-    image: prom/prometheus:v3.14.0
-    restart: unless-stopped
-    user: "65534:65534"
-    read_only: true
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-    ports:
-      - "127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./targets:/etc/prometheus/targets:ro
-      - prometheus-data:/prometheus
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - metrics
+func providerComposeYAML(placement Placement, registrations []sourceRegistration) string {
+	registrations = append([]sourceRegistration(nil), registrations...)
+	sort.Slice(registrations, func(i, j int) bool {
+		if registrations[i].Application != registrations[j].Application {
+			return registrations[i].Application < registrations[j].Application
+		}
+		return registrations[i].Environment < registrations[j].Environment
+	})
 
-networks:
-  metrics:
-    name: %s
-
-volumes:
-  prometheus-data:
-    name: %s
-`, placement.Network, placement.Volume)
+	var b strings.Builder
+	b.WriteString("services:\n  prometheus:\n")
+	fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"65534:65534\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    command:\n")
+	b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
+	b.WriteString("      - --storage.tsdb.path=/prometheus\n")
+	b.WriteString("    ports:\n")
+	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090\"\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
+	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
+	b.WriteString("      - prometheus-data:/prometheus\n")
+	for i, registration := range registrations {
+		if registration.RuntimeVolume != "" {
+			fmt.Fprintf(&b, "      - runtime-targets-%d:/etc/prometheus/runtime-targets/%d:ro\n", i, i)
+		}
+	}
+	b.WriteString("    tmpfs:\n      - /tmp\n")
+	b.WriteString("    cap_drop:\n      - ALL\n")
+	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
+	b.WriteString("    networks:\n")
+	for i := range registrations {
+		fmt.Fprintf(&b, "      - metrics-%d\n", i)
+	}
+	b.WriteString("\nnetworks:\n")
+	for i, registration := range registrations {
+		fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+	}
+	b.WriteString("\nvolumes:\n")
+	fmt.Fprintf(&b, "  prometheus-data:\n    name: %s\n", strconv.Quote(placement.Volume))
+	for i, registration := range registrations {
+		if registration.RuntimeVolume != "" {
+			fmt.Fprintf(&b, "  runtime-targets-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(registration.RuntimeVolume))
+		}
+	}
+	return b.String()
 }
 
 func prometheusConfig() string {
@@ -485,6 +586,7 @@ scrape_configs:
     file_sd_configs:
       - files:
           - /etc/prometheus/targets/*.json
+          - /etc/prometheus/runtime-targets/*/*.json
         refresh_interval: 2s
     relabel_configs:
       - source_labels: [baseharbor_metrics_path]
