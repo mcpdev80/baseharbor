@@ -13,15 +13,18 @@ import (
 )
 
 type noopRuntime struct{}
-func (noopRuntime) ConfigProject(context.Context,string,string,string) error { return nil }
-func (noopRuntime) UpProject(context.Context,string,string,string) error { return nil }
-func (noopRuntime) DestroyProject(context.Context,string,string,string) error { return nil }
+
+func (noopRuntime) ConfigProject(context.Context, string, string, string) error  { return nil }
+func (noopRuntime) UpProject(context.Context, string, string, string) error      { return nil }
+func (noopRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
 
 func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 	var contentType string
 	var body []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/traces" { t.Errorf("path = %s", r.URL.Path) }
+		if r.URL.Path != "/v1/traces" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
 		contentType = r.Header.Get("Content-Type")
 		body = make([]byte, r.ContentLength)
 		_, _ = r.Body.Read(body)
@@ -29,11 +32,15 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 	}))
 	defer server.Close()
 	t.Setenv(application.OTLPEndpointEnv, server.URL)
-	m := application.WithOTLPTelemetry(application.Manifest{Version:1, Name:"demo", Environment:"test", Workload:application.WorkloadConfig{Services:[]string{"api"}}}, "traces")
+	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
 	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
-	resource := capability.Resource{Application:"demo", Kind:capability.TelemetryOTLP, Name:"default", Provider:capability.ProviderExternalOTLP}
-	if err := d.Verify(context.Background(), resource, capability.Binding{}); err != nil { t.Fatal(err) }
-	if contentType != "application/x-protobuf" { t.Fatalf("content-type = %q", contentType) }
+	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
+	if err := d.Verify(context.Background(), resource, capability.Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/x-protobuf" {
+		t.Fatalf("content-type = %q", contentType)
+	}
 	if len(body) == 0 || !strings.Contains(string(body), "baseharbor.otlp.verify") {
 		t.Fatal("verification request did not contain the BaseHarbor OTLP probe span")
 	}
@@ -42,10 +49,10 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 func TestExternalOTLPPreflightRejectsInvalidEndpoint(t *testing.T) {
 	_ = os.Setenv(application.OTLPEndpointEnv, "ftp://bad.example")
 	defer os.Unsetenv(application.OTLPEndpointEnv)
-	m := application.WithOTLPTelemetry(application.Manifest{Version:1, Name:"demo", Environment:"test", Workload:application.WorkloadConfig{Services:[]string{"api"}}}, "traces")
+	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
 	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
-	resource := capability.Resource{Application:"demo", Kind:capability.TelemetryOTLP, Name:"default", Provider:capability.ProviderExternalOTLP}
-	binding := capability.Binding{TelemetryOTLP:&capability.OTLPTelemetryBinding{Direction:"export",Protocol:"http/protobuf",Signals:[]string{"traces"}}}
+	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
+	binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: []string{"traces"}}}
 	if err := d.Preflight(context.Background(), resource, binding); err == nil {
 		t.Fatal("expected invalid external endpoint to fail closed")
 	}
@@ -71,10 +78,9 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 	if d.Descriptor().Kind != capability.ProviderExternalOTLP {
 		t.Fatalf("descriptor = %#v", d.Descriptor())
 	}
-	resource := capability.Resource{Application:"demo", Kind:capability.TelemetryOTLP, Name:"default", Provider:capability.ProviderExternalOTLP}
-	binding := capability.Binding{TelemetryOTLP:&capability.OTLPTelemetryBinding{Direction:"export",Protocol:"http/protobuf",Signals:[]string{"traces"}}}
+	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
+	binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: []string{"traces"}}}
 	if err := d.Preflight(context.Background(), resource, binding); err == nil {
 		t.Fatal("expected missing external endpoint to fail closed")
 	}
 }
-
