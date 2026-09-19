@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
-	name, environment, postgres, redis, secrets, postgresInstances, redisInstances, required, err := parseCreateArgs([]string{
+	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
 		"mailflow",
 		"--environment", "production",
 		"--postgres",
@@ -20,11 +20,11 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != "mailflow" || environment != "production" || !postgres || !redis || !secrets {
+	if name != "mailflow" || environment != "production" || !postgres || !redis || objectStorage || !secrets {
 		t.Fatalf("unexpected create parse result: %q %q %t %t %t", name, environment, postgres, redis, secrets)
 	}
-	if len(postgresInstances) != 0 || len(redisInstances) != 0 {
-		t.Fatalf("unexpected named service instances: postgres=%#v redis=%#v", postgresInstances, redisInstances)
+	if len(postgresInstances) != 0 || len(redisInstances) != 0 || len(objectStorageBuckets) != 0 {
+		t.Fatalf("unexpected named service instances: postgres=%#v redis=%#v s3=%#v", postgresInstances, redisInstances, objectStorageBuckets)
 	}
 	if !reflect.DeepEqual(required, []string{"OPENAI_API_KEY", "SMTP_PASSWORD"}) {
 		t.Fatalf("unexpected required secrets %#v", required)
@@ -32,7 +32,7 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 }
 
 func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
-	_, _, postgres, redis, _, postgresInstances, redisInstances, _, err := parseCreateArgs([]string{
+	_, _, postgres, redis, objectStorage, _, postgresInstances, redisInstances, objectStorageBuckets, _, err := parseCreateArgs([]string{
 		"mailflow",
 		"--postgres-instance", "primary",
 		"--postgres-instance=analytics",
@@ -42,8 +42,11 @@ func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if postgres || redis {
+	if postgres || redis || objectStorage {
 		t.Fatal("named instances must not implicitly request an additional default instance")
+	}
+	if len(objectStorageBuckets) != 0 {
+		t.Fatalf("unexpected S3 buckets %#v", objectStorageBuckets)
 	}
 	if !reflect.DeepEqual(postgresInstances, []string{"primary", "analytics"}) {
 		t.Fatalf("unexpected PostgreSQL instances %#v", postgresInstances)
@@ -67,5 +70,40 @@ func TestRequiredSecretsAppearInPlan(t *testing.T) {
 		if !strings.Contains(joined, "verify secret:"+name) {
 			t.Fatalf("plan does not contain required secret %s: %s", name, joined)
 		}
+	}
+}
+
+func TestParseCreateArgsSupportsObjectStorageBuckets(t *testing.T) {
+	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
+		"assets-api",
+		"--environment", "production",
+		"--s3",
+		"--s3-bucket", "uploads",
+		"--s3-bucket=exports",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "assets-api" || environment != "production" || postgres || redis || !objectStorage || secrets {
+		t.Fatalf("unexpected create parse result: %q %q %t %t %t %t", name, environment, postgres, redis, objectStorage, secrets)
+	}
+	if len(postgresInstances) != 0 || len(redisInstances) != 0 || len(required) != 0 {
+		t.Fatalf("unexpected unrelated values: postgres=%#v redis=%#v required=%#v", postgresInstances, redisInstances, required)
+	}
+	if !reflect.DeepEqual(objectStorageBuckets, []string{"uploads", "exports"}) {
+		t.Fatalf("unexpected S3 buckets %#v", objectStorageBuckets)
+	}
+}
+
+func TestManifestFromCreateArgsAllowsS3OnlyWithoutImplicitPostgres(t *testing.T) {
+	m, err := manifestFromCreateArgs([]string{"assets-api", "--s3-bucket", "uploads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(application.PostgresInstanceNames(m)) != 0 {
+		t.Fatalf("S3-only manifest unexpectedly includes PostgreSQL: %#v", m)
+	}
+	if !reflect.DeepEqual(application.ObjectStorageBucketNames(m), []string{"uploads"}) {
+		t.Fatalf("unexpected S3 buckets %#v", application.ObjectStorageBucketNames(m))
 	}
 }
