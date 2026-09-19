@@ -48,6 +48,8 @@ Aktuelle semantische Detectoren erkennen neben PostgreSQL/Redis auch S3-kompatib
 
 `stale` entfernt niemals Contract-State. Eine erkannte Runtime-Operation vergibt keine Berechtigung und provisioniert keine Ressource.
 
+Repository-first `baha up` verwendet denselben Reconciliation-Core vor der Convergence. Neu erkannte oder unklare Capabilities und Runtime-Operations-Hinweise werden sichtbar gemeldet, aber `baseharbor.yaml` wird nicht automatisch umgeschrieben und es werden keine Runtime-Berechtigungen vergeben.
+
 ## Control Plane
 
 ```bash
