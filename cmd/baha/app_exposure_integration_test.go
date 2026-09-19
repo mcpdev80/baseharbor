@@ -20,7 +20,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	if os.Getenv("CI") == "" {
 		t.Skip("real managed exposure lifecycle runs in CI")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	compose, err := bhruntime.DetectCompose(ctx)
@@ -28,18 +28,15 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 		t.Fatalf("detect compose: %v", err)
 	}
 
-	resolved, files := managedExposureFixture(t, "exposure-ci", 8080, 8080)
-	defer func() {
-		_ = destroyManagedExposure(context.Background(), compose, resolved.Manifest, files)
-		_, _ = stopRepositoryWorkload(context.Background(), compose, resolved, files)
-	}()
+	resolved, files, workload := managedExposureFixture(t, "exposure-ci", 8080, 8080)
+	defer cleanupManagedExposureFixture(compose, resolved, files, workload)
 
+	if err := startManagedExposureFixtureWorkload(ctx, compose, workload); err != nil {
+		t.Fatalf("start fixture workload: %v", err)
+	}
 	prepared, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
 		t.Fatalf("prepare managed exposure: %v", err)
-	}
-	if _, err := applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files); err != nil {
-		t.Fatalf("apply repository workload: %v", err)
 	}
 	if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
 		t.Fatalf("converge managed exposure: %v", err)
@@ -72,14 +69,11 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(firstState, secondState) {
-		t.Fatalf("repeated convergence changed provider state:\nfirst=%#v\nsecond=%#v", firstState, secondState)
+		t.Fatalf("repeated convergence changed provider state: first=%#v second=%#v", firstState, secondState)
 	}
 
 	if err := stopManagedExposure(ctx, compose, resolved.Manifest, files); err != nil {
 		t.Fatalf("stop managed exposure: %v", err)
-	}
-	if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
-		t.Fatalf("stop repository workload: %v", err)
 	}
 	running, err := compose.RunningServicesProject(ctx, secondState.Project, providerFiles.Compose, providerFiles.Env)
 	if err != nil {
@@ -89,9 +83,6 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 		t.Fatalf("managed exposure remains running after stop: %#v", running)
 	}
 
-	if _, err := applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files); err != nil {
-		t.Fatalf("restart repository workload: %v", err)
-	}
 	prepared, err = prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +95,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(secondState, thirdState) {
-		t.Fatalf("stop/start changed provider state:\nbefore=%#v\nafter=%#v", secondState, thirdState)
+		t.Fatalf("stop/start changed provider state: before=%#v after=%#v", secondState, thirdState)
 	}
 
 	if err := destroyManagedExposure(ctx, compose, resolved.Manifest, files); err != nil {
@@ -119,7 +110,7 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 	if os.Getenv("CI") == "" {
 		t.Skip("real managed exposure failure cleanup runs in CI")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	compose, err := bhruntime.DetectCompose(ctx)
@@ -127,18 +118,15 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 		t.Fatalf("detect compose: %v", err)
 	}
 
-	resolved, files := managedExposureFixture(t, "exposure-fail-ci", 9099, 8080)
-	defer func() {
-		_ = destroyManagedExposure(context.Background(), compose, resolved.Manifest, files)
-		_, _ = stopRepositoryWorkload(context.Background(), compose, resolved, files)
-	}()
+	resolved, files, workload := managedExposureFixture(t, "exposure-fail-ci", 9099, 8080)
+	defer cleanupManagedExposureFixture(compose, resolved, files, workload)
 
+	if err := startManagedExposureFixtureWorkload(ctx, compose, workload); err != nil {
+		t.Fatalf("start fixture workload: %v", err)
+	}
 	prepared, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
 		t.Fatalf("prepare broken managed exposure: %v", err)
-	}
-	if _, err := applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files); err != nil {
-		t.Fatalf("apply repository workload: %v", err)
 	}
 	err = convergeManagedExposure(ctx, io.Discard, prepared)
 	if err == nil {
@@ -152,16 +140,16 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 	if _, statErr := os.Stat(providerFiles.Dir); !os.IsNotExist(statErr) {
 		t.Fatalf("failed exposure left provider state behind: %v", statErr)
 	}
-	_, running, found, inspectErr := inspectRepositoryWorkload(ctx, compose, resolved, files)
-	if inspectErr != nil {
-		t.Fatalf("inspect repository workload after provider failure: %v", inspectErr)
+	running, err := compose.RunningServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Compose, workload.Override)
+	if err != nil {
+		t.Fatalf("inspect fixture workload after provider failure: %v", err)
 	}
-	if !found || len(running) == 0 {
-		t.Fatalf("provider failure mutated application-owned workload: found=%v running=%#v", found, running)
+	if len(running) != 1 || running[0] != "web" {
+		t.Fatalf("provider failure mutated application-owned workload: running=%#v", running)
 	}
 }
 
-func managedExposureFixture(t *testing.T, name string, targetPort, actualPort int) (resolvedApplication, application.RuntimeFiles) {
+func managedExposureFixture(t *testing.T, name string, targetPort, actualPort int) (resolvedApplication, application.RuntimeFiles, application.WorkloadFiles) {
 	t.Helper()
 	root := t.TempDir()
 	m := application.Manifest{
@@ -180,8 +168,21 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
 	if err := os.WriteFile(manifestPath, []byte(m.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	composeYAML := "services:\n  web:\n    image: alpine:3.22\n    command: [\"sh\", \"-ec\", \"exec busybox httpd -f -p " +
-		fmt.Sprint(actualPort) + "\"]\n    networks:\n      - app-internal\nnetworks:\n  app-internal:\n"
+	composeYAML := fmt.Sprintf(`services:
+  web:
+    image: alpine:3.22
+    command:
+      - sh
+      - -ec
+      - |
+        mkdir -p /www
+        printf 'baseharbor-exposure-ok\\n' >/www/index.html
+        exec busybox httpd -f -p %d -h /www
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`, actualPort)
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,44 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
 	if err != nil {
 		t.Fatal(err)
 	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("fixture workload was not materialized")
+	}
 	return resolvedApplication{
 		Manifest: m, ManifestPath: manifestPath, Store: store, FromRepository: true,
-	}, files
+	}, files, workload
+}
+
+func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles) error {
+	files := []string{workload.Compose, workload.Override}
+	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, files...); err != nil {
+		return err
+	}
+	if err := compose.UpProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Services, files...); err != nil {
+		return err
+	}
+	deadline, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	for deadline.Err() == nil {
+		running, err := compose.RunningServicesProjectFilesEnv(deadline, workload.Project, workload.RepositoryRoot, nil, files...)
+		if err == nil && len(running) == 1 && running[0] == "web" {
+			return nil
+		}
+		select {
+		case <-deadline.Done():
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("fixture workload did not become ready: %w", deadline.Err())
+}
+
+func cleanupManagedExposureFixture(compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = destroyManagedExposure(ctx, compose, resolved.Manifest, files)
+	_ = compose.DownProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Compose, workload.Override)
 }
