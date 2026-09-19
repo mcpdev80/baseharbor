@@ -50,15 +50,19 @@ func MaterializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.
 	appEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] = hostEndpoint
 	appEnv["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 	appEnv["OTEL_SERVICE_NAME"] = m.Name
-	appEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "")
+	appEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", string(provider))
 	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
 }
 
-func telemetryResourceAttributes(m Manifest, service string) string {
+func telemetryResourceAttributes(m Manifest, service, provider string) string {
 	attributes := []string{
 		"service.namespace=" + m.Name,
 		"deployment.environment.name=" + m.Environment,
 		"baseharbor.application=" + m.Name,
+		"baseharbor.resource=telemetry.otlp/default",
+	}
+	if strings.TrimSpace(provider) != "" {
+		attributes = append(attributes, "baseharbor.provider="+strings.TrimSpace(provider))
 	}
 	if strings.TrimSpace(service) != "" {
 		attributes = append(attributes, "baseharbor.workload.service="+strings.TrimSpace(service))
