@@ -317,8 +317,8 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if _, err := telemetry.ExistingProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  telemetry: shared OpenTelemetry Collector provider (container and network)")
 	}
-	if _, err := metricsprovider.ExistingSharedProviderFiles(); err == nil {
-		fmt.Fprintln(out, "  metrics: shared Prometheus provider (container, network and BaseHarbor-owned volume)")
+	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err == nil && len(instances) > 0 {
+		fmt.Fprintf(out, "  metrics: %d shared Prometheus provider instance(s) across default/sharing boundaries\n", len(instances))
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
@@ -343,8 +343,8 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := telemetry.DestroySharedProvider(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared telemetry provider: %w", err)
 	}
-	if err := metricsprovider.DestroySharedProvider(ctx, compose); err != nil {
-		return fmt.Errorf("destroy shared metrics provider: %w", err)
+	if err := metricsprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+		return fmt.Errorf("destroy shared metrics providers: %w", err)
 	}
 	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
