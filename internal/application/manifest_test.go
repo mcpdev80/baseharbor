@@ -233,7 +233,6 @@ services:
 	}
 }
 
-
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.Postgres = false
