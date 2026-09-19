@@ -105,54 +105,87 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 	return plan, nil
 }
 
-// Run executes one deterministic capability lifecycle. Every resource is
-// resolved and every provider preflight is completed before the first
-// provisioning mutation starts.
-func Run(ctx context.Context, application string, requests []Request) (Result, error) {
+// Execution is one prepared provider lifecycle. Prepare performs all
+// resolution/preflight work without mutation. ProvisionAndBind and Verify can
+// then be coordinated around runtime/workload convergence without duplicating
+// provider lifecycle semantics.
+type Execution struct {
+	requests []Request
+	result   Result
+}
+
+func Prepare(ctx context.Context, application string, requests []Request) (*Execution, Result, error) {
 	plan, err := BuildPlan(application, requests)
 	if err != nil {
-		return Result{Application: strings.TrimSpace(application), Status: StatusFailed}, err
+		result := Result{Application: strings.TrimSpace(application), Status: StatusFailed}
+		return nil, result, err
 	}
 	result := Result{Application: plan.Application, Status: StatusReady, Plan: plan}
 	for _, item := range plan.Items {
 		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
 	}
-
 	for i, item := range plan.Items {
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
-			step := failedStep(PhasePreflight, item, "provider-preflight-failed", err)
-			result.Steps = append(result.Steps, step)
+			result.Steps = append(result.Steps, failedStep(PhasePreflight, item, "provider-preflight-failed", err))
 			result.Status = StatusFailed
-			return result, fmt.Errorf("capability preflight failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			return nil, result, fmt.Errorf("capability preflight failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
 		result.Steps = append(result.Steps, readyStep(PhasePreflight, item))
 	}
+	return &Execution{requests: requests, result: result}, result, nil
+}
 
-	for i, item := range plan.Items {
-		driver := requests[i].Driver
-		if err := driver.Provision(ctx, item.Resource); err != nil {
-			result.Steps = append(result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
-			result.Status = StatusFailed
-			return result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
-		}
-		result.Steps = append(result.Steps, readyStep(PhaseApply, item))
-
-		if err := driver.Bind(ctx, item.Resource, item.Binding); err != nil {
-			result.Steps = append(result.Steps, failedStep(PhaseBind, item, "provider-bind-failed", err))
-			result.Status = StatusFailed
-			return result, fmt.Errorf("capability bind failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
-		}
-		result.Steps = append(result.Steps, readyStep(PhaseBind, item))
-
-		if err := driver.Verify(ctx, item.Resource, item.Binding); err != nil {
-			result.Steps = append(result.Steps, failedStep(PhaseVerify, item, "provider-verification-failed", err))
-			result.Status = StatusFailed
-			return result, fmt.Errorf("capability verification failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
-		}
-		result.Steps = append(result.Steps, readyStep(PhaseVerify, item))
+func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
+	if e == nil {
+		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
 	}
+	for i, item := range e.result.Plan.Items {
+		driver := e.requests[i].Driver
+		if err := driver.Provision(ctx, item.Resource); err != nil {
+			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
+			e.result.Status = StatusFailed
+			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+		}
+		e.result.Steps = append(e.result.Steps, readyStep(PhaseApply, item))
+		if err := driver.Bind(ctx, item.Resource, item.Binding); err != nil {
+			e.result.Steps = append(e.result.Steps, failedStep(PhaseBind, item, "provider-bind-failed", err))
+			e.result.Status = StatusFailed
+			return e.result, fmt.Errorf("capability bind failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+		}
+		e.result.Steps = append(e.result.Steps, readyStep(PhaseBind, item))
+	}
+	return e.result, nil
+}
 
-	return result, nil
+func (e *Execution) Verify(ctx context.Context) (Result, error) {
+	if e == nil {
+		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
+	}
+	for i, item := range e.result.Plan.Items {
+		if err := e.requests[i].Driver.Verify(ctx, item.Resource, item.Binding); err != nil {
+			e.result.Steps = append(e.result.Steps, failedStep(PhaseVerify, item, "provider-verification-failed", err))
+			e.result.Status = StatusFailed
+			return e.result, fmt.Errorf("capability verification failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+		}
+		e.result.Steps = append(e.result.Steps, readyStep(PhaseVerify, item))
+	}
+	e.result.Status = StatusReady
+	return e.result, nil
+}
+
+// Run executes one deterministic capability lifecycle. It is implemented in
+// terms of the staged API so application orchestration and provider tests share
+// exactly one lifecycle implementation.
+func Run(ctx context.Context, application string, requests []Request) (Result, error) {
+	execution, result, err := Prepare(ctx, application, requests)
+	if err != nil {
+		return result, err
+	}
+	result, err = execution.ProvisionAndBind(ctx)
+	if err != nil {
+		return result, err
+	}
+	return execution.Verify(ctx)
 }
 
 func readyStep(phase Phase, item PlanItem) StepResult {
