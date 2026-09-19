@@ -33,12 +33,6 @@ type connectivityPolicy struct {
 	Rules   []ConnectivityRule `json:"rules"`
 }
 
-type ConnectivityAttachment struct {
-	Network string
-	Alias   string
-	Target  bool
-}
-
 func (e ConnectivityEndpoint) Validate() error {
 	if strings.TrimSpace(e.Application) == "" {
 		return errors.New("connectivity endpoint application is required")
@@ -211,35 +205,6 @@ func CheckApplicationConnectivityReleased(m Manifest) error {
 
 func endpointMatchesManifest(endpoint ConnectivityEndpoint, m Manifest) bool {
 	return endpoint.Application == m.Name && endpoint.Environment == m.Environment
-}
-
-func ConnectivityAttachmentsForService(m Manifest, service string) ([]ConnectivityAttachment, error) {
-	rules, err := LoadConnectivityRules()
-	if err != nil {
-		return nil, err
-	}
-	var attachments []ConnectivityAttachment
-	for _, rule := range rules {
-		network := ConnectivityNetworkName(rule)
-		if endpointMatchesManifestService(rule.Source, m, service) {
-			attachments = append(attachments, ConnectivityAttachment{Network: network})
-		}
-		if endpointMatchesManifestService(rule.Target, m, service) {
-			attachments = append(attachments, ConnectivityAttachment{
-				Network: network,
-				Alias:   ConnectivityTargetAlias(rule),
-				Target:  true,
-			})
-		}
-	}
-	sort.Slice(attachments, func(i, j int) bool { return attachments[i].Network < attachments[j].Network })
-	return attachments, nil
-}
-
-func endpointMatchesManifestService(endpoint ConnectivityEndpoint, m Manifest, service string) bool {
-	return endpoint.Application == m.Name &&
-		endpoint.Environment == m.Environment &&
-		endpoint.Service == service
 }
 
 func connectivityPolicyPath() (string, error) {
