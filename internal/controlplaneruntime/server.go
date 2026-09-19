@@ -47,6 +47,7 @@ type Config struct {
 	RuntimeCredentialsFile  string
 	RuntimeTokenFile        string
 	RuntimePermissionsFile  string
+	RuntimeServiceTokensFile string
 	RuntimeExecutorURL      string
 	RuntimeExecutorCAFile   string
 	RuntimeExecutorCertFile string
