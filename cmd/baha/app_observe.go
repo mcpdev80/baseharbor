@@ -160,11 +160,9 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 					cancel()
 				}
-				brokerCtx, brokerCancel := context.WithTimeout(ctx, 10*time.Second)
-				brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
-				brokerCancel()
+				brokerErr := waitRuntimeBrokerReady(ctx, compose, m, files, 10*time.Second)
 				if brokerErr != nil {
-					fmt.Fprintln(out, "[FAIL] runtime-broker    per-application mTLS/OpenBao readiness failed")
+					fmt.Fprintf(out, "[FAIL] runtime-broker    %v\n", brokerErr)
 					ready = false
 				} else {
 					fmt.Fprintln(out, "[OK] runtime-broker    mTLS identity and app-scoped OpenBao readiness succeeded")
