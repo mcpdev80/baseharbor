@@ -27,8 +27,8 @@ func New(app string, operations *runtimeoperation.Manager, authorizer Authorizer
 		return nil, errors.New("runtime resource API dependencies are required")
 	}
 	h := &Handler{app: app, operations: operations, authorizer: authorizer, mux: http.NewServeMux()}
-	h.mux.HandleFunc("POST /v1/resources", h.create)
-	h.mux.HandleFunc("GET /v1/operations/{operationId}", h.operation)
+	h.mux.HandleFunc("POST /runtime/v1/resources", h.create)
+	h.mux.HandleFunc("GET /runtime/v1/operations/{operationId}", h.operation)
 	return h, nil
 }
 
