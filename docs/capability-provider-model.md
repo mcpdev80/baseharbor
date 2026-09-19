@@ -184,7 +184,7 @@ Additional S3, telemetry, observability, messaging, AI/MCP and vector providers 
 
 The future external transport is gRPC/Protocol Buffers and distribution direction is OCI. Those are open-standard transport/package mechanisms; BaseHarbor capability semantics and conformance remain authoritative.
 
-## Provider placement, sharing boundaries and runtime isolation
+## Provider placement, sharing boundaries and runtime realization
 
 Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
 
@@ -206,10 +206,7 @@ application             shared ---------------- external
                            +-- optional sharing boundary
         |
         v
-Isolation / deployment boundary
-        |
-        v
-Runtime/provider implementation
+Runtime realization of the selected placement
 ```
 
 The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
