@@ -70,9 +70,24 @@ func appBackupCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("backup preflight OpenBao verification: %w", err)
 				}
 			}
+			exposureStopped := false
+			if len(m.Exposures) > 0 {
+				if _, _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
+					return fmt.Errorf("backup preflight managed exposure verification: %w", err)
+				}
+				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
+					return err
+				}
+				exposureStopped = true
+			}
 
 			workloadStopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
 			if err != nil {
+				if exposureStopped {
+					if prepared, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
+						_ = convergeManagedExposure(ctx, io.Discard, prepared)
+					}
+				}
 				return err
 			}
 			brokerStopped := false
@@ -125,7 +140,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 				return nil
 			}()
 
-			restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped)
+			restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
 			if captureErr != nil || restartErr != nil {
 				return errors.Join(captureErr, restartErr)
 			}
@@ -198,6 +213,10 @@ func appRestoreCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
 				}
 			}
+			preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
+			if err != nil {
+				return fmt.Errorf("restore preflight managed exposure: %w", err)
+			}
 
 			if err := resetRestoreTarget(ctx, compose, platformFiles, resolved); err != nil {
 				return err
@@ -262,13 +281,21 @@ func appRestoreCommand(store application.Store) *cli.Command {
 				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 				return fmt.Errorf("start restored application workload: %w", err)
 			}
+			if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
+				_ = stopManagedExposure(ctx, compose, m, files)
+				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+				return fmt.Errorf("restore managed HTTP exposure: %w", err)
+			}
+			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+				return fmt.Errorf("record provider registry after restore: %w", err)
+			}
 			fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
 			return nil
 		},
 	}
 }
 
-func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped bool) error {
+func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
 	var result error
 	if brokerStopped {
 		if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, resolved.Manifest, files); err != nil {
@@ -278,6 +305,14 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 	if workloadStopped {
 		if _, err := applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files); err != nil {
 			result = errors.Join(result, fmt.Errorf("restart repository workload after backup: %w", err))
+		}
+	}
+	if exposureStopped && result == nil {
+		prepared, err := prepareManagedExposure(ctx, compose, resolved)
+		if err != nil {
+			result = errors.Join(result, fmt.Errorf("prepare managed exposure after backup: %w", err))
+		} else if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
+			result = errors.Join(result, fmt.Errorf("restart managed exposure after backup: %w", err))
 		}
 	}
 	return result
@@ -313,6 +348,9 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 		if errors.Is(err, application.ErrRuntimeNotApplied) {
 			return nil
 		}
+		return err
+	}
+	if err := destroyManagedExposure(ctx, compose, m, files); err != nil {
 		return err
 	}
 	if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
