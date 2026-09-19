@@ -47,6 +47,14 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	for _, resource := range resources {
 		workload := "application/" + contract.Application
 		binding := capability.Binding{Resource: resource, Workload: workload}
+		if resource.Kind == capability.ObjectStorageS3 {
+			binding.ObjectStorageS3 = &capability.ObjectStorageS3Binding{Bucket: resource.Name}
+			security := ObjectStorageSecureBinding(m, resource.Name)
+			if err := security.Validate(); err != nil {
+				return nil, fmt.Errorf("build object-storage secure binding: %w", err)
+			}
+			binding.Security = &security
+		}
 		if resource.Kind == capability.Secrets {
 			security := ManagedSecretsSecureBinding(m)
 			if err := security.Validate(); err != nil {
@@ -79,6 +87,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.Valkey, nil
 	case capability.ExposureHTTP:
 		return capability.Caddy, nil
+	case capability.ObjectStorageS3:
+		return capability.SeaweedFS, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}
