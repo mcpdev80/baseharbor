@@ -151,7 +151,7 @@ Compose collection policy is deployment-owned:
 - test/staging/production: disabled by default;
 - `BASEHARBOR_METRICS_ENABLED=true|false`: explicit operator override.
 
-When collection is enabled, `baha app apply` and `baha app up` lazily converge the shared Prometheus reference provider, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. Grafana, Loki and Tempo are not started.
+When collection is enabled, `baha app apply` and `baha app up` resolve Prometheus through the generic provider-placement layer, print the resolved placement before mutation, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. The safe default is shared Prometheus with an isolated metrics network per application. Advanced operators may select application-scoped Prometheus or a named shared boundary through the generic provider policy: `BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=shared|application` and, for grouped shared placement, `BASEHARBOR_PROVIDER_PROMETHEUS_SHARING_BOUNDARY=<name>`. Unsupported placement fails closed before mutation. An external Prometheus adapter is intentionally not implemented in v0.4.8. Grafana, Loki and Tempo are not started.
 
 ## Repository-first application workflow
 
