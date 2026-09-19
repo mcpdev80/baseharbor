@@ -139,8 +139,9 @@ func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing
 		t.Fatalf("override missing stable exposure network:\n%s", got)
 	}
 	web := got[strings.Index(got, "  web:"):]
-	if !strings.Contains(web, "baseharbor-exposure: {}") {
-		t.Fatalf("exposed service missing exposure network:\n%s", got)
+	if !strings.Contains(web, "baseharbor-exposure:") || !strings.Contains(web, `aliases:
+          - "web"`) {
+		t.Fatalf("exposed service missing stable exposure DNS alias:\n%s", got)
 	}
 	apiStart := strings.Index(got, "  api:")
 	webStart := strings.Index(got, "  web:")

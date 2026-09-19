@@ -235,7 +235,9 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				b.WriteString("      baseharbor-backend: {}\n")
 			}
 			if exposed {
-				b.WriteString("      baseharbor-exposure: {}\n")
+				b.WriteString("      baseharbor-exposure:\n")
+				b.WriteString("        aliases:\n")
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(service))
 			}
 		}
 	}

@@ -56,6 +56,10 @@ jobs:
           fi
       - name: Test
         run: go test ./...
+      - name: Verify managed HTTP exposure provider lifecycle
+        env:
+          BASEHARBOR_EXPOSURE_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestManagedHTTPExposure' -count=1 -v
       - name: Vet
         run: go vet ./...
       - name: Validate compose

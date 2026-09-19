@@ -17,8 +17,8 @@ import (
 )
 
 func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real managed exposure lifecycle runs in CI")
+	if os.Getenv("BASEHARBOR_EXPOSURE_ACCEPTANCE") != "true" {
+		t.Skip("real managed exposure lifecycle requires BASEHARBOR_EXPOSURE_ACCEPTANCE=true")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -39,7 +39,8 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 		t.Fatalf("prepare managed exposure: %v", err)
 	}
 	if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
-		t.Fatalf("converge managed exposure: %v", err)
+		status, _ := compose.StatusProjectFiles(ctx, workload.Project, workload.RepositoryRoot, workload.Compose, workload.Override)
+		t.Fatalf("converge managed exposure: %v\nfixture workload status:\n%s", err, status)
 	}
 
 	firstState, providerFiles, err := exposure.Load(files)
@@ -107,8 +108,8 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 }
 
 func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real managed exposure failure cleanup runs in CI")
+	if os.Getenv("BASEHARBOR_EXPOSURE_ACCEPTANCE") != "true" {
+		t.Skip("real managed exposure failure cleanup requires BASEHARBOR_EXPOSURE_ACCEPTANCE=true")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -145,7 +146,8 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 		t.Fatalf("inspect fixture workload after provider failure: %v", err)
 	}
 	if len(running) != 1 || running[0] != "web" {
-		t.Fatalf("provider failure mutated application-owned workload: running=%#v", running)
+		status, _ := compose.StatusProjectFiles(ctx, workload.Project, workload.RepositoryRoot, workload.Compose, workload.Override)
+		t.Fatalf("provider failure mutated application-owned workload: running=%#v\nfixture workload status:\n%s", running, status)
 	}
 }
 
