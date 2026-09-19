@@ -259,3 +259,30 @@ baha app destroy --yes
 `app status` und `app doctor` zeigen die Ende-zu-Ende-Readiness aus dem gemeinsamen Endpoint-/Exposure-State. Redirects gelten weiter als erreichbar; HTTP 5xx und nicht erreichbare Routen sind NOT READY.
 
 Bestehende app-eigene HTTP/HTTPS-Publisher bleiben im bisherigen Discovery-/Observation-Pfad und werden nicht in den Managed-Provider-Lifecycle uebernommen.
+
+## OTLP-Telemetrie
+
+OTLP-Transport wird in `baseharbor.yaml` deklariert und nicht als produktspezifischer CLI-Service ausgewaehlt:
+
+```yaml
+workload:
+  services:
+    - api
+
+telemetry:
+  otlp:
+    signals:
+      - traces
+```
+
+Bei `app apply` und `app up` loest BaseHarbor den OTLP-Provider auf, konvergiert bei Bedarf den shared Managed Collector, materialisiert normale `OTEL_*`-Workload-Einstellungen und verifiziert einen echten OTLP-HTTP/Protobuf-Export.
+
+Ein bestehender externer OTLP-Endpunkt wird als Deployment-State gesetzt:
+
+```bash
+export BASEHARBOR_OTLP_ENDPOINT=https://otel.example.com
+```
+
+Optionale Authorization-Header verwenden `BASEHARBOR_OTLP_HEADERS`. Sie sind Runtime-/Deployment-Secrets und duerfen nicht in `baseharbor.yaml` committed werden.
+
+Nur OTLP anzufordern startet weder Prometheus noch Loki, Tempo oder Grafana.
