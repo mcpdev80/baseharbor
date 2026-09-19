@@ -93,6 +93,18 @@ baha app init mailflow \
   --require-secret SECRET_KEY
 ```
 
+S3-kompatibler Object Storage:
+
+```bash
+baha app init mailflow --s3-bucket attachments
+```
+
+Mehrere unabhaengige logische Buckets werden mit wiederholtem `--s3-bucket` deklariert; `--s3` fordert einen Default-Bucket an. Der Application Contract bleibt produktneutral: SeaweedFS ist nur der aktuelle Compose-Referenzprovider hinter `object-storage.s3/v1`.
+
+`apply`, `up`, `status` und `doctor` verifizieren Managed Buckets mit einem authentifizierten S3-Put/Get. S3-Credentials sind in `baha app env` standardmaessig maskiert.
+
+Backup/Restore bricht fuer Managed Object Storage aktuell fail-closed ab, da Bucket-Inhalte noch nicht Bestandteil der Recovery-Einheit sind.
+
 Benannte Instanzen:
 
 ```bash

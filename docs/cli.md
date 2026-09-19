@@ -179,6 +179,18 @@ baha app doctor
 
 `baha app create NAME ...` remains for legacy/BaseHarbor-managed stored application state. New application repositories should prefer `baha app init`.
 
+## S3-compatible object storage
+
+```bash
+baha app init demo --s3-bucket attachments
+```
+
+Multiple independent logical buckets use repeated `--s3-bucket`; `--s3` requests one default bucket. The application contract remains product-neutral: SeaweedFS is the current Compose reference provider behind `object-storage.s3/v1`.
+
+`apply`, `up`, `status` and `doctor` verify managed buckets with an authenticated S3 Put/Get flow. S3 credentials are masked by default in `baha app env`.
+
+Application backup/restore currently fails closed when managed object storage is declared because bucket contents are not yet part of the recovery unit.
+
 ## Multiple PostgreSQL and Valkey instances
 
 ```bash

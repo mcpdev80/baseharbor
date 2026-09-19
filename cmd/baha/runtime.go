@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -307,6 +308,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintln(out, "Global BaseHarbor destroy plan")
 	fmt.Fprintln(out, "  control plane: Compose project baseharbor (containers, network and BaseHarbor-owned volumes)")
+	if _, err := objectstorage.ExistingProviderFiles(); err == nil {
+		fmt.Fprintln(out, "  object storage: shared SeaweedFS provider (container, network and BaseHarbor-owned volume)")
+	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
@@ -320,6 +324,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
 		return err
+	}
+	if err := objectstorage.DestroySharedProvider(ctx, compose); err != nil {
+		return fmt.Errorf("destroy shared object-storage provider: %w", err)
 	}
 	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)

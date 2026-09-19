@@ -8,9 +8,10 @@ import "github.com/mcpdev80/baseharbor/internal/capability"
 type CapabilityKind = capability.Kind
 
 const (
-	CapabilitySQL          CapabilityKind = capability.SQL
-	CapabilityKeyValue     CapabilityKind = capability.KeyValue
-	CapabilityExposureHTTP CapabilityKind = capability.ExposureHTTP
+	CapabilitySQL             CapabilityKind = capability.SQL
+	CapabilityKeyValue        CapabilityKind = capability.KeyValue
+	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
+	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -38,8 +39,6 @@ type PortableContract struct {
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
 // surface into provider-neutral requirements without changing manifest behavior.
-// The translation is deliberately one-way for now: v0.4 can evolve a future
-// contract schema while existing v0.3 manifests continue to load unchanged.
 func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	if err := m.Validate(); err != nil {
 		return PortableContract{}, err
@@ -54,24 +53,17 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
 	}
 	for _, name := range PostgresInstanceNames(m) {
-		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
-			Kind: CapabilitySQL,
-			Name: name,
-		})
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
 	}
 	for _, name := range RedisInstanceNames(m) {
-		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
-			Kind: CapabilityKeyValue,
-			Name: name,
-		})
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityKeyValue, Name: name})
+	}
+	for _, name := range ObjectStorageBucketNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityObjectStorageS3, Name: name})
 	}
 	for _, exposure := range m.Exposures {
-		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{
-			Kind: CapabilityExposureHTTP,
-			Name: exposure.Name,
-		})
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityExposureHTTP, Name: exposure.Name})
 	}
-
 	return contract, nil
 }
 

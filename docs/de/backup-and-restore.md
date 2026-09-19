@@ -69,6 +69,6 @@ Nicht-interaktive `--password-file`-Automation haengt nicht von Terminal-Renderi
 
 ## Scope
 
-Anwendungseigene Dateien, externe Datenbanken, Object Storage oder anderer Zustand ausserhalb von BaseHarbor-verwaltetem PostgreSQL/OpenBao sind nicht Bestandteil dieser Recovery-Einheit und benoetigen einen eigenen Backup-/Recovery-Mechanismus.
+Object-Storage-Inhalte sind noch nicht Bestandteil der BaseHarbor-Recovery-Einheit. Seit v0.4.6 brechen `baha app backup` und `baha app restore` deshalb fuer Anwendungen mit Managed `object-storage.s3` fail-closed ab, statt ein unvollstaendiges Archiv als recoverbar darzustellen. Anwendungseigene Dateien, externe Datenbanken und weiterer externer Zustand benoetigen weiterhin einen eigenen Backup-/Recovery-Mechanismus.
 
 Archivformat, Kryptographie und Restore-Semantik gehoeren zum Release-Kompatibilitaetsvertrag.

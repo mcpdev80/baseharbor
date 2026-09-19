@@ -92,9 +92,11 @@ jobs:
           grep -q "baseharbor.yaml" /tmp/baha-app-init-help.txt
           grep -q -- "--postgres-instance" /tmp/baha-app-init-help.txt
           grep -q -- "--redis-instance" /tmp/baha-app-init-help.txt
+          grep -q -- "--s3-bucket" /tmp/baha-app-init-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-init-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--redis" /tmp/baha-app-create-help.txt
+          grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
           /tmp/baha app status --help | grep -q "present and readable"
@@ -154,6 +156,47 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+      - name: Verify S3 object-storage lifecycle
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
+
+          /tmp/baha app create s3-demo --s3-bucket assets
+          /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
+          /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
+          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
+          grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
+
+          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
+          test -f "$provider_dir/compose.yaml"
+          test -f "$provider_dir/runtime.env"
+          ! grep -Eq 'ACCESS_KEY|SECRET_KEY|AWS_' "$provider_dir/runtime.env"
+          grep -q 'server -s3 -iam=true' "$provider_dir/compose.yaml"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+
+          /tmp/baha app env s3-demo | tee /tmp/s3-env.out
+          grep -q '^AWS_ACCESS_KEY_ID=<masked>$' /tmp/s3-env.out
+          grep -q '^AWS_SECRET_ACCESS_KEY=<masked>$' /tmp/s3-env.out
+          grep -q '^S3_BUCKET=bh-s3-demo-dev-assets$' /tmp/s3-env.out
+          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
+          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
+
+          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
+          /tmp/baha app doctor s3-demo | grep -q "Application runtime is healthy"
+
+          /tmp/baha app down s3-demo | grep -q "Persistent data is preserved"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+          /tmp/baha app up s3-demo | grep -q "running and ready"
+          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
+
+          /tmp/baha app destroy s3-demo --yes | grep -q "permanently destroyed"
+          test ! -e .baseharbor/apps/s3-demo
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+
+          docker compose --project-name baseharbor-object-storage --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
+          rm -rf "$BASEHARBOR_STATE_DIR"
+
       - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)

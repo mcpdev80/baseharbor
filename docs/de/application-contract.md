@@ -158,3 +158,50 @@ Der bestehende Managed-Secrets-Pfad bildet seine Runtime Identity auf das SPIFFE
 Das Modell liegt bewusst unter Manifest v1. Anwendungen deklarieren weiterhin nur Secret-Namen und Capability-Anforderungen; SPIFFE, OpenBao, Zertifikatsdateien oder BaseHarbor-Credential-Referenzen werden nicht zu neuen Manifest-Feldern.
 
 Secure-Binding-Metadaten werden vor dem Provider-Preflight validiert. Ungueltige oder mehrdeutige Referenzen scheitern damit vor jeder Provider-Mutation.
+
+
+## S3-kompatibler Object Storage in v0.4.6
+
+Object Storage ist expliziter portabler Application Intent. Anwendungen deklarieren logische Bucket-Identitaeten und kein Storage-Produkt:
+
+```yaml
+services:
+  object_storage:
+    buckets:
+      attachments: {}
+      exports: {}
+```
+
+Der deterministische CLI-Pfad ist gleichwertig:
+
+```bash
+baha app init mailflow \
+  --s3-bucket attachments \
+  --s3-bucket exports
+```
+
+Mit `--s3` kann ein einzelner Default-Bucket angefordert werden.
+
+Jeder logische Bucket wird auf `object-storage.s3/v1` abgebildet. SeaweedFS ist der aktuelle shared Compose-Referenzprovider, aber `baseharbor.yaml` enthaelt weder SeaweedFS-Image/Port noch physischen Bucket-Namen, IAM-User oder Credential-Werte. Diese Details bleiben Provider-/Deployment-State.
+
+Fuer den bevorzugten Bucket materialisiert BaseHarbor normale S3/AWS-kompatible Variablen:
+
+```text
+S3_ENDPOINT=http://...
+S3_BUCKET=...
+S3_REGION=us-east-1
+AWS_ENDPOINT_URL=http://...
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+Benannte Buckets erhalten zusaetzlich `S3_<NAME>_ENDPOINT`, `S3_<NAME>_BUCKET`, `S3_<NAME>_REGION`, `S3_<NAME>_ACCESS_KEY_ID` und `S3_<NAME>_SECRET_ACCESS_KEY`.
+
+File-Bindings liegen unter `bindings/object-storage-s3/<bucket>/` und enthalten Endpoint, Bucket, Region, Access Key und Secret Key. Credential-Dateien sind owner-only; normales `baha app env` maskiert Access-/Secret-Keys.
+
+Der aktuelle SeaweedFS-Provider erstellt fuer jeden logischen Bucket eine eigene bucket-scoped Identity und verifiziert Readiness mit einem realen authentifizierten SigV4-Put/Get. Ein shared Provider bedeutet damit keine geteilte Authorization zwischen Anwendungen oder Buckets.
+
+Repository-Workloads verwenden den internen Compose-Endpoint ueber das BaseHarbor-eigene Object-Storage-Integrationsnetz; Host-Prozesse verwenden den geschuetzten Loopback-Endpoint. Beide Adressen sind Deployment-State und keine portable Application Identity.
+
+Backup/Restore erfasst Object-Inhalte noch nicht. v0.4.6 verweigert deshalb `baha app backup` und `baha app restore` fuer Anwendungen mit Managed Object Storage, statt eine unvollstaendige Recovery-Einheit zu erzeugen oder zu akzeptieren.

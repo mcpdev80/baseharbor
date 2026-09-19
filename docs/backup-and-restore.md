@@ -65,6 +65,6 @@ Non-interactive `--password-file` automation retains deterministic command behav
 
 ## Scope
 
-The current recovery unit covers BaseHarbor-owned application backend state: desired application metadata, managed PostgreSQL instances and the application-owned OpenBao scope when enabled. Application-owned files, external databases, object storage or other data outside the BaseHarbor-managed recovery unit require their own backup/recovery mechanism.
+The current recovery unit covers BaseHarbor-owned application backend state: desired application metadata, managed PostgreSQL instances and the application-owned OpenBao scope when enabled. Object-storage contents are not yet part of that unit. Starting with v0.4.6, `baha app backup` and `baha app restore` therefore fail closed when the application declares managed `object-storage.s3` resources rather than presenting an incomplete archive as recoverable. Application-owned files, external databases and other external data require their own backup/recovery mechanism.
 
 Backup archive format, cryptography and restore semantics are part of the release compatibility contract.

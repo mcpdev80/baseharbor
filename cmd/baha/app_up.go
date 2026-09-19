@@ -37,6 +37,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var before []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
 			var managedExposure *managedExposureExecution
+			var managedObjectStorage *managedObjectStorageExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -51,7 +52,7 @@ func appUpCommand(store application.Store) *cli.Command {
 						bhruntime.CapabilityWorkloadLifecycle,
 						bhruntime.CapabilityResourceOwnership,
 					}
-					if m.Services.Secrets {
+					if m.Services.Secrets || application.HasObjectStorage(m) {
 						required = append(required, bhruntime.CapabilityServiceExec)
 					}
 					var err error
@@ -60,6 +61,11 @@ func appUpCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
+				}},
+				{Name: "managed object storage provider", Run: func(ctx context.Context) error {
+					var err error
+					managedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved)
+					return err
 				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
 					var err error
@@ -116,6 +122,9 @@ func appUpCommand(store application.Store) *cli.Command {
 				if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 					return err
 				}
+			}
+			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
+				return fmt.Errorf("converge managed object storage: %w", err)
 			}
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)

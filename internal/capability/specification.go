@@ -18,18 +18,11 @@ type CapabilitySpecification struct {
 }
 
 var (
-	SQLV1 = CapabilitySpecification{
-		ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1,
-	}
-	KeyValueV1 = CapabilitySpecification{
-		ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1,
-	}
-	SecretsV1 = CapabilitySpecification{
-		ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1,
-	}
-	ExposureHTTPV1 = CapabilitySpecification{
-		ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1,
-	}
+	SQLV1             = CapabilitySpecification{ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1}
+	KeyValueV1        = CapabilitySpecification{ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1}
+	SecretsV1         = CapabilitySpecification{ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1}
+	ExposureHTTPV1    = CapabilitySpecification{ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1}
+	ObjectStorageS3V1 = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
 )
 
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
@@ -42,6 +35,8 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return SecretsV1, nil
 	case ExposureHTTP:
 		return ExposureHTTPV1, nil
+	case ObjectStorageS3:
+		return ObjectStorageS3V1, nil
 	default:
 		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
 	}

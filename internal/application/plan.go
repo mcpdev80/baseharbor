@@ -48,6 +48,11 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated Valkey data volume for %s", capability.Name)},
 				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated authenticated Valkey service for %s", capability.Name)},
 			)
+		case CapabilityObjectStorageS3:
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: "s3-bucket:" + capability.Name, Description: fmt.Sprintf("ensure isolated S3 bucket %s", capability.Name)},
+				Action{Kind: "verify", Resource: "s3-bucket:" + capability.Name, Description: "verify authenticated S3 Put/Get flow"},
+			)
 		case CapabilityExposureHTTP:
 			p.Actions = append(p.Actions, Action{
 				Kind:        "ensure",

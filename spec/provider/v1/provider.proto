@@ -103,6 +103,13 @@ message WorkloadBinding {
   // interpret this only according to the declared versioned capability spec.
   HttpExposureBinding http_exposure = 3;
   SecureBinding security = 4;
+  ObjectStorageS3Binding object_storage_s3 = 5;
+}
+
+message ObjectStorageS3Binding {
+  // Logical application-owned bucket identity. Provider-native bucket names
+  // remain provider/deployment state.
+  string bucket = 1;
 }
 
 message WorkloadIdentityBinding {

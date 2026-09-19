@@ -123,7 +123,7 @@ func loadApplicationEnv(path string) (map[string]string, error) {
 
 func maskRuntimeSecrets(values map[string]string) {
 	for key := range values {
-		if isCredentialServiceURL(key) && values[key] != "" {
+		if (isCredentialServiceURL(key) || isCredentialEnvironmentValue(key)) && values[key] != "" {
 			values[key] = "<masked>"
 		}
 	}
@@ -168,4 +168,11 @@ func writeApplicationEnv(out io.Writer, values map[string]string, format string)
 		}
 	}
 	return nil
+}
+
+func isCredentialEnvironmentValue(key string) bool {
+	return key == "AWS_ACCESS_KEY_ID" ||
+		key == "AWS_SECRET_ACCESS_KEY" ||
+		strings.HasSuffix(key, "_ACCESS_KEY_ID") ||
+		strings.HasSuffix(key, "_SECRET_ACCESS_KEY")
 }

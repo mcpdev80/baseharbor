@@ -279,3 +279,6 @@ The existing Compose/OpenBao path remains authoritative. Its client certificate 
 The lifecycle validates secure-binding metadata during plan construction before any provider preflight or mutation. This keeps later SQL, S3, messaging, vector, AI and MCP providers on one security boundary instead of creating provider-specific credential plumbing.
 
 Human OIDC/RBAC/MFA/JIT/breakglass remains a separate v0.6 platform-access concern. Cross-provider rotation completion remains later lifecycle work.
+
+
+v0.4.6 adds the first provider-neutral S3 object-storage implementation on the same shared lifecycle and secure-binding foundations. Logical buckets resolve to `object-storage.s3/v1`; SeaweedFS is a lazy shared Compose reference provider rather than application identity. Provider state owns physical bucket/IAM/topology details, while application-facing readiness is verified through an authenticated SigV4 Put/Get flow.

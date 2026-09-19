@@ -39,6 +39,9 @@ func appBackupCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			if application.HasObjectStorage(m) {
+				return errors.New("application backup does not yet include object-storage contents; refusing to create an incomplete recovery unit")
+			}
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -181,6 +184,9 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			}
 			if name != "" && name != m.Name {
 				return errors.New("restore target NAME does not match backup application identity")
+			}
+			if application.HasObjectStorage(m) {
+				return errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
 			}
 			postgresBackups, err := applicationbackup.PostgresBackupsFromPayload(m, payload)
 			if err != nil {

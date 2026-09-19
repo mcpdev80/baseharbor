@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.5
+## Aktueller Stand v0.4.6
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -31,7 +31,7 @@ Umgesetzt sind unter anderem:
 - `baha` als zentrale Lifecycle-CLI;
 - Manifest v1 `baseharbor.yaml` als unterstuetzter oeffentlicher Kompatibilitaetsvertrag;
 - providerneutraler `PortableContract` fuer portablen Anwendungs-Intent;
-- ein oder mehrere benannte logische PostgreSQL- und Valkey/Redis-Ressourcen;
+- ein oder mehrere benannte logische PostgreSQL- und Valkey/Redis-Ressourcen;\n- ein oder mehrere logische S3-Buckets ueber `object-storage.s3/v1`;\n- SeaweedFS als aktueller lazy shared Compose-S3-Referenzprovider mit bucket-scoped Credentials und authentifizierter Put/Get-Readiness;
 - Managed Required/Generated Secrets ohne Secret-Werte im Contract;
 - providerneutrale `secure-binding/v1`-Semantik fuer Workload Identity, Credential-/Trust-/Secret-Referenzen, Least-Privilege-Authorization und Security-Lifecycle-Deklarationen;
 - Compose als expliziter Runtime Provider;
@@ -77,7 +77,7 @@ In v0.4 umgesetzt:
 Weiterhin Future Work:
 
 - neue oeffentliche capability-orientierte Contract-Syntax;
-- weitere Capability-Provider, insbesondere S3/Object Storage;
+- weitere Capability-Provider und zusaetzliche S3/Object-Storage-Provider/Provider-Auswahl;\n- BaseHarbor-Recovery fuer Object-Storage-Inhalte (v0.4.6 bricht Backup/Restore fuer S3-Anwendungen fail-closed ab statt unvollstaendige Recovery zu behaupten);
 - breitere Environment-/Policy-Profile;
 - OIDC/RBAC/JIT fuer Managed Production;
 - HA-/Topologieprofile;
@@ -102,7 +102,7 @@ v0.4.3 macht Repository-Analyse zu einer gemeinsamen, strikt read-only Core-Funk
 ### v0.5 - Capability Provider
 
 - austauschbare Capability-Provider hinter stabilen logischen Anforderungen;
-- SQL, Key/Value, Secrets und S3/Object Storage schrittweise providerisieren;
+- SQL, Key/Value und Secrets weiter providerisieren sowie zusaetzliche S3-Implementierungen hinter `object-storage.s3/v1` anbinden;
 - Provider-Conformance und klare Unsupported-Fehler.
 
 ### v0.6 - Environment, Policy und Topologie

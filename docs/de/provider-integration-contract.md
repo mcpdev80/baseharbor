@@ -223,3 +223,16 @@ Regeln:
 - `WorkloadBinding.security` in `baseharbor.provider/v1` bildet dieselbe Semantik ab.
 
 Die bestehende OpenBao-/Runtime-Broker-/mTLS-Implementierung ist die erste Referenzrealisierung. v0.4.5 extrahiert deren stabile Semantik, ersetzt sie aber nicht.
+
+
+## S3-Object-Storage-Provider-Grenze in v0.4.6
+
+`object-storage.s3/v1` ist die portable Capability-Grenze. Die Anwendung besitzt die logische Bucket-Identitaet; Provider-Platzierung, physische Bucket-Namen, IAM-Objekte, Endpoint-Platzierung, Storage-Topologie und implementierungsspezifischer State sind kein Application Intent.
+
+Die aktuelle Compose-Referenzimplementierung verwendet einen lazy shared SeaweedFS-Provider. Er wird nur materialisiert, wenn eine Anwendung S3-Object-Storage explizit anfordert. Logische Buckets bleiben Application-owned Ressourcen, obwohl Provider-Prozess und Storage Plane geteilt werden.
+
+Jeder logische Bucket erhaelt unabhaengige bucket-scoped Credentials, die ueber `secure-binding/v1` beschrieben werden. Intern verwendet der Provider SeaweedFS IAM; Klartext-Credentials werden nur an der trusted Binding-/Runtime-Grenze aufgeloest und gelangen weder in Provider-Registry-Metadaten noch in portable Capability-Diagnostik.
+
+Conformance fuer diese Capability prueft authentifiziertes S3-Verhalten einschliesslich Put/Get und nicht nur Prozess-Liveness. Ein spaeterer Ceph-RGW-, AWS-S3- oder anderer konformer Provider muss dieselbe Application-facing Semantik ohne Manifest-Umschreibung erfuellen.
+
+Die aktuelle oeffentliche CLI bietet noch keine allgemeine Auswahl/dynamisches Laden externer Provider. Das bleibt Operator-/Provider-Plattform-Arbeit; Capability und Provider-Protokoll sind bereits so geschnitten, dass der Application Contract spaeter nicht geaendert werden muss.

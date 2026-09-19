@@ -209,6 +209,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		return "", err
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
+	objectStorage := HasObjectStorage(m)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
@@ -229,10 +230,13 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 		_, exposed := exposedServices[service]
-		if managedRuntime || exposed {
+		if managedRuntime || objectStorage || exposed {
 			b.WriteString("    networks:\n")
 			if managedRuntime {
 				b.WriteString("      baseharbor-backend: {}\n")
+			}
+			if objectStorage {
+				b.WriteString("      baseharbor-object-storage: {}\n")
 			}
 			if exposed {
 				b.WriteString("      baseharbor-exposure:\n")
@@ -241,11 +245,15 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 	}
-	if managedRuntime || len(exposedServices) > 0 {
+	if managedRuntime || objectStorage || len(exposedServices) > 0 {
 		b.WriteString("networks:\n")
 		if managedRuntime {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+		}
+		if objectStorage {
+			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
+			b.WriteString("    name: baseharbor-object-storage\n")
 		}
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
@@ -271,6 +279,44 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["DATABASE_"+envInstanceToken(instance)+"_URL"] = uri
 		}
 	}
+	s3Buckets := ObjectStorageBucketNames(m)
+	preferredS3 := preferredServiceInstance(s3Buckets)
+	for _, bucket := range s3Buckets {
+		access, err := requireRuntimeValue(values, s3RuntimeKey(bucket, "ACCESS_KEY_ID"))
+		if err != nil {
+			return nil, err
+		}
+		secret, err := requireRuntimeValue(values, s3RuntimeKey(bucket, "SECRET_ACCESS_KEY"))
+		if err != nil {
+			return nil, err
+		}
+		physical, err := requireRuntimeValue(values, s3RuntimeKey(bucket, "BUCKET"))
+		if err != nil {
+			return nil, err
+		}
+		endpoint, err := requireRuntimeValue(values, s3RuntimeKey(bucket, "CONTAINER_ENDPOINT"))
+		if err != nil {
+			return nil, err
+		}
+		token := envInstanceToken(bucket)
+		if bucket == preferredS3 {
+			env["S3_ENDPOINT"] = endpoint
+			env["S3_BUCKET"] = physical
+			env["S3_REGION"] = "us-east-1"
+			env["AWS_ENDPOINT_URL"] = endpoint
+			env["AWS_REGION"] = "us-east-1"
+			env["AWS_ACCESS_KEY_ID"] = access
+			env["AWS_SECRET_ACCESS_KEY"] = secret
+		}
+		if bucket != defaultServiceInstance || len(s3Buckets) != 1 {
+			env["S3_"+token+"_ENDPOINT"] = endpoint
+			env["S3_"+token+"_BUCKET"] = physical
+			env["S3_"+token+"_REGION"] = "us-east-1"
+			env["S3_"+token+"_ACCESS_KEY_ID"] = access
+			env["S3_"+token+"_SECRET_ACCESS_KEY"] = secret
+		}
+	}
+
 	redis := RedisInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redis)
 	for _, instance := range redis {

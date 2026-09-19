@@ -18,13 +18,13 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.5 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.6 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
 | Secrets | `secrets` / benoetigte Secret-Namen + policy-gesteuerte Auslieferung | OpenBao | implementiert; v0.4.5 bildet Identity/Credentials/Trust/Authorization/Secret-Referenzen ueber `secure-binding/v1` ab | Vault, Cloud Secret Stores, externe Provider-Adapter | Der App-Contract kennt Secret-Anforderungen, aber keine OpenBao-Pfade oder AppRoles; Security-Wiring ist providerneutral |
 | HTTP/HTTPS-Exposition | `exposure.http/v1` | Caddy als Compose-Referenzprovider | in v0.4.4 implementiert; app-eigene Publisher bleiben beobachtet und werden nicht lifecycle-seitig uebernommen | Traefik, Kubernetes Gateway API/Ingress, OpenShift Route, Cloud-Traffic-Provider | Managed Exposure ist expliziter portabler Intent; Host-Ports, FQDNs, TLS-Dateien, Netze und Proxy-Konfiguration bleiben Deployment-/Provider-State |
-| Object Storage | spaeter `object-storage.s3` / S3 API | SeaweedFS als geplanter Referenz-/Default-Provider | geplant | Garage, Ceph RGW, AWS S3 und kompatible Managed Services | S3 ist die Anwendungsgrenze; Topologie und Implementierung bleiben Provider-Sache |
+| Object Storage | `object-storage.s3/v1` / S3 API | SeaweedFS als shared Compose-Referenzprovider | in v0.4.6 implementiert | Ceph RGW, AWS S3 und konforme S3-kompatible Managed Services | Logische Buckets und S3-Semantik sind Application-facing; SeaweedFS-Topologie, physische Bucket-/User-Identitaet und Endpoint-Platzierung bleiben Provider-State |
 | TLS-Zertifikats-Lifecycle | spaeter `tls.certificate` / X.509-Identitaet | providerabhaengig | Existing/BYOC fuer Repository-Compose-Deployment implementiert; portable Capability geplant | vorhandene/BYOC-Zertifikate, OpenBao PKI, ACME-Provider, cert-manager, OpenShift Service CA, Cloud-Zertifikatsdienste | v0.4 validiert/importiert/aktualisiert Existing-Zertifikate als Deployment-State; ACME/PKI/providerneutraler Intent bleiben Future Work |
 | Externe Secret-Projektion | Provider-Integration, kein portabler App-Produktname | kein globaler Pflichtprovider | geplant/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao Workload Identity, plattformnative Secret-Projektion | ESO darf niemals Teil des Application Contracts werden |
 | Identity / SSO | spaeter `identity.oidc` / OIDC/OAuth2 | kein fest verdrahtetes Produkt | geplant | Authentik, Zitadel, Entra ID, Google Workspace, GitHub oder andere OIDC-Provider | BaseHarbor wertet Identity Claims aus; Apps duerfen nicht von einem konkreten IdP-Produkt abhaengen |
@@ -122,13 +122,13 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.5-Grenze
+## v0.4.6-Grenze
 
-v0.4.5 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1` sowie mit `secure-binding/v1` eine gemeinsame Security-Grenze fuer Identity, Credentials, Trust, Authorization und Secret-Referenzen.
+v0.4.6 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, mit `secure-binding/v1` eine gemeinsame Security-Grenze sowie `object-storage.s3/v1` mit SeaweedFS als lazy shared Compose-Referenzprovider.
 
 Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure ist additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State.
 
-Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. S3/Object Storage, weitere Provider, HA-Profile, Managed ACME/OpenBao-PKI-Zertifikatsausstellung und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
+Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Weitere S3/Object-Storage-Provider und oeffentliche Provider-Auswahl, HA-Profile, Managed ACME/OpenBao-PKI-Zertifikatsausstellung und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
 
 
 ## Provider-Registry in v0.4.2
@@ -143,6 +143,7 @@ Aktuelle Referenzabbildung:
 
 ```text
 OpenBao              -> shared
+SeaweedFS            -> shared
 PostgreSQL-Instanzen -> application-scoped
 Valkey-Instanzen     -> application-scoped
 ```
@@ -160,7 +161,8 @@ Aktuelle versionierte Reference Claims:
 - Valkey: `cache.key-value/v1`
 - OpenBao: `secrets/v1`
 - Caddy: `exposure.http/v1`
+- SeaweedFS: `object-storage.s3/v1`
 
-Neue S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provider definieren bzw. implementieren versionierte Capability Specifications. Produktdetails duerfen dadurch nicht in den portablen Application Contract gelangen.
+Weitere S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provider definieren bzw. implementieren versionierte Capability Specifications. Produktdetails duerfen dadurch nicht in den portablen Application Contract gelangen.
 
 Fuer kuenftige externe Provider ist gRPC/Protocol Buffers als Transport und OCI als Distribution vorgesehen. BaseHarbor bleibt fuer Capability-Semantik und Conformance autoritativ.
