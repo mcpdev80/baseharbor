@@ -9,7 +9,7 @@ servers:
   - url: http://localhost
     description: Local runtime endpoint; concrete transport address is deployment state.
 paths:
-  /v1/capabilities:
+  /runtime/v1/capabilities:
     get:
       operationId: listRuntimeCapabilities
       summary: List runtime capabilities available to the authenticated application
@@ -28,7 +28,7 @@ paths:
                       $ref: '#/components/schemas/Capability'
         default:
           $ref: '#/components/responses/Problem'
-  /v1/resources:
+  /runtime/v1/resources:
     post:
       operationId: createRuntimeResource
       summary: Request an application-owned logical resource
@@ -55,7 +55,7 @@ paths:
                 $ref: '#/components/schemas/ResourceOperation'
         default:
           $ref: '#/components/responses/Problem'
-  /v1/resources/{resourceId}:
+  /runtime/v1/resources/{resourceId}:
     parameters:
       - $ref: '#/components/parameters/ResourceId'
     get:
@@ -86,7 +86,7 @@ paths:
           description: Resource already absent.
         default:
           $ref: '#/components/responses/Problem'
-  /v1/resources/{resourceId}/binding:
+  /runtime/v1/resources/{resourceId}/binding:
     parameters:
       - $ref: '#/components/parameters/ResourceId'
     get:
@@ -101,7 +101,7 @@ paths:
                 $ref: '#/components/schemas/Binding'
         default:
           $ref: '#/components/responses/Problem'
-  /v1/operations/{operationId}:
+  /runtime/v1/operations/{operationId}:
     parameters:
       - name: operationId
         in: path
