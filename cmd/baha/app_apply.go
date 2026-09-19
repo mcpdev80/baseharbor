@@ -165,6 +165,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
 					return err
 				}
+				printRuntimeBrokerDocs(out, files)
 			}
 
 			printRuntimeReady(out, m)
