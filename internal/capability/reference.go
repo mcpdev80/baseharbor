@@ -21,39 +21,47 @@ var (
 	PostgreSQLIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: PostgreSQL,
 		Capabilities: []SpecificationID{SQLV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	ValkeyIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Valkey,
 		Capabilities: []SpecificationID{KeyValueV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	OpenBaoIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: OpenBao,
 		Capabilities: []SpecificationID{SecretsV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 	}
 	CaddyIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Caddy,
 		Capabilities: []SpecificationID{ExposureHTTPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	SeaweedFSIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: SeaweedFS,
 		Capabilities: []SpecificationID{ObjectStorageS3V1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	OTelCollectorIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: OTelCollector,
 		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	PrometheusIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Prometheus,
 		Capabilities: []SpecificationID{MetricsV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
 		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeExternal},
 	}
 )
 
