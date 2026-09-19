@@ -310,7 +310,30 @@ Runtime-/Provider-Implementierung
 
 Die kanonischen Placement-Scopes bleiben exakt `application`, `shared` und `external`. Eine Sharing Boundary ist eine optionale Eigenschaft von `shared` und kein vierter Scope.
 
-Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben.
+Placement hat konkrete Ownership- und Runtime-Folgen:
+
+```text
+shared
+  -> eine BaseHarbor Platform-/Core-Runtime-Provider-Instanz
+  -> gehoert keiner einzelnen Application
+  -> kann eine oder mehrere explizit autorisierte Applications bedienen
+  -> wird lazy erzeugt, sobald eine Capability sie benoetigt
+
+application
+  -> eine dedizierte Provider-Instanz fuer genau eine Application/Environment
+  -> bei Compose bedeutet das einen dedizierten Provider-Container/-Project mit eigenem State
+  -> wird niemals von einer anderen Application wiederverwendet
+
+external
+  -> Provider-Instanz wird ausserhalb von BaseHarbor betrieben
+  -> BaseHarbor bindet sie an, besitzt/provisioniert aber nicht ihren Lifecycle
+```
+
+Ein Provider wird **nicht** deshalb von `shared` zu `application`, weil ihn aktuell nur eine einzige Application nutzt. `shared` beschreibt Platform-Ownership und Wiederverwendungsgrenze der Provider-Instanz, nicht die aktuelle Anzahl der Consumer. Ein shared Prometheus-, PostgreSQL-, OpenBao-, Object-Storage- oder Telemetry-Provider gehoert deshalb in den BaseHarbor Platform-/Core-Runtime-Bereich, auch wenn ihn momentan nur eine Application verwendet. Umgekehrt bedeutet `application` immer eine dedizierte Provider-Instanz fuer genau diese Application.
+
+Shared Provider sind on-demand Platform-Infrastruktur und keine pauschalen Bootstrap-Abhaengigkeiten. Die minimale BaseHarbor-Control-Plane bleibt klein; ein optionaler shared Provider rueckt erst dann in die Platform-/Core-Runtime, wenn eine Application-Capability auf diesen shared Provider aufgeloest wird. Existiert dort bereits eine kompatible shared Provider-Instanz, wird sie wiederverwendet statt eine zweite Instanz zu starten.
+
+Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben. Das Teilen einer physischen Provider-Instanz bedeutet niemals, dass logische Application-Ressourcen, Credentials, Daten oder Netzwerkzugriff geteilt werden.
 
 Provider-Implementierungen deklarieren, welche Placements sie unterstuetzen. Wenn die Policy ein Placement aufloest, das der ausgewaehlte Provider nicht erfuellen kann, bricht BaseHarbor vor jeder Mutation fail-closed ab, statt still auf ein anderes Placement auszuweichen.
 
