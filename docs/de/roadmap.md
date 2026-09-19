@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.7
+## Aktueller Stand v0.4.8
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -31,10 +31,14 @@ Umgesetzt sind unter anderem:
 - `baha` als zentrale Lifecycle-CLI;
 - Manifest v1 `baseharbor.yaml` als unterstuetzter oeffentlicher Kompatibilitaetsvertrag;
 - providerneutraler `PortableContract` fuer portablen Anwendungs-Intent;
-- ein oder mehrere benannte logische PostgreSQL- und Valkey/Redis-Ressourcen;\n- ein oder mehrere logische S3-Buckets ueber `object-storage.s3/v1`;\n- SeaweedFS als aktueller lazy shared Compose-S3-Referenzprovider mit bucket-scoped Credentials und authentifizierter Put/Get-Readiness;
+- ein oder mehrere benannte logische PostgreSQL- und Valkey/Redis-Ressourcen;
+- ein oder mehrere logische S3-Buckets ueber `object-storage.s3/v1`;
+- SeaweedFS als aktueller lazy shared Compose-S3-Referenzprovider mit bucket-scoped Credentials und authentifizierter Put/Get-Readiness;
 - providerneutrales `telemetry.otlp/v1`-Export-Binding mit Standard-OpenTelemetry-Workload-Konfiguration;
 - OpenTelemetry Collector als aktueller lazy shared Compose-OTLP-Referenzprovider plus externe OTLP-Endpunkt-Bindings;
 - echte OTLP-HTTP/Protobuf-Export-Verifikation ohne implizites Prometheus/Loki/Tempo/Grafana-Provisioning;
+- `metrics/v1` mit Prometheus 3.14.0 als erstem Compose-Referenzprovider, shared/application Placement, isolierten Metrics-Netzen und echter Scrape/Ingestion-Verifikation;
+- explizite gerichtete Cross-Application-Connectivity ueber `baha connect`, getrennt von Provider-Sharing und in Compose ueber einen gehaerteten BaseHarbor-Relay realisiert;
 - Managed Required/Generated Secrets ohne Secret-Werte im Contract;
 - providerneutrale `secure-binding/v1`-Semantik fuer Workload Identity, Credential-/Trust-/Secret-Referenzen, Least-Privilege-Authorization und Security-Lifecycle-Deklarationen;
 - Compose als expliziter Runtime Provider;
@@ -80,7 +84,8 @@ In v0.4 umgesetzt:
 Weiterhin Future Work:
 
 - neue oeffentliche capability-orientierte Contract-Syntax;
-- weitere Capability-Provider und zusaetzliche S3/Object-Storage-Provider/Provider-Auswahl;\n- BaseHarbor-Recovery fuer Object-Storage-Inhalte (v0.4.6 bricht Backup/Restore fuer S3-Anwendungen fail-closed ab statt unvollstaendige Recovery zu behaupten);
+- weitere Capability-Provider und zusaetzliche S3/Object-Storage-Provider/Provider-Auswahl;
+- BaseHarbor-Recovery fuer Object-Storage-Inhalte (v0.4.6 bricht Backup/Restore fuer S3-Anwendungen fail-closed ab statt unvollstaendige Recovery zu behaupten);
 - breitere Environment-/Policy-Profile;
 - OIDC/RBAC/JIT fuer Managed Production;
 - HA-/Topologieprofile;
