@@ -211,3 +211,63 @@ func TestReleaseManagedApplicationPreservesExternalBinding(t *testing.T) {
 		t.Fatal("destroy removed external provider instance")
 	}
 }
+
+func TestRegistryAllowsSameSharedProviderAcrossDifferentSharingBoundaries(t *testing.T) {
+	registry := NewRegistry()
+	instances := []ProviderInstance{
+		{ID: "prometheus/shared", Provider: Prometheus, Scope: ScopeShared, Ownership: OwnershipBaseHarbor},
+		{ID: "prometheus/group-a", Provider: Prometheus, Scope: ScopeShared, SharingBoundary: "group-a", Ownership: OwnershipBaseHarbor},
+		{ID: "prometheus/group-b", Provider: Prometheus, Scope: ScopeShared, SharingBoundary: "group-b", Ownership: OwnershipBaseHarbor},
+	}
+	for _, instance := range instances {
+		if err := registry.Register(instance); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resolved, err := registry.ResolvePlacement(
+		ProviderPrometheus,
+		ProviderPlacement{Scope: ScopeShared, SharingBoundary: "group-a", Ownership: OwnershipBaseHarbor},
+		"alpha",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ID != "prometheus/group-a" {
+		t.Fatalf("resolved=%#v", resolved)
+	}
+}
+
+func TestRegistryRejectsDuplicateSharedProviderWithinSameSharingBoundary(t *testing.T) {
+	registry := NewRegistry()
+	first := ProviderInstance{ID: "prometheus/group-a-1", Provider: Prometheus, Scope: ScopeShared, SharingBoundary: "group-a", Ownership: OwnershipBaseHarbor}
+	second := ProviderInstance{ID: "prometheus/group-a-2", Provider: Prometheus, Scope: ScopeShared, SharingBoundary: "group-a", Ownership: OwnershipBaseHarbor}
+	if err := registry.Register(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(second); err == nil {
+		t.Fatal("duplicate shared provider in same sharing boundary accepted")
+	}
+}
+
+func TestProviderPlacementRejectsUnsupportedScopeBeforeMutation(t *testing.T) {
+	placement := ProviderPlacement{Scope: ScopeShared, Ownership: OwnershipBaseHarbor}
+	if err := ValidateProviderPlacement(PostgreSQLIntegration, placement); err == nil {
+		t.Fatal("unsupported PostgreSQL shared placement accepted")
+	}
+	if err := ValidateProviderPlacement(PrometheusIntegration, placement); err != nil {
+		t.Fatalf("Prometheus shared placement rejected: %v", err)
+	}
+}
+
+func TestProviderPlacementRejectsSharingBoundaryOutsideSharedScope(t *testing.T) {
+	placement := ProviderPlacement{
+		Scope:           ScopeApplication,
+		SharingBoundary: "group-a",
+		Ownership:       OwnershipBaseHarbor,
+	}
+	if err := placement.Validate(); err == nil {
+		t.Fatal("application placement with sharing boundary accepted")
+	}
+}
+
