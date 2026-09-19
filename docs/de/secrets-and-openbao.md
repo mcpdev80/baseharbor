@@ -92,3 +92,20 @@ baseharbor://secrets/dyn-<opaque-id>
 Der per-App Runtime Broker nutzt eine auf Anwendung/Umgebung begrenzte Runtime-Identity und mTLS. Rotation dieser Identität ändert bestehende Secret-Referenzen nicht.
 
 Manager- oder Root-Credentials werden niemals in Anwendungen projiziert.
+
+## Providerneutrales Secure Binding in v0.4.5
+
+Die bestehende OpenBao-/Runtime-Broker-Implementierung wird jetzt in das gemeinsame Modell `secure-binding/v1` abgebildet.
+
+Der Application Contract deklariert weiterhin nur benoetigte Secret-Namen. Intern beschreibt BaseHarbor die verwaltete Verbindung mit:
+
+- SPIFFE-Workload-Identity `spiffe://baseharbor/apps/<app>/<environment>`;
+- einer opaken Runtime-Authentication-Credential-Referenz;
+- einer opaken Runtime-CA-/Trust-Referenz;
+- Least-Privilege-Authorization `managed-secrets` / `secrets.read`;
+- opaken Referenzen fuer Required Secrets;
+- deklarierter Unterstuetzung fuer Renewal, Rotation und Revocation.
+
+Das sind ausschliesslich Referenzen. OpenBao-AppRole-Namen, RoleIDs, SecretIDs, Policies, KV-Pfade, Zertifikate, Private Keys und Secret-Werte bleiben geschuetzter Provider-/Runtime-State.
+
+Der bestehende OpenBao-Scope, Broker, mTLS-, Restore- und Rotationspfad bleibt autoritativ. v0.4.5 standardisiert nur die stabile Semantik fuer spaetere Provider.
