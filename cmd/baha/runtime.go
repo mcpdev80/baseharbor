@@ -510,11 +510,19 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := os.RemoveAll(runtimeDir); err != nil {
 		return fmt.Errorf("remove BaseHarbor runtime state: %w", err)
 	}
-	for _, name := range []string{"provider-registry.json", "provider-registry.json.lock"} {
+	for _, name := range []string{
+		"provider-registry.json",
+		"provider-registry.json.lock",
+		"connectivity.json",
+		"connectivity.json.lock",
+	} {
 		path := filepath.Join(dataDir, name)
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove BaseHarbor provider registry state: %w", err)
+			return fmt.Errorf("remove BaseHarbor platform state %s: %w", name, err)
 		}
+	}
+	if err := os.RemoveAll(filepath.Join(dataDir, "connectivity")); err != nil {
+		return fmt.Errorf("remove BaseHarbor connectivity runtime state: %w", err)
 	}
 	fmt.Fprintln(out, "BaseHarbor global control plane was permanently destroyed.")
 	return nil
