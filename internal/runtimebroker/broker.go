@@ -305,32 +305,9 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 
 	var b strings.Builder
 	b.WriteString("services:\n")
-	if len(m.Runtime.Permissions) > 0 {
-		b.WriteString("  state-init:\n")
-		fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
-		b.WriteString("    user: \"0:0\"\n")
-		b.WriteString("    entrypoint: [\"/bin/sh\", \"-c\"]\n")
-		b.WriteString("    command: [\"chmod 700 /var/lib/baseharbor/runtime-operations && chown 65532:65532 /var/lib/baseharbor/runtime-operations\"]\n")
-		b.WriteString("    network_mode: \"none\"\n")
-		b.WriteString("    read_only: true\n")
-		b.WriteString("    cap_drop:\n")
-		b.WriteString("      - ALL\n")
-		b.WriteString("    cap_add:\n")
-		b.WriteString("      - CHOWN\n")
-		b.WriteString("    security_opt:\n")
-		b.WriteString("      - \"no-new-privileges:true\"\n")
-		b.WriteString("    volumes:\n")
-		b.WriteString("      - runtime-operations:/var/lib/baseharbor/runtime-operations\n")
-		b.WriteString("    restart: \"no\"\n")
-	}
 	b.WriteString("  broker:\n")
 	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 	b.WriteString("    restart: unless-stopped\n")
-	if len(m.Runtime.Permissions) > 0 {
-		b.WriteString("    depends_on:\n")
-		b.WriteString("      state-init:\n")
-		b.WriteString("        condition: service_completed_successfully\n")
-	}
 	b.WriteString("    command: [\"serve\"]\n")
 	b.WriteString("    environment:\n")
 	b.WriteString("      BASEHARBOR_API_LISTEN_ADDR: \"0.0.0.0:8443\"\n")
