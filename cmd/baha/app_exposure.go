@@ -121,6 +121,16 @@ func exposureNameForServicePort(state exposure.State, service string, publishedP
 	return service
 }
 
+func quiesceManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	if len(m.Exposures) == 0 {
+		return nil
+	}
+	if err := exposure.Quiesce(ctx, compose, files); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("quiesce managed HTTP exposure provider: %w", err)
+	}
+	return nil
+}
+
 func stopManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
 	if len(m.Exposures) == 0 {
 		return nil
