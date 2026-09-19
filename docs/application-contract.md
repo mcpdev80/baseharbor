@@ -466,6 +466,34 @@ An external destination can be supplied by deployment environment using `BASEHAR
 
 Requesting OTLP transport alone never provisions Prometheus, Loki, Tempo or Grafana.
 
+## Application-provided metrics in v0.4.8
+
+Applications may declare a metrics signal source without naming a collection/storage product:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - api
+
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+Each source maps to `metrics/v1`. The v1 signal format is OpenMetrics-compatible HTTP text exposition. The source name, workload service, target port and HTTP path are portable application interface data.
+
+Prometheus is **not** part of this application contract. Collection enablement, provider choice, scrape interval, retention, storage topology and query endpoints are deployment/platform policy.
+
+For the Compose reference implementation, metrics collection is enabled by default only for `dev` / `development`. Test, staging and production require explicit operator opt-in with `BASEHARBOR_METRICS_ENABLED=true`. An explicit false value disables collection in every environment.
+
+When enabled, BaseHarbor attaches only the declared source service to the internal metrics network, registers it automatically with the shared provider and verifies a real successful scrape/ingestion. The same service name may safely exist in several applications because provider target identity is application/environment scoped.
+
+Declaring OTLP transport with the `metrics` signal remains separate. `telemetry.otlp/v1` describes export transport; `metrics/v1` describes an application-provided metrics source. Neither contract names Prometheus.
+
 ## Evolving application intent and sparse configuration
 
 The repository manifest is persistent desired state, not a one-time install answer sheet. BaseHarbor expects applications to evolve: a project may begin with PostgreSQL, add Redis later, then S3, metrics or telemetry.
