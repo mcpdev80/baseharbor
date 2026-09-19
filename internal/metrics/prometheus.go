@@ -229,7 +229,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, err := ExistingProviderFiles(d.app)
+	files, err := ExistingProviderFiles(m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
