@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -95,6 +96,40 @@ func RemoveFiles(id string) error {
 	}
 	id = strings.TrimSpace(id)
 	return os.RemoveAll(filepath.Join(dataDir, "connectivity", id))
+}
+
+func ExistingInstances() ([]Files, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(dataDir, "connectivity")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var result []Files
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := validateRelayID(entry.Name()); err != nil {
+			return nil, fmt.Errorf("invalid connectivity relay state directory %q: %w", entry.Name(), err)
+		}
+		files, err := ExistingFiles(entry.Name())
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, files)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Project < result[j].Project })
+	return result, nil
 }
 
 func ExistingFiles(id string) (Files, error) {
