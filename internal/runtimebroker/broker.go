@@ -386,6 +386,9 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_CERT_FILE: \"/run/secrets/probe-client-cert\"\n")
 		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_KEY_FILE: \"/run/secrets/probe-client-key\"\n")
 		b.WriteString("      BASEHARBOR_RUNTIME_OPERATIONS_DIR: \"/var/lib/baseharbor/runtime-operations\"\n")
+		if application.HasRuntimeMetricsPermissions(m) {
+			b.WriteString("      BASEHARBOR_RUNTIME_METRICS_TARGETS_DIR: \"/var/lib/baseharbor/runtime-metrics\"\n")
+		}
 	}
 	if docsPort != "" {
 		b.WriteString("    ports:\n")
@@ -405,6 +408,9 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(serviceTokensPath+":/run/baseharbor/runtime/service-tokens.json:ro"))
 	if len(m.Runtime.Permissions) > 0 {
 		b.WriteString("      - runtime-operations:/var/lib/baseharbor/runtime-operations\n")
+	}
+	if application.HasRuntimeMetricsPermissions(m) {
+		b.WriteString("      - runtime-metrics:/var/lib/baseharbor/runtime-metrics\n")
 	}
 	b.WriteString("    secrets:\n")
 	b.WriteString("      - broker-key\n")
@@ -447,6 +453,13 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	if len(m.Runtime.Permissions) > 0 {
 		b.WriteString("\nvolumes:\n")
 		b.WriteString("  runtime-operations:\n")
+	}
+	if application.HasRuntimeMetricsPermissions(m) {
+		if len(m.Runtime.Permissions) == 0 {
+			b.WriteString("\nvolumes:\n")
+		}
+		b.WriteString("  runtime-metrics:\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(application.MetricsRuntimeTargetVolumeName(m)))
 	}
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
