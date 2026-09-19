@@ -72,7 +72,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 			}
 			exposureStopped := false
 			if len(m.Exposures) > 0 {
-				if _, _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
+				if _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
 					return fmt.Errorf("backup preflight managed exposure verification: %w", err)
 				}
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
