@@ -14,7 +14,7 @@ import (
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	files, err := EnsureProviderFiles()
+	files, err := EnsureProviderFiles(application.Manifest{Name: "demo", Environment: "dev"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
-	if _, err := EnsureProviderFiles(); err != nil {
+	if _, err := EnsureProviderFiles(application.Manifest{Name: "demo", Environment: "dev"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	bind(alpha)
 	bind(beta)
 
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(alpha)
 	if err != nil {
 		t.Fatal(err)
 	}
