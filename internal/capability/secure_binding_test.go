@@ -87,3 +87,16 @@ func TestSecureBindingRejectsInvalidDiagnosticSeverity(t *testing.T) {
 		t.Fatal("invalid diagnostic severity accepted")
 	}
 }
+
+
+func TestSecureBindingRejectsCredentialBearingReference(t *testing.T) {
+	binding := SecureBinding{
+		Credentials: []CredentialReference{{
+			Name:      "database",
+			Reference: "https://user:password@example.invalid/credential",
+		}},
+	}
+	if err := binding.Validate(); err == nil {
+		t.Fatal("credential-bearing URL accepted as secure binding reference")
+	}
+}
