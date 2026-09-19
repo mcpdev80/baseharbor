@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.4
+## Aktueller Stand v0.4.5
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -33,6 +33,7 @@ Umgesetzt sind unter anderem:
 - providerneutraler `PortableContract` fuer portablen Anwendungs-Intent;
 - ein oder mehrere benannte logische PostgreSQL- und Valkey/Redis-Ressourcen;
 - Managed Required/Generated Secrets ohne Secret-Werte im Contract;
+- providerneutrale `secure-binding/v1`-Semantik fuer Workload Identity, Credential-/Trust-/Secret-Referenzen, Least-Privilege-Authorization und Security-Lifecycle-Deklarationen;
 - Compose als expliziter Runtime Provider;
 - deployment-eigener Runtime-Provider- und Profil-State;
 - Runtime-Capability-Negotiation mit fail-closed Verhalten;
