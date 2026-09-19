@@ -63,6 +63,8 @@ jobs:
         env:
           BASEHARBOR_EXPOSURE_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestManagedHTTPExposure' -count=1 -v
+      - name: Build runtime broker image
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Verify directed cross-application connectivity
         env:
           BASEHARBOR_CONNECTIVITY_ACCEPTANCE: "true"
@@ -81,8 +83,6 @@ jobs:
           docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
       - name: Build baha
         run: go build -o /tmp/baha ./cmd/baha
-      - name: Build runtime broker image
-        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Smoke test baha binary
         run: |
           /tmp/baha --help >/tmp/baha-help.txt
