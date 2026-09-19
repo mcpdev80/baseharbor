@@ -6,9 +6,82 @@ info:
     Provider-neutral application-time resource API for BaseHarbor workloads.
     This API is independent from any concrete capability provider.
 servers:
-  - url: http://localhost
-    description: Local runtime endpoint; concrete transport address is deployment state.
+  - url: https://baseharbor-runtime:8443
+    description: Canonical per-application Runtime Broker endpoint inside the application network.
+security:
+  - runtimeMTLS: []
+    runtimeBearer: []
 paths:
+  /runtime/v1/secrets:
+    post:
+      operationId: createRuntimeSecret
+      summary: Create an application-scoped dynamic secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretValueRequest'
+      responses:
+        '201':
+          description: Secret reference created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretReferenceResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/secrets/resolve:
+    post:
+      operationId: resolveRuntimeSecret
+      summary: Resolve an application-scoped dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretReferenceRequest'
+      responses:
+        '200':
+          description: Secret value resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretValueResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: rotateRuntimeSecret
+      summary: Replace the value behind an existing dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRotateRequest'
+      responses:
+        '200':
+          description: Secret value rotated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretConfiguredResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteRuntimeSecret
+      summary: Delete an application-scoped dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretReferenceRequest'
+      responses:
+        '204':
+          description: Secret reference deleted.
+        default:
+          $ref: '#/components/responses/Problem'
   /runtime/v1/capabilities:
     get:
       operationId: listRuntimeCapabilities
@@ -122,6 +195,14 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    runtimeMTLS:
+      type: mutualTLS
+      description: Application-specific mTLS identity issued by BaseHarbor.
+    runtimeBearer:
+      type: http
+      scheme: bearer
+      description: Application-scoped BaseHarbor runtime token.
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -148,6 +229,66 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    SecretValueRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          writeOnly: true
+    SecretReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [ref]
+      properties:
+        ref:
+          type: string
+          minLength: 1
+          examples: [baseharbor://secrets/dyn-0123456789abcdef0123456789abcdef]
+    SecretRotateRequest:
+      type: object
+      additionalProperties: false
+      required: [ref, value]
+      properties:
+        ref:
+          type: string
+          minLength: 1
+        value:
+          type: string
+          minLength: 1
+          writeOnly: true
+    SecretReferenceResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, configured]
+      properties:
+        ref:
+          type: string
+        configured:
+          type: boolean
+          const: true
+    SecretValueResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, value]
+      properties:
+        ref:
+          type: string
+        value:
+          type: string
+          writeOnly: true
+    SecretConfiguredResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, configured]
+      properties:
+        ref:
+          type: string
+        configured:
+          type: boolean
+          const: true
     Capability:
       type: object
       additionalProperties: false
