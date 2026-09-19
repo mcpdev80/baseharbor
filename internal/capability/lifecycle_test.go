@@ -24,7 +24,7 @@ func (d *testDriver) Preflight(context.Context, Resource, Binding) error {
 	d.preflightCalls++
 	return d.preflightErr
 }
-func (d *testDriver) Provision(context.Context, Resource) error {
+func (d *testDriver) Provision(context.Context, Resource, Binding) error {
 	d.provisionCalls++
 	return d.provisionErr
 }
@@ -168,7 +168,7 @@ func (d *recordingDriver) Preflight(context.Context, Resource, Binding) error {
 	*d.calls = append(*d.calls, "preflight:"+string(d.provider.Kind))
 	return d.preflightErr
 }
-func (d *recordingDriver) Provision(context.Context, Resource) error {
+func (d *recordingDriver) Provision(context.Context, Resource, Binding) error {
 	*d.calls = append(*d.calls, "provision:"+string(d.provider.Kind))
 	return nil
 }
