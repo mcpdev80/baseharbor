@@ -61,10 +61,12 @@ type Driver struct {
 	runtime    application.RuntimeFiles
 	deployment Deployment
 
-	files       Files
-	state       State
-	preexisting bool
-	provisioned bool
+	files         Files
+	state         State
+	wasRunning    bool
+	provisioned   bool
+	changed       bool
+	previousFiles map[string][]byte
 }
 
 func ProjectName(m application.Manifest) string {
@@ -124,31 +126,71 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource) er
 	if d.provisioned {
 		return nil
 	}
-	running, _ := d.compose.RunningServicesProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env)
-	d.preexisting = len(running) > 0
+	if snapshot, err := snapshotDirectory(d.files.Dir); err != nil {
+		return fmt.Errorf("snapshot existing Caddy provider state: %w", err)
+	} else {
+		d.previousFiles = snapshot
+	}
+	if _, err := os.Stat(d.files.Compose); err == nil {
+		running, runErr := d.compose.RunningServicesProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env)
+		if runErr != nil {
+			return fmt.Errorf("inspect existing Caddy exposure provider: %w", runErr)
+		}
+		d.wasRunning = len(running) > 0
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 
 	state, changed, err := d.ensureFiles()
 	if err != nil {
+		_ = d.Rollback(context.WithoutCancel(ctx))
 		return err
 	}
 	d.state = state
+	d.changed = changed
 	if err := d.compose.ConfigProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		_ = d.Rollback(context.WithoutCancel(ctx))
 		return fmt.Errorf("validate Caddy exposure provider: %w", err)
 	}
-	if changed && d.preexisting {
+	if changed && d.wasRunning {
 		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+			_ = d.Rollback(context.WithoutCancel(ctx))
 			return fmt.Errorf("restart changed Caddy exposure provider: %w", err)
 		}
-		d.preexisting = false
 	}
 	if err := d.compose.UpProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
-		if !d.preexisting {
-			_ = d.compose.DownProject(context.WithoutCancel(ctx), state.Project, d.files.Compose, d.files.Env)
-		}
+		_ = d.Rollback(context.WithoutCancel(ctx))
 		return fmt.Errorf("start Caddy exposure provider: %w", err)
 	}
 	d.provisioned = true
 	return nil
+}
+
+func (d *Driver) Rollback(ctx context.Context) error {
+	if !d.changed && d.wasRunning {
+		return nil
+	}
+	var result error
+	if _, err := os.Stat(d.files.Compose); err == nil {
+		if err := d.compose.DownProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
+			result = errors.Join(result, err)
+		}
+	}
+	if err := os.RemoveAll(d.files.Dir); err != nil {
+		result = errors.Join(result, err)
+	}
+	if len(d.previousFiles) > 0 {
+		if err := restoreDirectory(d.files.Dir, d.previousFiles); err != nil {
+			return errors.Join(result, err)
+		}
+		if d.wasRunning {
+			if err := d.compose.UpProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
+				result = errors.Join(result, fmt.Errorf("restore previous Caddy exposure provider: %w", err))
+			}
+		}
+	}
+	d.provisioned = false
+	return result
 }
 
 func (d *Driver) Bind(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -176,9 +218,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 		Port:    route.PublishedPort,
 	}, "127.0.0.1", route.PublishedPort)
 	if !status.Ready {
-		if !d.preexisting {
-			_ = d.compose.DownProject(context.WithoutCancel(ctx), d.state.Project, d.files.Compose, d.files.Env)
-		}
+		_ = d.Rollback(context.WithoutCancel(ctx))
 		return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail)
 	}
 	return nil
@@ -307,9 +347,9 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.PublishedPort > 0 {
 			route.PublishedPort = prior.PublishedPort
 		} else {
-			preferred := 80
+			preferred := 8080
 			if route.Protocol == "https" {
-				preferred = 443
+				preferred = 8443
 			}
 			port, err := chooseLoopbackPort(preferred, used)
 			if err != nil {
@@ -324,7 +364,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	state := State{
 		Version: stateVersion,
 		Project: ProjectName(d.manifest),
-		Network: application.WorkloadProjectName(d.manifest) + "_default",
+		Network: application.ApplicationExposureNetworkName(d.manifest),
 		Host:    d.deployment.Hostname,
 		Routes:  routes,
 	}
@@ -387,10 +427,7 @@ func composeYAML(state State, files Files) string {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
 		}
-		b.WriteString("    networks:\n      application: {}\n")
 	}
-	b.WriteString("networks:\n  application:\n    external: true\n")
-	fmt.Fprintf(&b, "    name: %s\n", state.Network)
 	return b.String()
 }
 
@@ -438,6 +475,59 @@ func writeOwnerOnly(path string, data []byte) error {
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
+	}
+	return nil
+}
+
+func snapshotDirectory(root string) (map[string][]byte, error) {
+	result := map[string][]byte{}
+	info, err := os.Stat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return result, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("Caddy provider state path %s is not a directory", root)
+	}
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("Caddy provider state contains non-regular file %s", path)
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		result[rel] = data
+		return nil
+	})
+	return result, err
+}
+
+func restoreDirectory(root string, files map[string][]byte) error {
+	for rel, data := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		if err := writeOwnerOnly(path, data); err != nil {
+			return err
+		}
 	}
 	return nil
 }
