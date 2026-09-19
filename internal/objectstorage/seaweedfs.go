@@ -182,6 +182,22 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	return nil
 }
 
+func VerifyApplicationBuckets(ctx context.Context, runtime Runtime, app application.Manifest, files application.RuntimeFiles) error {
+	driver := NewDriver(runtime, app, files)
+	for _, bucket := range application.ObjectStorageBucketNames(app) {
+		resource := capability.Resource{
+			Application: app.Name,
+			Kind:        capability.ObjectStorageS3,
+			Name:        bucket,
+			Provider:    capability.ProviderSeaweedFS,
+		}
+		if err := driver.Verify(ctx, resource, capability.Binding{}); err != nil {
+			return fmt.Errorf("verify S3 bucket %s: %w", bucket, err)
+		}
+	}
+	return nil
+}
+
 func (d *Driver) Rollback(ctx context.Context) {
 	for bucket := range d.createdBuckets {
 		_ = d.DestroyBucket(ctx, bucket)
