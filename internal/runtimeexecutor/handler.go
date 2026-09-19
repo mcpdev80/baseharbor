@@ -131,8 +131,8 @@ func ensureEOF(decoder *json.Decoder) error {
 
 func writeProblem(w http.ResponseWriter, status int, title string) {
 	writeJSON(w, status, map[string]any{
-		"type": "about:blank",
-		"title": title,
+		"type":   "about:blank",
+		"title":  title,
 		"status": status,
 	})
 }
