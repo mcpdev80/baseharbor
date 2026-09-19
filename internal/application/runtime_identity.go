@@ -15,7 +15,7 @@ const runtimeIdentityTokenFile = "token"
 const runtimeIdentityRevokedFile = "revoked"
 
 func EnsureRuntimeIdentity(m Manifest, files RuntimeFiles) (string, error) {
-	if !m.Services.Secrets {
+	if !RequiresRuntimeBroker(m) {
 		return "", nil
 	}
 	binding := filepath.Join(files.Bindings, runtimeIdentityBinding)
