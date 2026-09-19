@@ -181,6 +181,16 @@ func WithRuntimePermission(m Manifest, capabilityID string, services []string, o
 	return m
 }
 
+func HasRuntimeCapabilityPermission(m Manifest, capabilityID string) bool {
+	capabilityID = strings.TrimSpace(capabilityID)
+	for _, permission := range m.Runtime.Permissions {
+		if permission.Capability == capabilityID {
+			return true
+		}
+	}
+	return false
+}
+
 func RuntimePermissionFor(m Manifest, capabilityID, operation string) bool {
 	capabilityID = strings.TrimSpace(capabilityID)
 	operation = strings.TrimSpace(operation)
