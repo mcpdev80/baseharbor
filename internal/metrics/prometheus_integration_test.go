@@ -104,7 +104,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 		}
 	}
 
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFiles(application.Manifest{Name: "metrics-alpha", Environment: "dev"})
 	if err != nil {
 		t.Fatal(err)
 	}
