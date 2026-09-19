@@ -280,3 +280,46 @@ Repository-first `baha up` verwendet denselben Reconciliation-Pfad und meldet ne
 
 Dieses Fundament implementiert bewusst noch keine grosse oeffentliche Runtime-Resource-API. Es definiert die Semantik, die eine solche API spaeter wiederverwenden muss. Siehe ADR 0010.
 
+## Provider-Placement, Sharing Boundaries und Runtime-Isolation
+
+Provider-Placement ist eine BaseHarbor-weite Deployment-/Operator-Entscheidung. Sie ist unabhaengig von Application Intent, Runtime-Topologie und konkreter Produktauswahl.
+
+```text
+Application Intent
+        |
+        v
+Capability
+        |
+        v
+Provider-Aufloesung
+        |
+        v
+Provider-Placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optionale Sharing Boundary
+        |
+        v
+Isolation / Deployment Boundary
+        |
+        v
+Runtime-/Provider-Implementierung
+```
+
+Die kanonischen Placement-Scopes bleiben exakt `application`, `shared` und `external`. Eine Sharing Boundary ist eine optionale Eigenschaft von `shared` und kein vierter Scope.
+
+Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben.
+
+Provider-Implementierungen deklarieren, welche Placements sie unterstuetzen. Wenn die Policy ein Placement aufloest, das der ausgewaehlte Provider nicht erfuellen kann, bricht BaseHarbor vor jeder Mutation fail-closed ab, statt still auf ein anderes Placement auszuweichen.
+
+Der portable Application Contract enthaelt weder Provider-Placement noch Sharing Boundary, Lifecycle Ownership oder Runtime-Isolationsmechanik. Der Entwickler beschreibt weiterhin nur die benoetigten Capabilities. BaseHarbor und Deployment Policy loesen die Infrastrukturdetails auf.
+
+Placement bleibt ausserdem von Runtime-spezifischer Isolation getrennt. Heute kann Compose Grenzen ueber Projekte, Netze und Volumes realisieren. Spaetere Kubernetes-/OpenShift-Runtimes koennen dieselben logischen Grenzen auf Namespaces/Projects, clusterweite Infrastruktur, Helm Releases, Operators, NetworkPolicies oder andere native Mechanismen abbilden, ohne den Application Intent zu aendern.
+
+Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provider-Placement oder Resource-Scope. Ein clusterweit installierter Operator kann application-scoped oder sharing-boundary-scoped Ressourcen verwalten.
+
+Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen von Applications bestimmte Provider gemeinsam nutzen. Getrennte BaseHarbor-Control-Planes bleiben echten administrativen, Trust-Domain-, Infrastruktur- oder Compliance-Grenzen vorbehalten.
+
+Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
