@@ -300,6 +300,28 @@ Managed Collector placement is lazy/shared. External OTLP destinations use the s
 
 Common resource identity includes standard OpenTelemetry service/environment attributes plus BaseHarbor application, logical telemetry resource and provider attribution. OTLP transport does not imply Prometheus, Loki, Tempo, Grafana or another observability backend; those remain independent platform/provider concerns in later releases.
 
+## Metrics collection and Prometheus provider in v0.4.8
+
+Metrics are split into three independent concerns:
+
+```text
+application-provided signal source
+        !=
+deployment collection policy
+        !=
+metrics provider implementation
+```
+
+`metrics/v1` describes an application-provided OpenMetrics-compatible HTTP source. The manifest identifies the logical source, workload service, target port and path. It does not name Prometheus or another backend.
+
+The current Compose policy enables collection by default only for development environments. Test/staging/production require explicit operator opt-in. Policy is resolved before provider mutation.
+
+Prometheus 3.14.0 is the first shared BaseHarbor-owned Compose provider. It uses file-based service discovery generated from protected BaseHarbor state; operators do not edit scrape targets manually. Only declared source services join the internal `baseharbor-metrics` network. Every app/environment/service receives a deterministic collision-resistant DNS alias so identical Compose service names across applications do not collide.
+
+Target labels include BaseHarbor application, environment, workload service and logical source identity. Readiness requires a real successful scrape visible in Prometheus as `up=1`, not merely a running Prometheus process.
+
+The provider has no Docker/Podman socket. Its API is loopback-published only for local lifecycle verification/querying. Grafana, Loki and Tempo remain separate provider tracks and are never provisioned as side effects of metrics collection.
+
 ## Continuous application evolution foundation
 
 BaseHarbor treats application intent as a continuously reconcilable desired state.
