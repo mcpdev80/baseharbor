@@ -69,6 +69,53 @@ func CheckControlPlaneDestroySafe() error {
 	return nil
 }
 
+func RegisteredProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+
+	var matched *capability.ProviderInstance
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Application != m.Name || binding.Resource.Provider != provider {
+			continue
+		}
+		var instance *capability.ProviderInstance
+		for i := range registry.Instances {
+			if registry.Instances[i].ID == binding.ProviderInstanceID {
+				instance = &registry.Instances[i]
+				break
+			}
+		}
+		if instance == nil {
+			return capability.ProviderPlacement{}, false, fmt.Errorf("provider registry binding references missing provider instance %q", binding.ProviderInstanceID)
+		}
+		if matched != nil && matched.ID != instance.ID {
+			return capability.ProviderPlacement{}, false, fmt.Errorf("application %q has ambiguous provider placement for %q", m.Name, provider)
+		}
+		copy := *instance
+		matched = &copy
+	}
+	if matched == nil {
+		return capability.ProviderPlacement{}, false, nil
+	}
+
+	placement := capability.ProviderPlacement{
+		Scope:             matched.Scope,
+		SharingBoundary:   matched.SharingBoundary,
+		Ownership:         matched.Ownership,
+		ExternalReference: matched.Reference,
+	}
+	if err := placement.Validate(); err != nil {
+		return capability.ProviderPlacement{}, false, fmt.Errorf("registered provider placement for %s: %w", provider, err)
+	}
+	return placement, true, nil
+}
+
 func ReleaseApplicationProviderRegistry(m Manifest) error {
 	store, err := referenceProviderRegistryStore()
 	if err != nil {
