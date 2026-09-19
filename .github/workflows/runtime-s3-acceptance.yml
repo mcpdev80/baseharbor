@@ -2,17 +2,42 @@ name: runtime-s3-acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: main
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
 
 jobs:
   runtime-s3:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        github.event.comment.body == '/run-runtime-s3-acceptance' &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      )
     runs-on: ubuntu-latest
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:runtime-s3-acceptance
     steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Checkout requested ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Checkout pull request head
+        if: github.event_name == 'issue_comment'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
 
       - uses: actions/setup-go@v7
         with:
@@ -107,7 +132,7 @@ jobs:
           call_a() {
             docker exec "$app_a" sh -ec '
               token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
-              curl --silent --show-error --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token" "$@"
+              curl --fail-with-body --silent --show-error --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token" "$@"
             ' sh "$@"
           }
 
@@ -204,29 +229,54 @@ jobs:
               command: ["sleep 3600"]
           EOF
 
-          /tmp/baha app apply >/tmp/runtime-s3-b-apply.out
+          /tmp/baha app apply | tee /tmp/runtime-s3-b-apply.out
           app_b="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-runtime-s3-b-dev --filter label=com.docker.compose.service=api)"
           test -n "$app_b"
 
-          cross_status="$(docker exec "$app_b" sh -ec '
-            token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
-            curl --silent --output /tmp/cross.out --write-out "%{http_code}"               --cacert "$BASEHARBOR_RUNTIME_CA_FILE"               --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"               --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"               -H "Authorization: Bearer $token"               "$1"
-          ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          runtime_call_b() {
+            output="$1"
+            shift
+            set +e
+            status="$(docker exec "$app_b" sh -ec '
+              output="$1"
+              shift
+              token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
+              curl --silent --show-error --output "$output" --write-out "%{http_code}"                 --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token"                 "$@"
+            ' sh "$output" "$@")"
+            rc=$?
+            set -e
+            printf 'status=%s rc=%s body=' "$status" "$rc" >&2
+            docker exec "$app_b" cat "$output" >&2 2>/dev/null || true
+            printf '\n' >&2
+            test "$rc" -eq 0
+            printf '%s' "$status"
+          }
+
+          echo "=== app-b broker reachability ==="
+          ready_status="$(runtime_call_b /tmp/ready.out https://baseharbor-runtime:8443/readyz)"
+          printf 'ready_status=%s\n' "$ready_status"
+          test "$ready_status" = "200"
+
+          echo "=== cross-app GET ==="
+          cross_status="$(runtime_call_b /tmp/cross.out "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          printf 'cross_status=%s\n' "$cross_status"
           test "$cross_status" = "404"
 
-          cross_binding_status="$(docker exec "$app_b" sh -ec '
-            token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
-            curl --silent --output /tmp/cross-binding.out --write-out "%{http_code}"               --cacert "$BASEHARBOR_RUNTIME_CA_FILE"               --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"               --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"               -H "Authorization: Bearer $token"               "$1"
-          ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id/binding")"
+          echo "=== cross-app binding ==="
+          cross_binding_status="$(runtime_call_b /tmp/cross-binding.out "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id/binding")"
+          printf 'cross_binding_status=%s\n' "$cross_binding_status"
           test "$cross_binding_status" = "404"
 
-          cross_delete_status="$(docker exec "$app_b" sh -ec '
-            token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
-            curl --silent --output /tmp/cross-delete.out --write-out "%{http_code}"               --cacert "$BASEHARBOR_RUNTIME_CA_FILE"               --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"               --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"               -H "Authorization: Bearer $token"               -H "Idempotency-Key: cross-app-delete"               -X DELETE               "$1"
-          ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          echo "=== cross-app delete ==="
+          cross_delete_status="$(runtime_call_b /tmp/cross-delete.out             -H "Idempotency-Key: cross-app-delete"             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          printf 'cross_delete_status=%s\n' "$cross_delete_status"
           test "$cross_delete_status" = "404"
 
           cd "$workdir/app-a"
+          docker exec             -e S3_ENDPOINT="$endpoint"             -e S3_BUCKET="$bucket"             -e S3_ACCESS="$access"             -e S3_SECRET="$secret"             "$app_a" sh -ec '
+              curl --fail --silent --show-error                 --aws-sigv4 "aws:amz:us-east-1:s3"                 --user "$S3_ACCESS:$S3_SECRET"                 -X DELETE                 "$S3_ENDPOINT/$S3_BUCKET/runtime-probe"
+            '
+
           delete="$(call_a             -H 'Idempotency-Key: runtime-s3-delete-1'             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
           delete_operation="$(printf '%s' "$delete" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
           test -n "$delete_operation"
