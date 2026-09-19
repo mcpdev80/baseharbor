@@ -53,7 +53,8 @@ func TestIntegrationDescriptorRequiresEveryProviderCapabilityToHaveSpecification
 			Kind:         ProviderPostgreSQL,
 			Capabilities: []Kind{SQL, KeyValue},
 		},
-		Capabilities: []SpecificationID{SQLV1.ID},
+		Capabilities:    []SpecificationID{SQLV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("provider capability without specification accepted")
@@ -102,3 +103,20 @@ func TestDriverAdapterRejectsCapabilityDescriptorMismatch(t *testing.T) {
 		t.Fatal("same-kind driver with different capability set accepted")
 	}
 }
+
+func TestIntegrationDescriptorRequiresSupportedPlacementScope(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.SupportedScopes = nil
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without supported placement scope accepted")
+	}
+}
+
+func TestIntegrationDescriptorRejectsDuplicatePlacementScope(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.SupportedScopes = []ProviderScope{ScopeApplication, ScopeApplication}
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("duplicate provider placement scope accepted")
+	}
+}
+
