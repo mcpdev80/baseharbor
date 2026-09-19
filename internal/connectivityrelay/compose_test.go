@@ -63,3 +63,19 @@ func TestEnsureFilesRejectsInvalidTargetPort(t *testing.T) {
 		t.Fatal("expected invalid target port rejection")
 	}
 }
+
+
+func TestEnsureFilesRejectsUnsafeRelayID(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	_, err := EnsureFiles(RuntimeSpec{
+		ID:            "../../escape",
+		SourceNetwork: "source",
+		SourceAlias:   "target",
+		TargetNetwork: "target",
+		TargetHost:    "postgres",
+		TargetPort:    5432,
+	})
+	if err == nil {
+		t.Fatal("expected unsafe relay id rejection")
+	}
+}
