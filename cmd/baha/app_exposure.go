@@ -42,7 +42,11 @@ func prepareManagedExposure(ctx context.Context, compose bhruntime.Compose, reso
 		requests = append(requests, capability.Request{
 			Requirement: capability.Requirement{Kind: capability.ExposureHTTP, Name: route.Name},
 			Workload:    "service/" + route.Service,
-			Driver:      driver,
+			HTTPExposure: &capability.HTTPExposureBinding{
+				Service: route.Service, TargetPort: route.Port,
+				Protocol: route.Protocol, Visibility: exposureVisibility(route.Visibility),
+			},
+			Driver: driver,
 		})
 	}
 	execution, _, err := capability.Prepare(ctx, m.Name, requests)
@@ -148,4 +152,11 @@ func managedExposureRunning(ctx context.Context, compose bhruntime.Compose, m ap
 	}
 	running, err := compose.RunningServicesProject(ctx, state.Project, providerFiles.Compose, providerFiles.Env)
 	return err == nil && len(running) > 0
+}
+
+func exposureVisibility(value string) string {
+	if value == "" {
+		return "public"
+	}
+	return value
 }
