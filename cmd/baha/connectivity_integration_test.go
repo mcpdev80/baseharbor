@@ -57,7 +57,10 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sourceRoot, "compose.yaml"), []byte(`services:
   api:
     image: postgres:18-alpine
-    command: ["sh", "-ec", "sleep 300"]
+    environment:
+      POSTGRES_DB: source
+      POSTGRES_USER: source
+      POSTGRES_PASSWORD: source-only
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +87,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		_ = compose.DownProjectFilesEnv(context.Background(), sourceWorkload.Project, sourceWorkload.RepositoryRoot, nil, sourceComposeFiles...)
 	}()
 
+	waitForSourceDatabase(t, ctx, compose, sourceWorkload, sourceComposeFiles)
 	waitForConnectivityTarget(t, ctx, compose, target, targetFiles)
 
 	var out bytes.Buffer
@@ -145,6 +149,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 
 	probe := application.ConnectivityTargetAlias(rule)
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
+	assertNoReverseConnectivity(t, ctx, compose, target, targetFiles)
 
 	if err := suspendConnectivityForManifest(ctx, compose, target); err != nil {
 		t.Fatalf("suspend target connectivity: %v", err)
@@ -175,6 +180,32 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	}
 	if _, err := connectivityrelay.ExistingFiles(application.ConnectivityRuleID(rule)); !os.IsNotExist(err) {
 		t.Fatalf("relay state remains after disconnect: %v", err)
+	}
+}
+
+func waitForSourceDatabase(t *testing.T, ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles, composeFiles []string) {
+	t.Helper()
+	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var last error
+	for deadline.Err() == nil {
+		_, last = compose.ExecProjectFiles(deadline, workload.Project, workload.RepositoryRoot, "api", composeFiles, "pg_isready", "-h", "127.0.0.1", "-p", "5432")
+		if last == nil {
+			return
+		}
+		select {
+		case <-deadline.Done():
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	t.Fatalf("source PostgreSQL did not become ready: %v", last)
+}
+
+func assertNoReverseConnectivity(t *testing.T, ctx context.Context, compose bhruntime.Compose, target application.Manifest, files application.RuntimeFiles) {
+	t.Helper()
+	_, err := compose.ExecProject(ctx, application.RuntimeProjectName(target), files.Compose, files.Env, "postgres", "pg_isready", "-h", "api", "-p", "5432", "-t", "2")
+	if err == nil {
+		t.Fatal("reverse connectivity unexpectedly succeeded: target resolved/reached source api:5432")
 	}
 }
 
