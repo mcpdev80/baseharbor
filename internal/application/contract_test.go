@@ -148,3 +148,26 @@ func TestPortableContractIncludesProviderNeutralExposureIntent(t *testing.T) {
 		t.Fatalf("unexpected exposure capabilities %#v", contract.Capabilities)
 	}
 }
+
+
+func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *testing.T) {
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "api",
+		Environment: "dev",
+		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}},
+		Metrics: MetricsRequirements{Sources: []MetricsSourceRequirement{{
+			Name: "application", Service: "api", Port: 8080, Path: "/metrics",
+		}}},
+	}
+	contract, err := PortableContractFromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(contract.Capabilities, []CapabilityRequirement{{Kind: CapabilityMetrics, Name: "application"}}) {
+		t.Fatalf("metrics capabilities = %#v", contract.Capabilities)
+	}
+	if !reflect.DeepEqual(contract.Metrics, m.Metrics.Sources) {
+		t.Fatalf("metrics contract = %#v, want %#v", contract.Metrics, m.Metrics.Sources)
+	}
+}
