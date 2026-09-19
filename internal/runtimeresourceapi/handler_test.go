@@ -16,11 +16,11 @@ import (
 
 type allowAuthorizer struct{}
 
-func (allowAuthorizer) AuthorizeRuntimeOperation(string, string, string) error { return nil }
+func (allowAuthorizer) AuthorizeRuntimeOperation(string, string, string, string) error { return nil }
 
 type denyAuthorizer struct{}
 
-func (denyAuthorizer) AuthorizeRuntimeOperation(string, string, string) error {
+func (denyAuthorizer) AuthorizeRuntimeOperation(string, string, string, string) error {
 	return errors.New("denied")
 }
 
@@ -192,5 +192,45 @@ func TestCrossApplicationResourceAccessFailsClosed(t *testing.T) {
 
 	if executorCalls != 1 {
 		t.Fatalf("cross-application access reached executor: calls=%d want=1", executorCalls)
+	}
+}
+
+
+type serviceAuthorizer struct{}
+
+func (serviceAuthorizer) AuthorizeRuntimeOperation(app, service, capability, operation string) error {
+	if app != "demo" || service != "api" || capability != "metrics/v1" || operation != "runtime.create" {
+		return errors.New("denied")
+	}
+	return nil
+}
+
+func TestRuntimeResourceAuthorizationIsServiceScoped(t *testing.T) {
+	manager, err := runtimeoperation.New(t.TempDir(), map[string]runtimeoperation.Executor{
+		"metrics/v1\x00runtime.create": runtimeoperation.ExecutorFunc(func(context.Context, runtimeoperation.Request) (runtimeoperation.Result, error) {
+			return runtimeoperation.Result{ResourceID: "metrics/application"}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New("demo", manager, serviceAuthorizer{}, testExecutor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	makeRequest := func(service string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", strings.NewReader(`{"capability":"metrics/v1","name":"application"}`))
+		req.Header.Set("Idempotency-Key", "metrics-"+service)
+		req = WithRuntimeService(req, service)
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		return res
+	}
+	if res := makeRequest("worker"); res.Code != http.StatusForbidden {
+		t.Fatalf("worker status = %d body=%s", res.Code, res.Body.String())
+	}
+	if res := makeRequest("api"); res.Code != http.StatusAccepted {
+		t.Fatalf("api status = %d body=%s", res.Code, res.Body.String())
 	}
 }
