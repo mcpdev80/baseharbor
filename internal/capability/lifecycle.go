@@ -47,7 +47,7 @@ type Binding struct {
 	Resource     Resource             `json:"resource"`
 	Workload     string               `json:"workload"`
 	HTTPExposure *HTTPExposureBinding `json:"http_exposure,omitempty"`
-	Security     *SecureBinding        `json:"security,omitempty"`
+	Security     *SecureBinding       `json:"security,omitempty"`
 }
 
 type PlanItem struct {
