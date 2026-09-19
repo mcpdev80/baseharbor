@@ -38,7 +38,7 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 		return Files{}, fmt.Errorf("protect runtime executor state directory: %w", err)
 	}
 	for label, path := range map[string]string{
-		"runtime CA": identity.CA,
+		"runtime CA":           identity.CA,
 		"executor certificate": identity.Cert,
 		"executor private key": identity.Key,
 		"S3 admin credentials": adminCredentialsPath,
