@@ -160,9 +160,11 @@ Bindings mit Secret-Bedarf verwenden stabile Credential-/Secret-Referenzen, die 
 
 ## Ownership
 
-Die v0.4.2 Provider Registry bleibt autoritativ fuer shared, application-scoped und external/BYO Provider sowie fuer BaseHarbor-vs.-external Lifecycle Ownership.
+Die v0.4.2 Provider Registry bleibt autoritativ fuer `shared`, `application` und `external`/BYO Provider sowie fuer BaseHarbor-vs.-external Lifecycle Ownership.
 
-Ein kompatibler externer Provider wird dadurch nicht automatisch von BaseHarbor lifecycle-seitig besessen.
+Die Scopes haben strikte Semantik. In der Compose-Runtime bedeutet `application` eine dedizierte Provider-Instanz als eigener Container/Project mit eigenem Provider-State fuer genau eine Application/Environment; sie wird niemals von einer anderen Application wiederverwendet. `shared` bedeutet eine BaseHarbor-eigene Platform-/Core-Runtime-Provider-Instanz, die lazy erzeugt wird und eine oder mehrere explizit autorisierte Applications bedienen darf. Die Anzahl aktueller Consumer aendert den Scope nicht. `external` bedeutet, dass der Provider-Lifecycle ausserhalb von BaseHarbor bleibt.
+
+Ein kompatibler externer Provider wird dadurch nicht automatisch von BaseHarbor lifecycle-seitig besessen. Das Teilen einer Provider-Instanz bedeutet niemals automatisch geteilte Credentials, Datenzugriffe oder Cross-Application-Netzwerkfreigaben.
 
 ## Conformance
 
