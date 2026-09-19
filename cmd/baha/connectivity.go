@@ -73,6 +73,9 @@ func connectCommand() *cli.Command {
 			if err := rule.Validate(); err != nil {
 				return err
 			}
+			if _, err := application.LoadConnectivityRules(); err != nil {
+				return fmt.Errorf("validate existing connectivity policy before mutation: %w", err)
+			}
 
 			fmt.Fprintln(out, "Connectivity plan")
 			fmt.Fprintf(out, "  source: %s\n", formatConnectivityEndpoint(rule.Source))
