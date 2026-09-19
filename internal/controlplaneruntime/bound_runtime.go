@@ -43,10 +43,10 @@ func buildBoundRuntimeHandler(ctx context.Context, cfg Config, secrets applicati
 
 	if len(authorizer.Capabilities()) > 0 {
 		executor, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
-			URL: cfg.RuntimeExecutorURL,
-			CAFile: cfg.RuntimeExecutorCAFile,
+			URL:      cfg.RuntimeExecutorURL,
+			CAFile:   cfg.RuntimeExecutorCAFile,
 			CertFile: cfg.RuntimeExecutorCertFile,
-			KeyFile: cfg.RuntimeExecutorKeyFile,
+			KeyFile:  cfg.RuntimeExecutorKeyFile,
 		})
 		if err != nil {
 			return nil, err
