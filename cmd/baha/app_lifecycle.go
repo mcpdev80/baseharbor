@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -169,6 +170,14 @@ func appDestroyCommand(store application.Store) *cli.Command {
 						return err
 					}},
 				)
+			}
+			if application.HasObjectStorage(m) {
+				driver := objectstorage.NewDriver(compose, m, files)
+				for _, bucket := range application.ObjectStorageBucketNames(m) {
+					if err := driver.DestroyBucket(ctx, bucket); err != nil {
+						return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
+					}
+				}
 			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
