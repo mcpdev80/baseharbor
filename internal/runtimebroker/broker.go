@@ -16,7 +16,7 @@ import (
 const (
 	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:edge"
 	ServiceName  = "broker"
-	RuntimeURL   = "https://baseharbor-secrets:8443"
+	RuntimeURL   = "https://baseharbor-runtime:8443"
 )
 
 type Files struct {
