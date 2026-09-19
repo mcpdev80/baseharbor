@@ -256,6 +256,21 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
 	}
+	connectivityByService := make(map[string][]ConnectivityAttachment, len(services))
+	connectivityNetworks := map[string]struct{}{}
+	for _, service := range services {
+		attachments, err := ConnectivityAttachmentsForService(m, service)
+		if err != nil {
+			return "", err
+		}
+		if len(attachments) == 0 {
+			continue
+		}
+		connectivityByService[service] = attachments
+		for _, attachment := range attachments {
+			connectivityNetworks[attachment.Network] = struct{}{}
+		}
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, service := range services {
@@ -279,7 +294,8 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		_, metricsSource := metricsServices[service]
 		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
-		if backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed {
+		connectivity := connectivityByService[service]
+		if backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed || len(connectivity) > 0 {
 			b.WriteString("    networks:\n")
 			if backendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
@@ -300,9 +316,18 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				b.WriteString("        aliases:\n")
 				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(service))
 			}
+			for _, attachment := range connectivity {
+				if attachment.Alias == "" {
+					fmt.Fprintf(&b, "      %s: {}\n", attachment.Network)
+					continue
+				}
+				fmt.Fprintf(&b, "      %s:\n", attachment.Network)
+				b.WriteString("        aliases:\n")
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(attachment.Alias))
+			}
 		}
 	}
-	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || len(metricsServices) > 0 || len(exposedServices) > 0 {
+	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || len(metricsServices) > 0 || len(exposedServices) > 0 || len(connectivityNetworks) > 0 {
 		b.WriteString("networks:\n")
 		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
@@ -323,6 +348,16 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
 			fmt.Fprintf(&b, "    name: %s\n", ApplicationExposureNetworkName(m))
+		}
+		if len(connectivityNetworks) > 0 {
+			names := make([]string, 0, len(connectivityNetworks))
+			for name := range connectivityNetworks {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				fmt.Fprintf(&b, "  %s:\n    external: true\n    name: %s\n", name, strconv.Quote(name))
+			}
 		}
 	}
 	return b.String(), nil
