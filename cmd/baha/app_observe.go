@@ -60,7 +60,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 				workloadFound = found
 			}
 			brokerRunning := false
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
 					if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
 						brokerRunning = len(running) > 0
