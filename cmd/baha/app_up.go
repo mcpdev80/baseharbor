@@ -156,10 +156,11 @@ func appUpCommand(store application.Store) *cli.Command {
 			if verifyErr != nil {
 				return fmt.Errorf("application verification failed: %w", verifyErr)
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
 					return err
 				}
+				printRuntimeBrokerDocs(out, files)
 			}
 			printRuntimeReady(out, m)
 			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {

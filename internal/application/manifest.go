@@ -467,11 +467,22 @@ func validateSecretKey(key string) error {
 
 func (m Manifest) YAML() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\nservices:\n", m.Version, m.Name, m.Environment)
-	writeServiceYAML(&b, "postgres", m.Services.Postgres, m.Services.PostgresInstances)
-	writeServiceYAML(&b, "redis", m.Services.Redis, m.Services.RedisInstances)
-	writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
-	fmt.Fprintf(&b, "  secrets:\n    enabled: %t\n", m.Services.Secrets)
+	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\n", m.Version, m.Name, m.Environment)
+	if hasManifestServices(m.Services) {
+		b.WriteString("services:\n")
+		if m.Services.Postgres || len(m.Services.PostgresInstances) > 0 {
+			writeServiceYAML(&b, "postgres", m.Services.Postgres, m.Services.PostgresInstances)
+		}
+		if m.Services.Redis || len(m.Services.RedisInstances) > 0 {
+			writeServiceYAML(&b, "redis", m.Services.Redis, m.Services.RedisInstances)
+		}
+		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
+			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
+		}
+		if m.Services.Secrets {
+			b.WriteString("  secrets:\n    enabled: true\n")
+		}
+	}
 	if len(m.Secrets.Required) > 0 {
 		requirements := append([]SecretRequirement(nil), m.Secrets.Required...)
 		sort.Slice(requirements, func(i, j int) bool { return requirements[i].Name < requirements[j].Name })
@@ -524,6 +535,11 @@ func (m Manifest) YAML() string {
 		}
 	}
 	return b.String()
+}
+
+func hasManifestServices(services Services) bool {
+	return services.Postgres || services.Redis || services.Secrets || services.ObjectStorage ||
+		len(services.PostgresInstances) > 0 || len(services.RedisInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
 func writeObjectStorageYAML(b *strings.Builder, enabled bool, buckets map[string]ServiceInstance) {

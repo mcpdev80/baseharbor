@@ -120,6 +120,16 @@ Findings are classified as:
 
 The JSON form is the canonical machine-readable result intended for reuse by future API/Web UI/Operator adapters. Environment values are discarded during collection; only variable names are retained. Symlinked files and generated/vendor directories are ignored.
 
+### Continuous reconciliation
+
+When an existing `baseharbor.yaml` is present, `baha app inspect` also compares repository evidence with the declared contract. Human and JSON output can distinguish `satisfied`, `new`, `ambiguous` and `stale` capability state.
+
+Current semantic detectors include PostgreSQL/Redis consumption plus S3-compatible usage, likely S3 runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export. Findings include capability direction and may include runtime-operation hints such as `runtime.create`.
+
+Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
+
+Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
+
 ## Repository-first application workflow
 
 The normal developer path can start inside an existing application repository with:

@@ -113,7 +113,7 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 		return false, nil
 	}
 
-	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-secrets", "")
+	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-runtime", "")
 	if err != nil || !brokerOK {
 		return false, err
 	}
@@ -278,8 +278,8 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 	}
 	if server {
-		template.Subject.CommonName = "baseharbor-secrets"
-		template.DNSNames = []string{"baseharbor-secrets"}
+		template.Subject.CommonName = "baseharbor-runtime"
+		template.DNSNames = []string{"baseharbor-runtime", "baseharbor-secrets"}
 		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	} else {
 		uri, err := url.Parse("spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment)

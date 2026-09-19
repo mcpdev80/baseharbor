@@ -1,10 +1,13 @@
 package runtimebroker
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestEnsureImageCreatesDefaultState(t *testing.T) {
@@ -118,5 +121,91 @@ func assertBrokerImageState(t *testing.T, dir, want string) {
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("broker image state mode = %o, want 600", got)
+	}
+}
+
+func TestRuntimeDocsPolicy(t *testing.T) {
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "")
+	for _, tc := range []struct {
+		environment string
+		want        bool
+	}{
+		{environment: "dev", want: true},
+		{environment: "development", want: true},
+		{environment: "test", want: false},
+		{environment: "staging", want: false},
+		{environment: "prod", want: false},
+		{environment: "production", want: false},
+	} {
+		got, err := runtimeDocsEnabled(tc.environment)
+		if err != nil {
+			t.Fatalf("runtimeDocsEnabled(%q): %v", tc.environment, err)
+		}
+		if got != tc.want {
+			t.Fatalf("runtimeDocsEnabled(%q) = %v, want %v", tc.environment, got, tc.want)
+		}
+	}
+
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "true")
+	if got, err := runtimeDocsEnabled("prod"); err != nil || !got {
+		t.Fatalf("explicit production opt-in = %v, %v", got, err)
+	}
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "false")
+	if got, err := runtimeDocsEnabled("dev"); err != nil || got {
+		t.Fatalf("explicit development opt-out = %v, %v", got, err)
+	}
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "not-bool")
+	if _, err := runtimeDocsEnabled("dev"); err == nil {
+		t.Fatal("invalid docs override should fail closed")
+	}
+}
+
+func TestEnsureDocsPortIsStableAndOwnerOnly(t *testing.T) {
+	dir := t.TempDir()
+	files := application.RuntimeFiles{Dir: dir}
+	m := application.New("demo", "dev", false, false, true)
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "")
+
+	first, err := ensureDocsPort(m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" {
+		t.Fatal("development docs port was not allocated")
+	}
+	second, err := ensureDocsPort(m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != first {
+		t.Fatalf("docs port changed: %q -> %q", first, second)
+	}
+	info, err := os.Stat(filepath.Join(dir, "broker-docs-port"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("docs port state mode = %o, want 600", got)
+	}
+	if got := docsURL(first); !strings.HasPrefix(got, "http://127.0.0.1:") {
+		t.Fatalf("docs URL is not loopback-only: %q", got)
+	}
+}
+
+func TestEnsureDocsPortDisabledOutsideDevelopment(t *testing.T) {
+	dir := t.TempDir()
+	files := application.RuntimeFiles{Dir: dir}
+	m := application.New("demo", "prod", false, false, true)
+	t.Setenv("BASEHARBOR_RUNTIME_DOCS_ENABLED", "")
+
+	port, err := ensureDocsPort(m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != "" {
+		t.Fatalf("production docs port = %q, want disabled", port)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "broker-docs-port")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("production docs state should not exist: %v", err)
 	}
 }

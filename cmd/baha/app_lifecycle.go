@@ -23,7 +23,7 @@ func appDownCommand(store application.Store) *cli.Command {
 		Name:    "down",
 		Summary: "Stop an application runtime while preserving persistent data",
 		Usage:   "baha app down [NAME]",
-		Long:    "Stops a repository application workload and its per-application runtime secret broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "down")
 			if err != nil {
@@ -79,11 +79,11 @@ func appDownCommand(store application.Store) *cli.Command {
 			} else if stopped {
 				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 					return err
 				}
-				fmt.Fprintln(out, "[OK] secret-broker     per-application runtime secret broker stopped")
+				fmt.Fprintln(out, "[OK] runtime-broker    per-application Application Runtime Broker stopped")
 			}
 
 			project := application.RuntimeProjectName(m)
@@ -113,7 +113,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application secret broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, fullReset, err := parseDestroyArgs(args)
 			if err != nil {
@@ -208,7 +208,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			if m.Services.Secrets {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
-				fmt.Fprintln(out, "  broker:     per-application mTLS secret broker")
+				fmt.Fprintln(out, "  broker:     per-application mTLS Application Runtime Broker")
 			}
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
@@ -238,7 +238,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 					return err
 				}
-				if m.Services.Secrets {
+				if application.RequiresRuntimeBroker(m) {
 					if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 						return err
 					}

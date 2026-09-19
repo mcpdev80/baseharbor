@@ -38,6 +38,7 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 		return err
 	}
 	fmt.Fprintf(out, "Application repository detected: %s (%s)\n", resolved.Manifest.Name, resolved.Manifest.Environment)
+	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
 
 	if resolved.Manifest.Services.Secrets {
 		if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {

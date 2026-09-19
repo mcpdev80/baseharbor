@@ -26,7 +26,7 @@ baha app backup \
   --output ./mailflow-production.bhbackup
 ```
 
-Vor der Sicherung verifiziert BaseHarbor die Runtime und den OpenBao-Scope, stoppt bei Bedarf Workload und Secret Broker kontrolliert, erfasst den Zustand, schreibt das verschluesselte Archiv und startet die zuvor gestoppten Komponenten wieder.
+Vor der Sicherung verifiziert BaseHarbor die Runtime und den OpenBao-Scope, stoppt bei Bedarf Workload und Application Runtime Broker kontrolliert, erfasst den Zustand, schreibt das verschluesselte Archiv und startet die zuvor gestoppten Komponenten wieder.
 
 Die Recovery-Einheit umfasst:
 

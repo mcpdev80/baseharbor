@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
+- Repository inspection detection for S3-compatible usage/runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export.
+
+### Changed
+
+- Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
+- Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
+- Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
+- Added the versioned OpenAPI 3.1 Runtime Resource API v1 contract for provider-neutral application-time resources, including idempotency, asynchronous operation state and secure binding boundaries.
+- Interactive API documentation policy is now explicit: development on by default; test/staging and production off by default unless platform/operator policy enables it.
+- The per-application runtime component is generalized as the **Application Runtime Broker**: managed OpenBao secrets remain a runtime module, canonical application-bound secret routes move under `/runtime/v1/secrets`, and existing app-qualified routes remain compatibility aliases.
+- Development brokers now serve embedded Swagger/OpenAPI documentation on a stable automatically allocated host-loopback port; no public CDN or public bind is required.
+- The canonical broker DNS endpoint is `baseharbor-runtime`; the legacy `baseharbor-secrets` alias remains available for compatibility.
+
+### Security
+
+- Missing repository evidence never authorizes capability removal.
+- Detected runtime operations such as S3 bucket creation are evidence only and never grant runtime authorization or provision infrastructure.
+
 ## [0.4.7] - 2026-09-19
 
 ### Added

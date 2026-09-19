@@ -23,6 +23,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
 )
 
 var (
@@ -43,6 +44,7 @@ type Config struct {
 	RuntimeOpenBaoURL      string
 	RuntimeCredentialsFile string
 	RuntimeTokenFile       string
+	RuntimeDocsListenAddr  string
 	ShutdownTimeout        time.Duration
 }
 
@@ -89,6 +91,9 @@ func (c Config) Validate() error {
 			return err
 		}
 		return nil
+	}
+	if strings.TrimSpace(c.RuntimeDocsListenAddr) != "" {
+		return errors.New("runtime docs listener requires a bound application runtime")
 	}
 	if strings.TrimSpace(c.RuntimeOpenBaoURL) != "" {
 		if _, err := openbao.NewApplicationRuntimeClient(c.RuntimeOpenBaoURL); err != nil {
@@ -163,7 +168,13 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 		runtimeSecrets = applicationsecret.NewRuntime(store, client)
 	}
-	runtimeHandler, err := applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
+	var runtimeHandler http.Handler
+	var err error
+	if cfg.boundRuntimeEnabled() {
+		runtimeHandler, err = applicationruntimeapi.NewBound(runtimeSecrets, runtimeVerifier, cfg.RuntimeAppName)
+	} else {
+		runtimeHandler, err = applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
+	}
 	if err != nil {
 		return err
 	}
@@ -237,6 +248,29 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		TLSConfig:         tlsConfig,
 	}
 
+	var docsServer *http.Server
+	var docsErrCh <-chan error
+	if addr := strings.TrimSpace(cfg.RuntimeDocsListenAddr); addr != "" {
+		docsServer = &http.Server{
+			Addr:              addr,
+			Handler:           runtimeapidocs.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+		ch := make(chan error, 1)
+		docsErrCh = ch
+		go func() {
+			err := docsServer.ListenAndServe()
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				ch <- err
+				return
+			}
+			ch <- nil
+		}()
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
@@ -247,14 +281,35 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		errCh <- nil
 	}()
 
+	shutdownDocs := func() error {
+		if docsServer == nil {
+			return nil
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
+		defer cancel()
+		return docsServer.Shutdown(shutdownCtx)
+	}
+
 	select {
 	case err := <-errCh:
+		_ = shutdownDocs()
 		return err
+	case err := <-docsErrCh:
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+		if err != nil {
+			return fmt.Errorf("runtime docs server: %w", err)
+		}
+		return nil
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shutdown control-plane server: %w", err)
+		}
+		if err := shutdownDocs(); err != nil {
+			return fmt.Errorf("shutdown runtime docs server: %w", err)
 		}
 		return <-errCh
 	}

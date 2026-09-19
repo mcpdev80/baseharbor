@@ -3,6 +3,7 @@ package runtimebroker
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,12 +16,13 @@ import (
 const (
 	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:edge"
 	ServiceName  = "broker"
-	RuntimeURL   = "https://baseharbor-secrets:8443"
+	RuntimeURL   = "https://baseharbor-runtime:8443"
 )
 
 type Files struct {
 	Compose string
 	Image   string
+	DocsURL string
 }
 
 func ProjectName(m application.Manifest) string {
@@ -29,7 +31,7 @@ func ProjectName(m application.Manifest) string {
 
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
 	if !m.Services.Secrets {
-		return Files{}, errors.New("runtime secret broker requires managed secrets")
+		return Files{}, errors.New("application runtime broker currently requires a managed runtime capability")
 	}
 	canonicalToken, err := application.EnsureRuntimeIdentity(m, appFiles)
 	if err != nil {
@@ -51,7 +53,11 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err != nil {
 		return Files{}, fmt.Errorf("resolve runtime broker compose path: %w", err)
 	}
-	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, image)
+	docsPort, err := ensureDocsPort(m, appFiles)
+	if err != nil {
+		return Files{}, err
+	}
+	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, image, docsPort)
 	if err != nil {
 		return Files{}, err
 	}
@@ -61,7 +67,7 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err := os.Chmod(composePath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime broker compose file: %w", err)
 	}
-	return Files{Compose: composePath, Image: image}, nil
+	return Files{Compose: composePath, Image: image, DocsURL: docsURL(docsPort)}, nil
 }
 
 func Existing(appFiles application.RuntimeFiles) (Files, error) {
@@ -79,7 +85,13 @@ func Existing(appFiles application.RuntimeFiles) (Files, error) {
 	if err != nil {
 		return Files{}, err
 	}
-	return Files{Compose: composePath, Image: strings.TrimSpace(string(data))}, nil
+	docsPort := ""
+	if portData, err := os.ReadFile(filepath.Join(appFiles.Dir, "broker-docs-port")); err == nil {
+		docsPort = strings.TrimSpace(string(portData))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Files{}, err
+	}
+	return Files{Compose: composePath, Image: strings.TrimSpace(string(data)), DocsURL: docsURL(docsPort)}, nil
 }
 
 func projectOwnerOnlyFile(appFiles application.RuntimeFiles, source, targetName, label string) (string, error) {
@@ -161,7 +173,66 @@ func ensureImage(dir string) (string, error) {
 	return image, nil
 }
 
-func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, image string) (string, error) {
+func ensureDocsPort(m application.Manifest, appFiles application.RuntimeFiles) (string, error) {
+	enabled, err := runtimeDocsEnabled(m.Environment)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(appFiles.Dir, "broker-docs-port")
+	if !enabled {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("remove disabled runtime docs port state: %w", err)
+		}
+		return "", nil
+	}
+	if data, err := os.ReadFile(path); err == nil {
+		port := strings.TrimSpace(string(data))
+		if _, err := strconv.Atoi(port); err != nil || port == "" {
+			return "", errors.New("runtime docs port state is invalid")
+		}
+		return port, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read runtime docs port state: %w", err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("allocate runtime docs port: %w", err)
+	}
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	_ = listener.Close()
+	if err := os.WriteFile(path, []byte(port+"\n"), 0o600); err != nil {
+		return "", fmt.Errorf("write runtime docs port state: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", fmt.Errorf("protect runtime docs port state: %w", err)
+	}
+	return port, nil
+}
+
+func runtimeDocsEnabled(environment string) (bool, error) {
+	if raw := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_DOCS_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return false, errors.New("BASEHARBOR_RUNTIME_DOCS_ENABLED must be a boolean")
+		}
+		return value, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "dev", "development":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func docsURL(port string) string {
+	if strings.TrimSpace(port) == "" {
+		return ""
+	}
+	return "http://127.0.0.1:" + strings.TrimSpace(port) + "/"
+}
+
+func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, image, docsPort string) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	paths := map[string]string{
 		"runtime token":            tokenPath,
@@ -207,9 +278,16 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("      BASEHARBOR_API_TLS_CLIENT_CA_FILE: \"/run/baseharbor/identity/ca.pem\"\n")
 	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_APP_NAME: %s\n", strconv.Quote(m.Name))
 	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_ENVIRONMENT: %s\n", strconv.Quote(m.Environment))
+	if docsPort != "" {
+		b.WriteString("      BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR: \"0.0.0.0:8081\"\n")
+	}
 	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"http://openbao:8200\"\n")
 	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE: \"/run/secrets/openbao-credentials\"\n")
 	b.WriteString("      BASEHARBOR_RUNTIME_TOKEN_FILE: \"/run/secrets/runtime-token\"\n")
+	if docsPort != "" {
+		b.WriteString("    ports:\n")
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote("127.0.0.1:"+docsPort+":8081"))
+	}
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - \"/tmp:rw,noexec,nosuid,nodev,size=16m\"\n")
@@ -227,7 +305,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("      - probe-client-cert\n")
 	b.WriteString("      - probe-client-key\n")
 	b.WriteString("    healthcheck:\n")
-	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-secrets:8443/readyz\"]\n")
+	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
 	b.WriteString("      interval: 5s\n")
 	b.WriteString("      timeout: 5s\n")
 	b.WriteString("      retries: 12\n")
@@ -235,6 +313,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("    networks:\n")
 	b.WriteString("      backend:\n")
 	b.WriteString("        aliases:\n")
+	b.WriteString("          - baseharbor-runtime\n")
 	b.WriteString("          - baseharbor-secrets\n")
 	b.WriteString("      secrets: {}\n")
 	b.WriteString("\nsecrets:\n")

@@ -465,3 +465,35 @@ The current v1 binding uses OTLP HTTP/protobuf export. BaseHarbor may satisfy it
 An external destination can be supplied by deployment environment using `BASEHARBOR_OTLP_ENDPOINT`. Optional sensitive OTLP headers use `BASEHARBOR_OTLP_HEADERS` and are injected only at the trusted workload/provider boundary; they are not written into `baseharbor.yaml`.
 
 Requesting OTLP transport alone never provisions Prometheus, Loki, Tempo or Grafana.
+
+## Evolving application intent and sparse configuration
+
+The repository manifest is persistent desired state, not a one-time install answer sheet. BaseHarbor expects applications to evolve: a project may begin with PostgreSQL, add Redis later, then S3, metrics or telemetry.
+
+Canonical writers therefore use **sparse configuration**. Optional capabilities that are not requested are omitted rather than serialized as explicit negative flags. Existing Manifest v1 input containing `enabled: false` remains valid for compatibility.
+
+For example, an application that currently needs only PostgreSQL should serialize only that requirement:
+
+```yaml
+version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+```
+
+Repository inspection is repeatable and advisory. `baha app inspect` compares current repository evidence with declared intent and reports:
+
+- `satisfied` — declared capability with supporting evidence;
+- `new` — strong evidence for an undeclared capability;
+- `ambiguous` — weaker evidence requiring developer judgment;
+- `stale` — declared intent not rediscovered in the current scan.
+
+`stale` is never an automatic removal instruction. Explicit contract state remains authoritative.
+
+Inspection can also describe capability direction and runtime-operation hints. Examples include consuming SQL/S3, providing OpenMetrics through `/metrics`, exporting OTLP, or source evidence that an application may need `object-storage.s3` `runtime.create`. Runtime-operation detection is evidence only; it never grants runtime authorization or provisions infrastructure.
+
+The inspection model may therefore be richer than `baseharbor.yaml`. Evidence paths, confidence and inferred runtime operations belong to the inspection result unless they become true required application intent.
+

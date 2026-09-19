@@ -210,3 +210,51 @@ OTEL_RESOURCE_ATTRIBUTES
 Managed-Collector-Platzierung ist lazy/shared. Externe OTLP-Ziele verwenden dieselbe Capability und bleiben lifecycle-seitig extern owned. BaseHarbor verifiziert einen echten OTLP-HTTP/Protobuf-Export statt nur einen laufenden Collector-Prozess.
 
 Die gemeinsame Resource Identity verwendet Standard-OpenTelemetry-Attribute fuer Service und Environment sowie BaseHarbor-Attribute fuer Application, logische Telemetrie-Ressource und Provider. OTLP-Transport startet nicht implizit Prometheus, Loki, Tempo, Grafana oder andere Observability-Produkte.
+
+## Fundament fuer kontinuierliche Application-Evolution
+
+BaseHarbor behandelt Application Intent als dauerhaft abgleichbaren Desired State.
+
+```text
+Source Repository
+      |
+      v
+read-only Inspection
+      |
+      v
+typisierte Capability-Evidenz
+      |
+      v
+Vergleich mit explizitem Contract
+      |
+      +-- satisfied
+      +-- new
+      +-- ambiguous
+      +-- stale (nur Information)
+      |
+      v
+minimales explizites Contract-Delta
+```
+
+Das Modell deckt vier Lebensphasen mit derselben Capability-Architektur ab:
+
+1. **Bootstrap** — neues Repository verstehen und initialen Intent festlegen;
+2. **Evolution** — neue Capability-Anforderungen erkennen, wenn sich der Code weiterentwickelt;
+3. **Runtime** — explizit autorisierte Application-Time-Resource-Operationen erlauben, wenn die Capability sie unterstuetzt;
+4. **Retirement** — Capability Intent nur durch eine ausdrueckliche Entwickler-/Operator-Entscheidung entfernen.
+
+Capability-Evidenz traegt eine Richtung (`consume`, `provide`, `export`, `receive`, `provision`) und kann Runtime-Hinweise wie `runtime.create` enthalten. Detection ist niemals Authorization.
+
+Deployment-Time- und Application-Time-Ressourcen verwenden dieselbe logische Capability-/Provider-Grenze. Eine spaetere Anforderung der laufenden Anwendung, S3-Ressourcen anzulegen, wird deshalb ueber `object-storage.s3` aufgeloest und fuehrt nicht zu einem separaten SeaweedFS-, AWS- oder Ceph-Lifecycle.
+
+Repository Inspection liefert bereits erste konkrete Evidenz fuer dieses Modell:
+
+- PostgreSQL- und Redis/Valkey-Konsum;
+- S3-kompatiblen Object-Storage-Konsum und moegliche Runtime-Bucket-Erzeugung;
+- von der Anwendung bereitgestelltes OpenMetrics `/metrics`;
+- OTLP-Export.
+
+Repository-first `baha up` verwendet denselben Reconciliation-Pfad und meldet neu erkannte/unklare Capability-Aenderungen sowie Runtime-Operations-Hinweise vor der normalen Convergence, ohne den Contract zu veraendern.
+
+Dieses Fundament implementiert bewusst noch keine grosse oeffentliche Runtime-Resource-API. Es definiert die Semantik, die eine solche API spaeter wiederverwenden muss. Siehe ADR 0010.
+

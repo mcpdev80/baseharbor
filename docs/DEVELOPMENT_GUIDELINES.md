@@ -426,6 +426,29 @@ Rules:
 
 See `docs/provider-integration-contract.md` and `spec/capabilities/`.
 
+## 26. Application intent evolves continuously
+
+BaseHarbor application intent is sparse desired state, not a one-time installation questionnaire.
+
+Rules:
+
+- portable configuration declares only required capabilities and non-default values; do not emit explicit negative capability flags merely to enumerate what is disabled;
+- repository inspection must be safe to run repeatedly as an application evolves;
+- inspection compares repository evidence with explicit contract state and reports minimal deltas rather than regenerating or overwriting the whole contract;
+- newly detected capability requirements are additive suggestions until explicitly accepted;
+- failure to rediscover a declared capability is never authorization to remove, disable or destroy it;
+- explicit application intent remains authoritative over heuristic source-code detection;
+- capability evidence should describe application direction such as consume, provide, export, receive or runtime-provision rather than provider products;
+- detection of runtime operations such as S3 bucket creation is evidence only; authorization must be explicit and enforced at the runtime capability boundary;
+- deployment-time and application-time resources use the same logical capability/provider model rather than separate product-specific lifecycles;
+- the inspection model may be richer than committed YAML. Keep confidence, evidence paths and runtime-operation hints out of portable configuration unless they are truly required application intent.
+
+When a capability can be represented safely by absence, absence is the canonical disabled/default form. Existing compatible input with explicit false values may continue to parse, but new writers should prefer sparse output.
+
+OpenAPI is the canonical contract for application-facing Runtime Resource API endpoints. Interactive Swagger/Scalar-style documentation is enabled by default only for development; test/staging and production require explicit platform/operator opt-in. This exposure policy must stay out of portable application intent and must never weaken authentication or authorization.
+
+See ADR 0010.
+
 ## GitHub Actions execution policy
 
 GitHub Actions are intentionally **manual by default** to avoid unnecessary CI consumption during active development.

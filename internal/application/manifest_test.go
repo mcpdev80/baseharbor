@@ -199,3 +199,36 @@ func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 		t.Fatalf("expected invalid visibility rejection, got %v", err)
 	}
 }
+
+func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
+	m := New("demo", "dev", true, false, false)
+	yaml := m.YAML()
+	if !strings.Contains(yaml, "  postgres:\n    enabled: true\n") {
+		t.Fatalf("enabled PostgreSQL missing from sparse YAML:\n%s", yaml)
+	}
+	for _, unwanted := range []string{"redis:", "secrets:", "object_storage:", "enabled: false"} {
+		if strings.Contains(yaml, unwanted) {
+			t.Fatalf("sparse YAML contains disabled capability %q:\n%s", unwanted, yaml)
+		}
+	}
+
+	legacy := `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+  redis:
+    enabled: false
+  secrets:
+    enabled: false
+`
+	parsed, err := ParseYAML(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.Services.Postgres || parsed.Services.Redis || parsed.Services.Secrets {
+		t.Fatalf("legacy explicit false flags changed semantics: %#v", parsed.Services)
+	}
+}

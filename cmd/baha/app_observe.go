@@ -60,7 +60,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 				workloadFound = found
 			}
 			brokerRunning := false
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
 					if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
 						brokerRunning = len(running) > 0
@@ -164,10 +164,11 @@ func appStatusCommand(store application.Store) *cli.Command {
 				brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
 				brokerCancel()
 				if brokerErr != nil {
-					fmt.Fprintln(out, "[FAIL] secret-broker     per-application mTLS/OpenBao readiness failed")
+					fmt.Fprintln(out, "[FAIL] runtime-broker    per-application mTLS/OpenBao readiness failed")
 					ready = false
 				} else {
-					fmt.Fprintln(out, "[OK] secret-broker     mTLS identity and app-scoped OpenBao readiness succeeded")
+					fmt.Fprintln(out, "[OK] runtime-broker    mTLS identity and app-scoped OpenBao readiness succeeded")
+					printRuntimeBrokerDocs(out, files)
 				}
 			}
 
@@ -360,7 +361,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 					}},
-					preflight.Check{Name: "runtime secret broker", Run: func(ctx context.Context) error {
+					preflight.Check{Name: "application runtime broker", Run: func(ctx context.Context) error {
 						if runtimeErr != nil {
 							return runtimeErr
 						}

@@ -299,3 +299,51 @@ OTEL_RESOURCE_ATTRIBUTES
 Managed Collector placement is lazy/shared. External OTLP destinations use the same capability and remain externally lifecycle-owned. BaseHarbor verifies a real OTLP HTTP/protobuf export rather than only checking that a collector process is running.
 
 Common resource identity includes standard OpenTelemetry service/environment attributes plus BaseHarbor application, logical telemetry resource and provider attribution. OTLP transport does not imply Prometheus, Loki, Tempo, Grafana or another observability backend; those remain independent platform/provider concerns in later releases.
+
+## Continuous application evolution foundation
+
+BaseHarbor treats application intent as a continuously reconcilable desired state.
+
+```text
+source repository
+      |
+      v
+read-only inspection
+      |
+      v
+typed capability evidence
+      |
+      v
+compare with explicit contract
+      |
+      +-- satisfied
+      +-- new
+      +-- ambiguous
+      +-- stale (informational only)
+      |
+      v
+minimal explicit contract delta
+```
+
+The model supports four lifecycle moments with one capability architecture:
+
+1. **bootstrap** — understand a new repository and establish initial intent;
+2. **evolution** — detect capability additions as the codebase changes;
+3. **runtime** — allow explicitly authorized application-time resource operations where a capability supports them;
+4. **retirement** — remove capability intent only through an explicit developer/operator decision.
+
+Capability evidence includes direction (`consume`, `provide`, `export`, `receive`, `provision`) and may include runtime-operation hints such as `runtime.create`. Detection is never authorization.
+
+Deployment-time and application-time resources use the same logical capability/provider boundary. A future application request to create an S3 resource therefore resolves through `object-storage.s3`; it does not introduce a SeaweedFS-, AWS- or Ceph-specific lifecycle.
+
+Repository inspection already provides the first concrete evidence for this model:
+
+- PostgreSQL and Redis/Valkey consumption;
+- S3-compatible object-storage consumption and likely runtime bucket creation;
+- application-provided OpenMetrics `/metrics`;
+- OTLP export.
+
+Repository-first `baha up` reuses this reconciliation path and reports newly detected/ambiguous capability changes and runtime-operation hints before normal convergence, without mutating the contract.
+
+This foundation intentionally does not add the public runtime resource API yet. It defines the semantics that such an API must reuse. See ADR 0010.
+

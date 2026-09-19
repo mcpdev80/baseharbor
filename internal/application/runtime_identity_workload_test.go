@@ -47,7 +47,7 @@ func TestRuntimeIdentityWorkloadOverrideDefaultsSecureAPIURLForConsumer(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_API_URL: \"https://baseharbor-secrets:8443\"") {
+	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_API_URL: \"https://baseharbor-runtime:8443\"") {
 		t.Fatalf("override does not use automatic broker URL:\n%s", data)
 	}
 

@@ -26,7 +26,7 @@ baha app backup \
   --output ./mailflow-production.bhbackup
 ```
 
-Before capture, BaseHarbor verifies the managed runtime and, when enabled, the application OpenBao scope. It quiesces the repository workload and application secret broker, captures state, writes the encrypted archive and then restarts the components it stopped.
+Before capture, BaseHarbor verifies the managed runtime and, when enabled, the application OpenBao scope. It quiesces the repository workload and Application Runtime Broker, captures state, writes the encrypted archive and then restarts the components it stopped.
 
 The encrypted recovery unit contains desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope when managed secrets are enabled.
 

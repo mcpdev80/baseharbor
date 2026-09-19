@@ -1,23 +1,9 @@
 # Runtime secret broker
 
-Applications that use BaseHarbor dynamic managed secrets receive a per-application broker automatically.
+This page documents the legacy name of the per-application runtime component.
 
-The application does not configure broker topology or PKI. BaseHarbor injects:
+The component is now called the **Application Runtime Broker** because managed secrets are only one runtime capability. The broker also provides the architectural boundary for runtime resources, asynchronous operations and future application-time capabilities.
 
-```text
-BASEHARBOR_RUNTIME_API_URL=https://baseharbor-secrets:8443
-BASEHARBOR_RUNTIME_TOKEN_FILE=/run/secrets/baseharbor-runtime-token
-BASEHARBOR_RUNTIME_CA_FILE=/run/secrets/baseharbor-runtime-ca
-BASEHARBOR_RUNTIME_CLIENT_CERT_FILE=/run/secrets/baseharbor-runtime-client-cert
-BASEHARBOR_RUNTIME_CLIENT_KEY_FILE=/run/secrets/baseharbor-runtime-client-key
-```
+See [Application Runtime Broker](application-runtime-broker.md) for the current contract.
 
-The application uses ordinary HTTPS with the supplied client certificate, client key and CA file. Requests also carry the app-scoped runtime bearer token. No `baha login`, human OIDC token, Docker socket, OpenBao manager credential or mandatory BaseHarbor SDK is required.
-
-The broker accepts only the application identity encoded as:
-
-```text
-spiffe://baseharbor/apps/<app>/<environment>
-```
-
-and its OpenBao identity is limited to that application's managed secret namespace.
+Existing secret endpoints and runtime identity behavior remain compatible.

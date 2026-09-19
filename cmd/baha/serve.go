@@ -45,6 +45,7 @@ func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 		RuntimeOpenBaoURL:      os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_URL"),
 		RuntimeCredentialsFile: os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE"),
 		RuntimeTokenFile:       os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE"),
+		RuntimeDocsListenAddr:  os.Getenv("BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR"),
 	}, nil
 }
 

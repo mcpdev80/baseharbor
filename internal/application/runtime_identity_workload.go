@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DefaultRuntimeAPIURL                   = "https://baseharbor-secrets:8443"
+	DefaultRuntimeAPIURL                   = "https://baseharbor-runtime:8443"
 	RuntimeIdentityContainerTokenPath      = "/run/secrets/baseharbor-runtime-token"
 	RuntimeIdentityContainerCAPath         = "/run/secrets/baseharbor-runtime-ca"
 	RuntimeIdentityContainerClientCertPath = "/run/secrets/baseharbor-runtime-client-cert"
@@ -41,6 +41,14 @@ func (p WorkloadBindingPlan) Empty() bool {
 
 func RequiredSecretUsesFileBinding(name string) bool {
 	return strings.HasSuffix(name, "_FILE")
+}
+
+// RequiresRuntimeBroker reports whether the application currently needs the
+// per-application Application Runtime Broker. Keep broker lifecycle decisions
+// centralized here so new authorized runtime capabilities can extend the
+// requirement without duplicating lifecycle conditionals throughout the CLI.
+func RequiresRuntimeBroker(m Manifest) bool {
+	return m.Services.Secrets
 }
 
 func HasRequiredFileSecrets(m Manifest) bool {

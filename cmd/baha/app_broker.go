@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -24,22 +25,22 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 	}
 	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles)
 	if err != nil {
-		return fmt.Errorf("materialize runtime secret broker: %w", err)
+		return fmt.Errorf("materialize application runtime broker: %w", err)
 	}
 	project := runtimebroker.ProjectName(m)
 	if err := compose.ConfigProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
-		return fmt.Errorf("validate runtime secret broker: %w", err)
+		return fmt.Errorf("validate application runtime broker: %w", err)
 	}
 	if identityChanged {
 		// Runtime identity files are installed atomically. Existing containers can
 		// otherwise retain the old bind-mounted inode, so an actual rotation must
 		// recreate the broker before readiness is evaluated.
 		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
-			return fmt.Errorf("restart runtime secret broker after mTLS rotation: %w", err)
+			return fmt.Errorf("restart application runtime broker after mTLS rotation: %w", err)
 		}
 	}
 	if err := compose.UpProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
-		return fmt.Errorf("start runtime secret broker: %w", err)
+		return fmt.Errorf("start application runtime broker: %w", err)
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -54,24 +55,24 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 		case <-time.After(time.Second):
 		}
 	}
-	return fmt.Errorf("runtime secret broker readiness failed: %w", verifyErr)
+	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
 func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	brokerFiles, err := runtimebroker.Existing(files)
 	if err != nil {
-		return fmt.Errorf("runtime secret broker state is missing: %w", err)
+		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	project := runtimebroker.ProjectName(m)
 	services, err := compose.RunningServicesProject(ctx, project, brokerFiles.Compose, files.Env)
 	if err != nil {
-		return fmt.Errorf("inspect runtime secret broker: %w", err)
+		return fmt.Errorf("inspect application runtime broker: %w", err)
 	}
 	if len(services) != 1 || services[0] != runtimebroker.ServiceName {
-		return errors.New("runtime secret broker is not running")
+		return errors.New("application runtime broker is not running")
 	}
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--fail", "--silent", "--show-error",
@@ -81,31 +82,39 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 		runtimebroker.RuntimeURL+"/readyz",
 	)
 	if err != nil {
-		return fmt.Errorf("runtime secret broker mTLS readiness probe failed: %w", err)
+		return fmt.Errorf("application runtime broker mTLS readiness probe failed: %w", err)
 	}
 	if !strings.Contains(out, `"status":"ready"`) {
-		return errors.New("runtime secret broker readiness response is invalid")
+		return errors.New("application runtime broker readiness response is invalid")
 	}
 	return nil
 }
 
+func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
+	brokerFiles, err := runtimebroker.Existing(files)
+	if err != nil || strings.TrimSpace(brokerFiles.DocsURL) == "" {
+		return
+	}
+	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", brokerFiles.DocsURL)
+}
+
 func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	brokerFiles, err := runtimebroker.Existing(files)
 	if err != nil {
-		return fmt.Errorf("runtime secret broker state is missing: %w", err)
+		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	if err := compose.DownProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); err != nil {
-		return fmt.Errorf("stop runtime secret broker: %w", err)
+		return fmt.Errorf("stop application runtime broker: %w", err)
 	}
 	services, err := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env)
 	if err != nil {
-		return fmt.Errorf("verify runtime secret broker stop: %w", err)
+		return fmt.Errorf("verify application runtime broker stop: %w", err)
 	}
 	if len(services) != 0 {
-		return errors.New("verify runtime secret broker stop: broker is still running")
+		return errors.New("verify application runtime broker stop: broker is still running")
 	}
 	return nil
 }
