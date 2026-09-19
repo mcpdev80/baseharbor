@@ -59,17 +59,6 @@ func appStatusCommand(store application.Store) *cli.Command {
 				workloadFound = found
 			}
 			brokerRunning := false
-			if application.HasObjectStorage(m) {
-				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-				err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
-				cancel()
-				if err != nil {
-					fmt.Fprintf(out, "[FAIL] object-storage    %v\n", err)
-					ready = false
-				} else {
-					fmt.Fprintf(out, "[OK] object-storage    %d bucket(s) passed authenticated S3 Put/Get\n", len(application.ObjectStorageBucketNames(m)))
-				}
-			}
 			if m.Services.Secrets {
 				if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
 					if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
@@ -84,6 +73,17 @@ func appStatusCommand(store application.Store) *cli.Command {
 			}
 
 			ready := true
+			if application.HasObjectStorage(m) {
+				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
+				cancel()
+				if err != nil {
+					fmt.Fprintf(out, "[FAIL] object-storage    %v\n", err)
+					ready = false
+				} else {
+					fmt.Fprintf(out, "[OK] object-storage    %d bucket(s) passed authenticated S3 Put/Get\n", len(application.ObjectStorageBucketNames(m)))
+				}
+			}
 			if m.Services.Postgres {
 				if !containsString(services, "postgres") {
 					fmt.Fprintln(out, "[FAIL] postgres          not running")
