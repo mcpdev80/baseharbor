@@ -276,11 +276,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
 			}
-			metricsPolicy, err := application.MetricsPolicy(m)
+			metricsPlacement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
 			if err != nil {
 				return err
 			}
-			switch metricsPolicy.ProviderScope {
+			switch metricsPlacement.Scope {
 			case capability.ScopeShared:
 				if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
 					return fmt.Errorf("remove application metrics targets: %w", err)
