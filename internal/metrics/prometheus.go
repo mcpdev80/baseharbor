@@ -262,12 +262,15 @@ func DesiredTargetFiles(m application.Manifest) map[string]struct{} {
 	return result
 }
 
-func EnsureProviderFiles() (ProviderFiles, error) {
-	dataDir, err := bhruntime.DataDir("")
+func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
+	placement, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "prometheus")
+	if placement.Scope == capability.ScopeExternal {
+		return ProviderFiles{}, errors.New("external metrics provider has no BaseHarbor-owned provider files")
+	}
+	dir := placement.Dir
 	targetsDir := filepath.Join(dir, "targets")
 	if err := os.MkdirAll(targetsDir, 0o755); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create Prometheus provider state: %w", err)
@@ -305,18 +308,21 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML()), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
 }
 
-func ExistingProviderFiles() (ProviderFiles, error) {
-	dataDir, err := bhruntime.DataDir("")
+func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
+	placement, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "prometheus")
+	if placement.Scope == capability.ScopeExternal {
+		return ProviderFiles{}, os.ErrNotExist
+	}
+	dir := placement.Dir
 	files := ProviderFiles{
 		Dir:        dir,
 		Compose:    filepath.Join(dir, "compose.yaml"),
@@ -332,18 +338,56 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 	return files, nil
 }
 
-func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
-	files, err := ExistingProviderFiles(d.app)
+func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
+	placement, err := PlacementFor(m)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return nil
+	}
+	files, err := ExistingProviderFiles(m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if err := runtime.DestroyProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.DestroyProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	return os.RemoveAll(files.Dir)
+}
+
+func SharedProbeManifest() application.Manifest {
+	return application.Manifest{Name: "shared-probe", Environment: "dev"}
+}
+
+func ExistingSharedProviderFiles() (ProviderFiles, error) {
+	m := SharedProbeManifest()
+	placement, err := PlacementFor(m)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if placement.Scope != capability.ScopeShared {
+		return ProviderFiles{}, os.ErrNotExist
+	}
+	dir := placement.Dir
+	files := ProviderFiles{
+		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
+		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
+	}
+	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
+		if _, err := os.Stat(path); err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+	return files, nil
+}
+
+func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
+	m := SharedProbeManifest()
+	return DestroyProvider(ctx, runtime, m)
 }
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
@@ -377,8 +421,8 @@ func targetFileName(m application.Manifest, source string) string {
 	return targetFilePrefix(m) + source + ".json"
 }
 
-func providerComposeYAML() string {
-	return `services:
+func providerComposeYAML(placement Placement) string {
+	return fmt.Sprintf(`services:
   prometheus:
     image: prom/prometheus:v3.14.0
     restart: unless-stopped
@@ -404,12 +448,12 @@ func providerComposeYAML() string {
 
 networks:
   metrics:
-    name: baseharbor-metrics
+    name: %s
 
 volumes:
   prometheus-data:
-    name: baseharbor-prometheus-data
-`
+    name: %s
+`, placement.Network, placement.Volume)
 }
 
 func prometheusConfig() string {
