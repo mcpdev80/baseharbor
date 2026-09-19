@@ -118,7 +118,7 @@ networks:
 		t.Fatalf("unexpected route visibility %#v", firstState.Routes[0])
 	}
 	exposureNetwork := bhruntime.ProjectResource{Kind: "network", Name: application.ApplicationExposureNetworkName(m)}
-	exists, err := compose.InspectProjectResource(ctx, exposure.ProjectName(m), exposureNetwork)
+	exists, err := compose.InspectProjectResource(ctx, application.WorkloadProjectName(m), exposureNetwork)
 	if err != nil {
 		t.Fatalf("inspect managed exposure network: %v", err)
 	}
@@ -204,7 +204,7 @@ networks:
 	if _, err := os.Stat(providerFiles.Dir); !os.IsNotExist(err) {
 		t.Fatalf("managed exposure provider state remains after destroy: %v", err)
 	}
-	exists, err = compose.InspectProjectResource(ctx, exposure.ProjectName(m), exposureNetwork)
+	exists, err = compose.InspectProjectResource(ctx, application.WorkloadProjectName(m), exposureNetwork)
 	if err != nil {
 		t.Fatalf("inspect exposure network after destroy: %v", err)
 	}
@@ -295,12 +295,16 @@ exposure:
 		t.Fatalf("failed exposure left provider services running: %#v", providerRunning)
 	}
 	network := bhruntime.ProjectResource{Kind: "network", Name: application.ApplicationExposureNetworkName(m)}
-	exists, inspectErr := compose.InspectProjectResource(ctx, project, network)
+	exists, inspectErr := compose.InspectProjectResource(ctx, application.WorkloadProjectName(m), network)
 	if inspectErr != nil {
-		t.Fatalf("inspect failed exposure network: %v", inspectErr)
+		t.Fatalf("inspect workload-owned exposure network after provider failure: %v", inspectErr)
 	}
-	if exists {
-		t.Fatalf("failed exposure left BaseHarbor-owned network %s", network.Name)
+	if !exists {
+		t.Fatalf("workload-owned exposure network %s unexpectedly disappeared while workload remains materialized", network.Name)
+	}
+	providerNetwork := bhruntime.ProjectResource{Kind: "network", Name: network.Name}
+	if _, providerInspectErr := compose.InspectProjectResource(ctx, project, providerNetwork); providerInspectErr == nil {
+		t.Fatal("Caddy provider unexpectedly owns the workload exposure network")
 	}
 
 	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
