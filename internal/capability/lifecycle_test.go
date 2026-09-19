@@ -231,7 +231,7 @@ func TestBuildPlanRejectsInvalidSecureBindingBeforeProviderPreflight(t *testing.
 }
 
 func TestBuildPlanMetricsBindingIsTypedAndProviderNeutral(t *testing.T) {
-	driver := &fakeDriver{provider: Prometheus}
+	driver := &testDriver{provider: Prometheus}
 	plan, err := BuildPlan("demo", []Request{{
 		Requirement: Requirement{Kind: Metrics, Name: "application"},
 		Workload:    "service/api",
