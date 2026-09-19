@@ -470,7 +470,10 @@ func composeYAML(state State, files Files) string {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
 		}
+		b.WriteString("    networks:\n      application: {}\n")
 	}
+	b.WriteString("networks:\n  application:\n    external: true\n")
+	fmt.Fprintf(&b, "    name: %s\n", state.Network)
 	return b.String()
 }
 
