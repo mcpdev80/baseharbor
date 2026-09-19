@@ -153,3 +153,40 @@ func TestCapabilityBindingsAttachSecureMetadataToManagedSecrets(t *testing.T) {
 		t.Fatalf("secrets = %#v", binding.Security.Secrets)
 	}
 }
+
+
+func TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "false")
+	m := New("demo", "production", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	bindings, err := CapabilityBindings(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if binding.Resource.Kind == CapabilityMetrics || binding.Resource.Provider == capability.ProviderPrometheus {
+			t.Fatalf("runtime metadata claimed disabled Prometheus binding: %#v", binding)
+		}
+	}
+
+	t.Setenv(MetricsEnabledEnv, "true")
+	bindings, err = CapabilityBindings(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, binding := range bindings {
+		if binding.Resource.Kind == CapabilityMetrics {
+			found = true
+			if binding.Resource.Provider != capability.ProviderPrometheus || binding.Metrics == nil {
+				t.Fatalf("enabled metrics binding = %#v", binding)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("enabled metrics binding missing")
+	}
+}
