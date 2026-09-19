@@ -9,13 +9,13 @@ import (
 // logical capability resource to one workload. Secret material itself is never
 // represented here; only stable references may cross this boundary.
 type SecureBinding struct {
-	Identity       *WorkloadIdentityBinding   `json:"identity,omitempty"`
-	Credentials    []CredentialReference      `json:"credentials,omitempty"`
-	Trust          []TrustMaterialReference   `json:"trust,omitempty"`
-	Authorization  []AuthorizationMetadata    `json:"authorization,omitempty"`
-	Secrets        []SecretReference          `json:"secrets,omitempty"`
-	Lifecycle      SecurityLifecycleSupport   `json:"lifecycle"`
-	Diagnostics    []Diagnostic               `json:"diagnostics,omitempty"`
+	Identity      *WorkloadIdentityBinding `json:"identity,omitempty"`
+	Credentials   []CredentialReference    `json:"credentials,omitempty"`
+	Trust         []TrustMaterialReference `json:"trust,omitempty"`
+	Authorization []AuthorizationMetadata  `json:"authorization,omitempty"`
+	Secrets       []SecretReference        `json:"secrets,omitempty"`
+	Lifecycle     SecurityLifecycleSupport `json:"lifecycle"`
+	Diagnostics   []Diagnostic             `json:"diagnostics,omitempty"`
 }
 
 type WorkloadIdentityBinding struct {
