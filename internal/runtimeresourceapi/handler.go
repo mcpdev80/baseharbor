@@ -89,6 +89,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
 		Application:    h.app,
+		CallerService: RuntimeService(r.Context()),
 		Capability:     request.Capability,
 		Operation:      "runtime.create",
 		ResourceName:   request.Name,
@@ -117,6 +118,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
 		Application:  h.app,
+		CallerService: RuntimeService(r.Context()),
 		Capability:   request.Capability,
 		Operation:    "runtime.get",
 		ResourceName: request.ResourceName,
@@ -140,6 +142,7 @@ func (h *Handler) binding(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
 		Application:  h.app,
+		CallerService: RuntimeService(r.Context()),
 		Capability:   request.Capability,
 		Operation:    "runtime.get",
 		ResourceName: request.ResourceName,
