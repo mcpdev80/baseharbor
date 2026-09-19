@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 func appStatusCommand(store application.Store) *cli.Command {
@@ -82,6 +83,17 @@ func appStatusCommand(store application.Store) *cli.Command {
 					ready = false
 				} else {
 					fmt.Fprintf(out, "[OK] object-storage    %d bucket(s) passed authenticated S3 Put/Get\n", len(application.ObjectStorageBucketNames(m)))
+				}
+			}
+			if application.HasOTLPTelemetry(m) {
+				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				err := telemetry.VerifyApplication(checkCtx, m, files)
+				cancel()
+				if err != nil {
+					fmt.Fprintf(out, "[FAIL] telemetry/otlp    %v\n", err)
+					ready = false
+				} else {
+					fmt.Fprintln(out, "[OK] telemetry/otlp    real OTLP HTTP/protobuf export accepted")
 				}
 			}
 			if m.Services.Postgres {
@@ -289,6 +301,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 						return runtimeErr
 					}
 					return objectstorage.VerifyApplicationBuckets(ctx, compose, m, files)
+				}})
+			}
+			if application.HasOTLPTelemetry(m) {
+				checks = append(checks, preflight.Check{Name: "OTLP telemetry export", Run: func(ctx context.Context) error {
+					if runtimeErr != nil {
+						return runtimeErr
+					}
+					return telemetry.VerifyApplication(ctx, m, files)
 				}})
 			}
 			if m.Services.Postgres {
