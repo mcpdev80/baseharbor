@@ -154,3 +154,38 @@ func TestParserRejectsUnknownFields(t *testing.T) {
 		t.Fatal("expected unknown field to fail")
 	}
 }
+
+func TestManifestHTTPExposureRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "web")
+	m = WithHTTPExposure(m, "public", "web", 8080, "http")
+
+	got, err := ParseYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Exposures, []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}) {
+		t.Fatalf("unexpected exposures: %#v", got.Exposures)
+	}
+	for _, want := range []string{"exposure:\n", "  http:\n", "    - name: public\n", "      service: web\n", "      port: 8080\n", "      protocol: http\n"} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("exposure YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m.Workload = WorkloadConfig{Compose: "compose.yaml"}
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.services") {
+		t.Fatalf("expected deterministic workload service validation, got %v", err)
+	}
+
+	m.Workload.Services = []string{"api"}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "not selected") {
+		t.Fatalf("expected target selection validation, got %v", err)
+	}
+}
