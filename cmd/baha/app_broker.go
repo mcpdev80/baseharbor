@@ -109,6 +109,23 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, compose bhruntim
 	return nil
 }
 
+func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var lastErr error
+	for {
+		lastErr = verifyRuntimeBrokerRunning(waitCtx, compose, m, files)
+		if lastErr == nil {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("application runtime broker did not become ready within %s: %w", timeout, lastErr)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
 func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
