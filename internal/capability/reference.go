@@ -55,7 +55,7 @@ var (
 	PrometheusIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Prometheus,
 		Capabilities: []SpecificationID{MetricsV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
