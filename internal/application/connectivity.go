@@ -154,6 +154,27 @@ func RemoveConnectivityRule(rule ConnectivityRule) error {
 	return saveConnectivityRules(filtered)
 }
 
+func CheckApplicationConnectivityReleased(m Manifest) error {
+	rules, err := LoadConnectivityRules()
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if endpointMatchesManifest(rule.Source, m) || endpointMatchesManifest(rule.Target, m) {
+			return fmt.Errorf("application %s/%s still has connectivity policy %s/%s -> %s/%s; disconnect it before destroy",
+				m.Name, m.Environment,
+				rule.Source.Application, rule.Source.Service,
+				rule.Target.Application, rule.Target.Service,
+			)
+		}
+	}
+	return nil
+}
+
+func endpointMatchesManifest(endpoint ConnectivityEndpoint, m Manifest) bool {
+	return endpoint.Application == m.Name && endpoint.Environment == m.Environment
+}
+
 func ConnectivityAttachmentsForService(m Manifest, service string) ([]ConnectivityAttachment, error) {
 	rules, err := LoadConnectivityRules()
 	if err != nil {
