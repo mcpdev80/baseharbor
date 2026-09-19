@@ -214,13 +214,21 @@ Runtime/provider implementation
 
 The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
 
-A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary.
+Placement has strict provider-instance semantics:
 
-Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
+- `application`: one BaseHarbor-managed provider instance dedicated to exactly one application/environment. In the Compose runtime this means a dedicated provider container/project and dedicated provider state; it is never reused by another application.
+- `shared`: one BaseHarbor Platform/Core Runtime provider instance, created lazily when first required and reusable by one or more explicitly authorized applications. A provider remains `shared` even while it currently has only one consumer.
+- `external`: a provider instance operated outside BaseHarbor. BaseHarbor may bind to it, but does not own or provision its lifecycle.
 
-The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-isolation mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one platform provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary. Sharing the provider process never implies sharing logical application resources, credentials, data or network access.
 
-Placement must also remain independent from runtime-specific isolation. Today Compose may realize boundaries through projects, networks and volumes. Future Kubernetes/OpenShift runtimes may map them to namespaces/projects, cluster-scoped infrastructure, Helm releases, Operators, NetworkPolicies or other platform-native mechanisms without changing application intent.
+Shared providers are on-demand platform infrastructure rather than unconditional bootstrap dependencies. If a compatible shared instance already exists in the BaseHarbor Platform/Core Runtime, BaseHarbor reuses it instead of starting another provider instance.
+
+Provider implementations declare the placements they currently support. If policy resolves to a placement that the selected provider adapter cannot truthfully realize, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+The placement semantics are runtime-independent even though realization differs. Compose realizes an `application` provider as a dedicated container/project and a `shared` provider as BaseHarbor Platform/Core Runtime infrastructure. Future Kubernetes/OpenShift runtimes may realize the same semantics with dedicated/shared platform-native resources, namespaces/projects, Operators or other isolation mechanisms without changing application intent.
 
 A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
 
