@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
 - Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
+- Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
 
 ### Security
 
