@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
@@ -316,6 +317,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if _, err := telemetry.ExistingProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  telemetry: shared OpenTelemetry Collector provider (container and network)")
 	}
+	if _, err := metricsprovider.ExistingProviderFiles(); err == nil {
+		fmt.Fprintln(out, "  metrics: shared Prometheus provider (container, network and BaseHarbor-owned volume)")
+	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
@@ -338,6 +342,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	if err := telemetry.DestroySharedProvider(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared telemetry provider: %w", err)
+	}
+	if err := metricsprovider.DestroySharedProvider(ctx, compose); err != nil {
+		return fmt.Errorf("destroy shared metrics provider: %w", err)
 	}
 	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
