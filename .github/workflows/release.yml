@@ -1,6 +1,7 @@
 name: release
 
 on:
+  # Tag creation is intentional: push-tag workflows are skipped when the tagged commit contains [skip ci].
   create:
   workflow_dispatch:
     inputs:
