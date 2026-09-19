@@ -155,19 +155,32 @@ func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing
 }
 
 
-func TestRuntimeOnlyWorkloadAttachesToBrokerBackendNetwork(t *testing.T) {
+func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.Postgres = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
-	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"baseharbor-backend:", "external: true", "name: " + ApplicationBackendNetworkName(m)} {
+	for _, want := range []string{"baseharbor-backend:", "baseharbor-object-storage:", "external: true", "name: " + ApplicationBackendNetworkName(m)} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime-only workload override missing %q:\n%s", want, got)
 		}
+	}
+	apiStart := strings.Index(got, "  api:")
+	workerStart := strings.Index(got, "  worker:")
+	if apiStart < 0 || workerStart < 0 || apiStart >= workerStart {
+		t.Fatalf("unexpected service ordering:\n%s", got)
+	}
+	api := got[apiStart:workerStart]
+	worker := got[workerStart:]
+	if !strings.Contains(api, "baseharbor-object-storage:") {
+		t.Fatalf("authorized service missing runtime S3 network:\n%s", got)
+	}
+	if strings.Contains(worker, "baseharbor-object-storage: {}") {
+		t.Fatalf("unauthorized service joined runtime S3 network:\n%s", got)
 	}
 }
