@@ -218,13 +218,13 @@ func bucketPolicy(bucket string) string {
 		"Version": "2012-10-17",
 		"Statement": []map[string]any{
 			{
-				"Effect": "Allow",
-				"Action": []string{"s3:ListBucket"},
+				"Effect":   "Allow",
+				"Action":   []string{"s3:ListBucket"},
 				"Resource": []string{"arn:aws:s3:::" + bucket},
 			},
 			{
-				"Effect": "Allow",
-				"Action": []string{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"},
+				"Effect":   "Allow",
+				"Action":   []string{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"},
 				"Resource": []string{"arn:aws:s3:::" + bucket + "/*"},
 			},
 		},
