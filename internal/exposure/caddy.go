@@ -35,7 +35,8 @@ type Route struct {
 	Name          string `json:"name"`
 	Service       string `json:"service"`
 	TargetPort    int    `json:"target_port"`
-	Protocol      string `json:"protocol"`
+	Protocol       string `json:"protocol"`
+	Visibility     string `json:"visibility"`
 	PublishedPort  int    `json:"published_port"`
 	TLSFingerprint string `json:"tls_fingerprint,omitempty"`
 }
@@ -335,7 +336,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	used := map[int]struct{}{}
 	var routes []Route
 	for _, requirement := range d.manifest.Exposures {
-		route := Route{Name: requirement.Name, Service: requirement.Service, TargetPort: requirement.Port, Protocol: requirement.Protocol}
+		route := Route{Name: requirement.Name, Service: requirement.Service, TargetPort: requirement.Port, Protocol: requirement.Protocol, Visibility: visibility(requirement.Visibility)}
 		if route.Protocol == "https" {
 			certData, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, "cert.pem"))
 			if err != nil {
@@ -344,14 +345,14 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 			sum := sha256.Sum256(certData)
 			route.TLSFingerprint = fmt.Sprintf("%x", sum[:])
 		}
-		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.PublishedPort > 0 {
+		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.Visibility == route.Visibility && prior.PublishedPort > 0 {
 			route.PublishedPort = prior.PublishedPort
 		} else {
 			preferred := 8080
 			if route.Protocol == "https" {
 				preferred = 8443
 			}
-			port, err := chooseLoopbackPort(preferred, used)
+			port, err := choosePublishedPort(preferred, route.Visibility, used)
 			if err != nil {
 				return State{}, false, err
 			}
@@ -419,7 +420,11 @@ func composeYAML(state State, files Files) string {
 		fmt.Fprintf(&b, "  %s:\n", serviceName)
 		fmt.Fprintf(&b, "    image: %s\n", caddyImage)
 		b.WriteString("    restart: unless-stopped\n")
-		fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", route.PublishedPort, containerPort)
+		if route.Visibility == "internal" {
+			fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", route.PublishedPort, containerPort)
+		} else {
+			fmt.Fprintf(&b, "    ports:\n      - \"%d:%d\"\n", route.PublishedPort, containerPort)
+		}
 		b.WriteString("    volumes:\n")
 		routeDir := filepath.Join(files.Dir, "routes", route.Name)
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "Caddyfile")+":/etc/caddy/Caddyfile:ro"))
@@ -441,16 +446,27 @@ func caddyfile(route Route) string {
 	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
 }
 
-func chooseLoopbackPort(preferred int, used map[int]struct{}) (int, error) {
+func visibility(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "public"
+	}
+	return strings.TrimSpace(value)
+}
+
+func choosePublishedPort(preferred int, visibility string, used map[int]struct{}) (int, error) {
+	bindHost := "0.0.0.0"
+	if visibility == "internal" {
+		bindHost = "127.0.0.1"
+	}
 	if _, taken := used[preferred]; !taken {
-		ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(preferred)))
+		ln, err := net.Listen("tcp", net.JoinHostPort(bindHost, strconv.Itoa(preferred)))
 		if err == nil {
 			_ = ln.Close()
 			return preferred, nil
 		}
 	}
 	for attempt := 0; attempt < 32; attempt++ {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		ln, err := net.Listen("tcp", net.JoinHostPort(bindHost, "0"))
 		if err != nil {
 			return 0, fmt.Errorf("allocate Caddy exposure host port: %w", err)
 		}
