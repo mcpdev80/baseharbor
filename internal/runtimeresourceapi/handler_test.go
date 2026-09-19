@@ -44,7 +44,7 @@ func TestAsyncCreateAndOperationStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/resources", strings.NewReader(`{"capability":"object-storage.s3","name":"user-4711"}`))
+	req := httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", strings.NewReader(`{"capability":"object-storage.s3","name":"user-4711"}`))
 	req.Header.Set("Idempotency-Key", "tenant-4711-storage")
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, req)
@@ -64,7 +64,7 @@ func TestAsyncCreateAndOperationStatus(t *testing.T) {
 	close(release)
 	waitHTTPState(t, h, id, "succeeded")
 
-	replay := httptest.NewRequest(http.MethodPost, "/v1/resources", strings.NewReader(`{"capability":"object-storage.s3","name":"user-4711"}`))
+	replay := httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", strings.NewReader(`{"capability":"object-storage.s3","name":"user-4711"}`))
 	replay.Header.Set("Idempotency-Key", "tenant-4711-storage")
 	replayRes := httptest.NewRecorder()
 	h.ServeHTTP(replayRes, replay)
@@ -86,7 +86,7 @@ func TestCreateRequiresAuthorizationAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/v1/resources", bytes.NewBufferString(`{"capability":"object-storage.s3","name":"tenant"}`))
+	req := httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", bytes.NewBufferString(`{"capability":"object-storage.s3","name":"tenant"}`))
 	req.Header.Set("Idempotency-Key", "key")
 	res := httptest.NewRecorder()
 	denied.ServeHTTP(res, req)
@@ -98,7 +98,7 @@ func TestCreateRequiresAuthorizationAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req = httptest.NewRequest(http.MethodPost, "/v1/resources", bytes.NewBufferString(`{"capability":"object-storage.s3","name":"tenant"}`))
+	req = httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", bytes.NewBufferString(`{"capability":"object-storage.s3","name":"tenant"}`))
 	res = httptest.NewRecorder()
 	allowed.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest {
@@ -110,7 +110,7 @@ func waitHTTPState(t *testing.T, h http.Handler, id, want string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/operations/"+id, nil)
+		req := httptest.NewRequest(http.MethodGet, "/runtime/v1/operations/"+id, nil)
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, req)
 		if res.Code != http.StatusOK {
