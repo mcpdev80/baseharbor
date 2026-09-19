@@ -116,3 +116,16 @@ func destroyManagedExposure(ctx context.Context, compose bhruntime.Compose, m ap
 	}
 	return nil
 }
+
+
+func managedExposureRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) bool {
+	if len(m.Exposures) == 0 {
+		return false
+	}
+	state, providerFiles, err := exposure.Load(files)
+	if err != nil {
+		return false
+	}
+	running, err := compose.RunningServicesProject(ctx, state.Project, providerFiles.Compose, providerFiles.Env)
+	return err == nil && len(running) > 0
+}
