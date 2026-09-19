@@ -247,6 +247,9 @@ func (m Manifest) Validate() error {
 }
 
 func validateHTTPExposures(workload WorkloadConfig, exposures []HTTPExposureRequirement) error {
+	if len(exposures) > 0 && len(workload.Services) == 0 {
+		return fmt.Errorf("managed HTTP exposure requires explicit workload.services so endpoint identity is deterministic")
+	}
 	seen := make(map[string]struct{}, len(exposures))
 	selected := make(map[string]struct{}, len(workload.Services))
 	for _, service := range workload.Services {
