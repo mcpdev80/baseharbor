@@ -15,7 +15,7 @@ import (
 )
 
 func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -59,7 +59,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 }
 
 func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	brokerFiles, err := runtimebroker.Existing(files)
@@ -99,7 +99,7 @@ func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
 }
 
 func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !m.Services.Secrets {
+	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
 	brokerFiles, err := runtimebroker.Existing(files)
