@@ -88,6 +88,7 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 	printInspectionFindings(out, result, repositoryinspect.ConfidenceDetected, "Detected")
 	printInspectionFindings(out, result, repositoryinspect.ConfidenceSuggested, "Suggested")
 	printInspectionFindings(out, result, repositoryinspect.ConfidencePossible, "Possible")
+	printInspectionReconciliation(out, result)
 
 	if len(result.RequiredSecrets) > 0 {
 		fmt.Fprintln(out, "\nRequired secrets from BaseHarbor contract:")
@@ -118,6 +119,34 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 		}
 	}
 	fmt.Fprintln(out, "\nNo changes were made.")
+}
+
+func printInspectionReconciliation(out io.Writer, result repositoryinspect.Result) {
+	if len(result.Reconciliation) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nContract reconciliation:")
+	for _, item := range result.Reconciliation {
+		label := item.Capability
+		if item.Name != "" {
+			label += "/" + item.Name
+		}
+		direction := ""
+		if item.Direction != "" {
+			direction = " " + string(item.Direction)
+		}
+		operations := ""
+		if len(item.Operations) > 0 {
+			values := make([]string, 0, len(item.Operations))
+			for _, operation := range item.Operations {
+				values = append(values, string(operation))
+			}
+			operations = " [" + strings.Join(values, ", ") + "]"
+		}
+		fmt.Fprintf(out, "  - %-10s %s%s%s\n", strings.ToUpper(string(item.State)), label, direction, operations)
+	}
+	fmt.Fprintln(out, "  Stale means current inspection found no supporting evidence; it never removes declared intent.")
+	fmt.Fprintln(out, "  Detected runtime operations are evidence only and never grant authorization.")
 }
 
 func printInspectionFindings(out io.Writer, result repositoryinspect.Result, confidence repositoryinspect.Confidence, title string) {
