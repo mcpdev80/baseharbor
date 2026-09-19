@@ -2,6 +2,14 @@ name: otlp-acceptance
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'internal/telemetry/**'
+      - 'internal/application/telemetry_binding.go'
+      - 'internal/application/workload.go'
+      - 'internal/capability/**'
+      - 'cmd/baha/app_telemetry.go'
+      - '.github/workflows/otlp-acceptance.yml'
 
 permissions:
   contents: read
