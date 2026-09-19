@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -211,8 +212,8 @@ func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	if strings.Contains(worker, "baseharbor-metrics:") {
 		t.Fatalf("non-source service joined metrics network:\n%s", got)
 	}
-	if !strings.Contains(got, `name: "baseharbor-metrics"`) {
-		t.Fatalf("metrics network definition missing:\n%s", got)
+	if !strings.Contains(got, "name: "+strconv.Quote(MetricsProviderNetworkName(m))) {
+		t.Fatalf("isolated metrics network definition missing:\n%s", got)
 	}
 }
 
