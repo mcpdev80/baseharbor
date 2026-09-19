@@ -64,6 +64,10 @@ func appApplyCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "connectivity policy", Run: func(context.Context) error {
+					_, err := application.LoadConnectivityRules()
+					return err
+				}},
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
@@ -113,6 +117,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			files, err := application.EnsureRuntime(resolved.Store, m)
 			if err != nil {
 				return err
+			}
+			if err := ensureConnectivityNetworksForManifest(ctx, compose, m); err != nil {
+				return fmt.Errorf("converge connectivity networks: %w", err)
 			}
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
