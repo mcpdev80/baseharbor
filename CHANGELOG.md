@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Every managed logical bucket receives separate access credentials and bucket-scoped SeaweedFS IAM authorization.
 - SeaweedFS is explicitly started with IAM enabled; BaseHarbor does not persist a global S3 superuser credential.
 - S3 access-key and secret-key values are owner-only and masked by default in `baha app env`.
+- SeaweedFS IAM administration receives per-bucket credential commands through stdin rather than process arguments, keeping credentials out of runtime command lines and command-error rendering.
 - Capability metadata and provider-registry state contain references/identity only, never plaintext S3 credentials.
 
 ### Recovery
