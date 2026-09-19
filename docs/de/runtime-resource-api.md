@@ -33,12 +33,12 @@ Das Aktivieren einer interaktiven Dokumentationsoberflaeche schwaecht niemals Au
 Der initiale v1-Vertrag definiert:
 
 ```text
-GET    /v1/capabilities
-POST   /v1/resources
-GET    /v1/resources/{resourceId}
-DELETE /v1/resources/{resourceId}
-GET    /v1/resources/{resourceId}/binding
-GET    /v1/operations/{operationId}
+GET    /runtime/v1/capabilities
+POST   /runtime/v1/resources
+GET    /runtime/v1/resources/{resourceId}
+DELETE /runtime/v1/resources/{resourceId}
+GET    /runtime/v1/resources/{resourceId}/binding
+GET    /runtime/v1/operations/{operationId}
 ```
 
 Eine Create-Anforderung ist providerneutral:
@@ -64,11 +64,11 @@ Jeder mutierende Runtime Request benoetigt einen `Idempotency-Key`.
 
 Wenn die Anwendung nach Timeout oder verlorener Antwort erneut sendet, muss dieselbe logische Anforderung zum selben Operation-/Resource-Ergebnis fuehren und darf keine Duplikate erzeugen.
 
-Die API unterstuetzt auch asynchrone Provider-Arbeit. Eine Anforderung kann eine Ressource im Zustand `provisioning` zusammen mit einer Operation-ID liefern, die ueber `GET /v1/operations/{operationId}` abgefragt wird.
+Die API unterstuetzt auch asynchrone Provider-Arbeit. Eine Anforderung kann eine Ressource im Zustand `provisioning` zusammen mit einer Operation-ID liefern, die ueber `GET /runtime/v1/operations/{operationId}` abgefragt wird.
 
 ## Bindings und Secrets
 
-`GET /v1/resources/{resourceId}/binding` liefert providerneutrale Binding-Metadaten.
+`GET /runtime/v1/resources/{resourceId}/binding` liefert providerneutrale Binding-Metadaten.
 
 Secret-Material wird nicht ueber normale Metadatenfelder ausgegeben. Credentials bleiben hinter der BaseHarbor Secure-Binding-/Runtime-Identity-Grenze.
 
