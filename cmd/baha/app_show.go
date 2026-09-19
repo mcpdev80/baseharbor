@@ -61,11 +61,11 @@ func appShowCommand(store application.Store) *cli.Command {
 func inspectApplicationOverview(ctx context.Context, resolved resolvedApplication) (applicationOverview, error) {
 	m := resolved.Manifest
 	overview := applicationOverview{
-		Name:         m.Name,
-		Environment:  m.Environment,
-		Ready:        true,
-		SecretsState: "not declared",
-		BrokerState:  "not declared",
+		Name:           m.Name,
+		Environment:    m.Environment,
+		Ready:          true,
+		SecretsState:   "not declared",
+		BrokerState:    "not declared",
 		TelemetryState: "not declared",
 	}
 	if resolved.FromRepository {
