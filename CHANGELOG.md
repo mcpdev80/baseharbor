@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
+- Repository inspection detection for S3-compatible usage/runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export.
+
+### Changed
+
+- Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
+- Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
+
+### Security
+
+- Missing repository evidence never authorizes capability removal.
+- Detected runtime operations such as S3 bucket creation are evidence only and never grant runtime authorization or provision infrastructure.
+
 ## [0.4.7] - 2026-09-19
 
 ### Added
