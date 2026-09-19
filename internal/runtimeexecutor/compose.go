@@ -1,6 +1,7 @@
 package runtimeexecutor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -22,7 +23,12 @@ const (
 type Files struct {
 	Dir     string
 	Compose string
+	Env     string
 	Image   string
+}
+
+type Runtime interface {
+	DestroyProject(context.Context, string, string, string) error
 }
 
 func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath string) (Files, error) {
@@ -61,6 +67,13 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	}
 
 	composePath := filepath.Join(dir, "compose.yaml")
+	envPath := filepath.Join(dir, "runtime.env")
+	if err := os.WriteFile(envPath, nil, 0o600); err != nil {
+		return Files{}, fmt.Errorf("write runtime executor environment: %w", err)
+	}
+	if err := os.Chmod(envPath, 0o600); err != nil {
+		return Files{}, fmt.Errorf("protect runtime executor environment: %w", err)
+	}
 	content := composeYAML(image, identity, adminCredentialsPath)
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime executor compose file: %w", err)
@@ -68,7 +81,39 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err := os.Chmod(composePath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor compose file: %w", err)
 	}
-	return Files{Dir: dir, Compose: composePath, Image: image}, nil
+	return Files{Dir: dir, Compose: composePath, Env: envPath, Image: image}, nil
+}
+
+func ExistingFiles(dataDir string) (Files, error) {
+	dataDir = strings.TrimSpace(dataDir)
+	if dataDir == "" {
+		return Files{}, errors.New("BaseHarbor data directory is required for runtime executor")
+	}
+	dir := filepath.Join(dataDir, "runtime-executor")
+	files := Files{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}
+	for _, path := range []string{files.Compose, files.Env} {
+		if _, err := os.Stat(path); err != nil {
+			return Files{}, err
+		}
+	}
+	return files, nil
+}
+
+func DestroyShared(ctx context.Context, runtime Runtime, dataDir string) error {
+	files, err := ExistingFiles(dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if runtime == nil {
+		return errors.New("runtime executor lifecycle runtime is required")
+	}
+	if err := runtime.DestroyProject(ctx, ProjectName, files.Compose, files.Env); err != nil {
+		return err
+	}
+	return os.RemoveAll(files.Dir)
 }
 
 func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath string) string {
