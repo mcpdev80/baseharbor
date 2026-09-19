@@ -5,18 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
 
 func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
+	}
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, compose, platformFiles, m); err != nil {
+		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files)
@@ -56,6 +62,51 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 		}
 	}
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
+}
+
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest) error {
+	if !requiresRuntimeObjectStorageExecutor(m) {
+		return nil
+	}
+	if platformFiles.Compose == "" || platformFiles.Env == "" {
+		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
+	}
+	_, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose)
+	if err != nil {
+		return fmt.Errorf("converge runtime object-storage provider: %w", err)
+	}
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return fmt.Errorf("resolve BaseHarbor data directory for runtime executor: %w", err)
+	}
+	identityDir := filepath.Join(dataDir, "runtime-executor", "identity")
+	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, compose, platformFiles, identityDir)
+	if err != nil {
+		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
+	}
+	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath)
+	if err != nil {
+		return fmt.Errorf("materialize runtime provider executor: %w", err)
+	}
+	if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+		return fmt.Errorf("validate runtime provider executor: %w", err)
+	}
+	if identityChanged {
+		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+			return fmt.Errorf("restart runtime provider executor after mTLS rotation: %w", err)
+		}
+	}
+	if err := compose.UpProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+		return fmt.Errorf("start runtime provider executor: %w", err)
+	}
+	services, err := compose.RunningServicesProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env)
+	if err != nil {
+		return fmt.Errorf("inspect runtime provider executor: %w", err)
+	}
+	if len(services) != 1 || services[0] != runtimeexecutor.ServiceName {
+		return errors.New("runtime provider executor is not running")
+	}
+	return nil
 }
 
 func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
