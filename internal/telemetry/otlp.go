@@ -125,6 +125,39 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "http://otel-collector:4318")
 }
 
+func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
+	data, err := os.ReadFile(files.Env)
+	if err != nil {
+		return err
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok {
+			values[key] = strings.TrimSpace(value)
+		}
+	}
+	provider := capability.ProviderKind(values["OTLP_PROVIDER"])
+	switch provider {
+	case capability.ProviderOTelCollector, capability.ProviderExternalOTLP:
+	default:
+		return errors.New("materialized OTLP provider identity is missing or unsupported")
+	}
+	d := &Driver{
+		app: m,
+		files: files,
+		externalEndpoint: values["OTLP_HOST_ENDPOINT"],
+		client: &http.Client{Timeout: 10 * time.Second},
+	}
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind: capability.TelemetryOTLP,
+		Name: "default",
+		Provider: provider,
+	}
+	return d.Verify(ctx, resource, capability.Binding{})
+}
+
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	endpoint := d.externalEndpoint
 	if resource.Provider != capability.ProviderExternalOTLP {
