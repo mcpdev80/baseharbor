@@ -84,6 +84,7 @@ func connectCommand() *cli.Command {
 			}()
 			if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
 				_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
+				_ = connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule))
 				return err
 			}
 			rollbackPolicy = false
