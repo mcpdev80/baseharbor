@@ -219,11 +219,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 			}
 			if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
-				metricsPlacement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+				metricsPlacement, found, placementErr := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
 				if placementErr != nil {
 					return placementErr
 				}
-				fmt.Fprintf(out, "  metrics:    provider placement %s; application-owned metrics state/trust edges removed according to placement\n", metricsPlacement.Scope)
+				if found {
+					fmt.Fprintf(out, "  metrics:    registered provider placement %s; application-owned metrics state/trust edges removed according to placement\n", metricsPlacement.Scope)
+				} else {
+					fmt.Fprintln(out, "  metrics:    no registered provider placement; no provider lifecycle ownership will be assumed")
+				}
 			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
@@ -280,23 +284,25 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
 			}
-			metricsPlacement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+			metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
 			if err != nil {
 				return err
 			}
-			switch metricsPlacement.Scope {
-			case capability.ScopeShared:
-				if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
-					return fmt.Errorf("remove application metrics targets: %w", err)
+			if found {
+				switch metricsPlacement.Scope {
+				case capability.ScopeShared:
+					if err := metricsprovider.PruneRegisteredApplicationTargets(m, nil); err != nil {
+						return fmt.Errorf("remove application metrics targets: %w", err)
+					}
+					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
+						return fmt.Errorf("remove application metrics trust edges: %w", err)
+					}
+				case capability.ScopeApplication:
+					if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
+						return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
+					}
+				case capability.ScopeExternal:
 				}
-				if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
-					return fmt.Errorf("remove application metrics trust edges: %w", err)
-				}
-			case capability.ScopeApplication:
-				if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
-					return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
-				}
-			case capability.ScopeExternal:
 			}
 			if err := resolved.Store.Delete(m.Name); err != nil {
 				return err
