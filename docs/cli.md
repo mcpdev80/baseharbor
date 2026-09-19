@@ -413,3 +413,30 @@ baha app destroy --yes
 `app status` and `app doctor` render end-to-end managed exposure readiness from the shared endpoint/exposure state. Redirects remain reachable; HTTP 5xx and unreachable routes are NOT READY.
 
 Existing application-owned HTTP/HTTPS publishers keep the previous discovery/observation path and are not taken over by the managed provider lifecycle.
+
+## OTLP telemetry
+
+OTLP transport is declared in `baseharbor.yaml`, not selected as a product-specific CLI service:
+
+```yaml
+workload:
+  services:
+    - api
+
+telemetry:
+  otlp:
+    signals:
+      - traces
+```
+
+During `app apply` and `app up`, BaseHarbor resolves the OTLP provider, converges the managed shared Collector when required, materializes standard `OTEL_*` workload settings and verifies a real OTLP HTTP/protobuf export before the application is considered converged.
+
+An existing external OTLP endpoint can be selected through deployment state:
+
+```bash
+export BASEHARBOR_OTLP_ENDPOINT=https://otel.example.com
+```
+
+Optional authorization headers use `BASEHARBOR_OTLP_HEADERS`. They are runtime/deployment secrets and must not be committed to `baseharbor.yaml`.
+
+No Prometheus, Loki, Tempo or Grafana service is started merely because OTLP transport is requested.

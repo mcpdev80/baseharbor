@@ -55,6 +55,9 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 			}
 			binding.Security = &security
 		}
+		if resource.Kind == capability.TelemetryOTLP && m.Telemetry.OTLP != nil {
+			binding.TelemetryOTLP = &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: append([]string(nil), m.Telemetry.OTLP.Signals...)}
+		}
 		if resource.Kind == capability.Secrets {
 			security := ManagedSecretsSecureBinding(m)
 			if err := security.Validate(); err != nil {
@@ -89,6 +92,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.Caddy, nil
 	case capability.ObjectStorageS3:
 		return capability.SeaweedFS, nil
+	case capability.TelemetryOTLP:
+		return TelemetryProviderForDeployment(), nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}

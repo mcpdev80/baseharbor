@@ -18,7 +18,7 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.6 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.7 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
@@ -29,7 +29,7 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 | Externe Secret-Projektion | Provider-Integration, kein portabler App-Produktname | kein globaler Pflichtprovider | geplant/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao Workload Identity, plattformnative Secret-Projektion | ESO darf niemals Teil des Application Contracts werden |
 | Identity / SSO | spaeter `identity.oidc` / OIDC/OAuth2 | kein fest verdrahtetes Produkt | geplant | Authentik, Zitadel, Entra ID, Google Workspace, GitHub oder andere OIDC-Provider | BaseHarbor wertet Identity Claims aus; Apps duerfen nicht von einem konkreten IdP-Produkt abhaengen |
 | Metrics | spaeter `metrics.openmetrics` | Prometheus als Referenz-/Default-Kandidat | geplant | VictoriaMetrics, Mimir und kompatible Backends | Collection, Query und Storage muessen austauschbar bleiben |
-| Traces / Telemetrie-Transport | spaeter `telemetry.otel` / OpenTelemetry | OpenTelemetry | geplant | vendor-spezifische Backends hinter OTel-kompatiblen Exportern | OTel ist Standard-Schnittstelle, nicht nur ein Produkt |
+| OTLP-Telemetrie-Transport | `telemetry.otlp/v1` / OTLP HTTP-Protobuf Export | OpenTelemetry Collector 0.161.0 als shared Compose-Referenzprovider | in v0.4.7 implementiert; externe OTLP-Endpunkte ohne Lifecycle-Ownership werden unterstuetzt | jeder konforme OTLP-HTTP/Protobuf-Endpunkt, managed oder extern | OpenTelemetry ist das Oekosystem; OTLP ist die portable Protokollgrenze; der Collector ist Provider-Implementierung und keine Application Identity |
 | Logs | strukturierte App-/Runtime-Logs mit providerdefiniertem Transport | Loki als Referenz-/Default-Kandidat | Trusted-local Compose-Logzugriff implementiert; Backend-Abstraktion geplant | OpenSearch, Elasticsearch, VictoriaLogs und kompatible Stacks | `baha app logs` ist ein lokaler Operator-Workflow und bindet nicht an Loki |
 
 ## Runtime Provider und Capability Provider sind getrennte Achsen
@@ -122,9 +122,9 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.6-Grenze
+## v0.4.7-Grenze
 
-v0.4.6 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, mit `secure-binding/v1` eine gemeinsame Security-Grenze sowie `object-storage.s3/v1` mit SeaweedFS als lazy shared Compose-Referenzprovider.
+v0.4.7 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, mit `secure-binding/v1` eine gemeinsame Security-Grenze, `object-storage.s3/v1` sowie providerneutrale `telemetry.otlp/v1`-Export-Bindings mit einem lazy shared OpenTelemetry-Collector-Referenzprovider oder externem OTLP-Endpunkt.
 
 Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure ist additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State.
 
@@ -162,6 +162,7 @@ Aktuelle versionierte Reference Claims:
 - OpenBao: `secrets/v1`
 - Caddy: `exposure.http/v1`
 - SeaweedFS: `object-storage.s3/v1`
+- OpenTelemetry Collector: `telemetry.otlp/v1`
 
 Weitere S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provider definieren bzw. implementieren versionierte Capability Specifications. Produktdetails duerfen dadurch nicht in den portablen Application Contract gelangen.
 

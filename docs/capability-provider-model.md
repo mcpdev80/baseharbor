@@ -18,7 +18,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 
 ## Component matrix
 
-| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.6 | Replacement paths / alternatives | Architecture note |
+| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.7 | Replacement paths / alternatives | Architecture note |
 | --- | --- | --- | --- | --- | --- |
 | Relational SQL database | Manifest v1 PostgreSQL compatibility input normalized to `database.sql` in `PortableContract` | PostgreSQL | Implemented | external PostgreSQL, managed PostgreSQL/RDS-style services, compatible enterprise PostgreSQL platforms; other SQL engines only where the declared capability permits their semantics | PostgreSQL is the current reference provider, not the permanent conceptual capability name |
 | Cache / key-value | Manifest v1 Redis/Valkey compatibility input normalized to `cache.key-value` in `PortableContract` | Valkey | Implemented | Redis, Dragonfly, managed Redis/Valkey; other KV systems only through a capability with matching semantics | Protocol/feature requirements must be explicit enough to avoid false interchangeability |
@@ -29,7 +29,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 | External secret projection | provider integration, not a portable app product | none required globally; ESO may be an adapter | Planned/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao native workload identity, platform-native secret projection | ESO must never become part of the application contract |
 | Identity / SSO | future `identity.oidc` / OIDC/OAuth2 | no hard-wired product; Keycloak is a possible self-hosted reference | Planned | Authentik, Zitadel, Entra ID, Google Workspace, GitHub or other compliant OIDC providers | BaseHarbor should consume identity claims; it should not require applications to depend on Keycloak-specific APIs |
 | Metrics | future `metrics.openmetrics` / OpenMetrics-compatible scrape/export | Prometheus as reference/default candidate | Planned | VictoriaMetrics, Mimir and compatible backends | Keep collection/query/storage backend replaceable |
-| Traces and telemetry transport | future `telemetry.otel` / OpenTelemetry | OpenTelemetry | Planned | vendor-specific backends behind OTel-compatible exporters | OTel is the standard interface, not merely one selectable product |
+| OTLP telemetry transport | `telemetry.otlp/v1` / OTLP HTTP-protobuf export | OpenTelemetry Collector 0.161.0 shared Compose reference provider | Implemented in v0.4.7; external OTLP endpoints are supported without lifecycle ownership | any conforming OTLP HTTP/protobuf endpoint, managed or external | OpenTelemetry is the ecosystem; OTLP is the portable protocol boundary; the collector is a provider implementation, not application identity |
 | Logs | structured application/runtime logs with provider-defined transport | Loki as reference/default candidate | Trusted-local Compose log access implemented; backend abstraction planned | OpenSearch, Elasticsearch, VictoriaLogs and compatible stacks | `baha app logs` is a local operator workflow, not a commitment to one log storage backend |
 
 ## Runtime provider versus capability provider
@@ -125,9 +125,9 @@ A future provider interface must describe more than a product name. Providers ne
 
 If the selected provider cannot satisfy a requested guarantee, BaseHarbor must reject the plan rather than silently reduce the guarantee.
 
-## v0.4.6 boundary
+## v0.4.7 boundary
 
-v0.4.6 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, and `object-storage.s3/v1` with a lazy shared SeaweedFS reference provider for identity, credentials, trust, authorization and secret references.
+v0.4.7 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, `object-storage.s3/v1`, and provider-neutral `telemetry.otlp/v1` export binding with a lazy shared OpenTelemetry Collector reference provider or external OTLP endpoint.
 
 Manifest v1 remains the supported compatibility surface. Managed exposure is additive and explicit; application-owned publishers remain application-owned observation/readiness state.
 
@@ -178,6 +178,7 @@ Current reference claims are versioned:
 - OpenBao implements `secrets/v1`;
 - Caddy implements `exposure.http/v1`;
 - SeaweedFS implements `object-storage.s3/v1`.
+- OpenTelemetry Collector implements `telemetry.otlp/v1`.
 
 Additional S3, telemetry, observability, messaging, AI/MCP and vector providers must define/implement versioned capability specifications rather than introduce product-specific application contracts.
 

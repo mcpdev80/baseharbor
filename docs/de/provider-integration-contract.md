@@ -236,3 +236,13 @@ Jeder logische Bucket erhaelt unabhaengige bucket-scoped Credentials, die ueber 
 Conformance fuer diese Capability prueft authentifiziertes S3-Verhalten einschliesslich Put/Get und nicht nur Prozess-Liveness. Ein spaeterer Ceph-RGW-, AWS-S3- oder anderer konformer Provider muss dieselbe Application-facing Semantik ohne Manifest-Umschreibung erfuellen.
 
 Die aktuelle oeffentliche CLI bietet noch keine allgemeine Auswahl/dynamisches Laden externer Provider. Das bleibt Operator-/Provider-Plattform-Arbeit; Capability und Provider-Protokoll sind bereits so geschnitten, dass der Application Contract spaeter nicht geaendert werden muss.
+
+## OTLP-Provider-Grenze in v0.4.7
+
+`telemetry.otlp/v1` verwendet denselben Provider Integration Contract wie alle anderen Capabilities. Die OTLP-Protokollsemantik gehoert BaseHarbor; der OpenTelemetry Collector ist eine Referenzprovider-Implementierung.
+
+Der aktuelle Managed-Compose-Provider ist lazy/shared. Ein externer OTLP-Endpunkt wird als externe Provider-Platzierung abgebildet und bleibt lifecycle-seitig extern owned. Provider-spezifische Endpunkte, Authorization-Header und Collector-Konfiguration bleiben Deployment-/Provider-State.
+
+Conformance verlangt fail-closed Preflight, idempotente Provisionierung/Bindings und einen echten OTLP-HTTP/Protobuf-Export, den der gewaehlte Endpunkt akzeptiert. Ein nur laufender Collector-Prozess reicht nicht.
+
+Das OTLP-Binding ist Capability-owned und in Provider Protocol v1 typisiert. Die Anforderung darf weder Prometheus, Loki, Tempo, Grafana noch andere nicht angeforderte Observability-Produkte implizit provisionieren.

@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-09-19
+
+### Added
+
+- Versioned `telemetry.otlp/v1` capability specification for explicit OTLP export semantics independent of any observability backend product.
+- Typed provider-neutral OTLP workload binding in the shared capability lifecycle and Provider Protocol v1.
+- OpenTelemetry Collector 0.161.0 as the first lazy shared Compose reference provider.
+- External OTLP endpoint binding through deployment-owned state without BaseHarbor taking provider lifecycle ownership.
+- Standard OpenTelemetry workload configuration through `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`.
+- Real OTLP HTTP/protobuf verification using an exported trace accepted by the selected OTLP endpoint.
+- Manual-only Docker/Compose acceptance coverage for the managed Collector path.
+
+### Changed
+
+- Canonical telemetry terminology is now `telemetry.otlp/v1`; OpenTelemetry is treated as the ecosystem/instrumentation model and the Collector as one replaceable provider implementation.
+- Shared provider registry records managed Collector placement as BaseHarbor-owned/shared and external OTLP destinations as externally owned.
+- Repository workloads using managed OTLP attach to a dedicated BaseHarbor telemetry integration network; external OTLP bindings do not create that network.
+- Global `baha destroy --yes` removes the shared BaseHarbor-owned Collector after application bindings are released.
+- Common telemetry resource identity uses OpenTelemetry service/environment semantic attributes plus BaseHarbor application/resource/provider attribution.
+- Shared provider lifecycle operations expose secret-safe metadata-only instrumentation hooks for preflight/apply/bind/verify so later observability providers can instrument the same core lifecycle.
+
+### Security
+
+- OTLP endpoints and provider topology remain deployment/provider state rather than portable application identity.
+- Optional external OTLP authorization headers are accepted only from deployment/runtime state and injected at the trusted workload/provider boundary.
+- Authorization headers and other credential material are not written to `baseharbor.yaml`, provider-registry state or normal diagnostics.
+- Invalid, missing or ambiguous OTLP bindings fail before provider mutation.
+
+### Compatibility
+
+- Manifest version remains `1`; `telemetry.otlp` is additive and opt-in.
+- Existing PostgreSQL, Valkey, OpenBao, secure-binding, managed exposure and S3 behavior remains compatible.
+- Requesting OTLP transport does not provision Prometheus, Loki, Tempo or Grafana.
+- Kubernetes/OpenShift collector realization, metrics/logs/traces storage providers and broader observability policy remain later roadmap work.
+
+
 ## [0.4.6] - 2026-09-19
 
 ### Added
@@ -318,7 +354,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mcpdev80/baseharbor/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/mcpdev80/baseharbor/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/mcpdev80/baseharbor/compare/v0.4.3...v0.4.4

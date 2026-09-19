@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.6 portable application foundation
+## Current v0.4.7 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -32,6 +32,9 @@ Implemented foundations include:
 - Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
 - one or multiple named logical Valkey/Redis-protocol resources;\n- one or multiple logical S3 buckets through `object-storage.s3/v1`;\n- SeaweedFS as the current lazy shared Compose S3 reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
+- provider-neutral `telemetry.otlp/v1` export binding with standard OpenTelemetry workload configuration;
+- OpenTelemetry Collector as the current lazy shared Compose OTLP reference provider plus external OTLP endpoint binding;
+- real OTLP HTTP/protobuf export verification without implicit Prometheus/Loki/Tempo/Grafana provisioning;
 - managed/generated secret intent without embedding secret values in the application contract;
 - provider-neutral `secure-binding/v1` semantics for workload identity, credential/trust/secret references, least-privilege authorization metadata and security lifecycle declarations;
 - explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;

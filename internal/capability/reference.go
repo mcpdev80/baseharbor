@@ -7,11 +7,13 @@ import "fmt"
 // provisioning remains authoritative while the shared capability and provider
 // registry layers describe portable intent, placement and ownership.
 var (
-	PostgreSQL = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
-	Valkey     = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
-	OpenBao    = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
-	Caddy      = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
-	SeaweedFS  = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
+	PostgreSQL    = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
+	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
+	OpenBao       = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
+	Caddy         = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
+	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
+	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
+	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
 )
 
 var (
@@ -38,6 +40,15 @@ var (
 		Capabilities: []SpecificationID{ObjectStorageS3V1.ID},
 		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
+	OTelCollectorIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: OTelCollector,
+		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+	}
+	ExternalOTLPIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
+		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+	}
 )
 
 func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) {
@@ -52,6 +63,10 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return CaddyIntegration, nil
 	case ProviderSeaweedFS:
 		return SeaweedFSIntegration, nil
+	case ProviderOTelCollector:
+		return OTelCollectorIntegration, nil
+	case ProviderExternalOTLP:
+		return ExternalOTLPIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}

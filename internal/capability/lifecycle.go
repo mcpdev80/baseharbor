@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type Phase string
@@ -36,6 +37,23 @@ type Diagnostic struct {
 	Message  string   `json:"message"`
 }
 
+// ProviderOperationObservation is deliberately metadata-only. It gives
+// observability adapters a stable hook without exposing workload bindings,
+// credentials, endpoints or provider-specific configuration.
+type ProviderOperationObservation struct {
+	Phase       Phase         `json:"phase"`
+	Status      Status        `json:"status"`
+	Application string        `json:"application"`
+	Capability  Kind          `json:"capability"`
+	Resource    string        `json:"resource"`
+	Provider    ProviderKind  `json:"provider"`
+	Duration    time.Duration `json:"duration"`
+}
+
+type ProviderOperationObserver interface {
+	ObserveProviderOperation(ProviderOperationObservation)
+}
+
 type HTTPExposureBinding struct {
 	Service    string `json:"service"`
 	TargetPort int    `json:"target_port"`
@@ -47,11 +65,18 @@ type ObjectStorageS3Binding struct {
 	Bucket string `json:"bucket"`
 }
 
+type OTLPTelemetryBinding struct {
+	Direction string   `json:"direction"`
+	Protocol  string   `json:"protocol"`
+	Signals   []string `json:"signals"`
+}
+
 type Binding struct {
 	Resource        Resource                `json:"resource"`
 	Workload        string                  `json:"workload"`
 	HTTPExposure    *HTTPExposureBinding    `json:"http_exposure,omitempty"`
 	ObjectStorageS3 *ObjectStorageS3Binding `json:"object_storage_s3,omitempty"`
+	TelemetryOTLP   *OTLPTelemetryBinding   `json:"telemetry_otlp,omitempty"`
 	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
@@ -93,8 +118,10 @@ type Request struct {
 	Workload        string
 	HTTPExposure    *HTTPExposureBinding
 	ObjectStorageS3 *ObjectStorageS3Binding
+	TelemetryOTLP   *OTLPTelemetryBinding
 	Security        *SecureBinding
 	Driver          Driver
+	Observer        ProviderOperationObserver
 }
 
 func BuildPlan(application string, requests []Request) (Plan, error) {
@@ -128,6 +155,38 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			}
 			binding.ObjectStorageS3 = &value
 		}
+		if request.Requirement.Kind == TelemetryOTLP && request.TelemetryOTLP == nil {
+			return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s is required", application, request.Requirement.Name)
+		}
+		if request.TelemetryOTLP != nil {
+			value := *request.TelemetryOTLP
+			value.Direction = strings.TrimSpace(value.Direction)
+			value.Protocol = strings.TrimSpace(value.Protocol)
+			if value.Direction != "export" {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: direction must be export", application, request.Requirement.Name)
+			}
+			if value.Protocol != "http/protobuf" {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: unsupported protocol %q", application, request.Requirement.Name, value.Protocol)
+			}
+			if len(value.Signals) == 0 {
+				return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: at least one signal is required", application, request.Requirement.Name)
+			}
+			seenSignals := map[string]struct{}{}
+			for _, signal := range value.Signals {
+				signal = strings.TrimSpace(signal)
+				switch signal {
+				case "traces", "metrics", "logs":
+				default:
+					return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: unsupported signal %q", application, request.Requirement.Name, signal)
+				}
+				if _, exists := seenSignals[signal]; exists {
+					return Plan{}, fmt.Errorf("capability OTLP binding for %s/%s: duplicate signal %q", application, request.Requirement.Name, signal)
+				}
+				seenSignals[signal] = struct{}{}
+			}
+			value.Signals = append([]string(nil), value.Signals...)
+			binding.TelemetryOTLP = &value
+		}
 		if request.Security != nil {
 			value := *request.Security
 			if err := value.Validate(); err != nil {
@@ -160,11 +219,14 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
 	}
 	for i, item := range plan.Items {
+		started := time.Now()
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(requests[i], item, PhasePreflight, StatusFailed, time.Since(started))
 			result.Steps = append(result.Steps, failedStep(PhasePreflight, item, "provider-preflight-failed", err))
 			result.Status = StatusFailed
 			return nil, result, fmt.Errorf("capability preflight failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(requests[i], item, PhasePreflight, StatusReady, time.Since(started))
 		result.Steps = append(result.Steps, readyStep(PhasePreflight, item))
 	}
 	return &Execution{requests: requests, result: result}, result, nil
@@ -175,18 +237,25 @@ func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
 		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
 	}
 	for i, item := range e.result.Plan.Items {
-		driver := e.requests[i].Driver
+		request := e.requests[i]
+		driver := request.Driver
+		started := time.Now()
 		if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseApply, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseApply, item))
+		started = time.Now()
 		if err := driver.Bind(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseBind, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseBind, item, "provider-bind-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability bind failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseBind, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseBind, item))
 	}
 	return e.result, nil
@@ -197,11 +266,15 @@ func (e *Execution) Verify(ctx context.Context) (Result, error) {
 		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
 	}
 	for i, item := range e.result.Plan.Items {
-		if err := e.requests[i].Driver.Verify(ctx, item.Resource, item.Binding); err != nil {
+		request := e.requests[i]
+		started := time.Now()
+		if err := request.Driver.Verify(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseVerify, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseVerify, item, "provider-verification-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability verification failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseVerify, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseVerify, item))
 	}
 	e.result.Status = StatusReady
@@ -237,4 +310,19 @@ func failedStep(phase Phase, item PlanItem, code string, err error) StepResult {
 			Code: code, Severity: SeverityError, Message: err.Error(),
 		}},
 	}
+}
+
+func observeProviderOperation(request Request, item PlanItem, phase Phase, status Status, duration time.Duration) {
+	if request.Observer == nil {
+		return
+	}
+	request.Observer.ObserveProviderOperation(ProviderOperationObservation{
+		Phase:       phase,
+		Status:      status,
+		Application: item.Resource.Application,
+		Capability:  item.Resource.Kind,
+		Resource:    item.Resource.Name,
+		Provider:    item.Resource.Provider,
+		Duration:    duration,
+	})
 }

@@ -60,6 +60,12 @@ Run expensive runtime, MailFlow, broker, backup/restore or full product acceptan
 
 Before a product release tag is created, the exact final release-preparation head must have the validation required by `docs/DEVELOPMENT_GUIDELINES.md`.
 
+## v0.4.7 audit result
+
+The target-specific implementation, architecture, security, readiness, documentation and validation findings are recorded in [release-audits/v0.4.7.md](release-audits/v0.4.7.md).
+
+The release remains open until the exact final feature head, real Docker/Compose OTLP acceptance, merged release source, tag, GitHub Release artifacts and runtime image have all been verified.
+
 ## Release completion
 
 After the next release is successfully published:

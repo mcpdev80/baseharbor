@@ -282,3 +282,20 @@ Human OIDC/RBAC/MFA/JIT/breakglass remains a separate v0.6 platform-access conce
 
 
 v0.4.6 adds the first provider-neutral S3 object-storage implementation on the same shared lifecycle and secure-binding foundations. Logical buckets resolve to `object-storage.s3/v1`; SeaweedFS is a lazy shared Compose reference provider rather than application identity. Provider state owns physical bucket/IAM/topology details, while application-facing readiness is verified through an authenticated SigV4 Put/Get flow.
+
+## OTLP telemetry foundation in v0.4.7
+
+v0.4.7 adds `telemetry.otlp/v1` as a provider-neutral transport capability. OpenTelemetry is the ecosystem and instrumentation model; OTLP is the portable protocol boundary. The OpenTelemetry Collector is only the first managed Compose reference provider.
+
+Applications declare the telemetry signals they export and keep using standard OpenTelemetry configuration:
+
+```text
+OTEL_EXPORTER_OTLP_ENDPOINT
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_SERVICE_NAME
+OTEL_RESOURCE_ATTRIBUTES
+```
+
+Managed Collector placement is lazy/shared. External OTLP destinations use the same capability and remain externally lifecycle-owned. BaseHarbor verifies a real OTLP HTTP/protobuf export rather than only checking that a collector process is running.
+
+Common resource identity includes standard OpenTelemetry service/environment attributes plus BaseHarbor application, logical telemetry resource and provider attribution. OTLP transport does not imply Prometheus, Loki, Tempo, Grafana or another observability backend; those remain independent platform/provider concerns in later releases.

@@ -1,0 +1,42 @@
+name: otlp-acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'internal/telemetry/**'
+      - 'internal/application/telemetry_binding.go'
+      - 'internal/application/workload.go'
+      - 'internal/capability/**'
+      - 'cmd/baha/app_telemetry.go'
+      - '.github/workflows/otlp-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  otlp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASEHARBOR_OTLP_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Prove real OTLP export into managed Collector
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport$' -count=1 -v
+      - name: Show Collector diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -a --filter label=com.docker.compose.project=baseharbor-telemetry
+          for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-telemetry); do
+            docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id"
+            docker logs "$id" || true
+          done

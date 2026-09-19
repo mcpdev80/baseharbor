@@ -104,6 +104,23 @@ message WorkloadBinding {
   HttpExposureBinding http_exposure = 3;
   SecureBinding security = 4;
   ObjectStorageS3Binding object_storage_s3 = 5;
+  OTLPTelemetryBinding telemetry_otlp = 6;
+}
+
+message OTLPTelemetryBinding {
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    DIRECTION_EXPORT = 1;
+    DIRECTION_RECEIVE = 2;
+  }
+  enum Protocol {
+    PROTOCOL_UNSPECIFIED = 0;
+    PROTOCOL_HTTP_PROTOBUF = 1;
+    PROTOCOL_GRPC = 2;
+  }
+  Direction direction = 1;
+  Protocol protocol = 2;
+  repeated string signals = 3;
 }
 
 message ObjectStorageS3Binding {

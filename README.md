@@ -14,9 +14,9 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.6 line keeps Compose as the complete runtime implementation while adding provider-neutral S3-compatible object storage on top of the v0.4.5 secure-binding foundation, without tying application intent to SeaweedFS or changing the Manifest v1 developer workflow. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.7 line keeps Compose as the complete runtime implementation while adding provider-neutral OTLP telemetry transport on top of the v0.4.6 capability/provider foundation, without tying application intent to the OpenTelemetry Collector or an observability backend. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
-The v0.4.6 line includes:
+The v0.4.7 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
@@ -36,6 +36,9 @@ The v0.4.6 line includes:
 - one or multiple named Valkey/Redis-protocol instances per application;
 - one or multiple logical S3 buckets per application through `object-storage.s3/v1`;
 - a lazy shared SeaweedFS Compose reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
+- provider-neutral `telemetry.otlp/v1` export semantics with standard `OTEL_*` workload bindings;
+- OpenTelemetry Collector 0.161.0 as a lazy shared Compose reference provider plus external OTLP destination support;
+- real OTLP HTTP/protobuf export verification without implicitly provisioning Prometheus, Loki, Tempo or Grafana;
 - explicit workload-only Compose applications without artificial backend dependencies;
 - application environment/file bindings using standard connection information;
 - managed required/generated secrets with fail-closed workload startup gates;

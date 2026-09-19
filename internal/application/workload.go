@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 var ErrWorkloadComposeAmbiguous = errors.New("multiple application Compose files found")
@@ -210,6 +212,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
 	objectStorage := HasObjectStorage(m)
+	telemetryManaged := HasOTLPTelemetry(m) && values["OTLP_PROVIDER"] == string(capability.ProviderOTelCollector)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
@@ -218,7 +221,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	b.WriteString("services:\n")
 	for _, service := range services {
 		fmt.Fprintf(&b, "  %s:\n", service)
-		if len(env) > 0 {
+		if len(env) > 0 || HasOTLPTelemetry(m) {
 			b.WriteString("    environment:\n")
 			keys := make([]string, 0, len(env))
 			for key := range env {
@@ -228,15 +231,22 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			for _, key := range keys {
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(env[key]))
 			}
+			if HasOTLPTelemetry(m) {
+				fmt.Fprintf(&b, "      OTEL_SERVICE_NAME: %s\n", strconv.Quote(service))
+				fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote(telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])))
+			}
 		}
 		_, exposed := exposedServices[service]
-		if managedRuntime || objectStorage || exposed {
+		if managedRuntime || objectStorage || telemetryManaged || exposed {
 			b.WriteString("    networks:\n")
 			if managedRuntime {
 				b.WriteString("      baseharbor-backend: {}\n")
 			}
 			if objectStorage {
 				b.WriteString("      baseharbor-object-storage: {}\n")
+			}
+			if telemetryManaged {
+				b.WriteString("      baseharbor-telemetry: {}\n")
 			}
 			if exposed {
 				b.WriteString("      baseharbor-exposure:\n")
@@ -245,7 +255,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 	}
-	if managedRuntime || objectStorage || len(exposedServices) > 0 {
+	if managedRuntime || objectStorage || telemetryManaged || len(exposedServices) > 0 {
 		b.WriteString("networks:\n")
 		if managedRuntime {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
@@ -254,6 +264,10 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		if objectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
 			b.WriteString("    name: baseharbor-object-storage\n")
+		}
+		if telemetryManaged {
+			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
+			b.WriteString("    name: baseharbor-telemetry\n")
 		}
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
@@ -314,6 +328,21 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["S3_"+token+"_REGION"] = "us-east-1"
 			env["S3_"+token+"_ACCESS_KEY_ID"] = access
 			env["S3_"+token+"_SECRET_ACCESS_KEY"] = secret
+		}
+	}
+
+	if HasOTLPTelemetry(m) {
+		endpoint, err := requireRuntimeValue(values, "OTLP_CONTAINER_ENDPOINT")
+		if err != nil {
+			return nil, err
+		}
+		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
+		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
+		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
+			if headers := strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS")); headers != "" {
+				env["OTEL_EXPORTER_OTLP_HEADERS"] = headers
+			}
 		}
 	}
 
