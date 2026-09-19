@@ -59,5 +59,6 @@ nav:
   - Backup & Restore: backup-and-restore.md
   - Releases: releases.md
   - Architektur: architecture.md
+  - Runtime Resource API: runtime-resource-api.md
   - Provider Integration Contract: provider-integration-contract.md
   - Roadmap: roadmap.md
