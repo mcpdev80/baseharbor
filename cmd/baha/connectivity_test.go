@@ -47,3 +47,19 @@ func TestConnectivityServiceAliasMatchesManagedInstances(t *testing.T) {
 		t.Fatal("sql alias matched unrelated service")
 	}
 }
+
+
+func TestConnectivityCommandsAreDiscoverable(t *testing.T) {
+	root := rootCommand()
+	want := map[string]bool{"connect": false, "disconnect": false, "connections": false}
+	for _, child := range root.Children {
+		if _, ok := want[child.Name]; ok {
+			want[child.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Fatalf("%s command is missing", name)
+		}
+	}
+}
