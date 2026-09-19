@@ -118,3 +118,39 @@ func TestExposureCapabilityUsesCaddyAndServiceBinding(t *testing.T) {
 		t.Fatalf("unexpected exposure bindings %#v", bindings)
 	}
 }
+
+
+func TestCapabilityBindingsAttachSecureMetadataToManagedSecrets(t *testing.T) {
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "mailflow",
+		Environment: "production",
+		Services:    Services{Secrets: true},
+		Secrets: SecretRequirements{Required: []SecretRequirement{
+			{Name: "SMTP_PASSWORD"},
+		}},
+	}
+	bindings, err := CapabilityBindings(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bindings) != 1 {
+		t.Fatalf("bindings = %#v", bindings)
+	}
+	binding := bindings[0]
+	if binding.Resource.Kind != capability.Secrets {
+		t.Fatalf("resource kind = %q", binding.Resource.Kind)
+	}
+	if binding.Security == nil {
+		t.Fatal("managed secrets binding is missing secure metadata")
+	}
+	if err := binding.Security.Validate(); err != nil {
+		t.Fatalf("secure binding invalid: %v", err)
+	}
+	if binding.Security.Identity == nil || binding.Security.Identity.Subject != "spiffe://baseharbor/apps/mailflow/production" {
+		t.Fatalf("identity = %#v", binding.Security.Identity)
+	}
+	if len(binding.Security.Secrets) != 1 || binding.Security.Secrets[0].Name != "SMTP_PASSWORD" {
+		t.Fatalf("secrets = %#v", binding.Security.Secrets)
+	}
+}
