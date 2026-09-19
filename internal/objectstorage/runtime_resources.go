@@ -63,6 +63,19 @@ func NewRuntimeResourceManager(dir, endpoint string, client *http.Client, admin 
 	return &RuntimeResourceManager{dir: dir, endpoint: endpoint, client: client, admin: admin, iam: iam}, nil
 }
 
+func (m *RuntimeResourceManager) Check(ctx context.Context) error {
+	status, _, err := signedS3Request(ctx, m.client, m.endpoint, http.MethodGet, "", "", application.ObjectStorageCredentials{
+		AccessKeyID: m.admin.AccessKeyID, SecretAccessKey: m.admin.SecretAccessKey,
+	}, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("SeaweedFS runtime provider readiness failed with HTTP %d", status)
+	}
+	return nil
+}
+
 func (m *RuntimeResourceManager) Create(ctx context.Context, applicationName, environment, name string) (RuntimeResourceBinding, error) {
 	state := runtimeResourceIdentity(applicationName, environment, name)
 	if existing, err := m.load(state.ResourceID); err == nil {
