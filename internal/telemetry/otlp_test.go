@@ -84,3 +84,28 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 		t.Fatal("expected missing external endpoint to fail closed")
 	}
 }
+
+func TestEnsureProviderFilesKeepsRuntimeStatePrivateButCollectorConfigReadable(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	files, err := EnsureProviderFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	configInfo, err := os.Stat(files.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("collector config mode = %o, want 644", got)
+	}
+
+	envInfo, err := os.Stat(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := envInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("provider env mode = %o, want 600", got)
+	}
+}
+
