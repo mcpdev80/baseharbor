@@ -342,3 +342,33 @@ certificate source directories
 ```
 
 This keeps BaseHarbor useful without making applications proprietary to BaseHarbor.
+
+
+## Managed HTTP exposure
+
+Endpoint discovery and exposure are intentionally separate.
+
+An application-owned Compose publisher remains owned by the application. BaseHarbor may discover, observe and verify it, but does not provision or delete it.
+
+Managed exposure is explicit portable intent:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - web
+
+exposure:
+  http:
+    - name: public
+      service: web
+      port: 8080
+      protocol: https
+      visibility: public
+```
+
+The portable fields describe only the application requirement: logical exposure name, logical workload service, target port, HTTP/HTTPS transport and public/internal visibility. The concrete FQDN, published host port, certificate source, Compose network and reverse-proxy configuration remain deployment/provider state.
+
+For v0.4.4 the Compose reference provider is Caddy. Managed HTTPS reuses the existing/BYOC deployment TLS state. Managed ACME, OpenBao PKI issuance and automatic certificate renewal remain future work.
+
+`visibility: public` is the canonical default. `visibility: internal` restricts the current Compose reference binding to loopback/local reachability.
