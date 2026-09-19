@@ -16,6 +16,16 @@ permissions:
   attestations: write
 
 jobs:
+  runtime-image:
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/runtime-image.yml
+    secrets: inherit
+
   release:
     if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
     runs-on: ubuntu-latest
