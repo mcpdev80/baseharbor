@@ -52,8 +52,8 @@ type Config struct {
 	RuntimeExecutorCertFile string
 	RuntimeExecutorKeyFile  string
 	RuntimeOperationsDir    string
-	RuntimeDocsListenAddr  string
-	ShutdownTimeout        time.Duration
+	RuntimeDocsListenAddr   string
+	ShutdownTimeout         time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {
@@ -186,10 +186,10 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 		if strings.TrimSpace(cfg.RuntimeExecutorURL) != "" {
 			client, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
-				URL: cfg.RuntimeExecutorURL,
-				CAFile: cfg.RuntimeExecutorCAFile,
+				URL:      cfg.RuntimeExecutorURL,
+				CAFile:   cfg.RuntimeExecutorCAFile,
 				CertFile: cfg.RuntimeExecutorCertFile,
-				KeyFile: cfg.RuntimeExecutorKeyFile,
+				KeyFile:  cfg.RuntimeExecutorKeyFile,
 			})
 			if err != nil {
 				return err
