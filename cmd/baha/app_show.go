@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 type overviewResource struct {
@@ -32,6 +33,7 @@ type applicationOverview struct {
 	SecretsReady    int
 	SecretsState    string
 	BrokerState     string
+	TelemetryState  string
 	LastBackup      *application.BackupMetadata
 }
 
@@ -64,6 +66,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		Ready:        true,
 		SecretsState: "not declared",
 		BrokerState:  "not declared",
+		TelemetryState: "not declared",
 	}
 	if resolved.FromRepository {
 		overview.ManifestPath = resolved.ManifestPath
@@ -85,6 +88,9 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	}
 	for _, name := range application.RedisInstanceNames(m) {
 		overview.Valkey = append(overview.Valkey, overviewResource{Name: name, State: "not applied"})
+	}
+	if application.HasOTLPTelemetry(m) {
+		overview.TelemetryState = "not applied"
 	}
 	if m.Services.Secrets {
 		overview.SecretsDeclared = true
@@ -186,6 +192,18 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		}
 	}
 
+	if application.HasOTLPTelemetry(m) {
+		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		verifyErr := telemetry.VerifyApplication(checkCtx, m, files)
+		cancel()
+		if verifyErr == nil {
+			overview.TelemetryState = "healthy"
+		} else {
+			overview.TelemetryState = "not ready"
+			overview.Ready = false
+		}
+	}
+
 	workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
 	overview.Workload = workloadStatus
 	if workloadErr != nil || (workloadStatus.Found && !workloadStatus.Ready()) {
@@ -233,6 +251,9 @@ func formatApplicationOverview(out io.Writer, overview applicationOverview) {
 			fmt.Fprintf(out, "  %-20s %s\n", service.Service, state)
 		}
 	}
+
+	fmt.Fprintln(out, "\nTelemetry")
+	fmt.Fprintf(out, "  OTLP export           %s\n", overview.TelemetryState)
 
 	fmt.Fprintln(out, "\nSecrets")
 	if !overview.SecretsDeclared {
