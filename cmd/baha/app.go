@@ -396,6 +396,9 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, fmt.Sprintf("s3(%d)", count))
 		}
 	}
+	if application.HasOTLPTelemetry(m) {
+		names = append(names, "otlp")
+	}
 	if m.Services.Secrets {
 		names = append(names, "secrets")
 	}
