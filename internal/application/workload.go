@@ -209,6 +209,10 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		return "", err
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
+	exposedServices := make(map[string]struct{}, len(m.Exposures))
+	for _, exposure := range m.Exposures {
+		exposedServices[exposure.Service] = struct{}{}
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, service := range services {
@@ -224,13 +228,27 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(env[key]))
 			}
 		}
-		if managedRuntime {
-			b.WriteString("    networks:\n      baseharbor-backend: {}\n")
+		_, exposed := exposedServices[service]
+		if managedRuntime || exposed {
+			b.WriteString("    networks:\n")
+			if managedRuntime {
+				b.WriteString("      baseharbor-backend: {}\n")
+			}
+			if exposed {
+				b.WriteString("      baseharbor-exposure: {}\n")
+			}
 		}
 	}
-	if managedRuntime {
-		b.WriteString("networks:\n  baseharbor-backend:\n    external: true\n")
-		fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+	if managedRuntime || len(exposedServices) > 0 {
+		b.WriteString("networks:\n")
+		if managedRuntime {
+			b.WriteString("  baseharbor-backend:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+		}
+		if len(exposedServices) > 0 {
+			b.WriteString("  baseharbor-exposure:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", ApplicationExposureNetworkName(m))
+		}
 	}
 	return b.String(), nil
 }
