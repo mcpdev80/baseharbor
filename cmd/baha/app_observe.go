@@ -267,7 +267,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					if runtimeErr != nil {
 						return runtimeErr
 					}
-					_, _, err := inspectManagedExposure(ctx, compose, m, files)
+					_, err := inspectManagedExposure(ctx, compose, m, files)
 					return err
 				}})
 			}
