@@ -26,17 +26,17 @@ var (
 	OpenBaoIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: OpenBao,
 		Capabilities: []SpecificationID{SecretsV1.ID},
-		Optional: OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 	}
 	CaddyIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Caddy,
 		Capabilities: []SpecificationID{ExposureHTTPV1.ID},
-		Optional: OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	SeaweedFSIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: SeaweedFS,
 		Capabilities: []SpecificationID{ObjectStorageS3V1.ID},
-		Optional: OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 )
 
