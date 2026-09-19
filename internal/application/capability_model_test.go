@@ -75,6 +75,13 @@ func TestCapabilityBindingsUseLogicalServiceForHTTPExposure(t *testing.T) {
 	if bindings[0].Workload != "service/web" {
 		t.Fatalf("exposure workload binding = %q, want service/web", bindings[0].Workload)
 	}
+	if bindings[0].HTTPExposure == nil {
+		t.Fatal("exposure binding metadata is missing")
+	}
+	want := capability.HTTPExposureBinding{Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "public"}
+	if *bindings[0].HTTPExposure != want {
+		t.Fatalf("exposure metadata = %#v, want %#v", *bindings[0].HTTPExposure, want)
+	}
 }
 
 func TestExposureCapabilityUsesCaddyAndServiceBinding(t *testing.T) {
