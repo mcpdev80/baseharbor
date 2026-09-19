@@ -282,3 +282,42 @@ func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T)
 		t.Fatalf("runtime permissions directory mode = %o, want 700", got)
 	}
 }
+
+
+func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.New("demo", "dev", false, false, true)
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+	got, err := composeYAML(
+		m,
+		mtls,
+		write("runtime-token"),
+		write("openbao.env"),
+		write("permissions.json"),
+		write("service-tokens.json"),
+		"baseharbor-runtime:test",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "--resolve") ||
+		!strings.Contains(got, "baseharbor-runtime:8443:127.0.0.1") ||
+		!strings.Contains(got, "https://baseharbor-runtime:8443/readyz") {
+		t.Fatalf("broker healthcheck is not DNS-independent while preserving TLS hostname:\n%s", got)
+	}
+}
