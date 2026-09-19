@@ -68,7 +68,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	admin, err := objectstorage.LoadAdminCredentials(cfg.AdminCredentials)
+	admin, err := objectstorage.LoadContainerAdminCredentials(cfg.AdminCredentials)
 	if err != nil {
 		return err
 	}
