@@ -241,7 +241,7 @@ func printRuntimeReady(out io.Writer, m application.Manifest) {
 	}
 	if m.Services.Secrets {
 		fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole and secret scope verified")
-		fmt.Fprintln(out, "[OK] secret-broker     mTLS identity and app-scoped OpenBao readiness succeeded")
+		fmt.Fprintln(out, "[OK] runtime-broker    mTLS identity and app-scoped OpenBao readiness succeeded")
 		if len(m.Secrets.Required) > 0 {
 			fmt.Fprintf(out, "[OK] required-secrets  %d declared secret(s) present\n", len(m.Secrets.Required))
 		}
