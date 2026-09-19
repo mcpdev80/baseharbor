@@ -15,9 +15,13 @@ type stdinCaptureRuntime struct {
 	err   error
 }
 
-func (f *stdinCaptureRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
-func (f *stdinCaptureRuntime) UpProject(context.Context, string, string, string) error     { return nil }
-func (f *stdinCaptureRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
+func (f *stdinCaptureRuntime) ConfigProject(context.Context, string, string, string) error {
+	return nil
+}
+func (f *stdinCaptureRuntime) UpProject(context.Context, string, string, string) error { return nil }
+func (f *stdinCaptureRuntime) DestroyProject(context.Context, string, string, string) error {
+	return nil
+}
 func (f *stdinCaptureRuntime) ExecProject(context.Context, string, string, string, string, ...string) (string, error) {
 	return "", nil
 }
