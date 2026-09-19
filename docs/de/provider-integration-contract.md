@@ -102,6 +102,7 @@ Optionale Operationen muessen explizit als supported/unsupported beschrieben wer
 | PostgreSQL | `database.sql/v1` |
 | Valkey | `cache.key-value/v1` |
 | OpenBao | `secrets/v1` |
+| Caddy | `exposure.http/v1` |
 
 Neue Integrationen wie S3, OTLP, Prometheus, Loki, Tempo, Grafana, Messaging, AgentGateway, MCP und Vector Search muessen dieselbe Grenze verwenden.
 
@@ -179,3 +180,30 @@ Jede neue Capability-/Provider-Integration muss:
 4. Produktdetails aus dem portablen Application Intent heraushalten;
 5. capability-spezifische Conformance Tests hinzufuegen;
 6. spaetere Ersetzbarkeit durch einen konformen externen Provider erhalten.
+
+
+## HTTP-Exposure-Provider-Grenze
+
+`exposure.http/v1` ist die erste Traffic-Capability, die ueber diesen Provider Contract umgesetzt wird.
+
+BaseHarbor trennt zwei Pfade bewusst:
+
+```text
+app-eigener Publisher  -> erkennen -> beobachten -> verifizieren
+managed Exposure Intent -> aufloesen -> preflight -> provisionieren -> binden -> verifizieren
+```
+
+Observation uebertraegt niemals Lifecycle-Ownership an BaseHarbor. Nur expliziter Managed-Exposure-Intent wird als application-scoped Provider-Ressource registriert.
+
+Der aktuelle Compose-Referenzprovider ist Caddy. Host-Ports, TLS-Dateien und generierte Proxy-Konfiguration bleiben geschuetzter Provider-/Deployment-State. Das stabile Exposure-Integrationsnetz gehoert dagegen zum generierten BaseHarbor-Workload-Override und wird vom Exposure-Provider nur als externes Netz konsumiert.
+
+### Capability-eigene Binding-Parameter
+
+Provider Protocol v1 transportiert capability-eigene, provider-neutrale Binding-Semantik durch Preflight, Provision und Bind. Fuer `exposure.http/v1` enthaelt das typisierte Binding:
+
+- logischen Workload-Service;
+- Zielport;
+- HTTP/HTTPS-Transport;
+- Sichtbarkeit `public|internal`.
+
+Diese Felder werden durch die Capability Specification definiert, nicht durch Caddy oder einen anderen Provider. Provider-spezifische Konfiguration bleibt separate Operator-/Deployment-Konfiguration. Dadurch kann ein spaeterer konformer Provider denselben Application Intent verarbeiten, ohne `baseharbor.yaml` selbst lesen oder von der Go-Implementierung BaseHarbors abhaengen zu muessen.

@@ -294,7 +294,7 @@ application-owned publisher -> discover -> observe -> verify
 managed exposure intent      -> resolve -> preflight -> provision -> bind -> verify
 ```
 
-Observation never grants BaseHarbor lifecycle ownership. Only explicit managed exposure intent is registered as an application-scoped provider resource. The current Compose reference provider is Caddy; its host ports, network, TLS files and generated configuration remain protected provider/deployment state.
+Observation never grants BaseHarbor lifecycle ownership. Only explicit managed exposure intent is registered as an application-scoped provider resource. The current Compose reference provider is Caddy; its host ports, TLS files and generated proxy configuration remain protected provider/deployment state. The stable exposure integration network is workload integration state owned by the generated BaseHarbor workload override and is consumed by the exposure provider as an external network.
 
 
 ### Capability-owned binding parameters
