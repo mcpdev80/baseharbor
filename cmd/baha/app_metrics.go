@@ -25,9 +25,13 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return nil, err
 	}
 	enabled := policy.Enabled && policy.Collect[application.MetricsSourceApplication]
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return nil, err
+	}
 
-	if policy.ProviderScope == capability.ScopeExternal && enabled && (len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)) {
-		return nil, fmt.Errorf("external metrics scope is selected but no external collection adapter is configured")
+	if placement.Scope == capability.ScopeExternal && enabled && (len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)) {
+		return nil, fmt.Errorf("external Prometheus placement is selected but no external metrics collection adapter is configured")
 	}
 
 	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
