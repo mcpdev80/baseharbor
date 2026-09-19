@@ -398,6 +398,13 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	}
 	changed := oldErr != nil || !sameState(old, state)
 
+	routesDir := filepath.Join(d.files.Dir, "routes")
+	if err := os.RemoveAll(routesDir); err != nil {
+		return State{}, false, fmt.Errorf("reset Caddy route state: %w", err)
+	}
+	if err := os.MkdirAll(routesDir, 0o700); err != nil {
+		return State{}, false, fmt.Errorf("create Caddy route state: %w", err)
+	}
 	for _, route := range routes {
 		routeDir := filepath.Join(d.files.Dir, "routes", route.Name)
 		if err := os.MkdirAll(routeDir, 0o700); err != nil {
