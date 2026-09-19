@@ -98,21 +98,21 @@ type PortEvidence struct {
 }
 
 type Result struct {
-	Root              string            `json:"root"`
-	Application       string            `json:"application"`
-	ExistingManifest  string            `json:"existing_manifest,omitempty"`
-	Artifacts         []Artifact        `json:"artifacts,omitempty"`
-	ComposeCandidates []string          `json:"compose_candidates,omitempty"`
-	SelectedCompose   string            `json:"selected_compose,omitempty"`
-	WorkloadServices  []string          `json:"workload_services,omitempty"`
-	Findings          []Finding         `json:"findings,omitempty"`
-	RequiredSecrets   []string          `json:"required_secrets,omitempty"`
-	SecretCandidates  []string          `json:"secret_candidates,omitempty"`
-	SecretSources     map[string]string `json:"secret_sources,omitempty"`
-	Ports             []PortEvidence    `json:"ports,omitempty"`
-	HealthChecks      []Evidence            `json:"health_checks,omitempty"`
-	Declared          []CapabilityIntent    `json:"declared_capabilities,omitempty"`
-	Reconciliation    []ReconciliationItem  `json:"reconciliation,omitempty"`
+	Root              string               `json:"root"`
+	Application       string               `json:"application"`
+	ExistingManifest  string               `json:"existing_manifest,omitempty"`
+	Artifacts         []Artifact           `json:"artifacts,omitempty"`
+	ComposeCandidates []string             `json:"compose_candidates,omitempty"`
+	SelectedCompose   string               `json:"selected_compose,omitempty"`
+	WorkloadServices  []string             `json:"workload_services,omitempty"`
+	Findings          []Finding            `json:"findings,omitempty"`
+	RequiredSecrets   []string             `json:"required_secrets,omitempty"`
+	SecretCandidates  []string             `json:"secret_candidates,omitempty"`
+	SecretSources     map[string]string    `json:"secret_sources,omitempty"`
+	Ports             []PortEvidence       `json:"ports,omitempty"`
+	HealthChecks      []Evidence           `json:"health_checks,omitempty"`
+	Declared          []CapabilityIntent   `json:"declared_capabilities,omitempty"`
+	Reconciliation    []ReconciliationItem `json:"reconciliation,omitempty"`
 }
 
 type Snapshot struct {
