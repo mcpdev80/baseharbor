@@ -123,8 +123,8 @@ func (a *DriverAdapter) Preflight(ctx context.Context, resource Resource, bindin
 	return a.driver.Preflight(ctx, resource, binding)
 }
 
-func (a *DriverAdapter) Provision(ctx context.Context, resource Resource) error {
-	return a.driver.Provision(ctx, resource)
+func (a *DriverAdapter) Provision(ctx context.Context, resource Resource, binding Binding) error {
+	return a.driver.Provision(ctx, resource, binding)
 }
 
 func (a *DriverAdapter) Bind(ctx context.Context, resource Resource, binding Binding) error {

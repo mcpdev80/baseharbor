@@ -68,4 +68,7 @@ func TestReferenceProvidersExposeOnlyTheirCurrentCapability(t *testing.T) {
 	if !OpenBao.Supports(Secrets) || OpenBao.Supports(SQL) {
 		t.Fatalf("OpenBao capabilities = %#v", OpenBao.Capabilities)
 	}
+	if !Caddy.Supports(ExposureHTTP) || Caddy.Supports(SQL) {
+		t.Fatalf("Caddy capabilities = %#v", Caddy.Capabilities)
+	}
 }

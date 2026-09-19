@@ -39,6 +39,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			defer cancel()
 			var compose bhruntime.Compose
 			var platformFiles bhruntime.Files
+			var managedExposure *managedExposureExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -59,6 +60,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
+				}},
+				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
+					var err error
+					managedExposure, err = prepareManagedExposure(ctx, compose, resolved)
+					return err
 				}},
 			}
 			if m.Services.Secrets {
@@ -149,6 +155,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			printRuntimeReady(out, m)
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
+			}
+			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
+				return fmt.Errorf("converge managed HTTP exposure: %w", err)
 			}
 			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)

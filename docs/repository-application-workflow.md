@@ -306,3 +306,27 @@ verified application boundary
 The repository manifest is authoritative for portable desired state. BaseHarbor may keep protected generated/runtime files to realize that state, but changing the repository manifest and applying it again converges toward the new desired state without rotating unrelated existing credentials or state.
 
 `baha app destroy --yes` deletes BaseHarbor-managed runtime resources and `.baseharbor` application state, but preserves the repository `baseharbor.yaml` and application-owned Compose volumes. Running `baha app apply` can therefore recreate BaseHarbor-owned runtime state from the committed contract, while application-owned data still requires its own appropriate recovery mechanism.
+
+
+## Explicit managed exposure
+
+A repository can opt into BaseHarbor-managed HTTP exposure without changing its application Compose source:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - web
+
+exposure:
+  http:
+    - name: public
+      service: web
+      port: 8080
+      protocol: http
+      visibility: public
+```
+
+BaseHarbor creates only provider-owned traffic state. The application service is attached to a stable BaseHarbor exposure network through the generated override. The application Compose file and application-owned volumes remain untouched.
+
+Applications that already publish their own HTTP/HTTPS ports do not need this block; those endpoints continue to be discovered and verified as application-owned exposure.

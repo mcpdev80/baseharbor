@@ -67,6 +67,12 @@ func appDownCommand(store application.Store) *cli.Command {
 				return errors.New("application down preflight failed")
 			}
 
+			if len(m.Exposures) > 0 {
+				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
+					return err
+				}
+				fmt.Fprintln(out, "[OK] managed-exposure  Caddy exposure provider stopped")
+			}
 			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
 			} else if stopped {
@@ -203,6 +209,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
 				fmt.Fprintln(out, "  broker:     per-application mTLS secret broker")
 			}
+			if len(m.Exposures) > 0 {
+				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
+			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
@@ -222,6 +231,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 
 			if runtimeErr == nil {
+				if err := destroyManagedExposure(ctx, compose, m, files); err != nil {
+					return err
+				}
 				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 					return err
 				}

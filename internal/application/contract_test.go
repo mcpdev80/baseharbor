@@ -128,3 +128,23 @@ func TestPortableContractRejectsInvalidManifest(t *testing.T) {
 		t.Fatal("PortableContractFromManifest() error = nil, want validation error")
 	}
 }
+
+func TestPortableContractIncludesProviderNeutralExposureIntent(t *testing.T) {
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "frontend",
+		Environment: "production",
+		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
+	}
+	contract, err := PortableContractFromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(contract.Exposures, m.Exposures) {
+		t.Fatalf("exposure intent mismatch: got %#v want %#v", contract.Exposures, m.Exposures)
+	}
+	if !reflect.DeepEqual(contract.Capabilities, []CapabilityRequirement{{Kind: CapabilityExposureHTTP, Name: "public"}}) {
+		t.Fatalf("unexpected exposure capabilities %#v", contract.Capabilities)
+	}
+}

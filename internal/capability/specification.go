@@ -27,6 +27,9 @@ var (
 	SecretsV1 = CapabilitySpecification{
 		ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1,
 	}
+	ExposureHTTPV1 = CapabilitySpecification{
+		ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1,
+	}
 )
 
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
@@ -37,6 +40,8 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return KeyValueV1, nil
 	case Secrets:
 		return SecretsV1, nil
+	case ExposureHTTP:
+		return ExposureHTTPV1, nil
 	default:
 		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
 	}

@@ -10,8 +10,8 @@ BaseHarbor is currently in the `0.x` series.
 
 During `0.x`:
 
-- patch releases (`0.4.0` -> `0.4.1`) are backward-compatible bug and security fixes;
-- minor releases (`0.4.x` -> `0.5.0`) may contain intentionally documented breaking changes;
+- patch releases (`0.4.0` -> `0.4.1`) stay backward-compatible within the active minor line and may contain fixes, security hardening and additive capabilities;
+- minor releases (`0.4.x` -> `0.5.0`) may contain intentionally documented breaking changes or larger contract shifts;
 - every breaking change must be called out in `CHANGELOG.md` and GitHub Release notes;
 - consumers should pin an explicit compatible range instead of tracking `main`.
 
@@ -83,4 +83,4 @@ gh attestation verify baseharbor_linux_amd64.tar.gz -R mcpdev80/baseharbor
 
 A real application should never silently follow `main`. During the `0.x` series, an application validated against `v0.4.3` should normally constrain itself to the compatible minor line, for example `>=0.4.0 <0.5.0`, unless it intentionally validates against a newer minor release.
 
-Applications moving through the v0.4 line keep Manifest v1 and the existing Compose developer journey. v0.4.3 additionally adds the open Provider Integration Contract and deterministic read-only repository inspection behind that compatibility surface.
+Applications moving through the v0.4 line keep Manifest v1 and the existing Compose developer journey. v0.4.3 added the open Provider Integration Contract and deterministic read-only repository inspection. v0.4.4 additively extends Manifest v1 with optional provider-neutral managed HTTP/HTTPS exposure while preserving existing application-owned publishers and Compose compatibility.

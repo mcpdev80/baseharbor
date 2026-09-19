@@ -2,16 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net"
-	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/endpoint"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -23,14 +20,7 @@ type workloadServiceStatus struct {
 	Exposures []workloadExposureStatus
 }
 
-type workloadExposureStatus struct {
-	Service string
-	Scheme  string
-	Host    string
-	Port    int
-	Ready   bool
-	Detail  string
-}
+type workloadExposureStatus = endpoint.ExposureStatus
 
 type repositoryWorkloadStatus struct {
 	Found     bool
@@ -163,15 +153,7 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 			result = append(result, workloadExposureStatus{Service: state.Service, Scheme: scheme, Host: logicalHost, Port: publisher.PublishedPort, Ready: ready, Detail: detail})
 		}
 	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Service != result[j].Service {
-			return result[i].Service < result[j].Service
-		}
-		if result[i].Port != result[j].Port {
-			return result[i].Port < result[j].Port
-		}
-		return result[i].Scheme < result[j].Scheme
-	})
+	endpoint.SortExposureStatuses(result)
 	return result
 }
 
@@ -189,75 +171,25 @@ func workloadExposureReadinessError(exposures []workloadExposureStatus) error {
 }
 
 func workloadExposureScheme(targetPort, publishedPort int) (string, bool) {
-	for _, port := range []int{targetPort, publishedPort} {
-		switch port {
-		case 443, 8443:
-			return "https", true
-		}
-	}
-	for _, port := range []int{targetPort, publishedPort} {
-		switch port {
-		case 80, 3000, 3001, 5000, 8000, 8080, 8081, 8888:
-			return "http", true
-		}
-	}
-	return "", false
+	return endpoint.HTTPPortScheme(targetPort, publishedPort)
 }
 
 func normalizePublishedHost(host string) string {
-	host = strings.TrimSpace(host)
-	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
-		return "127.0.0.1"
-	}
-	return strings.Trim(host, "[]")
+	return endpoint.NormalizePublishedHost(host)
 }
 
 func isLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
-	return ip != nil && ip.IsLoopback()
+	return endpoint.IsLoopbackHost(host)
 }
 
 func probeHTTPExposure(ctx context.Context, scheme, host string, port int) (bool, string) {
-	return probeHTTPExposureTarget(ctx, scheme, host, host, port)
+	status := endpoint.ProbeHTTP(ctx, endpoint.Endpoint{Service: "workload", Scheme: scheme, Host: host, Port: port})
+	return status.Ready, status.Detail
 }
 
 func probeHTTPExposureTarget(ctx context.Context, scheme, dialHost, requestHost string, port int) (bool, string) {
-	dialAddress := net.JoinHostPort(dialHost, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: 2 * time.Second}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, network, dialAddress)
-		},
-		TLSClientConfig: &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			ServerName:         requestHost,
-			InsecureSkipVerify: true, // v0.3 proves the app-owned local TLS endpoint, not certificate trust policy.
-		},
-		TLSHandshakeTimeout: 2 * time.Second,
-	}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{
-		Transport:     transport,
-		Timeout:       3 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	url := scheme + "://" + net.JoinHostPort(requestHost, strconv.Itoa(port)) + "/"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, "invalid endpoint"
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, "unreachable"
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 500 {
-		return false, fmt.Sprintf("HTTP %d", resp.StatusCode)
-	}
-	return true, fmt.Sprintf("HTTP %d", resp.StatusCode)
+	status := endpoint.ProbeHTTPDialTarget(ctx, endpoint.Endpoint{Service: "workload", Scheme: scheme, Host: requestHost, Port: port}, dialHost, port)
+	return status.Ready, status.Detail
 }
 
 func normalizedWorkloadState(state string) string {

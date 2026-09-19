@@ -102,6 +102,20 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	if err != nil {
 		return fmt.Errorf("read installed private key before update: %w", err)
 	}
+
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		return fmt.Errorf("certificate update preflight: application runtime state is unavailable: %w", err)
+	}
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return fmt.Errorf("certificate update preflight: Compose is unavailable: %w", err)
+	}
+	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
+	if err != nil {
+		return fmt.Errorf("certificate update preflight: managed exposure is not ready for rotation: %w", err)
+	}
+
 	if err := writeNormalizedTLSFiles(status.State.TLSDir, status.SourcePair); err != nil {
 		return err
 	}
@@ -111,34 +125,43 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 		_ = os.Chmod(certPath, 0o600)
 		_ = os.Chmod(keyPath, 0o600)
 	}
-
-	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
-	if err != nil {
+	recoverPrevious := func() {
 		rollback()
-		return fmt.Errorf("certificate update rolled back because application runtime state is unavailable: %w", err)
+		rollbackManagedExposure(ctx, preparedExposure)
+		_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+		if restoredExposure, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
+			_ = convergeManagedExposure(ctx, io.Discard, restoredExposure)
+		}
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
-	if err != nil {
-		rollback()
-		return fmt.Errorf("certificate update rolled back because Compose is unavailable: %w", err)
+
+	if err := stopManagedExposure(ctx, compose, resolved.Manifest, files); err != nil {
+		recoverPrevious()
+		return fmt.Errorf("certificate update rolled back because managed exposure could not be stopped: %w", err)
 	}
 	stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
 	if err != nil {
-		rollback()
+		recoverPrevious()
 		return fmt.Errorf("certificate update rolled back because the application workload could not be stopped: %w", err)
 	}
 	if stopped {
 		if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
-			rollback()
-			_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+			recoverPrevious()
 			return fmt.Errorf("certificate update rolled back because the application workload did not recover: %w", err)
 		}
 	}
+	if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
+		recoverPrevious()
+		return fmt.Errorf("certificate update rolled back because managed exposure did not recover: %w", err)
+	}
+
 	fmt.Fprintf(out, "[OK] tls-update        installed certificate valid until %s\n", formatCertificateTime(status.Source.NotAfter))
 	if stopped {
 		fmt.Fprintln(out, "[OK] tls-reload        repository workload restarted and readiness verified")
 	} else {
 		fmt.Fprintln(out, "[OK] tls-reload        no repository workload restart was required")
+	}
+	if preparedExposure != nil {
+		fmt.Fprintln(out, "[OK] exposure-reload   managed HTTP/TLS exposure reconciled and verified")
 	}
 	fmt.Fprintln(out, "TLS certificate update completed.")
 	return nil

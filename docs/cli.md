@@ -383,3 +383,21 @@ baha version
 ```
 
 Official releases embed semantic version, commit and build date as part of the release contract.
+
+
+## Managed HTTP exposure
+
+Managed exposure is declared in `baseharbor.yaml`; it does not add a separate product-specific Caddy command surface. Normal lifecycle commands converge and observe it:
+
+```bash
+baha app apply
+baha app status
+baha app doctor
+baha app down
+baha app up
+baha app destroy --yes
+```
+
+`app status` and `app doctor` render end-to-end managed exposure readiness from the shared endpoint/exposure state. Redirects remain reachable; HTTP 5xx and unreachable routes are NOT READY.
+
+Existing application-owned HTTP/HTTPS publishers keep the previous discovery/observation path and are not taken over by the managed provider lifecycle.

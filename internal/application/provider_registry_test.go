@@ -87,3 +87,34 @@ func TestCheckControlPlaneDestroySafeRejectsApplicationBindings(t *testing.T) {
 		t.Fatalf("shared-only registry should be safe to destroy: %v", err)
 	}
 }
+
+func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
+	registry := capability.NewRegistry()
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "frontend",
+		Environment: "production",
+		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
+	}
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		t.Fatal(err)
+	}
+	instance, err := registry.Resolve(capability.ProviderCaddy, capability.ScopeApplication, "frontend", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.ID != "caddy/frontend/production" || instance.OwnerApplication != "frontend" {
+		t.Fatalf("unexpected Caddy instance %#v", instance)
+	}
+	found := false
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Kind == capability.ExposureHTTP && binding.Resource.Name == "public" && binding.ProviderInstanceID == instance.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("exposure provider binding missing: %#v", registry.Bindings)
+	}
+}

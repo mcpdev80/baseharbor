@@ -115,6 +115,14 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Scope:     capability.ScopeShared,
 				Ownership: capability.OwnershipBaseHarbor,
 			}
+		case capability.ProviderCaddy:
+			instance = capability.ProviderInstance{
+				ID:               fmt.Sprintf("caddy/%s/%s", m.Name, m.Environment),
+				Provider:         capability.Caddy,
+				Scope:            capability.ScopeApplication,
+				Ownership:        capability.OwnershipBaseHarbor,
+				OwnerApplication: m.Name,
+			}
 		default:
 			return fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
 		}

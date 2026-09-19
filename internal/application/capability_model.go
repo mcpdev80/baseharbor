@@ -43,10 +43,23 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	if err != nil {
 		return nil, err
 	}
-	workload := "application/" + contract.Application
 	bindings := make([]capability.Binding, 0, len(resources))
 	for _, resource := range resources {
-		bindings = append(bindings, capability.Binding{Resource: resource, Workload: workload})
+		workload := "application/" + contract.Application
+		binding := capability.Binding{Resource: resource, Workload: workload}
+		if resource.Kind == capability.ExposureHTTP {
+			for _, exposure := range contract.Exposures {
+				if exposure.Name == resource.Name {
+					binding.Workload = "service/" + exposure.Service
+					binding.HTTPExposure = &capability.HTTPExposureBinding{
+						Service: exposure.Service, TargetPort: exposure.Port,
+						Protocol: exposure.Protocol, Visibility: normalizedExposureVisibility(exposure.Visibility),
+					}
+					break
+				}
+			}
+		}
+		bindings = append(bindings, binding)
 	}
 	return bindings, nil
 }
@@ -57,6 +70,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.PostgreSQL, nil
 	case capability.KeyValue:
 		return capability.Valkey, nil
+	case capability.ExposureHTTP:
+		return capability.Caddy, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}

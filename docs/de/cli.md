@@ -229,3 +229,21 @@ baha version
 ```
 
 Offizielle Releases enthalten Semantic Version, Commit und Build-Zeit. Development-Builds sind als solche erkennbar.
+
+
+## Verwaltete HTTP-Exposition
+
+Managed Exposure wird in `baseharbor.yaml` deklariert; es gibt dafuer keine Caddy-spezifische Parallel-CLI. Die normalen Lifecycle-Befehle konvergieren und beobachten den Provider:
+
+```bash
+baha app apply
+baha app status
+baha app doctor
+baha app down
+baha app up
+baha app destroy --yes
+```
+
+`app status` und `app doctor` zeigen die Ende-zu-Ende-Readiness aus dem gemeinsamen Endpoint-/Exposure-State. Redirects gelten weiter als erreichbar; HTTP 5xx und nicht erreichbare Routen sind NOT READY.
+
+Bestehende app-eigene HTTP/HTTPS-Publisher bleiben im bisherigen Discovery-/Observation-Pfad und werden nicht in den Managed-Provider-Lifecycle uebernommen.

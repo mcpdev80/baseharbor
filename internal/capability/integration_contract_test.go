@@ -11,7 +11,7 @@ type adapterTestDriver struct {
 
 func (d *adapterTestDriver) Descriptor() Provider                               { return d.provider }
 func (d *adapterTestDriver) Preflight(context.Context, Resource, Binding) error { return nil }
-func (d *adapterTestDriver) Provision(context.Context, Resource) error          { return nil }
+func (d *adapterTestDriver) Provision(context.Context, Resource, Binding) error { return nil }
 func (d *adapterTestDriver) Bind(context.Context, Resource, Binding) error      { return nil }
 func (d *adapterTestDriver) Verify(context.Context, Resource, Binding) error    { return nil }
 
@@ -20,6 +20,7 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 		PostgreSQLIntegration,
 		ValkeyIntegration,
 		OpenBaoIntegration,
+		CaddyIntegration,
 	} {
 		report := CheckIntegrationContract(descriptor)
 		if report.Status != ConformancePass {
@@ -80,7 +81,7 @@ func TestDriverAdapterRejectsDifferentProvider(t *testing.T) {
 }
 
 func TestSpecificationIDsAreCanonical(t *testing.T) {
-	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1} {
+	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1} {
 		parsed, err := ParseSpecificationID(spec.ID)
 		if err != nil {
 			t.Fatal(err)

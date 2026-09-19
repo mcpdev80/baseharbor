@@ -14,6 +14,7 @@ Current examples:
 database.sql/v1
 cache.key-value/v1
 secrets/v1
+exposure.http/v1
 ```
 
 Future examples include:
@@ -56,3 +57,4 @@ A future provider can therefore implement a newer capability specification witho
 - [database.sql/v1](database.sql/v1.md)
 - [cache.key-value/v1](cache.key-value/v1.md)
 - [secrets/v1](secrets/v1.md)
+- [exposure.http/v1](exposure.http/v1.md)

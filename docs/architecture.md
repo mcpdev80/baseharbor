@@ -244,3 +244,28 @@ Future capabilities include:
 ## Non-goals
 
 BaseHarbor does not aim to implement its own database, cache protocol, secret store, OIDC protocol, S3 protocol, ACME server or monitoring database. It also does not own application schemas or business data models.
+
+
+## Endpoint and exposure foundation in v0.4.4
+
+v0.4.4 extracts HTTP/HTTPS endpoint identity and readiness into a shared endpoint core. Logical endpoint identity uses workload service names and protocol/address metadata; generated Compose container names are never the application-facing identity.
+
+Endpoint discovery does not imply exposure ownership:
+
+```text
+application-owned endpoint
+  -> discover
+  -> observe
+  -> verify
+
+explicit exposure.http/v1
+  -> resolve provider
+  -> preflight all
+  -> provision
+  -> bind logical endpoint
+  -> verify end-to-end
+```
+
+The first managed Compose exposure provider is Caddy. It owns a separate application-scoped proxy project, while the generated workload override owns the stable exposure integration network and attaches only explicitly exposed workload services. Caddy consumes that network externally. It does not rewrite the application's Compose source and does not own application volumes.
+
+The same `exposure.http/v1` intent is designed to map later to other providers without changing the application contract.

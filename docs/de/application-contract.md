@@ -108,3 +108,33 @@ Die aktuelle Compose-Implementierung unterstuetzt den Existing/BYOC-Zertifikats-
 Das macht Zertifikatsverzeichnisse, Caddy-Details oder Compose-TLS-Dateien nicht zu portablen App-Anforderungen. BaseHarbor-gesteuertes ACME, OpenBao-PKI-Issuance, automatische Rotation und providerneutrale TLS-Capabilities bleiben Future Work.
 
 BaseHarbor trennt Infrastruktur-/Secret-Eingaben von normaler Anwendungskonfiguration. Fachliche Einstellungen wie Sprache, Batch-Groesse oder Schwellenwerte bleiben Eigentum der Anwendung.
+
+
+## Verwaltete HTTP-Exposition
+
+Endpoint-Erkennung und Exposition sind absichtlich getrennte Konzepte.
+
+Ein app-eigener Compose-Publisher bleibt Eigentum der Anwendung. BaseHarbor darf ihn erkennen, beobachten und verifizieren, uebernimmt aber weder Provisionierung noch Loeschung.
+
+Verwaltete Exposition ist expliziter portabler Intent:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - web
+
+exposure:
+  http:
+    - name: public
+      service: web
+      port: 8080
+      protocol: https
+      visibility: public
+```
+
+Portable Felder beschreiben nur die Anwendungsanforderung: logischer Exposure-Name, logischer Workload-Service, Zielport, HTTP/HTTPS-Transport und Sichtbarkeit `public|internal`. Konkreter FQDN, publizierter Host-Port, Zertifikatsquelle, Compose-Netz und Reverse-Proxy-Konfiguration bleiben Deployment-/Provider-State.
+
+In v0.4.4 ist Caddy der Compose-Referenzprovider. Verwaltetes HTTPS verwendet den bestehenden Existing/BYOC-Deployment-TLS-State. Managed ACME, OpenBao-PKI-Issuance und automatische Zertifikatserneuerung bleiben Future Work.
+
+`visibility: public` ist der kanonische Default. `visibility: internal` bindet der aktuelle Compose-Referenzprovider nur lokal/auf Loopback.
