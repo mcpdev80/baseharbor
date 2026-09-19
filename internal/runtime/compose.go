@@ -17,6 +17,13 @@ type ProjectResource struct {
 	Name string
 }
 
+
+type ComposeContainer struct {
+	Name    string
+	Project string
+	Service string
+}
+
 // Compose provides the small lifecycle surface BaseHarbor needs from a
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
@@ -180,6 +187,98 @@ func resourceCommands(resource ProjectResource) ([]string, []string, error) {
 	default:
 		return nil, nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
 	}
+}
+
+func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer, error) {
+	out, err := c.directOutput(ctx, "container", "ls", "-a", "--format", "{{.Names}}")
+	if err != nil {
+		return nil, err
+	}
+	var result []ComposeContainer
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		labels, err := c.directOutput(ctx, "container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}`, name)
+		if err != nil {
+			return nil, err
+		}
+		project, service, ok := strings.Cut(strings.TrimSpace(labels), "|")
+		if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" {
+			continue
+		}
+		result = append(result, ComposeContainer{Name: name, Project: strings.TrimSpace(project), Service: strings.TrimSpace(service)})
+	}
+	return result, nil
+}
+
+func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("managed network name is required")
+	}
+	out, err := c.directOutput(ctx, "network", "ls", "--format", "{{.Name}}")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == name {
+			return nil
+		}
+	}
+	_, err = c.directOutput(ctx, "network", "create", "--label", "io.baseharbor.managed=connectivity", name)
+	return err
+}
+
+func (c Compose) ConnectManagedNetwork(ctx context.Context, network, container, alias string) error {
+	args := []string{"network", "connect"}
+	if alias = strings.TrimSpace(alias); alias != "" {
+		args = append(args, "--alias", alias)
+	}
+	args = append(args, strings.TrimSpace(network), strings.TrimSpace(container))
+	_, err := c.directOutput(ctx, args...)
+	if err != nil {
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "already exists") || strings.Contains(message, "already connected") {
+			return nil
+		}
+	}
+	return err
+}
+
+func (c Compose) DisconnectManagedNetwork(ctx context.Context, network, container string) error {
+	_, err := c.directOutput(ctx, "network", "disconnect", strings.TrimSpace(network), strings.TrimSpace(container))
+	if err != nil {
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "not connected") || strings.Contains(message, "is not connected") {
+			return nil
+		}
+	}
+	return err
+}
+
+func (c Compose) RemoveManagedNetwork(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("managed network name is required")
+	}
+	out, err := c.directOutput(ctx, "network", "ls", "--format", "{{.Name}}")
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	_, err = c.directOutput(ctx, "network", "rm", name)
+	return err
 }
 
 func (c Compose) directOutput(ctx context.Context, args ...string) (string, error) {
