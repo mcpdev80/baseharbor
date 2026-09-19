@@ -202,7 +202,7 @@ func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	}
 	api := got[apiStart:workerStart]
 	worker := got[workerStart:]
-	if networksStart := strings.Index(worker, "\nnetworks:\n"); networksStart >= 0 {
+	if networksStart := strings.Index(worker, "networks:\n"); networksStart >= 0 {
 		worker = worker[:networksStart]
 	}
 	if !strings.Contains(api, "baseharbor-metrics:") || !strings.Contains(api, MetricsTargetAlias(m, "api")) {
