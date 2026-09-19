@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-09-19
+
+### Added
+
+- Versioned `object-storage.s3/v1` capability specification with logical bucket identity, S3-compatible application semantics and provider-neutral secure bindings.
+- SeaweedFS 4.47 as the first lazy shared Compose reference provider for S3-compatible object storage.
+- Manifest v1 `services.object_storage` bucket declarations plus deterministic `--s3` and `--s3-bucket` CLI paths.
+- Standard host/workload S3 bindings and AWS-compatible environment variables without requiring a BaseHarbor SDK.
+- Authenticated SigV4 Put/Get readiness verification in apply, up, status and doctor.
+- Real Docker/Compose acceptance coverage for S3 provisioning, binding, restart, masking, isolation and destroy behavior.
+
+### Changed
+
+- Shared provider registry now records SeaweedFS as a BaseHarbor-owned shared provider while logical buckets remain application-owned resources.
+- Repository workloads requesting S3 attach to a dedicated BaseHarbor object-storage integration network while provider-native topology remains deployment state.
+- Global `baha destroy --yes` removes the shared BaseHarbor-owned SeaweedFS provider only after application bindings have been released.
+
+### Security
+
+- Every managed logical bucket receives separate access credentials and bucket-scoped SeaweedFS IAM authorization.
+- SeaweedFS is explicitly started with IAM enabled; BaseHarbor does not persist a global S3 superuser credential.
+- S3 access-key and secret-key values are owner-only and masked by default in `baha app env`.
+- Capability metadata and provider-registry state contain references/identity only, never plaintext S3 credentials.
+
+### Recovery
+
+- Application backup and restore fail closed for manifests containing managed object storage until object contents are part of the BaseHarbor recovery unit. BaseHarbor does not claim an incomplete S3 recovery as successful backup/restore.
+
+### Compatibility
+
+- Manifest version remains `1`; `services.object_storage` is an additive optional capability.
+- Existing PostgreSQL, Valkey, OpenBao, secure-binding and managed-exposure behavior remains compatible.
+- SeaweedFS is a reference provider, not application identity. Ceph RGW, AWS S3 and other conforming S3 providers can implement the same `object-storage.s3/v1` contract; dynamic external-provider loading/provider-selection UI remains future work.
+
+
 ## [0.4.5] - 2026-09-19
 
 ### Added
