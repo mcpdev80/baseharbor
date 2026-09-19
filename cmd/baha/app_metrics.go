@@ -181,6 +181,14 @@ func printResolvedMetricsPlacement(out io.Writer, m application.Manifest) error 
 	if len(m.Metrics.Sources) == 0 && !application.HasRuntimeMetricsPermissions(m) {
 		return nil
 	}
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
+	if !policy.Enabled || !policy.Collect[application.MetricsSourceApplication] {
+		fmt.Fprintln(out, "Provider placement: prometheus -> not resolved (metrics collection disabled by deployment policy)")
+		return nil
+	}
 	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
