@@ -229,25 +229,29 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	if err != nil {
 		return "", err
 	}
-	metricsPlacement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
-	if err != nil {
-		return "", err
-	}
 	metricsServices := map[string]struct{}{}
-	if metricsPolicy.Enabled && metricsPlacement.Scope != capability.ScopeExternal && metricsPolicy.Collect[MetricsSourceApplication] {
-		for _, source := range m.Metrics.Sources {
-			metricsServices[source.Service] = struct{}{}
+	metricsNetworkName := ""
+	hasMetricsIntent := len(m.Metrics.Sources) > 0 || HasRuntimeMetricsPermissions(m)
+	if hasMetricsIntent && metricsPolicy.Enabled && metricsPolicy.Collect[MetricsSourceApplication] {
+		metricsPlacement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+		if err != nil {
+			return "", err
 		}
-		for _, permission := range m.Runtime.Permissions {
-			if permission.Capability != string(capability.MetricsV1.ID) {
-				continue
+		if metricsPlacement.Scope != capability.ScopeExternal {
+			for _, source := range m.Metrics.Sources {
+				metricsServices[source.Service] = struct{}{}
 			}
-			for _, service := range permission.Services {
-				metricsServices[service] = struct{}{}
+			for _, permission := range m.Runtime.Permissions {
+				if permission.Capability != string(capability.MetricsV1.ID) {
+					continue
+				}
+				for _, service := range permission.Services {
+					metricsServices[service] = struct{}{}
+				}
 			}
+			metricsNetworkName = MetricsProviderNetworkName(m)
 		}
 	}
-	metricsNetworkName := MetricsProviderNetworkName(m)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
