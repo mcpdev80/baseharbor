@@ -302,3 +302,19 @@ Observation never grants BaseHarbor lifecycle ownership. Only explicit managed e
 Provider protocol v1 carries capability-owned, provider-neutral binding semantics through preflight/provision/bind. For `exposure.http/v1`, the typed binding contains the logical workload service, target port, HTTP/HTTPS transport and public/internal visibility.
 
 These fields are defined by the capability specification, not by Caddy or another provider. Provider-specific configuration remains separate operator configuration. This allows a future conforming provider to receive the same application intent without reading `baseharbor.yaml` or depending on BaseHarbor's Go implementation.
+
+## Secure binding semantics
+
+Starting with v0.4.5, provider lifecycle bindings may include the shared `secure-binding/v1` model. This is the single provider-neutral representation for workload identity, credential references, trust material references, authorization metadata, secret references and declared renewal/rotation/revocation support.
+
+Rules:
+
+- plaintext credentials, tokens, private keys and secret values are forbidden in the provider protocol;
+- provider-specific security internals such as OpenBao paths/AppRoles/policies, Kubernetes Secret names or cloud-secret object identifiers stay provider/deployment state;
+- secure-binding metadata is validated before provider preflight and therefore before mutation;
+- shared provider infrastructure never implies shared workload authorization;
+- providers translate least-privilege authorization metadata into their native ACL/policy model;
+- security diagnostics are machine-readable and must remain secret-safe;
+- the same semantics are represented by `WorkloadBinding.security` in `baseharbor.provider/v1`.
+
+The existing OpenBao/runtime-broker/mTLS implementation is the first reference realization of this contract. v0.4.5 extracts its stable semantics; it does not replace that implementation.
