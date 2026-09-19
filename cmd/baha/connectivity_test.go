@@ -48,7 +48,6 @@ func TestConnectivityServiceAliasMatchesManagedInstances(t *testing.T) {
 	}
 }
 
-
 func TestConnectivityCommandsAreDiscoverable(t *testing.T) {
 	root := rootCommand()
 	want := map[string]bool{"connect": false, "disconnect": false, "connections": false}
