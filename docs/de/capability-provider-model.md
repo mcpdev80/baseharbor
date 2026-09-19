@@ -168,7 +168,7 @@ Weitere S3-, Telemetrie-, Observability-, Messaging-, AI/MCP- und Vector-Provide
 
 Fuer kuenftige externe Provider ist gRPC/Protocol Buffers als Transport und OCI als Distribution vorgesehen. BaseHarbor bleibt fuer Capability-Semantik und Conformance autoritativ.
 
-## Provider-Placement, Sharing Boundaries und Runtime-Isolation
+## Provider-Placement, Sharing Boundaries und Runtime-Realisierung
 
 Provider-Placement ist eine BaseHarbor-weite Deployment-/Operator-Entscheidung. Sie ist unabhaengig von Application Intent, Runtime-Topologie und konkreter Produktauswahl.
 
@@ -190,10 +190,7 @@ application             shared ---------------- external
                            +-- optionale Sharing Boundary
         |
         v
-Isolation / Deployment Boundary
-        |
-        v
-Runtime-/Provider-Implementierung
+Runtime-Realisierung des gewaehlten Placements
 ```
 
 Die kanonischen Placement-Scopes bleiben exakt `application`, `shared` und `external`. Eine Sharing Boundary ist eine optionale Eigenschaft von `shared` und kein vierter Scope.
