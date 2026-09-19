@@ -77,13 +77,13 @@ type CapabilityIntent struct {
 }
 
 type ReconciliationItem struct {
-	Capability string             `json:"capability"`
-	Name       string             `json:"name,omitempty"`
-	Direction  Direction          `json:"direction,omitempty"`
+	Capability string              `json:"capability"`
+	Name       string              `json:"name,omitempty"`
+	Direction  Direction           `json:"direction,omitempty"`
 	State      ReconciliationState `json:"state"`
-	Operations []RuntimeOperation `json:"operations,omitempty"`
-	Confidence Confidence         `json:"confidence,omitempty"`
-	Evidence   []Evidence         `json:"evidence,omitempty"`
+	Operations []RuntimeOperation  `json:"operations,omitempty"`
+	Confidence Confidence          `json:"confidence,omitempty"`
+	Evidence   []Evidence          `json:"evidence,omitempty"`
 }
 
 type Artifact struct {
