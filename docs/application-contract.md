@@ -439,3 +439,29 @@ The current SeaweedFS provider creates a separate bucket-scoped identity for eve
 Repository workloads use the provider's internal Compose endpoint over the BaseHarbor-owned object-storage integration network; host-side consumers use the protected loopback endpoint. Neither address is portable application identity.
 
 Backup/restore does **not** yet capture object contents. v0.4.6 therefore refuses `baha app backup` and `baha app restore` for applications containing managed object storage instead of producing or accepting an incomplete recovery unit.
+
+## OTLP telemetry export in v0.4.7
+
+Applications may opt into provider-neutral OTLP export:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - api
+    - worker
+
+telemetry:
+  otlp:
+    signals:
+      - traces
+      - metrics
+```
+
+The selected workload services receive standard OpenTelemetry environment variables. They do not receive a BaseHarbor-specific telemetry API and do not name the Collector, Tempo, Prometheus, Loki or Grafana.
+
+The current v1 binding uses OTLP HTTP/protobuf export. BaseHarbor may satisfy it through the shared managed OpenTelemetry Collector or an external OTLP destination selected in deployment state. Provider endpoint addresses and authorization material are not portable application intent.
+
+An external destination can be supplied by deployment environment using `BASEHARBOR_OTLP_ENDPOINT`. Optional sensitive OTLP headers use `BASEHARBOR_OTLP_HEADERS` and are injected only at the trusted workload/provider boundary; they are not written into `baseharbor.yaml`.
+
+Requesting OTLP transport alone never provisions Prometheus, Loki, Tempo or Grafana.
