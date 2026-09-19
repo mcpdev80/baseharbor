@@ -24,6 +24,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
 
 var (
@@ -41,9 +42,16 @@ type Config struct {
 	TLSClientCAFile        string
 	RuntimeAppName         string
 	RuntimeEnvironment     string
+	RuntimeSecretsEnabled  bool
 	RuntimeOpenBaoURL      string
 	RuntimeCredentialsFile string
 	RuntimeTokenFile       string
+	RuntimePermissionsFile string
+	RuntimeExecutorURL     string
+	RuntimeExecutorCAFile  string
+	RuntimeExecutorCertFile string
+	RuntimeExecutorKeyFile string
+	RuntimeOperationsDir   string
 	RuntimeDocsListenAddr  string
 	ShutdownTimeout        time.Duration
 }
@@ -69,26 +77,37 @@ func (c Config) Validate() error {
 		}
 		for label, value := range map[string]string{
 			"runtime environment":           c.RuntimeEnvironment,
-			"runtime OpenBao URL":           c.RuntimeOpenBaoURL,
-			"runtime AppRole credentials":   c.RuntimeCredentialsFile,
 			"runtime token":                 c.RuntimeTokenFile,
+			"runtime permissions":           c.RuntimePermissionsFile,
 			"runtime client CA certificate": c.TLSClientCAFile,
 		} {
 			if strings.TrimSpace(value) == "" {
 				return fmt.Errorf("%s is required for a per-application runtime broker", label)
 			}
 		}
-		if _, err := os.Stat(c.RuntimeCredentialsFile); err != nil {
-			return fmt.Errorf("inspect runtime AppRole credentials: %w", err)
-		}
-		if _, err := os.Stat(c.RuntimeTokenFile); err != nil {
-			return fmt.Errorf("inspect runtime token: %w", err)
+		for label, path := range map[string]string{
+			"runtime token":       c.RuntimeTokenFile,
+			"runtime permissions": c.RuntimePermissionsFile,
+		} {
+			if _, err := os.Stat(path); err != nil {
+				return fmt.Errorf("inspect %s: %w", label, err)
+			}
 		}
 		if _, err := loadClientCAPool(c.TLSClientCAFile); err != nil {
 			return err
 		}
-		if _, err := openbao.NewApplicationRuntimeClient(c.RuntimeOpenBaoURL); err != nil {
-			return err
+		if c.RuntimeSecretsEnabled {
+			if strings.TrimSpace(c.RuntimeOpenBaoURL) == "" || strings.TrimSpace(c.RuntimeCredentialsFile) == "" {
+				return errors.New("runtime OpenBao URL and AppRole credentials are required when runtime secrets are enabled")
+			}
+			if _, err := os.Stat(c.RuntimeCredentialsFile); err != nil {
+				return fmt.Errorf("inspect runtime AppRole credentials: %w", err)
+			}
+			if _, err := openbao.NewApplicationRuntimeClient(c.RuntimeOpenBaoURL); err != nil {
+				return err
+			}
+		} else if strings.TrimSpace(c.RuntimeOpenBaoURL) != "" || strings.TrimSpace(c.RuntimeCredentialsFile) != "" {
+			return errors.New("runtime OpenBao configuration requires runtime secrets to be enabled")
 		}
 		return nil
 	}
@@ -145,22 +164,38 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	var runtimeSecrets applicationruntimeapi.SecretService = operatorSecretService
 	var runtimeVerifier applicationruntimeapi.RuntimeVerifier = applicationruntimeauth.New(store)
 	var boundRuntimeClient *openbao.ApplicationRuntimeClient
+	var boundExecutorClient *runtimeexecutor.Client
 	if cfg.boundRuntimeEnabled() {
-		client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
-		if err != nil {
-			return err
-		}
-		bound, err := applicationsecret.NewBoundRuntimeService(cfg.RuntimeAppName, cfg.RuntimeEnvironment, cfg.RuntimeCredentialsFile, client)
-		if err != nil {
-			return err
-		}
 		verifier, err := applicationruntimeauth.NewStatic(cfg.RuntimeAppName, cfg.RuntimeTokenFile)
 		if err != nil {
 			return err
 		}
-		boundRuntimeClient = client
-		runtimeSecrets = bound
 		runtimeVerifier = verifier
+		runtimeSecrets = nil
+		if cfg.RuntimeSecretsEnabled {
+			client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
+			if err != nil {
+				return err
+			}
+			bound, err := applicationsecret.NewBoundRuntimeService(cfg.RuntimeAppName, cfg.RuntimeEnvironment, cfg.RuntimeCredentialsFile, client)
+			if err != nil {
+				return err
+			}
+			boundRuntimeClient = client
+			runtimeSecrets = bound
+		}
+		if strings.TrimSpace(cfg.RuntimeExecutorURL) != "" {
+			client, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
+				URL: cfg.RuntimeExecutorURL,
+				CAFile: cfg.RuntimeExecutorCAFile,
+				CertFile: cfg.RuntimeExecutorCertFile,
+				KeyFile: cfg.RuntimeExecutorKeyFile,
+			})
+			if err != nil {
+				return err
+			}
+			boundExecutorClient = client
+		}
 	} else if strings.TrimSpace(cfg.RuntimeOpenBaoURL) != "" {
 		client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
 		if err != nil {
@@ -171,7 +206,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	var runtimeHandler http.Handler
 	var err error
 	if cfg.boundRuntimeEnabled() {
-		runtimeHandler, err = applicationruntimeapi.NewBound(runtimeSecrets, runtimeVerifier, cfg.RuntimeAppName)
+		runtimeHandler, err = buildBoundRuntimeHandler(ctx, cfg, runtimeSecrets, runtimeVerifier)
 	} else {
 		runtimeHandler, err = applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
 	}
@@ -196,6 +231,12 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 		if boundRuntimeClient != nil {
 			if err := boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
+				writeNotReady(w)
+				return
+			}
+		}
+		if boundExecutorClient != nil {
+			if err := boundExecutorClient.Check(checkCtx); err != nil {
 				writeNotReady(w)
 				return
 			}
