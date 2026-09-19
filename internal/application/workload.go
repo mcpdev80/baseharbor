@@ -225,16 +225,17 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	}
 	hasRuntimeObjectStorage := len(runtimeObjectStorageServices) > 0
 	telemetryManaged := HasOTLPTelemetry(m) && values["OTLP_PROVIDER"] == string(capability.ProviderOTelCollector)
-	metricsEnabled, err := MetricsCollectionEnabled(m)
+	metricsPolicy, err := MetricsPolicy(m)
 	if err != nil {
 		return "", err
 	}
 	metricsServices := map[string]struct{}{}
-	if metricsEnabled {
+	if metricsPolicy.Enabled && metricsPolicy.ProviderScope != capability.ScopeExternal && metricsPolicy.Collect[MetricsSourceApplication] {
 		for _, source := range m.Metrics.Sources {
 			metricsServices[source.Service] = struct{}{}
 		}
 	}
+	metricsNetworkName := MetricsProviderNetworkName(m, metricsPolicy.ProviderScope)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
@@ -301,7 +302,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
-			b.WriteString("    name: baseharbor-metrics\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(metricsNetworkName))
 		}
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
