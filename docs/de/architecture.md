@@ -177,6 +177,6 @@ explizites exposure.http/v1
   -> Ende-zu-Ende verifizieren
 ```
 
-Der erste verwaltete Compose-Exposure-Provider ist Caddy. Er besitzt ein separates application-scoped Provider-Projekt/-Netz und verbindet nur explizit exponierte Workload-Services ueber den von BaseHarbor erzeugten Override. Die Compose-Quelldatei und app-eigene Volumes werden nicht uebernommen.
+Der erste verwaltete Compose-Exposure-Provider ist Caddy. Er besitzt ein separates application-scoped Proxy-Projekt. Das stabile Exposure-Integrationsnetz gehoert dagegen zum von BaseHarbor erzeugten Workload-Override; nur explizit exponierte Workload-Services werden daran angebunden und Caddy konsumiert dieses Netz extern. Die Compose-Quelldatei und app-eigene Volumes werden nicht uebernommen.
 
 Derselbe `exposure.http/v1`-Intent soll spaeter ohne Aenderung am Application Contract auf andere Provider abgebildet werden koennen.
