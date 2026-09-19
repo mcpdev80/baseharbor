@@ -50,3 +50,13 @@ func TestExternalOTLPPreflightRejectsInvalidEndpoint(t *testing.T) {
 		t.Fatal("expected invalid external endpoint to fail closed")
 	}
 }
+
+func TestManagedCollectorDoesNotProvisionObservabilityBackends(t *testing.T) {
+	text := strings.ToLower(providerComposeYAML() + "\n" + collectorConfig())
+	for _, forbidden := range []string{"prometheus", "loki", "tempo", "grafana"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("managed OTLP provider unexpectedly references %s", forbidden)
+		}
+	}
+}
+
