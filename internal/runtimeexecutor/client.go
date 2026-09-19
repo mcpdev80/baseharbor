@@ -59,7 +59,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}}
 	return &Client{
 		endpoint: endpoint,
-		http: &http.Client{Transport: transport, Timeout: 30 * time.Second},
+		http:     &http.Client{Transport: transport, Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -82,8 +82,8 @@ func (c *Client) Check(ctx context.Context) error {
 func (c *Client) Execute(ctx context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
 	response, err := c.execute(ctx, ExecuteRequest{
 		Capability: request.Capability,
-		Operation: request.Operation,
-		Name: request.ResourceName,
+		Operation:  request.Operation,
+		Name:       request.ResourceName,
 	})
 	if err != nil {
 		return runtimeoperation.Result{}, err
