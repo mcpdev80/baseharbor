@@ -43,11 +43,16 @@ type HTTPExposureBinding struct {
 	Visibility string `json:"visibility"`
 }
 
-type ObjectStorageS3Binding struct {\n\tBucket string `json:"bucket"`\n}\n\ntype Binding struct {
-	Resource     Resource             `json:"resource"`
-	Workload     string               `json:"workload"`
-	HTTPExposure *HTTPExposureBinding `json:"http_exposure,omitempty"`
-	Security     *SecureBinding       `json:"security,omitempty"`
+type ObjectStorageS3Binding struct {
+	Bucket string `json:"bucket"`
+}
+
+type Binding struct {
+	Resource        Resource                `json:"resource"`
+	Workload        string                  `json:"workload"`
+	HTTPExposure    *HTTPExposureBinding    `json:"http_exposure,omitempty"`
+	ObjectStorageS3 *ObjectStorageS3Binding `json:"object_storage_s3,omitempty"`
+	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
 type PlanItem struct {
@@ -84,11 +89,12 @@ type Driver interface {
 }
 
 type Request struct {
-	Requirement  Requirement
-	Workload     string
-	HTTPExposure *HTTPExposureBinding
-	Security     *SecureBinding
-	Driver       Driver
+	Requirement     Requirement
+	Workload        string
+	HTTPExposure    *HTTPExposureBinding
+	ObjectStorageS3 *ObjectStorageS3Binding
+	Security        *SecureBinding
+	Driver          Driver
 }
 
 func BuildPlan(application string, requests []Request) (Plan, error) {
@@ -114,6 +120,13 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 		if request.HTTPExposure != nil {
 			value := *request.HTTPExposure
 			binding.HTTPExposure = &value
+		}
+		if request.ObjectStorageS3 != nil {
+			value := *request.ObjectStorageS3
+			if strings.TrimSpace(value.Bucket) == "" {
+				return Plan{}, fmt.Errorf("capability S3 binding for %s/%s: bucket is required", application, request.Requirement.Name)
+			}
+			binding.ObjectStorageS3 = &value
 		}
 		if request.Security != nil {
 			value := *request.Security
