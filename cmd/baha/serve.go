@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/controlplaneruntime"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
 
 func serveCommand(store application.Store) *cli.Command {
@@ -21,12 +22,27 @@ func serveCommand(store application.Store) *cli.Command {
 			if len(args) != 0 {
 				return usageError("baha serve does not accept arguments", "Run 'baha serve --help' for usage.")
 			}
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_MODE")), "true") {
+				return runtimeexecutor.Run(ctx, runtimeExecutorConfigFromEnv())
+			}
 			cfg, err := controlPlaneConfigFromEnv()
 			if err != nil {
 				return err
 			}
 			return controlplaneruntime.Run(ctx, cfg, store)
 		},
+	}
+}
+
+func runtimeExecutorConfigFromEnv() runtimeexecutor.Config {
+	return runtimeexecutor.Config{
+		ListenAddr:       os.Getenv("BASEHARBOR_EXECUTOR_LISTEN_ADDR"),
+		TLSCertFile:      os.Getenv("BASEHARBOR_EXECUTOR_TLS_CERT_FILE"),
+		TLSKeyFile:       os.Getenv("BASEHARBOR_EXECUTOR_TLS_KEY_FILE"),
+		TLSClientCAFile:  os.Getenv("BASEHARBOR_EXECUTOR_TLS_CLIENT_CA_FILE"),
+		S3Endpoint:       os.Getenv("BASEHARBOR_EXECUTOR_S3_ENDPOINT"),
+		AdminCredentials: os.Getenv("BASEHARBOR_EXECUTOR_S3_ADMIN_CREDENTIALS_FILE"),
+		StateDir:         os.Getenv("BASEHARBOR_EXECUTOR_STATE_DIR"),
 	}
 }
 
