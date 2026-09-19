@@ -103,8 +103,8 @@ func requireRuntimeBearer(verifier applicationruntimeapi.RuntimeVerifier, app st
 			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"type": "about:blank",
-				"title": "unauthorized",
+				"type":   "about:blank",
+				"title":  "unauthorized",
 				"status": http.StatusUnauthorized,
 			})
 			return
