@@ -12,8 +12,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*.*.*'
     paths:
       - 'cmd/**'
       - 'internal/**'
@@ -21,6 +19,7 @@ on:
       - 'go.sum'
       - 'deploy/control-plane/Dockerfile'
       - '.github/workflows/runtime-image.yml'
+  create:
   workflow_dispatch:
 
 permissions:
@@ -31,10 +30,32 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'create' || github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve source ref
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "create" ]; then
+            if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+              echo "create event is not a tag" >&2
+              exit 1
+            fi
+            if [[ ! "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Runtime release tag must be valid SemVer with a v prefix." >&2
+              exit 1
+            fi
+            echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.ref }}
 
       - name: Resolve build metadata
         id: buildmeta
@@ -46,8 +67,8 @@ jobs:
           else
             version="edge"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
