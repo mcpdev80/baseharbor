@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
@@ -58,6 +59,17 @@ func appStatusCommand(store application.Store) *cli.Command {
 				workloadFound = found
 			}
 			brokerRunning := false
+			if application.HasObjectStorage(m) {
+				checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
+				cancel()
+				if err != nil {
+					fmt.Fprintf(out, "[FAIL] object-storage    %v\n", err)
+					ready = false
+				} else {
+					fmt.Fprintf(out, "[OK] object-storage    %d bucket(s) passed authenticated S3 Put/Get\n", len(application.ObjectStorageBucketNames(m)))
+				}
+			}
 			if m.Services.Secrets {
 				if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
 					if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
@@ -66,7 +78,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 				}
 			}
 			exposureRunning := managedExposureRunning(ctx, compose, m, files)
-			if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning, exposureRunning) {
+			if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning, exposureRunning) && !application.HasObjectStorage(m) {
 				fmt.Fprintln(out, "State: STOPPED (persistent application state is preserved)")
 				return nil
 			}
@@ -269,6 +281,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					}
 					_, err := inspectManagedExposure(ctx, compose, m, files)
 					return err
+				}})
+			}
+			if application.HasObjectStorage(m) {
+				checks = append(checks, preflight.Check{Name: "object-storage S3 readiness", Run: func(ctx context.Context) error {
+					if runtimeErr != nil {
+						return runtimeErr
+					}
+					return objectstorage.VerifyApplicationBuckets(ctx, compose, m, files)
 				}})
 			}
 			if m.Services.Postgres {
