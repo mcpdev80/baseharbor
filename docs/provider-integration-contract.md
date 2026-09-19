@@ -363,7 +363,7 @@ Conformance requires at least:
 
 Collection policy is deployment/operator state. Declaring a `metrics/v1` source does not automatically authorize collection in every environment.
 
-## Provider placement, sharing boundaries and runtime isolation
+## Provider placement, sharing boundaries and runtime realization
 
 Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
 
@@ -385,10 +385,7 @@ application             shared ---------------- external
                            +-- optional sharing boundary
         |
         v
-Isolation / deployment boundary
-        |
-        v
-Runtime/provider implementation
+Runtime realization of the selected placement
 ```
 
 The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
@@ -397,9 +394,9 @@ A shared provider is never automatically reachable by every application. Access 
 
 Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
 
-The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-isolation mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
 
-Placement must also remain independent from runtime-specific isolation. Today Compose may realize boundaries through projects, networks and volumes. Future Kubernetes/OpenShift runtimes may map them to namespaces/projects, cluster-scoped infrastructure, Helm releases, Operators, NetworkPolicies or other platform-native mechanisms without changing application intent.
+Placement semantics are fixed before runtime realization. The runtime may choose platform-native mechanisms to implement those semantics, but it may not reinterpret them: `application` remains one dedicated provider instance for exactly one application/environment, `shared` remains BaseHarbor Platform/Core Runtime infrastructure, and `external` remains externally lifecycle-owned. Compose currently realizes these guarantees through dedicated/shared projects, networks and volumes. Future Kubernetes/OpenShift runtimes may use namespaces/projects, Operators, NetworkPolicies or other platform-native mechanisms without changing the placement meaning or application intent.
 
 A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
 
