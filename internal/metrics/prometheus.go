@@ -110,12 +110,12 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 	target := targetGroup{
 		Targets: []string{net.JoinHostPort(application.MetricsTargetAlias(d.app, binding.Metrics.Service), strconv.Itoa(binding.Metrics.Port))},
 		Labels: map[string]string{
-			"job":                        "baseharbor-applications",
-			"baseharbor_application":     d.app.Name,
-			"baseharbor_environment":     d.app.Environment,
-			"baseharbor_service":         binding.Metrics.Service,
-			"baseharbor_source":          resource.Name,
-			"baseharbor_metrics_path":    binding.Metrics.Path,
+			"job":                     "baseharbor-applications",
+			"baseharbor_application":  d.app.Name,
+			"baseharbor_environment":  d.app.Environment,
+			"baseharbor_service":      binding.Metrics.Service,
+			"baseharbor_source":       resource.Name,
+			"baseharbor_metrics_path": binding.Metrics.Path,
 		},
 	}
 	data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
