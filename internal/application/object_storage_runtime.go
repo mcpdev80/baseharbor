@@ -39,19 +39,13 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 	if endpoint == "" || physicalBucket == "" {
 		return fmt.Errorf("object-storage binding for %s is incomplete", logicalBucket)
 	}
-	binding, bindingRef, err := ensureInstanceBindingDirs(files.Bindings, files.Bindings, "object-storage-s3", logicalBucket, len(ObjectStorageBucketNames(m)))
+	bindingsAbs, err := filepath.Abs(files.Bindings)
+	if err != nil {
+		return fmt.Errorf("resolve object-storage bindings directory: %w", err)
+	}
+	binding, _, err := ensureInstanceBindingDirs(files.Bindings, bindingsAbs, "object-storage-s3", logicalBucket, len(ObjectStorageBucketNames(m)))
 	if err != nil {
 		return err
-	}
-	if abs, absErr := filepath.Abs(binding); absErr == nil {
-		binding = abs
-	}
-	if abs, absErr := filepath.Abs(files.Bindings); absErr == nil {
-		base := filepath.Join(abs, "object-storage-s3")
-		bindingRef = base
-		if len(ObjectStorageBucketNames(m)) != 1 || logicalBucket != defaultServiceInstance {
-			bindingRef = filepath.Join(base, logicalBucket)
-		}
 	}
 	if err := writeBinding(binding, map[string]string{
 		"endpoint":          endpoint,
@@ -60,6 +54,17 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 		"access_key_id":     credentials.AccessKeyID,
 		"secret_access_key": credentials.SecretAccessKey,
 	}); err != nil {
+		return err
+	}
+
+	runtimeValues, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	runtimeValues[s3RuntimeKey(logicalBucket, "BUCKET")] = physicalBucket
+	runtimeValues[s3RuntimeKey(logicalBucket, "HOST_ENDPOINT")] = endpoint
+	runtimeValues[s3RuntimeKey(logicalBucket, "CONTAINER_ENDPOINT")] = "http://seaweedfs:8333"
+	if err := writeRuntimeEnv(files.Env, m, runtimeValues); err != nil {
 		return err
 	}
 
@@ -90,7 +95,6 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 		return err
 	}
 
-	_ = bindingRef
 	return nil
 }
 
