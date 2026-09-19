@@ -115,3 +115,28 @@ func request(t *testing.T, h http.Handler, method, path, body string) *httptest.
 	h.ServeHTTP(res, req)
 	return res
 }
+
+
+func TestBoundRuntimeHandlerUsesCanonicalSecretRoutes(t *testing.T) {
+	secrets := &fakeSecrets{}
+	h, err := NewBound(secrets, fakeVerifier{app: "alpha", token: "runtime-token"}, "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	create := request(t, h, http.MethodPost, "/runtime/v1/secrets", `{"value":"canonical-secret"}`)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("canonical create status/body = %d %q", create.Code, create.Body.String())
+	}
+
+	ref := secrets.ref.String()
+	read := request(t, h, http.MethodPost, "/runtime/v1/secrets/resolve", `{"ref":"`+ref+`"}`)
+	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), "canonical-secret") {
+		t.Fatalf("canonical read status/body = %d %q", read.Code, read.Body.String())
+	}
+
+	legacy := request(t, h, http.MethodPost, "/runtime/v1/apps/alpha/secret-refs/resolve", `{"ref":"`+ref+`"}`)
+	if legacy.Code != http.StatusOK {
+		t.Fatalf("legacy compatibility route status/body = %d %q", legacy.Code, legacy.Body.String())
+	}
+}
