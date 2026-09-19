@@ -125,3 +125,30 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 		t.Fatalf("workload override must be owner-only: info=%v err=%v", info, err)
 	}
 }
+
+func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api", "web"}}
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
+	got, err := workloadOverrideYAML(m, []string{"api", "web"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "name: "+ApplicationExposureNetworkName(m)) {
+		t.Fatalf("override missing stable exposure network:\n%s", got)
+	}
+	web := got[strings.Index(got, "  web:"):]
+	if !strings.Contains(web, "baseharbor-exposure: {}") {
+		t.Fatalf("exposed service missing exposure network:\n%s", got)
+	}
+	apiStart := strings.Index(got, "  api:")
+	webStart := strings.Index(got, "  web:")
+	if apiStart < 0 || webStart < 0 || apiStart >= webStart {
+		t.Fatalf("unexpected service order:\n%s", got)
+	}
+	api := got[apiStart:webStart]
+	if strings.Contains(api, "baseharbor-exposure") {
+		t.Fatalf("non-exposed service joined exposure network:\n%s", got)
+	}
+}
