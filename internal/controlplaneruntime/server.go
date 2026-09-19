@@ -33,20 +33,20 @@ var (
 )
 
 type Config struct {
-	ListenAddr             string
-	DatabaseURL            string
-	OIDCIssuer             string
-	OIDCAudiences          []string
-	TLSCertFile            string
-	TLSKeyFile             string
-	TLSClientCAFile        string
-	RuntimeAppName         string
-	RuntimeEnvironment     string
-	RuntimeSecretsEnabled  bool
-	RuntimeOpenBaoURL      string
-	RuntimeCredentialsFile string
-	RuntimeTokenFile       string
-	RuntimePermissionsFile string
+	ListenAddr              string
+	DatabaseURL             string
+	OIDCIssuer              string
+	OIDCAudiences           []string
+	TLSCertFile             string
+	TLSKeyFile              string
+	TLSClientCAFile         string
+	RuntimeAppName          string
+	RuntimeEnvironment      string
+	RuntimeSecretsEnabled   bool
+	RuntimeOpenBaoURL       string
+	RuntimeCredentialsFile  string
+	RuntimeTokenFile        string
+	RuntimePermissionsFile  string
 	RuntimeExecutorURL      string
 	RuntimeExecutorCAFile   string
 	RuntimeExecutorCertFile string
