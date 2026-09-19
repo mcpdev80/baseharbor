@@ -30,11 +30,11 @@ func NewRuntimeSourceExecutor(environment, targetsDir string) (*RuntimeSourceExe
 	if environment == "" || targetsDir == "" {
 		return nil, errors.New("runtime metrics executor requires environment and target directory")
 	}
-	if err := os.MkdirAll(targetsDir, 0o700); err != nil {
+	if err := os.MkdirAll(targetsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create runtime metrics target directory: %w", err)
 	}
-	if err := os.Chmod(targetsDir, 0o700); err != nil {
-		return nil, fmt.Errorf("protect runtime metrics target directory: %w", err)
+	if err := os.Chmod(targetsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("prepare read-only Prometheus access to runtime metrics target directory: %w", err)
 	}
 	return &RuntimeSourceExecutor{environment: environment, targetsDir: targetsDir}, nil
 }
