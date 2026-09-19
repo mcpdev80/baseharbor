@@ -119,7 +119,6 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 	}
 }
 
-
 func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
 	m := New("demo", "production", false, false, false)
 	m.Services.Postgres = false
