@@ -211,7 +211,7 @@ func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	if strings.Contains(worker, "baseharbor-metrics:") {
 		t.Fatalf("non-source service joined metrics network:\n%s", got)
 	}
-	if !strings.Contains(got, "name: baseharbor-metrics") {
+	if !strings.Contains(got, `name: "baseharbor-metrics"`) {
 		t.Fatalf("metrics network definition missing:\n%s", got)
 	}
 }
