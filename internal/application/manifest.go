@@ -22,6 +22,15 @@ type Manifest struct {
 	Secrets     SecretRequirements
 	Workload    WorkloadConfig
 	Exposures   []HTTPExposureRequirement
+	Telemetry   TelemetryRequirements
+}
+
+type TelemetryRequirements struct {
+	OTLP *OTLPRequirement
+}
+
+type OTLPRequirement struct {
+	Signals []string
 }
 
 type Services struct {
@@ -143,6 +152,13 @@ func WithHTTPExposure(m Manifest, name, service string, port int, protocol strin
 	return m
 }
 
+func WithOTLPTelemetry(m Manifest, signals ...string) Manifest {
+	m.Telemetry.OTLP = &OTLPRequirement{Signals: append([]string(nil), signals...)}
+	return m
+}
+
+func HasOTLPTelemetry(m Manifest) bool { return m.Telemetry.OTLP != nil }
+
 func PostgresInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.Postgres, m.Services.PostgresInstances)
 }
@@ -230,8 +246,8 @@ func (m Manifest) Validate() error {
 	postgres := PostgresInstanceNames(m)
 	redis := RedisInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) {
-		return fmt.Errorf("at least one backend service or explicit Compose workload must be enabled")
+	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) {
+		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range postgres {
 		if err := validateSlug("PostgreSQL instance name", name); err != nil {
@@ -269,6 +285,35 @@ func (m Manifest) Validate() error {
 	}
 	if err := validateHTTPExposures(m.Workload, m.Exposures); err != nil {
 		return err
+	}
+	if err := validateOTLPTelemetry(m.Workload, m.Telemetry.OTLP); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateOTLPTelemetry(workload WorkloadConfig, requirement *OTLPRequirement) error {
+	if requirement == nil {
+		return nil
+	}
+	if len(workload.Services) == 0 {
+		return fmt.Errorf("OTLP telemetry requires explicit workload.services so service identity is deterministic")
+	}
+	if len(requirement.Signals) == 0 {
+		return fmt.Errorf("OTLP telemetry requires at least one signal")
+	}
+	seen := map[string]struct{}{}
+	for _, signal := range requirement.Signals {
+		signal = strings.TrimSpace(signal)
+		switch signal {
+		case "traces", "metrics", "logs":
+		default:
+			return fmt.Errorf("OTLP telemetry signal %q must be traces, metrics or logs", signal)
+		}
+		if _, exists := seen[signal]; exists {
+			return fmt.Errorf("duplicate OTLP telemetry signal %q", signal)
+		}
+		seen[signal] = struct{}{}
 	}
 	return nil
 }
@@ -458,6 +503,14 @@ func (m Manifest) YAML() string {
 			}
 		}
 	}
+	if m.Telemetry.OTLP != nil {
+		b.WriteString("telemetry:\n  otlp:\n    signals:\n")
+		signals := append([]string(nil), m.Telemetry.OTLP.Signals...)
+		sort.Strings(signals)
+		for _, signal := range signals {
+			fmt.Fprintf(&b, "      - %s\n", signal)
+		}
+	}
 	if len(m.Exposures) > 0 {
 		exposures := append([]HTTPExposureRequirement(nil), m.Exposures...)
 		sort.Slice(exposures, func(i, j int) bool { return exposures[i].Name < exposures[j].Name })
@@ -509,6 +562,7 @@ func ParseYAML(input string) (Manifest, error) {
 	workloadField := ""
 	exposureField := ""
 	exposureIndex := -1
+	telemetryField := ""
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
 	for s.Scan() {
@@ -529,6 +583,7 @@ func ParseYAML(input string) (Manifest, error) {
 			workloadField = ""
 			exposureField = ""
 			exposureIndex = -1
+			telemetryField = ""
 			switch {
 			case strings.HasPrefix(trim, "version:"):
 				v, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trim, "version:")))
@@ -547,6 +602,8 @@ func ParseYAML(input string) (Manifest, error) {
 				section = "workload"
 			case trim == "exposure:":
 				section = "exposure"
+			case trim == "telemetry:":
+				section = "telemetry"
 			default:
 				return Manifest{}, fmt.Errorf("line %d: unsupported top-level field %q", lineNo, trim)
 			}
@@ -582,6 +639,11 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "exposure" && trim == "http:" {
 				exposureField = "http"
+				continue
+			}
+			if section == "telemetry" && trim == "otlp:" {
+				m.Telemetry.OTLP = &OTLPRequirement{}
+				telemetryField = "otlp"
 				continue
 			}
 			if section == "workload" {
@@ -645,6 +707,10 @@ func ParseYAML(input string) (Manifest, error) {
 				m.Workload.Services = append(m.Workload.Services, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
 				continue
 			}
+			if section == "telemetry" && telemetryField == "otlp" && trim == "signals:" {
+				telemetryField = "otlp-signals"
+				continue
+			}
 			if section == "exposure" && exposureField == "http" && strings.HasPrefix(trim, "- ") {
 				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
 				key, value, ok := strings.Cut(item, ":")
@@ -657,6 +723,13 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 6:
+			if section == "telemetry" && telemetryField == "otlp-signals" && strings.HasPrefix(trim, "- ") {
+				if m.Telemetry.OTLP == nil {
+					return Manifest{}, fmt.Errorf("line %d: invalid OTLP telemetry structure", lineNo)
+				}
+				m.Telemetry.OTLP.Signals = append(m.Telemetry.OTLP.Signals, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
+				continue
+			}
 			if section == "exposure" && exposureField == "http" && exposureIndex >= 0 {
 				key, value, ok := strings.Cut(trim, ":")
 				if !ok {
