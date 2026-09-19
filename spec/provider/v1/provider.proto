@@ -77,9 +77,31 @@ message Resource {
   ProviderOwnership ownership = 8;
 }
 
+enum HttpExposureProtocol {
+  HTTP_EXPOSURE_PROTOCOL_UNSPECIFIED = 0;
+  HTTP_EXPOSURE_PROTOCOL_HTTP = 1;
+  HTTP_EXPOSURE_PROTOCOL_HTTPS = 2;
+}
+
+enum HttpExposureVisibility {
+  HTTP_EXPOSURE_VISIBILITY_UNSPECIFIED = 0;
+  HTTP_EXPOSURE_VISIBILITY_PUBLIC = 1;
+  HTTP_EXPOSURE_VISIBILITY_INTERNAL = 2;
+}
+
+message HttpExposureBinding {
+  string service = 1;
+  uint32 target_port = 2;
+  HttpExposureProtocol protocol = 3;
+  HttpExposureVisibility visibility = 4;
+}
+
 message WorkloadBinding {
   Resource resource = 1;
   string workload = 2;
+  // Capability-owned, provider-neutral binding semantics. Providers must
+  // interpret this only according to the declared versioned capability spec.
+  HttpExposureBinding http_exposure = 3;
 }
 
 // Mutating operations require a stable idempotency key. Repeating the same
@@ -96,6 +118,10 @@ message PreflightRequest {
 message ProvisionRequest {
   Resource resource = 1;
   MutationContext mutation = 2;
+  // Provision receives the same capability binding context that was preflighted.
+  // This is required for capabilities whose realization depends on the logical
+  // workload endpoint, such as exposure.http/v1.
+  WorkloadBinding binding = 3;
 }
 
 message BindRequest {
