@@ -248,3 +248,37 @@ Explizite Kontrolle darf nicht dazu fuehren, dass Infrastrukturdetails in den po
 BaseHarbor muss den aufgeloesten Plan vor der Mutation sichtbar machen, damit Nutzer erkennen koennen, welche Defaults gewaehlt wurden, und unterstuetzte Entscheidungen bewusst ueberschreiben koennen. Explizite Nutzer-/Operator-Konfiguration hat Vorrang vor Defaults, darf aber Capability-Conformance, Security Boundaries, Validierung oder Fail-Closed-Verhalten niemals umgehen.
 
 Das Ziel lautet: einfach, wenn Infrastrukturdetails egal sind; praezise steuerbar, wenn sie wichtig sind.
+
+## Convention by default, Configuration by choice
+
+BaseHarbor folgt ueber alle Capabilities und Runtimes hinweg einem gemeinsamen UX- und Architekturprinzip:
+
+> **Convention by default, configuration by choice.**
+
+Der Default-Pfad minimiert Entscheidungen. BaseHarbor erkennt, was sicher erkennbar ist, waehlt sichere und nachvollziehbare Defaults, zeigt den aufgeloesten Plan und verwendet danach den normalen Validierungs- und Lifecycle-Pfad.
+
+Wer mehr Kontrolle moechte, kann unterstuetzte Deployment-Entscheidungen schrittweise explizit ueberschreiben, ohne den portablen Application Intent zu veraendern.
+
+```text
+Default
+  -> nur Capabilities
+  -> sichere automatische Provider-/Placement-/Runtime-Defaults
+
+Advanced
+  -> Provider / Placement / Sharing / externe Referenzen explizit
+
+Expert
+  -> unterstuetzte Naming-, Topology-, Runtime- und Provider-Realisierungs-Hints
+```
+
+Optionale Expert-Control kann zum Beispiel stabile Resource-Prefixes, logische Hostnamen, Compose-Projekt-/Netz-/Volume-Namen, DNS-Aliase und spaeter Kubernetes-/OpenShift-Namespace-/Project-Naming umfassen. Ephemere runtime-generierte Identitaeten wie Replica- oder Pod-Instanznamen bleiben Runtime-eigen, solange die Runtime keinen sicheren stabilen Override ausdruecklich unterstuetzt.
+
+Jedes konfigurierbare Feld muss klare Semantik besitzen:
+
+- stabil und sicher ueberschreibbar;
+- nur Hint/Template;
+- generiert/runtime-owned und nicht ueberschreibbar.
+
+Overrides werden nur akzeptiert, wenn aktive Runtime und Provider sie sicher und deterministisch umsetzen koennen. Security, Ownership, Reconciliation, Conformance und Fail-Closed-Validierung duerfen dadurch niemals umgangen werden.
+
+Einfacher und Experten-Pfad verwenden denselben Core. Erweiterte Flexibilitaet darf weder einen zweiten Application Contract noch einen parallelen Lifecycle erzeugen.
