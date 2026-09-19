@@ -73,3 +73,9 @@ func TestComposePublicAndInternalBindings(t *testing.T) {
 		t.Fatalf("internal exposure must bind loopback only:\n%s", internalCompose)
 	}
 }
+
+func TestCaddyReferenceImageIsPinned(t *testing.T) {
+	if caddyImage != "caddy:2.11.4-alpine" {
+		t.Fatalf("unexpected Caddy reference image %q", caddyImage)
+	}
+}
