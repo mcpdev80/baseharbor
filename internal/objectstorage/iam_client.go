@@ -38,9 +38,9 @@ func NewIAMClient(endpoint string, client *http.Client, credentials AdminCredent
 	}
 	return &IAMClient{
 		endpoint: endpoint,
-		client: client,
+		client:   client,
 		credentials: application.ObjectStorageCredentials{
-			AccessKeyID: credentials.AccessKeyID,
+			AccessKeyID:     credentials.AccessKeyID,
 			SecretAccessKey: credentials.SecretAccessKey,
 		},
 	}, nil
