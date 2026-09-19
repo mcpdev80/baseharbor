@@ -2,9 +2,9 @@
 
 This file is the active documentation/release gate for the **next unreleased BaseHarbor version**.
 
-Target release: `v0.4.6`.
+Target release: `v0.4.7`.
 
-The latest published stable release before this release is `v0.4.5`. Completed release audits are preserved under `docs/release-audits/`.
+The latest published stable release before this release is `v0.4.6`. Completed release audits are preserved under `docs/release-audits/`.
 
 Before preparing the next release, update this document with the concrete target version and audit the actual implementation rather than copying claims from the previous release.
 
