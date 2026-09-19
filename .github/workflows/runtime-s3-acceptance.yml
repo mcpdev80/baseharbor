@@ -132,7 +132,7 @@ jobs:
           call_a() {
             docker exec "$app_a" sh -ec '
               token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
-              curl --silent --show-error --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token" "$@"
+              curl --fail-with-body --silent --show-error --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token" "$@"
             ' sh "$@"
           }
 
@@ -273,6 +273,10 @@ jobs:
           test "$cross_delete_status" = "404"
 
           cd "$workdir/app-a"
+          docker exec             -e S3_ENDPOINT="$endpoint"             -e S3_BUCKET="$bucket"             -e S3_ACCESS="$access"             -e S3_SECRET="$secret"             "$app_a" sh -ec '
+              curl --fail --silent --show-error                 --aws-sigv4 "aws:amz:us-east-1:s3"                 --user "$S3_ACCESS:$S3_SECRET"                 -X DELETE                 "$S3_ENDPOINT/$S3_BUCKET/runtime-probe"
+            '
+
           delete="$(call_a             -H 'Idempotency-Key: runtime-s3-delete-1'             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
           delete_operation="$(printf '%s' "$delete" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
           test -n "$delete_operation"
