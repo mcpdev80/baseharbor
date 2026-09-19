@@ -81,12 +81,7 @@ func ConnectivityNetworkName(rule ConnectivityRule) string {
 }
 
 func ConnectivityTargetAlias(rule ConnectivityRule) string {
-	value := strings.ToLower(fmt.Sprintf("%s-%s-%s-%d",
-		rule.Target.Application,
-		rule.Target.Environment,
-		rule.Target.Service,
-		rule.Target.Port,
-	))
+	value := strings.ToLower(rule.Target.Application + "-" + rule.Target.Environment + "-" + rule.Target.Service)
 	var b strings.Builder
 	for _, r := range value {
 		switch {
@@ -96,7 +91,16 @@ func ConnectivityTargetAlias(rule ConnectivityRule) string {
 			b.WriteByte('-')
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	base := strings.Trim(b.String(), "-")
+	if base == "" {
+		base = "target"
+	}
+	suffix := "-" + ConnectivityRuleID(rule)[:8]
+	maxBase := 63 - len(suffix)
+	if len(base) > maxBase {
+		base = strings.TrimRight(base[:maxBase], "-")
+	}
+	return base + suffix
 }
 
 func LoadConnectivityRules() ([]ConnectivityRule, error) {
@@ -262,6 +266,9 @@ func sortConnectivityRules(rules []ConnectivityRule) {
 		if a.Target.Environment != b.Target.Environment {
 			return a.Target.Environment < b.Target.Environment
 		}
-		return a.Target.Service < b.Target.Service
+		if a.Target.Service != b.Target.Service {
+			return a.Target.Service < b.Target.Service
+		}
+		return a.Target.Port < b.Target.Port
 	})
 }
