@@ -9,6 +9,7 @@ import (
 )
 
 const providerRegistryFile = "provider-registry.json"
+const runtimeMetricsRegistryResource = "@runtime-sources"
 
 func referenceProviderRegistryStore() (capability.RegistryStore, error) {
 	dataDir, err := bhruntime.DataDir("")
@@ -177,41 +178,9 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Ownership: capability.OwnershipBaseHarbor,
 			}
 		case capability.ProviderPrometheus:
-			placement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+			instance, err = prometheusProviderInstance(m)
 			if err != nil {
 				return err
-			}
-			switch placement.Scope {
-			case capability.ScopeShared:
-				id := "prometheus/shared"
-				if placement.SharingBoundary != "" {
-					id = fmt.Sprintf("prometheus/shared/%s", ProviderPlacementNameToken(placement.SharingBoundary))
-				}
-				instance = capability.ProviderInstance{
-					ID:              id,
-					Provider:        capability.Prometheus,
-					Scope:           capability.ScopeShared,
-					SharingBoundary: placement.SharingBoundary,
-					Ownership:       capability.OwnershipBaseHarbor,
-				}
-			case capability.ScopeApplication:
-				instance = capability.ProviderInstance{
-					ID:               fmt.Sprintf("prometheus/%s/%s", m.Name, m.Environment),
-					Provider:         capability.Prometheus,
-					Scope:            capability.ScopeApplication,
-					Ownership:        capability.OwnershipBaseHarbor,
-					OwnerApplication: m.Name,
-				}
-			case capability.ScopeExternal:
-				instance = capability.ProviderInstance{
-					ID:        fmt.Sprintf("prometheus-external/%s/%s", m.Name, m.Environment),
-					Provider:  capability.Prometheus,
-					Scope:     capability.ScopeExternal,
-					Ownership: capability.OwnershipExternal,
-					Reference: placement.ExternalReference,
-				}
-			default:
-				return fmt.Errorf("unsupported provider scope %q", placement.Scope)
 			}
 		case capability.ProviderExternalOTLP:
 			instance = capability.ProviderInstance{
@@ -245,5 +214,63 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			return err
 		}
 	}
+	if metricsPolicy.Enabled && HasRuntimeMetricsPermissions(m) {
+		instance, err := prometheusProviderInstance(m)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(instance); err != nil {
+			return err
+		}
+		resource := capability.Resource{
+			Application: m.Name,
+			Kind:        capability.Metrics,
+			Name:        runtimeMetricsRegistryResource,
+			Provider:    capability.ProviderPrometheus,
+		}
+		if err := registry.Bind(resource, instance.ID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
+
+func prometheusProviderInstance(m Manifest) (capability.ProviderInstance, error) {
+	placement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+	switch placement.Scope {
+	case capability.ScopeShared:
+		id := "prometheus/shared"
+		if placement.SharingBoundary != "" {
+			id = fmt.Sprintf("prometheus/shared/%s", ProviderPlacementNameToken(placement.SharingBoundary))
+		}
+		return capability.ProviderInstance{
+			ID:              id,
+			Provider:        capability.Prometheus,
+			Scope:           capability.ScopeShared,
+			SharingBoundary: placement.SharingBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		}, nil
+	case capability.ScopeApplication:
+		return capability.ProviderInstance{
+			ID:               fmt.Sprintf("prometheus/%s/%s", m.Name, m.Environment),
+			Provider:         capability.Prometheus,
+			Scope:            capability.ScopeApplication,
+			Ownership:        capability.OwnershipBaseHarbor,
+			OwnerApplication: m.Name,
+		}, nil
+	case capability.ScopeExternal:
+		return capability.ProviderInstance{
+			ID:        fmt.Sprintf("prometheus-external/%s/%s", m.Name, m.Environment),
+			Provider:  capability.Prometheus,
+			Scope:     capability.ScopeExternal,
+			Ownership: capability.OwnershipExternal,
+			Reference: placement.ExternalReference,
+		}, nil
+	default:
+		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
+	}
+}
+
