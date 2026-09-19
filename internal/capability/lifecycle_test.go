@@ -181,7 +181,6 @@ func (d *recordingDriver) Verify(context.Context, Resource, Binding) error {
 	return nil
 }
 
-
 func TestBuildPlanCarriesValidatedSecureBinding(t *testing.T) {
 	driver := &testDriver{provider: PostgreSQL}
 	security := SecureBinding{
