@@ -85,6 +85,18 @@ func EnsureFiles(spec RuntimeSpec) (Files, error) {
 	return files, nil
 }
 
+func RemoveFiles(id string) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("connectivity relay id is required")
+	}
+	return os.RemoveAll(filepath.Join(dataDir, "connectivity", id))
+}
+
 func ExistingFiles(id string) (Files, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
