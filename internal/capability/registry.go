@@ -32,6 +32,7 @@ type ProviderInstance struct {
 	ID               string            `json:"id"`
 	Provider         Provider          `json:"provider"`
 	Scope            ProviderScope     `json:"scope"`
+	SharingBoundary  string            `json:"sharing_boundary,omitempty"`
 	Ownership        ProviderOwnership `json:"ownership"`
 	OwnerApplication string            `json:"owner_application,omitempty"`
 	Reference        string            `json:"reference,omitempty"`
@@ -67,8 +68,10 @@ func (r *Registry) Register(instance ProviderInstance) error {
 			}
 			return fmt.Errorf("provider instance %q already exists with different metadata", instance.ID)
 		}
-		if instance.Scope == ScopeShared && existing.Scope == ScopeShared && existing.Provider.Kind == instance.Provider.Kind {
-			return fmt.Errorf("shared provider %q already registered as %q", instance.Provider.Kind, existing.ID)
+		if instance.Scope == ScopeShared && existing.Scope == ScopeShared &&
+			existing.Provider.Kind == instance.Provider.Kind &&
+			strings.TrimSpace(existing.SharingBoundary) == strings.TrimSpace(instance.SharingBoundary) {
+			return fmt.Errorf("shared provider %q for sharing boundary %q already registered as %q", instance.Provider.Kind, instance.SharingBoundary, existing.ID)
 		}
 	}
 	r.Instances = append(r.Instances, instance)
@@ -85,7 +88,9 @@ func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, applicatio
 		}
 		switch scope {
 		case ScopeShared:
-			matches = append(matches, instance)
+			if strings.TrimSpace(instance.SharingBoundary) == "" {
+				matches = append(matches, instance)
+			}
 		case ScopeApplication:
 			if instance.OwnerApplication == application {
 				matches = append(matches, instance)
@@ -101,6 +106,42 @@ func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, applicatio
 	}
 	if len(matches) != 1 {
 		return ProviderInstance{}, fmt.Errorf("provider %q with scope %q is ambiguous", provider, scope)
+	}
+	return matches[0], nil
+}
+
+func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlacement, application string) (ProviderInstance, error) {
+	if err := placement.Validate(); err != nil {
+		return ProviderInstance{}, err
+	}
+	application = strings.TrimSpace(application)
+	boundary := strings.TrimSpace(placement.SharingBoundary)
+	reference := strings.TrimSpace(placement.ExternalReference)
+	var matches []ProviderInstance
+	for _, instance := range r.Instances {
+		if instance.Provider.Kind != provider || instance.Scope != placement.Scope {
+			continue
+		}
+		switch placement.Scope {
+		case ScopeShared:
+			if strings.TrimSpace(instance.SharingBoundary) == boundary {
+				matches = append(matches, instance)
+			}
+		case ScopeApplication:
+			if instance.OwnerApplication == application {
+				matches = append(matches, instance)
+			}
+		case ScopeExternal:
+			if strings.TrimSpace(instance.Reference) == reference {
+				matches = append(matches, instance)
+			}
+		}
+	}
+	if len(matches) == 0 {
+		return ProviderInstance{}, fmt.Errorf("provider %q with scope %q and sharing boundary %q not found", provider, placement.Scope, boundary)
+	}
+	if len(matches) != 1 {
+		return ProviderInstance{}, fmt.Errorf("provider %q with scope %q and sharing boundary %q is ambiguous", provider, placement.Scope, boundary)
 	}
 	return matches[0], nil
 }
@@ -236,7 +277,7 @@ func (r Registry) Validate() error {
 		return fmt.Errorf("unsupported provider registry version %d", r.Version)
 	}
 	seenIDs := map[string]struct{}{}
-	shared := map[ProviderKind]string{}
+	shared := map[string]string{}
 	for _, instance := range r.Instances {
 		if err := validateProviderInstance(instance); err != nil {
 			return err
@@ -246,10 +287,11 @@ func (r Registry) Validate() error {
 		}
 		seenIDs[instance.ID] = struct{}{}
 		if instance.Scope == ScopeShared {
-			if previous, exists := shared[instance.Provider.Kind]; exists {
-				return fmt.Errorf("duplicate shared provider %q: %q and %q", instance.Provider.Kind, previous, instance.ID)
+			key := string(instance.Provider.Kind) + "\x00" + strings.TrimSpace(instance.SharingBoundary)
+			if previous, exists := shared[key]; exists {
+				return fmt.Errorf("duplicate shared provider %q for sharing boundary %q: %q and %q", instance.Provider.Kind, instance.SharingBoundary, previous, instance.ID)
 			}
-			shared[instance.Provider.Kind] = instance.ID
+			shared[key] = instance.ID
 		}
 	}
 	seenResources := map[string]struct{}{}
@@ -380,6 +422,9 @@ func validateProviderInstance(instance ProviderInstance) error {
 			return fmt.Errorf("shared provider instance %q must be BaseHarbor-owned; use external scope for BYO providers", instance.ID)
 		}
 	case ScopeApplication:
+		if strings.TrimSpace(instance.SharingBoundary) != "" {
+			return fmt.Errorf("application-scoped provider instance %q cannot define a sharing boundary", instance.ID)
+		}
 		if strings.TrimSpace(instance.OwnerApplication) == "" {
 			return fmt.Errorf("application-scoped provider instance %q requires an owner application", instance.ID)
 		}
@@ -387,6 +432,9 @@ func validateProviderInstance(instance ProviderInstance) error {
 			return fmt.Errorf("application-scoped provider instance %q must be BaseHarbor-owned", instance.ID)
 		}
 	case ScopeExternal:
+		if strings.TrimSpace(instance.SharingBoundary) != "" {
+			return fmt.Errorf("external provider instance %q cannot define a sharing boundary", instance.ID)
+		}
 		if instance.Ownership != OwnershipExternal {
 			return fmt.Errorf("external provider instance %q must have external ownership", instance.ID)
 		}
@@ -417,7 +465,7 @@ func sameLogicalResource(a, b Resource) bool {
 
 func sameProviderInstance(a, b ProviderInstance) bool {
 	if a.ID != b.ID || a.Provider.Kind != b.Provider.Kind || a.Scope != b.Scope ||
-		a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.Reference != b.Reference ||
+		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.Reference != b.Reference ||
 		len(a.Provider.Capabilities) != len(b.Provider.Capabilities) {
 		return false
 	}
