@@ -21,6 +21,7 @@ type Manifest struct {
 	Services    Services
 	Secrets     SecretRequirements
 	Workload    WorkloadConfig
+	Exposures   []HTTPExposureRequirement
 }
 
 type Services struct {
@@ -37,6 +38,16 @@ type Services struct {
 type WorkloadConfig struct {
 	Compose  string
 	Services []string
+}
+
+// HTTPExposureRequirement is provider-neutral public HTTP exposure intent.
+// Hostname, host port, TLS source paths and reverse-proxy implementation are
+// deployment/provider state and deliberately absent.
+type HTTPExposureRequirement struct {
+	Name     string
+	Service  string
+	Port     int
+	Protocol string
 }
 
 // ServiceInstance is the stable logical identity of one requested backend
@@ -103,6 +114,11 @@ func WithRedisInstances(m Manifest, names ...string) Manifest {
 func WithWorkload(m Manifest, compose string, services ...string) Manifest {
 	m.Workload.Compose = compose
 	m.Workload.Services = append([]string(nil), services...)
+	return m
+}
+
+func WithHTTPExposure(m Manifest, name, service string, port int, protocol string) Manifest {
+	m.Exposures = append(m.Exposures, HTTPExposureRequirement{Name: name, Service: service, Port: port, Protocol: protocol})
 	return m
 }
 
@@ -223,6 +239,43 @@ func (m Manifest) Validate() error {
 	}
 	if err := validateWorkload(m.Workload); err != nil {
 		return err
+	}
+	if err := validateHTTPExposures(m.Workload, m.Exposures); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateHTTPExposures(workload WorkloadConfig, exposures []HTTPExposureRequirement) error {
+	seen := make(map[string]struct{}, len(exposures))
+	selected := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		selected[service] = struct{}{}
+	}
+	for _, exposure := range exposures {
+		if err := validateSlug("HTTP exposure name", exposure.Name); err != nil {
+			return err
+		}
+		if _, exists := seen[exposure.Name]; exists {
+			return fmt.Errorf("duplicate HTTP exposure %q", exposure.Name)
+		}
+		seen[exposure.Name] = struct{}{}
+		if err := validateComposeServiceName(exposure.Service); err != nil {
+			return fmt.Errorf("HTTP exposure %q: %w", exposure.Name, err)
+		}
+		if len(selected) > 0 {
+			if _, ok := selected[exposure.Service]; !ok {
+				return fmt.Errorf("HTTP exposure %q targets workload service %q which is not selected", exposure.Name, exposure.Service)
+			}
+		}
+		if exposure.Port < 1 || exposure.Port > 65535 {
+			return fmt.Errorf("HTTP exposure %q has invalid target port %d", exposure.Name, exposure.Port)
+		}
+		switch exposure.Protocol {
+		case "http", "https":
+		default:
+			return fmt.Errorf("HTTP exposure %q protocol must be http or https", exposure.Name)
+		}
 	}
 	return nil
 }
@@ -362,6 +415,17 @@ func (m Manifest) YAML() string {
 			}
 		}
 	}
+	if len(m.Exposures) > 0 {
+		exposures := append([]HTTPExposureRequirement(nil), m.Exposures...)
+		sort.Slice(exposures, func(i, j int) bool { return exposures[i].Name < exposures[j].Name })
+		b.WriteString("exposure:\n  http:\n")
+		for _, exposure := range exposures {
+			fmt.Fprintf(&b, "    - name: %s\n", exposure.Name)
+			fmt.Fprintf(&b, "      service: %s\n", exposure.Service)
+			fmt.Fprintf(&b, "      port: %d\n", exposure.Port)
+			fmt.Fprintf(&b, "      protocol: %s\n", exposure.Protocol)
+		}
+	}
 	return b.String()
 }
 
@@ -387,6 +451,8 @@ func ParseYAML(input string) (Manifest, error) {
 	secretIndex := -1
 	secretGenerate := false
 	workloadField := ""
+	exposureField := ""
+	exposureIndex := -1
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
 	for s.Scan() {
@@ -405,6 +471,8 @@ func ParseYAML(input string) (Manifest, error) {
 			secretIndex = -1
 			secretGenerate = false
 			workloadField = ""
+			exposureField = ""
+			exposureIndex = -1
 			switch {
 			case strings.HasPrefix(trim, "version:"):
 				v, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trim, "version:")))
@@ -421,6 +489,8 @@ func ParseYAML(input string) (Manifest, error) {
 				section = "secrets"
 			case trim == "workload:":
 				section = "workload"
+			case trim == "exposure:":
+				section = "exposure"
 			default:
 				return Manifest{}, fmt.Errorf("line %d: unsupported top-level field %q", lineNo, trim)
 			}
@@ -452,6 +522,10 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "secrets" && trim == "required:" {
 				secretField = "required"
+				continue
+			}
+			if section == "exposure" && trim == "http:" {
+				exposureField = "http"
 				continue
 			}
 			if section == "workload" {
@@ -509,8 +583,41 @@ func ParseYAML(input string) (Manifest, error) {
 				m.Workload.Services = append(m.Workload.Services, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
 				continue
 			}
+			if section == "exposure" && exposureField == "http" && strings.HasPrefix(trim, "- ") {
+				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+				key, value, ok := strings.Cut(item, ":")
+				if !ok || key != "name" || strings.TrimSpace(value) == "" {
+					return Manifest{}, fmt.Errorf("line %d: HTTP exposure must start with - name: NAME", lineNo)
+				}
+				m.Exposures = append(m.Exposures, HTTPExposureRequirement{Name: strings.TrimSpace(value)})
+				exposureIndex = len(m.Exposures) - 1
+				continue
+			}
 			return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 		case 6:
+			if section == "exposure" && exposureField == "http" && exposureIndex >= 0 {
+				key, value, ok := strings.Cut(trim, ":")
+				if !ok {
+					return Manifest{}, fmt.Errorf("line %d: expected HTTP exposure key: value", lineNo)
+				}
+				value = strings.TrimSpace(value)
+				exposure := &m.Exposures[exposureIndex]
+				switch key {
+				case "service":
+					exposure.Service = value
+				case "port":
+					port, err := strconv.Atoi(value)
+					if err != nil {
+						return Manifest{}, fmt.Errorf("line %d: invalid HTTP exposure port", lineNo)
+					}
+					exposure.Port = port
+				case "protocol":
+					exposure.Protocol = value
+				default:
+					return Manifest{}, fmt.Errorf("line %d: unsupported HTTP exposure field %q", lineNo, key)
+				}
+				continue
+			}
 			if section == "secrets" && secretField == "required" && secretIndex >= 0 && trim == "generate:" {
 				m.Secrets.Required[secretIndex].Generate = &SecretGeneration{}
 				secretGenerate = true
