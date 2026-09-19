@@ -127,9 +127,14 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	}
 	recoverPrevious := func() {
 		rollback()
-		_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+		rollbackManagedExposure(ctx, preparedExposure)
 		if restoredExposure, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
-			_ = convergeManagedExposure(ctx, io.Discard, restoredExposure)
+			if provisionErr := provisionManagedExposure(ctx, restoredExposure); provisionErr == nil {
+				_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+				_ = verifyManagedExposure(ctx, io.Discard, restoredExposure)
+			}
+		} else {
+			_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
 		}
 	}
 
@@ -142,13 +147,18 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 		recoverPrevious()
 		return fmt.Errorf("certificate update rolled back because the application workload could not be stopped: %w", err)
 	}
+	if err := provisionManagedExposure(ctx, preparedExposure); err != nil {
+		recoverPrevious()
+		return fmt.Errorf("certificate update rolled back because managed exposure could not be provisioned: %w", err)
+	}
 	if stopped {
 		if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+			rollbackManagedExposure(ctx, preparedExposure)
 			recoverPrevious()
 			return fmt.Errorf("certificate update rolled back because the application workload did not recover: %w", err)
 		}
 	}
-	if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
+	if err := verifyManagedExposure(ctx, out, preparedExposure); err != nil {
 		recoverPrevious()
 		return fmt.Errorf("certificate update rolled back because managed exposure did not recover: %w", err)
 	}
