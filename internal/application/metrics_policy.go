@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 const (
