@@ -189,11 +189,11 @@ func (m *RuntimeResourceManager) ensureBucket(ctx context.Context, bucket string
 
 func (m *RuntimeResourceManager) binding(state runtimeResourceState) RuntimeResourceBinding {
 	return RuntimeResourceBinding{
-		ResourceID: state.ResourceID,
-		Endpoint: m.endpoint,
-		Bucket: state.PhysicalBucket,
-		Region: "us-east-1",
-		AccessKeyID: state.AccessKeyID,
+		ResourceID:      state.ResourceID,
+		Endpoint:        m.endpoint,
+		Bucket:          state.PhysicalBucket,
+		Region:          "us-east-1",
+		AccessKeyID:     state.AccessKeyID,
 		SecretAccessKey: state.SecretAccessKey,
 	}
 }
