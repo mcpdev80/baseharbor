@@ -59,3 +59,33 @@ func TestManagedSecretsSecureBindingContainsNoSecretValues(t *testing.T) {
 		t.Fatal("secure binding contains secret material")
 	}
 }
+
+
+func TestManagedSecretsSecureBindingsAreApplicationAndEnvironmentScoped(t *testing.T) {
+	alpha := ManagedSecretsSecureBinding(Manifest{
+		Version: CurrentVersion, Name: "alpha", Environment: "production",
+		Services: Services{Secrets: true},
+	})
+	beta := ManagedSecretsSecureBinding(Manifest{
+		Version: CurrentVersion, Name: "beta", Environment: "production",
+		Services: Services{Secrets: true},
+	})
+	alphaDev := ManagedSecretsSecureBinding(Manifest{
+		Version: CurrentVersion, Name: "alpha", Environment: "dev",
+		Services: Services{Secrets: true},
+	})
+
+	if alpha.Identity == nil || beta.Identity == nil || alphaDev.Identity == nil {
+		t.Fatal("expected workload identities")
+	}
+	if alpha.Identity.Subject == beta.Identity.Subject || alpha.Identity.Reference == beta.Identity.Reference {
+		t.Fatal("different applications share secure binding identity")
+	}
+	if alpha.Identity.Subject == alphaDev.Identity.Subject || alpha.Identity.Reference == alphaDev.Identity.Reference {
+		t.Fatal("different environments share secure binding identity")
+	}
+	if alpha.Credentials[0].Reference == beta.Credentials[0].Reference ||
+		alpha.Credentials[0].Reference == alphaDev.Credentials[0].Reference {
+		t.Fatal("credential references are not application/environment scoped")
+	}
+}
