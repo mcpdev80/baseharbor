@@ -46,15 +46,20 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	bindings := make([]capability.Binding, 0, len(resources))
 	for _, resource := range resources {
 		workload := "application/" + contract.Application
+		binding := capability.Binding{Resource: resource, Workload: workload}
 		if resource.Kind == capability.ExposureHTTP {
 			for _, exposure := range contract.Exposures {
 				if exposure.Name == resource.Name {
-					workload = "service/" + exposure.Service
+					binding.Workload = "service/" + exposure.Service
+					binding.HTTPExposure = &capability.HTTPExposureBinding{
+						Service: exposure.Service, TargetPort: exposure.Port,
+						Protocol: exposure.Protocol, Visibility: normalizedExposureVisibility(exposure.Visibility),
+					}
 					break
 				}
 			}
 		}
-		bindings = append(bindings, capability.Binding{Resource: resource, Workload: workload})
+		bindings = append(bindings, binding)
 	}
 	return bindings, nil
 }
