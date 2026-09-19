@@ -90,29 +90,6 @@ func TestCheckControlPlaneDestroySafeRejectsApplicationBindings(t *testing.T) {
 
 func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 	registry := capability.NewRegistry()
-	m := New("frontend", "production", false, false, false)
-	m.Services.Postgres = false
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
-	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
-
-	if err := registerReferenceProviders(&registry, m); err != nil {
-		t.Fatal(err)
-	}
-	instance, err := registry.Resolve(capability.ProviderCaddy, capability.ScopeApplication, "frontend", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if instance.ID != "caddy/frontend/production" || instance.OwnerApplication != "frontend" {
-		t.Fatalf("unexpected Caddy provider instance %#v", instance)
-	}
-	if len(registry.Bindings) != 1 || registry.Bindings[0].Resource.Kind != capability.ExposureHTTP {
-		t.Fatalf("unexpected exposure registry bindings %#v", registry.Bindings)
-	}
-}
-
-
-func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
-	registry := capability.NewRegistry()
 	m := Manifest{
 		Version:     CurrentVersion,
 		Name:        "frontend",
