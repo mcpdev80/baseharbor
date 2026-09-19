@@ -128,6 +128,8 @@ Current semantic detectors include PostgreSQL/Redis consumption plus S3-compatib
 
 Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
 
+Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
+
 ## Repository-first application workflow
 
 The normal developer path can start inside an existing application repository with:
