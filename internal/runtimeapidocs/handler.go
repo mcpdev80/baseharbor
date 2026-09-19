@@ -3,8 +3,8 @@ package runtimeapidocs
 import (
 	"net/http"
 
-	"github.com/swaggest/swgui/v5emb"
 	runtimeapiv1 "github.com/mcpdev80/baseharbor/spec/runtime-api/v1"
+	"github.com/swaggest/swgui/v5emb"
 )
 
 const (
