@@ -1,6 +1,7 @@
 package runtimeresourceapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,7 +12,22 @@ import (
 )
 
 type Authorizer interface {
-	AuthorizeRuntimeOperation(app, capability, operation string) error
+	AuthorizeRuntimeOperation(app, service, capability, operation string) error
+}
+
+
+type runtimeServiceContextKey struct{}
+
+func WithRuntimeService(r *http.Request, service string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), runtimeServiceContextKey{}, strings.TrimSpace(service)))
+}
+
+func RuntimeService(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	value, _ := ctx.Value(runtimeServiceContextKey{}).(string)
+	return strings.TrimSpace(value)
 }
 
 type Handler struct {
@@ -66,7 +82,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, "invalid resource request", "capability and name are required")
 		return
 	}
-	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, request.Capability, "runtime.create"); err != nil {
+	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, RuntimeService(r.Context()), request.Capability, "runtime.create"); err != nil {
 		writeProblem(w, http.StatusForbidden, "runtime operation not allowed", "the application is not authorized for this capability operation")
 		return
 	}
@@ -186,7 +202,7 @@ func (h *Handler) resourceRequest(w http.ResponseWriter, r *http.Request, operat
 		writeProblem(w, http.StatusInternalServerError, "runtime resource lookup failed", "resource state could not be loaded")
 		return runtimeoperation.Request{}, false
 	}
-	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, request.Capability, operation); err != nil {
+	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, RuntimeService(r.Context()), request.Capability, operation); err != nil {
 		writeProblem(w, http.StatusForbidden, "runtime operation not allowed", "the application is not authorized for this capability operation")
 		return runtimeoperation.Request{}, false
 	}
