@@ -139,3 +139,25 @@ func TestBoundRuntimeHandlerUsesCanonicalSecretRoutes(t *testing.T) {
 		t.Fatalf("legacy compatibility route status/body = %d %q", legacy.Code, legacy.Body.String())
 	}
 }
+
+
+func TestBoundRuntimeHandlerListsCurrentCapabilities(t *testing.T) {
+	h, err := NewBound(&fakeSecrets{}, fakeVerifier{app: "alpha", token: "runtime-token"}, "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/runtime/v1/capabilities", nil)
+	req.Header.Set("Authorization", "Bearer runtime-token")
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("capabilities status/body = %d %q", res.Code, res.Body.String())
+	}
+	for _, want := range []string{"\"capability\":\"secrets\"", "runtime.create", "runtime.get", "runtime.rotate", "runtime.delete"} {
+		if !strings.Contains(res.Body.String(), want) {
+			t.Fatalf("capabilities missing %q: %s", want, res.Body.String())
+		}
+	}
+}
