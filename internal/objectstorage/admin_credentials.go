@@ -54,6 +54,14 @@ func EnsureAdminCredentials(files ProviderFiles) (AdminCredentials, string, erro
 }
 
 func LoadAdminCredentials(path string) (AdminCredentials, error) {
+	return loadAdminCredentials(path, true)
+}
+
+func LoadContainerAdminCredentials(path string) (AdminCredentials, error) {
+	return loadAdminCredentials(path, false)
+}
+
+func loadAdminCredentials(path string, ownerOnly bool) (AdminCredentials, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return AdminCredentials{}, err
@@ -61,8 +69,12 @@ func LoadAdminCredentials(path string) (AdminCredentials, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return AdminCredentials{}, errors.New("SeaweedFS runtime admin credentials must be a regular file")
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return AdminCredentials{}, fmt.Errorf("SeaweedFS runtime admin credentials are accessible by group or others (%o)", info.Mode().Perm())
+	if ownerOnly {
+		if info.Mode().Perm()&0o077 != 0 {
+			return AdminCredentials{}, fmt.Errorf("SeaweedFS runtime admin credentials are accessible by group or others (%o)", info.Mode().Perm())
+		}
+	} else if info.Mode().Perm()&0o022 != 0 {
+		return AdminCredentials{}, fmt.Errorf("SeaweedFS runtime admin credentials are writable by group or others (%o)", info.Mode().Perm())
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
