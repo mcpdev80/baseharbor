@@ -347,6 +347,47 @@ Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen v
 
 Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
 
+## Explizite Cross-Application-Connectivity
+
+Provider-Placement und Application-zu-Application-Kommunikation sind getrennte Dinge. `shared` darf niemals als Abkuerzung benutzt werden, um ansonsten isolierte Applications miteinander zu verbinden.
+
+BaseHarbor kennt die aufgeloesten Applications, Services, Capabilities, Provider-Bindings, Runtime-Identitaeten, Netze und Endpoints bereits. Eine Cross-Application-Policy beschreibt deshalb nur die Verbindung, die vom deny-by-default-Grundzustand abweicht:
+
+```text
+app-a/api -> app-b/sql
+```
+
+Das ist genau ein gerichteter Policy-Eintrag und eine einzige Source of Truth. Der Operator traegt keine Ports, URLs, Netzwerknamen, Provider-Placements, Credentials oder spiegelbildliche Definitionen in beiden Applications doppelt ein, wenn BaseHarbor diese Informationen aus dem aufgeloesten Zustand ableiten kann.
+
+Das semantische Modell bleibt bewusst minimal:
+
+```text
+Quell-Application/Service -> Ziel-Application/Service-oder-Resource
+```
+
+BaseHarbor loest daraus die konkreten Connectivity-Details auf und validiert vor jeder Mutation, dass Quelle und Ziel existieren und kompatibel sind.
+
+Default ist keine Cross-Application-Connectivity. Eine explizite Policy erlaubt nur den genannten Source-to-Target-Pfad; sie verbindet nicht pauschal Application-Netze, exponiert keine unbeteiligten Services und erzeugt keinen Rueckkanal.
+
+Runtime Provider setzen dieselbe Policy mit ihren nativen Isolationsmechanismen um:
+
+```text
+BaseHarbor Connectivity Policy
+        |
+        +-- Compose
+        |     -> eng begrenzte Netzwerk-Anbindung / Verbindung
+        |
+        +-- Kubernetes
+        |     -> NetworkPolicy
+        |
+        +-- OpenShift
+              -> NetworkPolicy / plattformnative Entsprechung
+```
+
+Die Policy ist unabhaengig vom Provider-Placement. Zum Beispiel koennen beide Applications ihre PostgreSQL-/OpenBao-Provider `application`-scoped behalten, waehrend nur `app-a/api -> app-b/sql` als Cross-Application-Pfad erlaubt wird. Umgekehrt erzeugt ein `shared` Provider niemals automatisch Application-zu-Application-Connectivity.
+
+Auch hier gilt derselbe Security-Grundsatz wie im restlichen BaseHarbor: **deny by default; nur die minimale Ausnahme deklarieren; alles Weitere aus dem vorhandenen Plattformwissen ableiten.**
+
 ## Progressive Disclosure und explizite Kontrolle
 
 BaseHarbor muss standardmaessig einfach sein, ohne dadurch unflexibel zu werden.
