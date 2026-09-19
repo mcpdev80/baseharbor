@@ -60,6 +60,11 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
+				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
+					var err error
+					managedExposure, err = prepareManagedExposure(ctx, compose, resolved)
+					return err
+				}},
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
 					if !application.HasManagedRuntimeServices(m) {
 						return nil
@@ -143,6 +148,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			printRuntimeReady(out, m)
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
+			}
+			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
+				return fmt.Errorf("converge managed HTTP exposure: %w", err)
 			}
 			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
