@@ -79,15 +79,15 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}},
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+					preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 						var err error
 						platformFiles, err = bhruntime.ExistingFiles("")
 						return err
 					}},
-					preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {
+					preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
 						if platformFiles.Compose == "" {
 							return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
 						}
