@@ -266,6 +266,6 @@ explicit exposure.http/v1
   -> verify end-to-end
 ```
 
-The first managed Compose exposure provider is Caddy. It owns a separate application-scoped provider project/network and only attaches explicitly exposed workload services through BaseHarbor's generated override. It does not rewrite the application's Compose source and does not own application volumes.
+The first managed Compose exposure provider is Caddy. It owns a separate application-scoped proxy project, while the generated workload override owns the stable exposure integration network and attaches only explicitly exposed workload services. Caddy consumes that network externally. It does not rewrite the application's Compose source and does not own application volumes.
 
 The same `exposure.http/v1` intent is designed to map later to other providers without changing the application contract.
