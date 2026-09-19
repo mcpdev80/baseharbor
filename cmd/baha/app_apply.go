@@ -73,10 +73,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}},
 			}
-			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
-				return fmt.Errorf("converge managed object storage: %w", err)
-			}
-
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
@@ -108,6 +104,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 				if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 					return err
 				}
+			}
+			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
+				return fmt.Errorf("converge managed object storage: %w", err)
 			}
 
 			if m.Services.Secrets {
