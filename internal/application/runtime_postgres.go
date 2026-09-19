@@ -90,6 +90,20 @@ func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	return EnsureRuntime(store, m)
 }
 
+// RefreshRuntimeCompose reconciles only the runtime Compose realization from
+// current platform policy. It deliberately preserves runtime.env credentials
+// and all persistent application data.
+func RefreshRuntimeCompose(m Manifest, files RuntimeFiles) error {
+	compose, err := RuntimeComposeYAML(m)
+	if err != nil {
+		return err
+	}
+	if err := writeOwnerOnlyFile(files.Compose, []byte(compose)); err != nil {
+		return fmt.Errorf("refresh application compose file: %w", err)
+	}
+	return nil
+}
+
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
 	for _, instance := range PostgresInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
