@@ -85,6 +85,9 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			return errors.New("external OTLP endpoint must be an absolute http or https URL")
 		}
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return errors.New("external OTLP endpoint must not contain credentials, query parameters or fragments; use BASEHARBOR_OTLP_HEADERS for authorization")
+		}
 	}
 	return nil
 }
