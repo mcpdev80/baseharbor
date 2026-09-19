@@ -105,6 +105,52 @@ func ConfiguredRuntimeAPIURL() (string, bool, error) {
 	return strings.TrimRight(parsed.String(), "/"), true, nil
 }
 
+func projectRuntimeIdentityWorkloadFile(files RuntimeFiles, source, targetName string) (string, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return "", fmt.Errorf("inspect runtime identity binding %s: %w", targetName, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("runtime identity binding %s must be a regular file", targetName)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return "", fmt.Errorf("runtime identity binding %s is writable by group or others (%o)", targetName, info.Mode().Perm())
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return "", fmt.Errorf("read runtime identity binding %s: %w", targetName, err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("runtime identity binding %s is empty", targetName)
+	}
+
+	dir := filepath.Join(files.Bindings, "runtime-workload")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create runtime workload binding directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", fmt.Errorf("protect runtime workload binding directory: %w", err)
+	}
+	path := filepath.Join(dir, targetName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", fmt.Errorf("write runtime workload binding %s: %w", targetName, err)
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("prepare runtime workload binding %s: %w", targetName, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("install runtime workload binding %s: %w", targetName, err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve runtime workload binding %s: %w", targetName, err)
+	}
+	return absolute, nil
+}
+
 // MaterializeRuntimeIdentityWorkloadOverride adds only the protected bindings
 // that selected application services actually consume. Runtime identity is
 // injected through ordinary environment file paths plus Compose secret mounts;
@@ -131,17 +177,19 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			return "", false, err
 		}
 		identityDir := RuntimeMTLSHostDir(files)
-		runtimeSecretFiles = map[string]string{
+		sources := map[string]string{
 			"baseharbor-runtime-token":       tokenPath,
 			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
 			"baseharbor-runtime-client-cert": filepath.Join(identityDir, "client-cert.pem"),
 			"baseharbor-runtime-client-key":  filepath.Join(identityDir, "client-key.pem"),
 		}
-		for name, hostPath := range runtimeSecretFiles {
-			info, err := os.Stat(hostPath)
-			if err != nil || !info.Mode().IsRegular() {
-				return "", false, fmt.Errorf("runtime identity binding %s is not materialized; run 'baha app apply' to reconcile the broker identity", name)
+		runtimeSecretFiles = make(map[string]string, len(sources))
+		for name, hostPath := range sources {
+			projected, err := projectRuntimeIdentityWorkloadFile(files, hostPath, name)
+			if err != nil {
+				return "", false, err
 			}
+			runtimeSecretFiles[name] = projected
 		}
 	}
 
