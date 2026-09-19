@@ -218,8 +218,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 			}
-			if len(m.Metrics.Sources) > 0 {
-				fmt.Fprintf(out, "  metrics:    %d application metrics target(s) removed from shared provider state\n", len(m.Metrics.Sources))
+			if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
+				metricsPlacement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+				if placementErr != nil {
+					return placementErr
+				}
+				fmt.Fprintf(out, "  metrics:    provider placement %s; application-owned metrics state/trust edges removed according to placement\n", metricsPlacement.Scope)
 			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
