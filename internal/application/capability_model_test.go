@@ -154,7 +154,6 @@ func TestCapabilityBindingsAttachSecureMetadataToManagedSecrets(t *testing.T) {
 	}
 }
 
-
 func TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "false")
 	m := New("demo", "production", false, false, false)
