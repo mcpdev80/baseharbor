@@ -229,8 +229,12 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	if err != nil {
 		return "", err
 	}
+	metricsPlacement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return "", err
+	}
 	metricsServices := map[string]struct{}{}
-	if metricsPolicy.Enabled && metricsPolicy.ProviderScope != capability.ScopeExternal && metricsPolicy.Collect[MetricsSourceApplication] {
+	if metricsPolicy.Enabled && metricsPlacement.Scope != capability.ScopeExternal && metricsPolicy.Collect[MetricsSourceApplication] {
 		for _, source := range m.Metrics.Sources {
 			metricsServices[source.Service] = struct{}{}
 		}
@@ -243,7 +247,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 		}
 	}
-	metricsNetworkName := MetricsProviderNetworkName(m, metricsPolicy.ProviderScope)
+	metricsNetworkName := MetricsProviderNetworkName(m)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
 	for _, exposure := range m.Exposures {
 		exposedServices[exposure.Service] = struct{}{}
