@@ -38,7 +38,7 @@ type Placement struct {
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	policy, err := application.MetricsPolicy(m)
+	providerPlacement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
 	if err != nil {
 		return Placement{}, err
 	}
@@ -46,28 +46,36 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	if err != nil {
 		return Placement{}, err
 	}
-	switch policy.ProviderScope {
+	switch providerPlacement.Scope {
 	case capability.ScopeShared:
+		project := ProviderProject
+		volume := "baseharbor-prometheus-data"
+		dir := filepath.Join(dataDir, "providers", "prometheus", "shared")
+		if providerPlacement.SharingBoundary != "" {
+			token := application.ProviderPlacementNameToken(providerPlacement.SharingBoundary)
+			project += "-" + token
+			volume += "-" + token
+			dir = filepath.Join(dir, token)
+		}
 		return Placement{
-			Scope: capability.ScopeShared,
-			Project: ProviderProject,
-			Network: ProviderNetwork,
-			Volume: "baseharbor-prometheus-data",
-			Dir: filepath.Join(dataDir, "providers", "prometheus", "shared"),
+			Scope:   capability.ScopeShared,
+			Project: project,
+			Volume:  volume,
+			Dir:     dir,
 		}, nil
 	case capability.ScopeApplication:
 		suffix := m.Name + "-" + m.Environment
 		return Placement{
-			Scope: capability.ScopeApplication,
+			Scope:   capability.ScopeApplication,
 			Project: "baseharbor-metrics-" + suffix,
-			Network: application.MetricsProviderNetworkName(m, capability.ScopeApplication),
-			Volume: "baseharbor-prometheus-data-" + suffix,
-			Dir: filepath.Join(dataDir, "providers", "prometheus", "applications", m.Name, m.Environment),
+			Network: application.MetricsProviderNetworkName(m),
+			Volume:  "baseharbor-prometheus-data-" + suffix,
+			Dir:     filepath.Join(dataDir, "providers", "prometheus", "applications", m.Name, m.Environment),
 		}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: capability.ScopeExternal}, nil
 	default:
-		return Placement{}, fmt.Errorf("unsupported metrics provider scope %q", policy.ProviderScope)
+		return Placement{}, fmt.Errorf("unsupported Prometheus provider scope %q", providerPlacement.Scope)
 	}
 }
 
@@ -131,7 +139,11 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	if !policy.Enabled {
 		return errors.New("metrics collection is disabled by deployment policy")
 	}
-	if policy.ProviderScope == capability.ScopeExternal {
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderPrometheus)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
 		return errors.New("external metrics provider requires an external collection adapter")
 	}
 	return nil
@@ -461,7 +473,7 @@ func registrationFor(m application.Manifest) sourceRegistration {
 	registration := sourceRegistration{
 		Application: m.Name,
 		Environment: m.Environment,
-		Network: application.MetricsProviderNetworkName(m, capability.ScopeApplication),
+		Network: application.MetricsProviderNetworkName(m),
 	}
 	if application.HasRuntimeMetricsPermissions(m) {
 		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeName(m)
