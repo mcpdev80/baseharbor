@@ -227,14 +227,16 @@ The schema describes operator/deployment configuration only. It must not smuggle
 
 The v0.4.2 provider registry remains authoritative for:
 
-- shared provider instances;
-- application-scoped provider instances;
-- external/BYO providers;
+- `shared` provider instances in the BaseHarbor Platform/Core Runtime;
+- `application` provider instances dedicated to exactly one application/environment;
+- `external`/BYO providers;
 - BaseHarbor lifecycle ownership versus external lifecycle ownership.
+
+These scopes have strict semantics. In the Compose runtime, `application` means a dedicated provider container/project and provider state for that application; it is never reused by another application. `shared` means one BaseHarbor-owned platform provider instance that is created lazily and may serve one or multiple explicitly authorized applications. Consumer count does not change the scope. `external` means the provider lifecycle remains outside BaseHarbor.
 
 External provider compatibility does not grant BaseHarbor permission to mutate an externally owned provider.
 
-Logical resources remain application-owned even when the provider instance is shared.
+Logical resources remain application-owned even when the provider instance is shared. Sharing a provider instance never implies shared credentials, data access or cross-application network connectivity.
 
 ## Conformance
 
