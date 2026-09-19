@@ -119,7 +119,6 @@ func TestExposureCapabilityUsesCaddyAndServiceBinding(t *testing.T) {
 	}
 }
 
-
 func TestCapabilityBindingsAttachSecureMetadataToManagedSecrets(t *testing.T) {
 	m := Manifest{
 		Version:     CurrentVersion,
