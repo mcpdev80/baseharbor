@@ -232,7 +232,13 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_OTLP_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(collectorConfig()), 0o600); err != nil {
+	if err := os.WriteFile(files.Config, []byte(collectorConfig()), 0o644); err != nil {
+		return ProviderFiles{}, err
+	}
+	// The Collector image runs as a non-root user. This generated configuration
+	// contains no credentials and must be readable through the read-only bind
+	// mount, while the provider directory and runtime.env remain owner-only.
+	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML()), 0o600); err != nil {
