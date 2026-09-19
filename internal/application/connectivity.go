@@ -20,6 +20,7 @@ type ConnectivityEndpoint struct {
 	Application string `json:"application"`
 	Environment string `json:"environment"`
 	Service     string `json:"service"`
+	Port        int    `json:"port,omitempty"`
 }
 
 type ConnectivityRule struct {
@@ -58,18 +59,31 @@ func (r ConnectivityRule) Validate() error {
 	if err := r.Target.Validate(); err != nil {
 		return fmt.Errorf("target: %w", err)
 	}
-	if r.Source == r.Target {
+	if r.Source.Application == r.Target.Application &&
+		r.Source.Environment == r.Target.Environment &&
+		r.Source.Service == r.Target.Service {
 		return errors.New("connectivity source and target must differ")
+	}
+	if r.Source.Port != 0 {
+		return errors.New("connectivity source must not define a target port")
+	}
+	if r.Target.Port < 1 || r.Target.Port > 65535 {
+		return errors.New("connectivity target port is required")
 	}
 	return nil
 }
 
-func ConnectivityNetworkName(rule ConnectivityRule) string {
+func ConnectivityRuleID(rule ConnectivityRule) string {
 	sum := sha256.Sum256([]byte(
 		rule.Source.Application + "\x00" + rule.Source.Environment + "\x00" + rule.Source.Service + "\x00" +
-			rule.Target.Application + "\x00" + rule.Target.Environment + "\x00" + rule.Target.Service,
+			rule.Target.Application + "\x00" + rule.Target.Environment + "\x00" + rule.Target.Service + "\x00" +
+			fmt.Sprintf("%d", rule.Target.Port),
 	))
-	return fmt.Sprintf("baseharbor-link-%x", sum[:10])
+	return fmt.Sprintf("%x", sum[:10])
+}
+
+func ConnectivityNetworkName(rule ConnectivityRule) string {
+	return "baseharbor-link-" + ConnectivityRuleID(rule)
 }
 
 func ConnectivityTargetAlias(rule ConnectivityRule) string {
