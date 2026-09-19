@@ -40,6 +40,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			var platformFiles bhruntime.Files
 			var managedExposure *managedExposureExecution
+			var managedObjectStorage *managedObjectStorageExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -61,12 +62,21 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
+				{Name: "managed object storage provider", Run: func(ctx context.Context) error {
+					var err error
+					managedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved)
+					return err
+				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
 					var err error
 					managedExposure, err = prepareManagedExposure(ctx, compose, resolved)
 					return err
 				}},
 			}
+			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
+				return fmt.Errorf("converge managed object storage: %w", err)
+			}
+
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
