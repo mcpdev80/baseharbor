@@ -240,19 +240,29 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 	if !ok {
 		return fmt.Errorf("Caddy exposure %q state is missing", resource.Name)
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+	verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	status := endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
-		Service: route.Service,
-		Scheme:  route.Protocol,
-		Host:    d.state.Host,
-		Port:    route.PublishedPort,
-	}, "127.0.0.1", route.PublishedPort)
-	if !status.Ready {
-		_ = d.Rollback(context.WithoutCancel(ctx))
-		return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail)
+	var status endpoint.ExposureStatus
+	for {
+		probeCtx, probeCancel := context.WithTimeout(verifyCtx, 3*time.Second)
+		status = endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
+			Service: route.Service,
+			Scheme:  route.Protocol,
+			Host:    d.state.Host,
+			Port:    route.PublishedPort,
+		}, "127.0.0.1", route.PublishedPort)
+		probeCancel()
+		if status.Ready {
+			return nil
+		}
+		select {
+		case <-verifyCtx.Done():
+			_ = d.Rollback(context.WithoutCancel(ctx))
+			return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail)
+		case <-time.After(250 * time.Millisecond):
+		}
 	}
-	return nil
 }
 
 func (d *Driver) State() State { return d.state }

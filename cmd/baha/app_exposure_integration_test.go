@@ -219,11 +219,13 @@ func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.
 	if err := compose.UpProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Services, files...); err != nil {
 		return err
 	}
-	deadline, cancel := context.WithTimeout(ctx, 20*time.Second)
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
+	var lastRunning []string
+	var lastErr error
 	for deadline.Err() == nil {
-		running, err := compose.RunningServicesProjectFilesEnv(deadline, workload.Project, workload.RepositoryRoot, nil, files...)
-		if err == nil && len(running) == 1 && running[0] == "web" {
+		lastRunning, lastErr = compose.RunningServicesProjectFilesEnv(deadline, workload.Project, workload.RepositoryRoot, nil, files...)
+		if lastErr == nil && len(lastRunning) == 1 && lastRunning[0] == "web" {
 			return nil
 		}
 		select {
@@ -231,7 +233,7 @@ func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("fixture workload did not become ready: %w", deadline.Err())
+	return fmt.Errorf("fixture workload did not become ready: running=%v last_error=%v deadline=%w", lastRunning, lastErr, deadline.Err())
 }
 
 func cleanupManagedExposureFixture(compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
