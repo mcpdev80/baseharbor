@@ -23,8 +23,8 @@ type fakeRuntimeS3IAM struct {
 func newFakeRuntimeS3IAM() *fakeRuntimeS3IAM {
 	return &fakeRuntimeS3IAM{
 		buckets: map[string]bool{},
-		users: map[string]bool{},
-		keys: map[string][]IAMAccessKey{},
+		users:   map[string]bool{},
+		keys:    map[string][]IAMAccessKey{},
 	}
 }
 
@@ -73,7 +73,7 @@ func (f *fakeRuntimeS3IAM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "CreateAccessKey":
 			f.createKeyCalls++
 			key := IAMAccessKey{
-				AccessKeyID: fmt.Sprintf("AKIA%08d", f.createKeyCalls),
+				AccessKeyID:     fmt.Sprintf("AKIA%08d", f.createKeyCalls),
 				SecretAccessKey: fmt.Sprintf("secret-%08d", f.createKeyCalls),
 			}
 			f.keys[user] = append(f.keys[user], key)
