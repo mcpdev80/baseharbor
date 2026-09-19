@@ -114,7 +114,7 @@ Im v0.4.8-Development-Track umgesetzt:
 - Collection in Development standardmaessig aktiv, Test/Staging/Produktion nur per explizitem Operator-Opt-in;
 - Prometheus 3.14.0 als erster lazy shared Compose-Referenzprovider;
 - file-based automatische Target Discovery aus BaseHarbor-State ohne manuelle Prometheus-Target-Pflege;
-- service-spezifische Anbindung an das interne `baseharbor-metrics`-Netz;
+- pro Application isolierte Metrics-Netze mit expliziter Prometheus-Anbindung nur an registrierte Application-Trust-Boundaries;
 - deterministische kollisionsresistente Target-DNS-Aliase, sodass identische Service-Namen verschiedener Anwendungen getrennt bleiben;
 - Attribution von Application/Environment/Service/Source auf gescrapten Serien;
 - Readiness durch echten erfolgreichen Scrape mit `up=1` statt nur Prozess-Health;
