@@ -310,7 +310,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 		b.WriteString("    user: \"0:0\"\n")
 		b.WriteString("    entrypoint: [\"/bin/sh\", \"-c\"]\n")
-		b.WriteString("    command: [\"chown 65532:65532 /var/lib/baseharbor/runtime-operations && chmod 700 /var/lib/baseharbor/runtime-operations\"]\n")
+		b.WriteString("    command: [\"chmod 700 /var/lib/baseharbor/runtime-operations && chown 65532:65532 /var/lib/baseharbor/runtime-operations\"]\n")
 		b.WriteString("    network_mode: \"none\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop:\n")
