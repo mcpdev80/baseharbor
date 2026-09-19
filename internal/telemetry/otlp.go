@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	ProviderProject = "baseharbor-telemetry"
-	ProviderService = "otel-collector"
-	ProviderNetwork = "baseharbor-telemetry"
-	ProviderImage   = "otel/opentelemetry-collector-contrib:0.161.0"
+	ProviderProject    = "baseharbor-telemetry"
+	ProviderService    = "otel-collector"
+	ProviderNetwork    = "baseharbor-telemetry"
+	ProviderImage      = "otel/opentelemetry-collector-contrib:0.161.0"
 	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
 )
 
@@ -36,27 +36,27 @@ type Runtime interface {
 }
 
 type Driver struct {
-	runtime Runtime
-	app application.Manifest
-	files application.RuntimeFiles
+	runtime          Runtime
+	app              application.Manifest
+	files            application.RuntimeFiles
 	externalEndpoint string
-	client *http.Client
+	client           *http.Client
 }
 
 type ProviderFiles struct {
-	Dir string
+	Dir     string
 	Compose string
-	Env string
-	Config string
+	Env     string
+	Config  string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
 	return &Driver{
-		runtime: runtime,
-		app: app,
-		files: files,
+		runtime:          runtime,
+		app:              app,
+		files:            files,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
-		client: &http.Client{Timeout: 10 * time.Second},
+		client:           &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -144,16 +144,16 @@ func VerifyApplication(ctx context.Context, m application.Manifest, files applic
 		return errors.New("materialized OTLP provider identity is missing or unsupported")
 	}
 	d := &Driver{
-		app: m,
-		files: files,
+		app:              m,
+		files:            files,
 		externalEndpoint: values["OTLP_HOST_ENDPOINT"],
-		client: &http.Client{Timeout: 10 * time.Second},
+		client:           &http.Client{Timeout: 10 * time.Second},
 	}
 	resource := capability.Resource{
 		Application: m.Name,
-		Kind: capability.TelemetryOTLP,
-		Name: "default",
-		Provider: provider,
+		Kind:        capability.TelemetryOTLP,
+		Name:        "default",
+		Provider:    provider,
 	}
 	return d.Verify(ctx, resource, capability.Binding{})
 }
@@ -204,10 +204,10 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 		return ProviderFiles{}, fmt.Errorf("create OpenTelemetry Collector provider state: %w", err)
 	}
 	files := ProviderFiles{
-		Dir: dir,
+		Dir:     dir,
 		Compose: filepath.Join(dir, "compose.yaml"),
-		Env: filepath.Join(dir, "runtime.env"),
-		Config: filepath.Join(dir, "collector.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Config:  filepath.Join(dir, "collector.yaml"),
 	}
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
@@ -334,7 +334,7 @@ func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
 	defer ticker.Stop()
 	var last error
 	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name:"probe", Environment:"probe"})))
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
 		req.Header.Set("Content-Type", "application/x-protobuf")
 		resp, err := client.Do(req)
 		if err == nil {
@@ -348,7 +348,9 @@ func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
 		}
 		select {
 		case <-ctx.Done():
-			if last == nil { last = ctx.Err() }
+			if last == nil {
+				last = ctx.Err()
+			}
 			return last
 		case <-ticker.C:
 		}
@@ -377,8 +379,8 @@ func externalHeaders() map[string]string {
 
 func probeTracePayload(m application.Manifest) []byte {
 	now := uint64(time.Now().UnixNano())
-	traceID := []byte{0x42,0x61,0x73,0x65,0x48,0x61,0x72,0x62,0x6f,0x72,0x30,0x34,0x30,0x37,0x00,0x01}
-	spanID := []byte{0x42,0x48,0x30,0x34,0x30,0x37,0x00,0x01}
+	traceID := []byte{0x42, 0x61, 0x73, 0x65, 0x48, 0x61, 0x72, 0x62, 0x6f, 0x72, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
+	spanID := []byte{0x42, 0x48, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
 	span := appendBytes(nil, 1, traceID)
 	span = appendBytes(span, 2, spanID)
 	span = appendString(span, 5, "baseharbor.otlp.verify")
