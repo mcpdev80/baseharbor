@@ -231,3 +231,35 @@ Das aktuelle v1-Binding verwendet OTLP HTTP/Protobuf Export. BaseHarbor kann es 
 Ein externes Ziel kann ueber `BASEHARBOR_OTLP_ENDPOINT` im Deployment-Environment gesetzt werden. Optionale sensitive OTLP-Header verwenden `BASEHARBOR_OTLP_HEADERS` und werden nur an der vertrauenswuerdigen Workload-/Provider-Grenze injiziert; sie landen nicht in `baseharbor.yaml`.
 
 OTLP-Transport allein provisioniert niemals automatisch Prometheus, Loki, Tempo oder Grafana.
+
+## Weiterentwickelnder Application Intent und sparsame Konfiguration
+
+Das Repository-Manifest ist dauerhafter Desired State und kein einmaliger Installationsfragebogen. BaseHarbor geht davon aus, dass sich Anwendungen weiterentwickeln: Ein Projekt kann mit PostgreSQL beginnen, spaeter Redis, S3, Metrics oder Telemetrie hinzufuegen.
+
+Kanonische Writer verwenden deshalb **sparsame Konfiguration**. Optionale Capabilities, die nicht angefordert werden, werden weggelassen statt als explizite negative Flags gespeichert zu werden. Bestehende Manifest-v1-Dateien mit `enabled: false` bleiben aus Kompatibilitaetsgruenden gueltig.
+
+Eine Anwendung, die aktuell nur PostgreSQL benoetigt, wird deshalb nur mit dieser Anforderung geschrieben:
+
+```yaml
+version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  postgres:
+    enabled: true
+```
+
+Repository Inspection ist wiederholbar und rein beratend. `baha app inspect` vergleicht aktuelle Repository-Evidenz mit dem deklarierten Intent und meldet:
+
+- `satisfied` — deklarierte Capability mit bestaetigender Evidenz;
+- `new` — starke Evidenz fuer eine noch nicht deklarierte Capability;
+- `ambiguous` — schwaechere Evidenz, die eine Entwicklerentscheidung benoetigt;
+- `stale` — deklarierter Intent wurde im aktuellen Scan nicht erneut gefunden.
+
+`stale` ist niemals eine automatische Aufforderung zum Entfernen. Der explizite Contract bleibt autoritativ.
+
+Inspection kann ausserdem Capability-Richtung und Runtime-Operationen als Hinweise abbilden. Beispiele sind SQL/S3 konsumieren, OpenMetrics ueber `/metrics` bereitstellen, OTLP exportieren oder Source-Evidenz dafuer, dass eine Anwendung spaeter `object-storage.s3` `runtime.create` benoetigen koennte. Solche Runtime-Hinweise sind nur Evidenz; sie vergeben keine Berechtigung und provisionieren keine Infrastruktur.
+
+Das Inspection-Modell darf damit absichtlich detaillierter als `baseharbor.yaml` sein. Evidence-Pfade, Confidence und erkannte Runtime-Operationen bleiben im Inspection-Ergebnis, solange sie kein echter benoetigter Application Intent sind.
+
