@@ -60,3 +60,21 @@ func TestManagedCollectorDoesNotProvisionObservabilityBackends(t *testing.T) {
 	}
 }
 
+func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
+	t.Setenv(application.OTLPProviderEnv, "external")
+	t.Setenv(application.OTLPEndpointEnv, "")
+	m := application.WithOTLPTelemetry(application.Manifest{
+		Version: 1, Name: "demo", Environment: "test",
+		Workload: application.WorkloadConfig{Services: []string{"api"}},
+	}, "traces")
+	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
+	if d.Descriptor().Kind != capability.ProviderExternalOTLP {
+		t.Fatalf("descriptor = %#v", d.Descriptor())
+	}
+	resource := capability.Resource{Application:"demo", Kind:capability.TelemetryOTLP, Name:"default", Provider:capability.ProviderExternalOTLP}
+	binding := capability.Binding{TelemetryOTLP:&capability.OTLPTelemetryBinding{Direction:"export",Protocol:"http/protobuf",Signals:[]string{"traces"}}}
+	if err := d.Preflight(context.Background(), resource, binding); err == nil {
+		t.Fatal("expected missing external endpoint to fail closed")
+	}
+}
+
