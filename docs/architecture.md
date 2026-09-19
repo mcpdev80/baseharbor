@@ -447,6 +447,47 @@ Multiple BaseHarbor installations are therefore not required merely to isolate g
 
 Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
 
+## Explicit cross-application connectivity
+
+Provider placement and application-to-application connectivity are separate concerns. A provider being `shared` must never be used as a shortcut for connecting otherwise isolated applications.
+
+BaseHarbor already knows the resolved applications, services, capabilities, provider bindings, runtime identities, networks and endpoints. Cross-application policy therefore states only the connection that differs from the deny-by-default baseline:
+
+```text
+app-a/api -> app-b/sql
+```
+
+This is one directional policy entry and one source of truth. The operator does not repeat ports, URLs, network names, provider placement, credentials or matching declarations in both applications when BaseHarbor can derive them from resolved state.
+
+The semantic model is intentionally minimal:
+
+```text
+source application/service -> target application/service-or-resource
+```
+
+BaseHarbor resolves the concrete connectivity details and validates that both ends exist and are compatible before mutation.
+
+The default is no cross-application connectivity. An explicit policy authorizes only the named source-to-target path; it does not merge application networks, expose unrelated services or grant reciprocal access.
+
+Runtime providers realize the same policy with their native isolation mechanisms:
+
+```text
+BaseHarbor connectivity policy
+        |
+        +-- Compose
+        |     -> narrowly scoped network attachment/path
+        |
+        +-- Kubernetes
+        |     -> NetworkPolicy
+        |
+        +-- OpenShift
+              -> NetworkPolicy / platform-native equivalent
+```
+
+The policy is independent from provider placement. For example, both applications may keep application-scoped PostgreSQL/OpenBao providers while `app-a/api -> app-b/sql` is the only cross-application path permitted. Likewise, a shared provider does not by itself create application-to-application connectivity.
+
+This follows the same security rule as the rest of BaseHarbor: **deny by default; declare only the minimum exception; derive the rest from platform knowledge.**
+
 ## Progressive disclosure and explicit operator control
 
 BaseHarbor must be simple by default without becoming restrictive.
