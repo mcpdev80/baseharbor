@@ -81,7 +81,12 @@ func ConnectivityNetworkName(rule ConnectivityRule) string {
 }
 
 func ConnectivityTargetAlias(rule ConnectivityRule) string {
-	value := strings.ToLower(rule.Target.Application + "-" + rule.Target.Service)
+	value := strings.ToLower(fmt.Sprintf("%s-%s-%s-%d",
+		rule.Target.Application,
+		rule.Target.Environment,
+		rule.Target.Service,
+		rule.Target.Port,
+	))
 	var b strings.Builder
 	for _, r := range value {
 		switch {
