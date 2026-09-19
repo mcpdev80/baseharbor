@@ -19,6 +19,10 @@ var (
 		Kind:         ProviderOpenBao,
 		Capabilities: []Kind{Secrets},
 	}
+	Caddy = Provider{
+		Kind:         ProviderCaddy,
+		Capabilities: []Kind{ExposureHTTP},
+	}
 )
 
 var (
@@ -46,6 +50,16 @@ var (
 			Destroy: true,
 		},
 	}
+	CaddyIntegration = IntegrationDescriptor{
+		Protocol:     ProviderProtocolV1,
+		Provider:     Caddy,
+		Capabilities: []SpecificationID{ExposureHTTPV1.ID},
+		Optional: OptionalLifecycleSupport{
+			Status:  true,
+			Update:  true,
+			Destroy: true,
+		},
+	}
 )
 
 func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) {
@@ -56,6 +70,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return ValkeyIntegration, nil
 	case ProviderOpenBao:
 		return OpenBaoIntegration, nil
+	case ProviderCaddy:
+		return CaddyIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
