@@ -140,7 +140,7 @@ Implemented in the v0.4.8 development track:
 - development collection enabled by default, with test/staging/production requiring explicit operator opt-in;
 - Prometheus 3.14.0 as the first lazy shared Compose reference provider;
 - file-based automatic target discovery generated from BaseHarbor state, without manual Prometheus target editing;
-- service-scoped attachment to the internal `baseharbor-metrics` network;
+- per-application isolated metrics networks with explicit Prometheus attachment only to registered application trust boundaries;
 - deterministic collision-resistant target DNS aliases so identical service names across applications remain isolated;
 - BaseHarbor application/environment/service/source attribution on scraped series;
 - readiness based on a real successful scrape visible as `up=1`, not only process health;
