@@ -72,6 +72,7 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 type Runtime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
+	DownProject(context.Context, string, string, string) error
 	DestroyProject(context.Context, string, string, string) error
 }
 
@@ -336,6 +337,24 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 		}
 	}
 	return files, nil
+}
+
+func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
+	placement, err := PlacementFor(m)
+	if err != nil {
+		return err
+	}
+	if placement.Scope != capability.ScopeApplication {
+		return nil
+	}
+	files, err := ExistingProviderFiles(m)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return runtime.DownProject(ctx, placement.Project, files.Compose, files.Env)
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
