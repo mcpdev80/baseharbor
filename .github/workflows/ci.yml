@@ -92,9 +92,11 @@ jobs:
           grep -q "baseharbor.yaml" /tmp/baha-app-init-help.txt
           grep -q -- "--postgres-instance" /tmp/baha-app-init-help.txt
           grep -q -- "--redis-instance" /tmp/baha-app-init-help.txt
+          grep -q -- "--s3-bucket" /tmp/baha-app-init-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-init-help.txt
           /tmp/baha app create --help >/tmp/baha-app-create-help.txt
           grep -q -- "--redis" /tmp/baha-app-create-help.txt
+          grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
           /tmp/baha app status --help | grep -q "present and readable"
@@ -154,6 +156,515 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+      - name: Verify S3 object-storage lifecycle
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
+
+          /tmp/baha app create s3-demo --s3-bucket assets
+          /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
+          /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
+          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
+          grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
+
+          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
+          test -f "$provider_dir/compose.yaml"
+          test -f "$provider_dir/runtime.env"
+          ! grep -Eq 'ACCESS_KEY|SECRET_KEY|AWS_' "$provider_dir/runtime.env"
+          grep -q 'server -s3 -iam=true' "$provider_dir/compose.yaml"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+
+          /tmp/baha app env s3-demo | tee /tmp/s3-env.out
+          grep -q '^AWS_ACCESS_KEY_ID=<masked>
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat > .baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+
+          /tmp/baha up | grep -q "control-plane runtime started"
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "not initialized" /tmp/openbao-before.out
+
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
+          test "$(stat -c '%a' "$recovery")" = "600"
+          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
+          ! grep -q 'root_token' "$recovery"
+          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
+          /tmp/baha app show required-demo | tee /tmp/required-show.out
+          grep -q 'Application: required-demo' /tmp/required-show.out
+          grep -q 'Status: NOT READY' /tmp/required-show.out
+          grep -Eq '^  required +1$' /tmp/required-show.out
+          ! grep -q 'API_TOKEN' /tmp/required-show.out
+          ! grep -q 'postgres://' /tmp/required-show.out
+          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
+          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
+          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
+
+          set +e
+          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
+          required_code=$?
+          set -e
+          test "$required_code" -eq 1
+          grep -q "required secrets check failed" /tmp/required-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
+          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
+
+          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app apply required-demo | grep -q "Application required-demo is ready"
+          /tmp/baha app status required-demo | tee /tmp/required-status.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
+          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
+          grep -q "Application runtime is healthy" /tmp/required-doctor.out
+
+          /tmp/baha app down required-demo | grep -q "Persistent data is preserved"
+          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
+          set +e
+          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
+          required_up_code=$?
+          set -e
+          test "$required_up_code" -eq 1
+          grep -q "required application secrets" /tmp/required-up-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app up required-demo | grep -q "running and ready"
+          /tmp/baha app destroy required-demo --yes | grep -q "permanently destroyed"
+
+          mkdir generated-app
+          cd generated-app
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: generated-demo
+            environment: dev
+          services:
+            postgres:
+              enabled: true
+            redis:
+              enabled: false
+            secrets:
+              enabled: true
+          secrets:
+            required:
+              - name: SECRET_KEY
+                generate:
+                  type: random
+                  length: 64
+              - name: EXTERNAL_TOKEN
+          EOF
+
+          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
+          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
+          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
+
+          set +e
+          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
+          generated_code=$?
+          set -e
+          test "$generated_code" -eq 1
+          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -q "required secrets check failed" /tmp/generated-first-apply.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
+
+          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
+          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+
+          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
+          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
+          /tmp/baha app apply | tee /tmp/generated-second-apply.out
+          grep -q "Application generated-demo is ready" /tmp/generated-second-apply.out
+          ! grep -q "generated-secret" /tmp/generated-second-apply.out
+          /tmp/baha app status | tee /tmp/generated-status.out
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
+          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          /tmp/baha app doctor | grep -q "Application runtime is healthy"
+          /tmp/baha app destroy --yes | grep -q "permanently destroyed"
+          cd "$workdir"
+          unset BASEHARBOR_STATE_DIR
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
+          for i in $(seq 1 20); do
+            set +e
+            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$code" -eq 2
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
+          status_code=$?
+          set -e
+          test "$status_code" -eq 1
+          grep -q "sealed" /tmp/openbao-sealed.out
+
+          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
+ /tmp/s3-env.out
+          grep -q '^AWS_SECRET_ACCESS_KEY=<masked>
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat > .baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+
+          /tmp/baha up | grep -q "control-plane runtime started"
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "not initialized" /tmp/openbao-before.out
+
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
+          test "$(stat -c '%a' "$recovery")" = "600"
+          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
+          ! grep -q 'root_token' "$recovery"
+          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
+          /tmp/baha app show required-demo | tee /tmp/required-show.out
+          grep -q 'Application: required-demo' /tmp/required-show.out
+          grep -q 'Status: NOT READY' /tmp/required-show.out
+          grep -Eq '^  required +1$' /tmp/required-show.out
+          ! grep -q 'API_TOKEN' /tmp/required-show.out
+          ! grep -q 'postgres://' /tmp/required-show.out
+          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
+          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
+          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
+
+          set +e
+          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
+          required_code=$?
+          set -e
+          test "$required_code" -eq 1
+          grep -q "required secrets check failed" /tmp/required-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
+          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
+
+          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app apply required-demo | grep -q "Application required-demo is ready"
+          /tmp/baha app status required-demo | tee /tmp/required-status.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
+          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
+          grep -q "Application runtime is healthy" /tmp/required-doctor.out
+
+          /tmp/baha app down required-demo | grep -q "Persistent data is preserved"
+          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
+          set +e
+          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
+          required_up_code=$?
+          set -e
+          test "$required_up_code" -eq 1
+          grep -q "required application secrets" /tmp/required-up-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app up required-demo | grep -q "running and ready"
+          /tmp/baha app destroy required-demo --yes | grep -q "permanently destroyed"
+
+          mkdir generated-app
+          cd generated-app
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: generated-demo
+            environment: dev
+          services:
+            postgres:
+              enabled: true
+            redis:
+              enabled: false
+            secrets:
+              enabled: true
+          secrets:
+            required:
+              - name: SECRET_KEY
+                generate:
+                  type: random
+                  length: 64
+              - name: EXTERNAL_TOKEN
+          EOF
+
+          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
+          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
+          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
+
+          set +e
+          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
+          generated_code=$?
+          set -e
+          test "$generated_code" -eq 1
+          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -q "required secrets check failed" /tmp/generated-first-apply.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
+
+          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
+          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+
+          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
+          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
+          /tmp/baha app apply | tee /tmp/generated-second-apply.out
+          grep -q "Application generated-demo is ready" /tmp/generated-second-apply.out
+          ! grep -q "generated-secret" /tmp/generated-second-apply.out
+          /tmp/baha app status | tee /tmp/generated-status.out
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
+          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          /tmp/baha app doctor | grep -q "Application runtime is healthy"
+          /tmp/baha app destroy --yes | grep -q "permanently destroyed"
+          cd "$workdir"
+          unset BASEHARBOR_STATE_DIR
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
+          for i in $(seq 1 20); do
+            set +e
+            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$code" -eq 2
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
+          status_code=$?
+          set -e
+          test "$status_code" -eq 1
+          grep -q "sealed" /tmp/openbao-sealed.out
+
+          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
+ /tmp/s3-env.out
+          grep -q '^S3_BUCKET=bh-s3-demo-dev-assets
+        run: |
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          mkdir -p .baseharbor/runtime
+          chmod 700 .baseharbor .baseharbor/runtime
+          cat > .baseharbor/runtime/runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          chmod 600 .baseharbor/runtime/runtime.env
+
+          /tmp/baha up | grep -q "control-plane runtime started"
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "not initialized" /tmp/openbao-before.out
+
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
+          test "$(stat -c '%a' "$recovery")" = "600"
+          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
+          ! grep -q 'root_token' "$recovery"
+          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
+          /tmp/baha app show required-demo | tee /tmp/required-show.out
+          grep -q 'Application: required-demo' /tmp/required-show.out
+          grep -q 'Status: NOT READY' /tmp/required-show.out
+          grep -Eq '^  required +1$' /tmp/required-show.out
+          ! grep -q 'API_TOKEN' /tmp/required-show.out
+          ! grep -q 'postgres://' /tmp/required-show.out
+          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
+          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
+          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
+
+          set +e
+          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
+          required_code=$?
+          set -e
+          test "$required_code" -eq 1
+          grep -q "required secrets check failed" /tmp/required-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
+          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
+
+          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app apply required-demo | grep -q "Application required-demo is ready"
+          /tmp/baha app status required-demo | tee /tmp/required-status.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
+          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
+          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
+          grep -q "Application runtime is healthy" /tmp/required-doctor.out
+
+          /tmp/baha app down required-demo | grep -q "Persistent data is preserved"
+          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
+          set +e
+          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
+          required_up_code=$?
+          set -e
+          test "$required_up_code" -eq 1
+          grep -q "required application secrets" /tmp/required-up-missing.out
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+
+          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
+          /tmp/baha app up required-demo | grep -q "running and ready"
+          /tmp/baha app destroy required-demo --yes | grep -q "permanently destroyed"
+
+          mkdir generated-app
+          cd generated-app
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: generated-demo
+            environment: dev
+          services:
+            postgres:
+              enabled: true
+            redis:
+              enabled: false
+            secrets:
+              enabled: true
+          secrets:
+            required:
+              - name: SECRET_KEY
+                generate:
+                  type: random
+                  length: 64
+              - name: EXTERNAL_TOKEN
+          EOF
+
+          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
+          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
+          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
+
+          set +e
+          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
+          generated_code=$?
+          set -e
+          test "$generated_code" -eq 1
+          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -q "required secrets check failed" /tmp/generated-first-apply.out
+          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
+
+          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
+          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+
+          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
+          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
+          /tmp/baha app apply | tee /tmp/generated-second-apply.out
+          grep -q "Application generated-demo is ready" /tmp/generated-second-apply.out
+          ! grep -q "generated-secret" /tmp/generated-second-apply.out
+          /tmp/baha app status | tee /tmp/generated-status.out
+          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
+          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          /tmp/baha app doctor | grep -q "Application runtime is healthy"
+          /tmp/baha app destroy --yes | grep -q "permanently destroyed"
+          cd "$workdir"
+          unset BASEHARBOR_STATE_DIR
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
+          for i in $(seq 1 20); do
+            set +e
+            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$code" -eq 2
+
+          set +e
+          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
+          status_code=$?
+          set -e
+          test "$status_code" -eq 1
+          grep -q "sealed" /tmp/openbao-sealed.out
+
+          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
+ /tmp/s3-env.out
+          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
+          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
+
+          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
+          /tmp/baha app doctor s3-demo | grep -q "Application runtime is healthy"
+
+          /tmp/baha app down s3-demo | grep -q "Persistent data is preserved"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+          /tmp/baha app up s3-demo | grep -q "running and ready"
+          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
+
+          /tmp/baha app destroy s3-demo --yes | grep -q "permanently destroyed"
+          test ! -e .baseharbor/apps/s3-demo
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+
+          docker compose --project-name baseharbor-object-storage --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
+          rm -rf "$BASEHARBOR_STATE_DIR"
+
       - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)
