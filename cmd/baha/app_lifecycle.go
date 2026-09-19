@@ -70,6 +70,9 @@ func appDownCommand(store application.Store) *cli.Command {
 				return errors.New("application down preflight failed")
 			}
 
+			if err := suspendConnectivityForManifest(ctx, compose, m); err != nil {
+				return fmt.Errorf("suspend cross-application connectivity: %w", err)
+			}
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
 					return err
