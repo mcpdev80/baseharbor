@@ -234,6 +234,14 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		for _, source := range m.Metrics.Sources {
 			metricsServices[source.Service] = struct{}{}
 		}
+		for _, permission := range m.Runtime.Permissions {
+			if permission.Capability != string(capability.MetricsV1.ID) {
+				continue
+			}
+			for _, service := range permission.Services {
+				metricsServices[service] = struct{}{}
+			}
+		}
 	}
 	metricsNetworkName := MetricsProviderNetworkName(m, metricsPolicy.ProviderScope)
 	exposedServices := make(map[string]struct{}, len(m.Exposures))
