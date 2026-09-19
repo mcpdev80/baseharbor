@@ -256,5 +256,5 @@ Repository Inspection liefert bereits erste konkrete Evidenz fuer dieses Modell:
 
 Repository-first `baha up` verwendet denselben Reconciliation-Pfad und meldet neu erkannte/unklare Capability-Aenderungen sowie Runtime-Operations-Hinweise vor der normalen Convergence, ohne den Contract zu veraendern.
 
-Dieses Fundament implementiert bewusst noch keine grosse oeffentliche Runtime-Resource-API. Es definiert die Semantik, die eine solche API spaeter wiederverwenden muss. Siehe ADR 0009.
+Dieses Fundament implementiert bewusst noch keine grosse oeffentliche Runtime-Resource-API. Es definiert die Semantik, die eine solche API spaeter wiederverwenden muss. Siehe ADR 0010.
 
