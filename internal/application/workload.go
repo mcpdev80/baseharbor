@@ -246,7 +246,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
 		}
 		if len(exposedServices) > 0 {
-			b.WriteString("  baseharbor-exposure:\n    external: true\n")
+			b.WriteString("  baseharbor-exposure:\n")
 			fmt.Fprintf(&b, "    name: %s\n", ApplicationExposureNetworkName(m))
 		}
 	}
