@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -211,6 +213,55 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 		result = append(result, ComposeContainer{Name: name, Project: strings.TrimSpace(project), Service: strings.TrimSpace(service)})
 	}
 	return result, nil
+}
+
+func (c Compose) ContainerNetworks(ctx context.Context, container string) ([]string, error) {
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}`, strings.TrimSpace(container))
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	for _, line := range strings.Split(out, "\n") {
+		if value := strings.TrimSpace(line); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result, nil
+}
+
+func (c Compose) NetworkProjectOwner(ctx context.Context, network string) (string, error) {
+	out, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, strings.TrimSpace(network))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func (c Compose) ContainerExposedTCPPorts(ctx context.Context, container string) ([]int, error) {
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{range $port, $_ := .Config.ExposedPorts}}{{$port}}{{"\n"}}{{end}}`, strings.TrimSpace(container))
+	if err != nil {
+		return nil, err
+	}
+	var ports []int
+	seen := map[int]struct{}{}
+	for _, line := range strings.Split(out, "\n") {
+		value := strings.TrimSpace(line)
+		if value == "" || !strings.HasSuffix(value, "/tcp") {
+			continue
+		}
+		raw := strings.TrimSuffix(value, "/tcp")
+		port, err := strconv.Atoi(raw)
+		if err != nil || port < 1 || port > 65535 {
+			continue
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		ports = append(ports, port)
+	}
+	sort.Ints(ports)
+	return ports, nil
 }
 
 func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
