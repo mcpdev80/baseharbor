@@ -97,6 +97,10 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
 
+func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
+	return EnsureSharedProvider(ctx, d.runtime)
+}
+
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
 	if resource.Kind != capability.ObjectStorageS3 || resource.Provider != capability.ProviderSeaweedFS {
 		return fmt.Errorf("SeaweedFS provider cannot satisfy %s via %s", resource.Kind, resource.Provider)
