@@ -211,3 +211,40 @@ Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provide
 Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen von Applications bestimmte Provider gemeinsam nutzen. Getrennte BaseHarbor-Control-Planes bleiben echten administrativen, Trust-Domain-, Infrastruktur- oder Compliance-Grenzen vorbehalten.
 
 Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
+
+## Progressive Disclosure und explizite Kontrolle
+
+BaseHarbor muss standardmaessig einfach sein, ohne dadurch unflexibel zu werden.
+
+Der normale Entwicklerpfad soll nur Application Intent benoetigen und sichere, nachvollziehbare Defaults verwenden:
+
+```text
+Entwickler deklariert Capability
+        |
+        v
+BaseHarbor erkennt/loest sinnvolle Defaults auf
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Fortgeschrittene Nutzer und Operatoren muessen Deployment-Entscheidungen weiterhin explizit festlegen koennen, soweit die Plattform sie unterstuetzt. Dazu gehoeren insbesondere Provider-Auswahl, Provider-Placement, optionale Sharing Boundary, Lifecycle Ownership soweit anwendbar, externe Provider-Referenzen, Isolation-/Deployment-Policy sowie unterstuetzte Provider-/Runtime-Optionen.
+
+Das Bedienmodell folgt damit Progressive Disclosure:
+
+```text
+einfacher Pfad
+  -> automatische sichere Defaults
+
+fortgeschrittener Pfad
+  -> explizite Deployment-/Operator-Policy
+
+Expertenpfad
+  -> vollstaendig spezifizierte unterstuetzte Provider-/Runtime-Realisierung
+```
+
+Explizite Kontrolle darf nicht dazu fuehren, dass Infrastrukturdetails in den portablen Application Contract gelangen. Portabler Application Intent bleibt produktneutral; konkrete Infrastrukturentscheidungen gehoeren in Deployment-/Operator-Konfiguration und die entsprechenden Control Surfaces.
+
+BaseHarbor muss den aufgeloesten Plan vor der Mutation sichtbar machen, damit Nutzer erkennen koennen, welche Defaults gewaehlt wurden, und unterstuetzte Entscheidungen bewusst ueberschreiben koennen. Explizite Nutzer-/Operator-Konfiguration hat Vorrang vor Defaults, darf aber Capability-Conformance, Security Boundaries, Validierung oder Fail-Closed-Verhalten niemals umgehen.
+
+Das Ziel lautet: einfach, wenn Infrastrukturdetails egal sind; praezise steuerbar, wenn sie wichtig sind.
