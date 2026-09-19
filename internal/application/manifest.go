@@ -44,10 +44,11 @@ type WorkloadConfig struct {
 // Hostname, host port, TLS source paths and reverse-proxy implementation are
 // deployment/provider state and deliberately absent.
 type HTTPExposureRequirement struct {
-	Name     string
-	Service  string
-	Port     int
-	Protocol string
+	Name       string
+	Service    string
+	Port       int
+	Protocol   string
+	Visibility string
 }
 
 // ServiceInstance is the stable logical identity of one requested backend
@@ -118,7 +119,7 @@ func WithWorkload(m Manifest, compose string, services ...string) Manifest {
 }
 
 func WithHTTPExposure(m Manifest, name, service string, port int, protocol string) Manifest {
-	m.Exposures = append(m.Exposures, HTTPExposureRequirement{Name: name, Service: service, Port: port, Protocol: protocol})
+	m.Exposures = append(m.Exposures, HTTPExposureRequirement{Name: name, Service: service, Port: port, Protocol: protocol, Visibility: "public"})
 	return m
 }
 
@@ -279,8 +280,20 @@ func validateHTTPExposures(workload WorkloadConfig, exposures []HTTPExposureRequ
 		default:
 			return fmt.Errorf("HTTP exposure %q protocol must be http or https", exposure.Name)
 		}
+		switch normalizedExposureVisibility(exposure.Visibility) {
+		case "public", "internal":
+		default:
+			return fmt.Errorf("HTTP exposure %q visibility must be public or internal", exposure.Name)
+		}
 	}
 	return nil
+}
+
+func normalizedExposureVisibility(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "public"
+	}
+	return strings.TrimSpace(value)
 }
 
 func validateSecretGeneration(name string, generation *SecretGeneration) error {
@@ -427,6 +440,7 @@ func (m Manifest) YAML() string {
 			fmt.Fprintf(&b, "      service: %s\n", exposure.Service)
 			fmt.Fprintf(&b, "      port: %d\n", exposure.Port)
 			fmt.Fprintf(&b, "      protocol: %s\n", exposure.Protocol)
+			fmt.Fprintf(&b, "      visibility: %s\n", normalizedExposureVisibility(exposure.Visibility))
 		}
 	}
 	return b.String()
@@ -616,6 +630,8 @@ func ParseYAML(input string) (Manifest, error) {
 					exposure.Port = port
 				case "protocol":
 					exposure.Protocol = value
+				case "visibility":
+					exposure.Visibility = value
 				default:
 					return Manifest{}, fmt.Errorf("line %d: unsupported HTTP exposure field %q", lineNo, key)
 				}
