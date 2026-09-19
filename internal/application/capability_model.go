@@ -47,6 +47,13 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	for _, resource := range resources {
 		workload := "application/" + contract.Application
 		binding := capability.Binding{Resource: resource, Workload: workload}
+		if resource.Kind == capability.Secrets {
+			security := ManagedSecretsSecureBinding(m)
+			if err := security.Validate(); err != nil {
+				return nil, fmt.Errorf("build managed-secrets secure binding: %w", err)
+			}
+			binding.Security = &security
+		}
 		if resource.Kind == capability.ExposureHTTP {
 			for _, exposure := range contract.Exposures {
 				if exposure.Name == resource.Name {
