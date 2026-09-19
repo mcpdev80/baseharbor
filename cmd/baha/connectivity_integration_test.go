@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,12 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		t.Fatalf("connectivity rules=%#v", rules)
 	}
 	rule := rules[0]
+	defer func() {
+		containers, _ := compose.ListComposeContainers(context.Background())
+		_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
+		_ = application.RemoveConnectivityRule(rule)
+		_ = connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule))
+	}()
 
 	sourceContainers, err := compose.ListComposeContainers(ctx)
 	if err != nil {
