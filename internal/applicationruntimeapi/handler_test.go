@@ -116,7 +116,6 @@ func request(t *testing.T, h http.Handler, method, path, body string) *httptest.
 	return res
 }
 
-
 func TestBoundRuntimeHandlerUsesCanonicalSecretRoutes(t *testing.T) {
 	secrets := &fakeSecrets{}
 	h, err := NewBound(secrets, fakeVerifier{app: "alpha", token: "runtime-token"}, "alpha")
