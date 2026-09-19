@@ -2,6 +2,7 @@ package exposure
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,8 @@ type Route struct {
 	Service       string `json:"service"`
 	TargetPort    int    `json:"target_port"`
 	Protocol      string `json:"protocol"`
-	PublishedPort int    `json:"published_port"`
+	PublishedPort  int    `json:"published_port"`
+	TLSFingerprint string `json:"tls_fingerprint,omitempty"`
 }
 
 type State struct {
@@ -294,6 +296,14 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	var routes []Route
 	for _, requirement := range d.manifest.Exposures {
 		route := Route{Name: requirement.Name, Service: requirement.Service, TargetPort: requirement.Port, Protocol: requirement.Protocol}
+		if route.Protocol == "https" {
+			certData, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, "cert.pem"))
+			if err != nil {
+				return State{}, false, err
+			}
+			sum := sha256.Sum256(certData)
+			route.TLSFingerprint = fmt.Sprintf("%x", sum[:])
+		}
 		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.PublishedPort > 0 {
 			route.PublishedPort = prior.PublishedPort
 		} else {
