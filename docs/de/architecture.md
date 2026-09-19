@@ -211,6 +211,28 @@ Managed-Collector-Platzierung ist lazy/shared. Externe OTLP-Ziele verwenden dies
 
 Die gemeinsame Resource Identity verwendet Standard-OpenTelemetry-Attribute fuer Service und Environment sowie BaseHarbor-Attribute fuer Application, logische Telemetrie-Ressource und Provider. OTLP-Transport startet nicht implizit Prometheus, Loki, Tempo, Grafana oder andere Observability-Produkte.
 
+## Metrics-Collection und Prometheus-Provider in v0.4.8
+
+Metrics werden in drei unabhaengige Ebenen getrennt:
+
+```text
+von der Anwendung bereitgestellte Signalquelle
+        !=
+Deployment-Collection-Policy
+        !=
+Metrics-Provider-Implementierung
+```
+
+`metrics/v1` beschreibt eine von der Anwendung bereitgestellte OpenMetrics-kompatible HTTP-Source. Das Manifest enthaelt logischen Source-Namen, Workload-Service, Ziel-Port und Pfad. Prometheus oder ein anderer Backend-Produktname gehoeren nicht in diesen Contract.
+
+Die aktuelle Compose-Policy aktiviert Collection standardmaessig nur in Development-Umgebungen. Test/Staging/Produktion benoetigen ein explizites Operator-Opt-in. Die Policy wird vor Provider-Mutation aufgeloest.
+
+Prometheus 3.14.0 ist der erste shared, von BaseHarbor verwaltete Compose-Provider. Targets werden ueber file-based Service Discovery aus geschuetztem BaseHarbor-State erzeugt; manuelle Scrape-Target-Pflege ist nicht erforderlich. Nur deklarierte Source-Services treten dem internen `baseharbor-metrics`-Netz bei. App/Environment/Service erhalten deterministische kollisionsresistente DNS-Aliase, sodass identische Compose-Service-Namen verschiedener Anwendungen nicht kollidieren.
+
+Target-Labels enthalten Application, Environment, Workload-Service und logische Source-Identitaet. Readiness verlangt einen echten erfolgreichen Scrape, der in Prometheus als `up=1` sichtbar ist; ein nur laufender Prometheus-Prozess reicht nicht.
+
+Der Provider hat keinen Docker-/Podman-Socket. Seine API wird nur auf Loopback fuer lokale Lifecycle-Verifikation/Queries publiziert. Grafana, Loki und Tempo bleiben getrennte Provider-Tracks und werden nicht als Nebenwirkung von Metrics-Collection provisioniert.
+
 ## Fundament fuer kontinuierliche Application-Evolution
 
 BaseHarbor behandelt Application Intent als dauerhaft abgleichbaren Desired State.
