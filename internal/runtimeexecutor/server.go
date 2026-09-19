@@ -32,7 +32,7 @@ func (c Config) Validate() error {
 		"TLS client CA":               c.TLSClientCAFile,
 		"S3 endpoint":                 c.S3Endpoint,
 		"S3 admin credentials":        c.AdminCredentials,
-		"runtime resource state dir":  c.StateDir,
+		"runtime resource state dir": c.StateDir,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required for runtime executor", label)
@@ -109,9 +109,9 @@ func Run(ctx context.Context, cfg Config) error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ClientAuth: tls.RequireAndVerifyClientCert,
-			ClientCAs: pool,
+			MinVersion:       tls.VersionTLS12,
+			ClientAuth:       tls.RequireAndVerifyClientCert,
+			ClientCAs:        pool,
 			VerifyConnection: verifyRuntimeClientIdentity,
 		},
 	}
