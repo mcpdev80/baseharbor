@@ -185,6 +185,9 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			if name != "" && name != m.Name {
 				return errors.New("restore target NAME does not match backup application identity")
 			}
+			if application.HasObjectStorage(m) {
+				return errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
+			}
 			postgresBackups, err := applicationbackup.PostgresBackupsFromPayload(m, payload)
 			if err != nil {
 				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
