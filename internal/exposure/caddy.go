@@ -1,0 +1,445 @@
+package exposure
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/endpoint"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+const (
+	stateVersion = 1
+	caddyImage   = "caddy:2-alpine"
+)
+
+type Deployment struct {
+	Hostname string
+	TLSMode  string
+	TLSDir   string
+}
+
+type Route struct {
+	Name          string `json:"name"`
+	Service       string `json:"service"`
+	TargetPort    int    `json:"target_port"`
+	Protocol      string `json:"protocol"`
+	PublishedPort int    `json:"published_port"`
+}
+
+type State struct {
+	Version int     `json:"version"`
+	Project string  `json:"project"`
+	Network string  `json:"network"`
+	Host    string  `json:"host"`
+	Routes  []Route `json:"routes"`
+}
+
+type Files struct {
+	Dir     string
+	Compose string
+	Env     string
+	State   string
+}
+
+type Driver struct {
+	compose    bhruntime.Compose
+	manifest   application.Manifest
+	runtime    application.RuntimeFiles
+	deployment Deployment
+
+	files       Files
+	state       State
+	preexisting bool
+	provisioned bool
+}
+
+func ProjectName(m application.Manifest) string {
+	return "baseharbor-exposure-" + m.Name + "-" + m.Environment
+}
+
+func FilesFor(runtime application.RuntimeFiles) Files {
+	dir := filepath.Join(runtime.Dir, "providers", "caddy")
+	return Files{
+		Dir:     dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "provider.env"),
+		State:   filepath.Join(dir, "state.json"),
+	}
+}
+
+func NewDriver(compose bhruntime.Compose, m application.Manifest, runtime application.RuntimeFiles, deployment Deployment) *Driver {
+	return &Driver{compose: compose, manifest: m, runtime: runtime, deployment: deployment, files: FilesFor(runtime)}
+}
+
+func (d *Driver) Descriptor() capability.Provider { return capability.Caddy }
+
+func (d *Driver) IntegrationDescriptor() capability.IntegrationDescriptor {
+	return capability.CaddyIntegration
+}
+
+func (d *Driver) Preflight(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
+	route, ok := d.requirement(resource.Name)
+	if !ok {
+		return fmt.Errorf("HTTP exposure %q is not declared", resource.Name)
+	}
+	if strings.TrimSpace(d.deployment.Hostname) == "" {
+		return errors.New("managed HTTP exposure requires repository deployment initialization; run 'baha app init'")
+	}
+	if binding.Workload != "service/"+route.Service {
+		return fmt.Errorf("HTTP exposure %q binding targets %q, expected service/%s", route.Name, binding.Workload, route.Service)
+	}
+	if route.Protocol == "https" {
+		if d.deployment.TLSMode != "existing" {
+			return fmt.Errorf("managed HTTPS exposure %q currently requires existing/BYOC TLS; deployment TLS mode is %q", route.Name, d.deployment.TLSMode)
+		}
+		for _, name := range []string{"cert.pem", "key.pem"} {
+			path := filepath.Join(d.deployment.TLSDir, name)
+			info, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", route.Name, path, err)
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", route.Name, path)
+			}
+		}
+	}
+	return capability.RequireIntegrationContract(d.IntegrationDescriptor())
+}
+
+func (d *Driver) Provision(ctx context.Context, resource capability.Resource) error {
+	if d.provisioned {
+		return nil
+	}
+	running, _ := d.compose.RunningServicesProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env)
+	d.preexisting = len(running) > 0
+
+	state, changed, err := d.ensureFiles()
+	if err != nil {
+		return err
+	}
+	d.state = state
+	if err := d.compose.ConfigProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		return fmt.Errorf("validate Caddy exposure provider: %w", err)
+	}
+	if changed && d.preexisting {
+		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+			return fmt.Errorf("restart changed Caddy exposure provider: %w", err)
+		}
+		d.preexisting = false
+	}
+	if err := d.compose.UpProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		if !d.preexisting {
+			_ = d.compose.DownProject(context.WithoutCancel(ctx), state.Project, d.files.Compose, d.files.Env)
+		}
+		return fmt.Errorf("start Caddy exposure provider: %w", err)
+	}
+	d.provisioned = true
+	return nil
+}
+
+func (d *Driver) Bind(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
+	route, ok := d.stateRoute(resource.Name)
+	if !ok {
+		return fmt.Errorf("Caddy exposure %q was not materialized", resource.Name)
+	}
+	if binding.Workload != "service/"+route.Service {
+		return fmt.Errorf("Caddy exposure %q has invalid workload binding %q", resource.Name, binding.Workload)
+	}
+	return nil
+}
+
+func (d *Driver) Verify(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
+	route, ok := d.stateRoute(resource.Name)
+	if !ok {
+		return fmt.Errorf("Caddy exposure %q state is missing", resource.Name)
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	status := endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
+		Service: route.Service,
+		Scheme:  route.Protocol,
+		Host:    d.state.Host,
+		Port:    route.PublishedPort,
+	}, "127.0.0.1", route.PublishedPort)
+	if !status.Ready {
+		if !d.preexisting {
+			_ = d.compose.DownProject(context.WithoutCancel(ctx), d.state.Project, d.files.Compose, d.files.Env)
+		}
+		return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail)
+	}
+	return nil
+}
+
+func (d *Driver) State() State { return d.state }
+
+func Load(runtime application.RuntimeFiles) (State, Files, error) {
+	files := FilesFor(runtime)
+	data, err := os.ReadFile(files.State)
+	if err != nil {
+		return State{}, files, err
+	}
+	var state State
+	if err := json.Unmarshal(data, &state); err != nil {
+		return State{}, files, fmt.Errorf("decode Caddy exposure state: %w", err)
+	}
+	if state.Version != stateVersion {
+		return State{}, files, fmt.Errorf("unsupported Caddy exposure state version %d", state.Version)
+	}
+	return state, files, nil
+}
+
+func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) (State, []endpoint.ExposureStatus, error) {
+	state, files, err := Load(runtime)
+	if err != nil {
+		return State{}, nil, err
+	}
+	running, err := compose.RunningServicesProject(ctx, state.Project, files.Compose, files.Env)
+	if err != nil {
+		return state, nil, err
+	}
+	if len(running) == 0 {
+		return state, nil, errors.New("managed Caddy exposure provider is stopped")
+	}
+	statuses := make([]endpoint.ExposureStatus, 0, len(state.Routes))
+	for _, route := range state.Routes {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		status := endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
+			Service: route.Service, Scheme: route.Protocol, Host: state.Host, Port: route.PublishedPort,
+		}, "127.0.0.1", route.PublishedPort)
+		cancel()
+		statuses = append(statuses, status)
+	}
+	endpoint.SortExposureStatuses(statuses)
+	for _, status := range statuses {
+		if !status.Ready {
+			return state, statuses, fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", status.Scheme, status.Host, status.Port, status.Detail)
+		}
+	}
+	return state, statuses, nil
+}
+
+func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+	state, files, err := Load(runtime)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return compose.DownProject(ctx, state.Project, files.Compose, files.Env)
+}
+
+func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+	state, files, err := Load(runtime)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := compose.DestroyProject(ctx, state.Project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	return os.RemoveAll(files.Dir)
+}
+
+func (d *Driver) requirement(name string) (application.HTTPExposureRequirement, bool) {
+	for _, route := range d.manifest.Exposures {
+		if route.Name == name {
+			return route, true
+		}
+	}
+	return application.HTTPExposureRequirement{}, false
+}
+
+func (d *Driver) stateRoute(name string) (Route, bool) {
+	for _, route := range d.state.Routes {
+		if route.Name == name {
+			return route, true
+		}
+	}
+	return Route{}, false
+}
+
+func (d *Driver) ensureFiles() (State, bool, error) {
+	if err := os.MkdirAll(d.files.Dir, 0o700); err != nil {
+		return State{}, false, fmt.Errorf("create Caddy provider state: %w", err)
+	}
+	if err := os.Chmod(d.files.Dir, 0o700); err != nil {
+		return State{}, false, err
+	}
+	old, _, oldErr := Load(d.runtime)
+	if oldErr != nil && !errors.Is(oldErr, os.ErrNotExist) {
+		return State{}, false, oldErr
+	}
+	previous := map[string]Route{}
+	if oldErr == nil {
+		for _, route := range old.Routes {
+			previous[route.Name] = route
+		}
+	}
+	used := map[int]struct{}{}
+	var routes []Route
+	for _, requirement := range d.manifest.Exposures {
+		route := Route{Name: requirement.Name, Service: requirement.Service, TargetPort: requirement.Port, Protocol: requirement.Protocol}
+		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.PublishedPort > 0 {
+			route.PublishedPort = prior.PublishedPort
+		} else {
+			preferred := 80
+			if route.Protocol == "https" {
+				preferred = 443
+			}
+			port, err := chooseLoopbackPort(preferred, used)
+			if err != nil {
+				return State{}, false, err
+			}
+			route.PublishedPort = port
+		}
+		used[route.PublishedPort] = struct{}{}
+		routes = append(routes, route)
+	}
+	sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
+	state := State{
+		Version: stateVersion,
+		Project: ProjectName(d.manifest),
+		Network: application.WorkloadProjectName(d.manifest) + "_default",
+		Host:    d.deployment.Hostname,
+		Routes:  routes,
+	}
+	changed := oldErr != nil || !sameState(old, state)
+
+	for _, route := range routes {
+		routeDir := filepath.Join(d.files.Dir, "routes", route.Name)
+		if err := os.MkdirAll(routeDir, 0o700); err != nil {
+			return State{}, false, err
+		}
+		if err := writeOwnerOnly(filepath.Join(routeDir, "Caddyfile"), []byte(caddyfile(route))); err != nil {
+			return State{}, false, err
+		}
+		if route.Protocol == "https" {
+			for _, name := range []string{"cert.pem", "key.pem"} {
+				data, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, name))
+				if err != nil {
+					return State{}, false, err
+				}
+				if err := writeOwnerOnly(filepath.Join(routeDir, name), data); err != nil {
+					return State{}, false, err
+				}
+			}
+		}
+	}
+	if err := writeOwnerOnly(d.files.Env, []byte("# BaseHarbor managed Caddy exposure provider\n")); err != nil {
+		return State{}, false, err
+	}
+	if err := writeOwnerOnly(d.files.Compose, []byte(composeYAML(state, d.files))); err != nil {
+		return State{}, false, err
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return State{}, false, err
+	}
+	data = append(data, '\n')
+	if err := writeOwnerOnly(d.files.State, data); err != nil {
+		return State{}, false, err
+	}
+	return state, changed, nil
+}
+
+func composeYAML(state State, files Files) string {
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, route := range state.Routes {
+		serviceName := "route-" + route.Name
+		containerPort := 80
+		if route.Protocol == "https" {
+			containerPort = 443
+		}
+		fmt.Fprintf(&b, "  %s:\n", serviceName)
+		fmt.Fprintf(&b, "    image: %s\n", caddyImage)
+		b.WriteString("    restart: unless-stopped\n")
+		fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", route.PublishedPort, containerPort)
+		b.WriteString("    volumes:\n")
+		routeDir := filepath.Join(files.Dir, "routes", route.Name)
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "Caddyfile")+":/etc/caddy/Caddyfile:ro"))
+		if route.Protocol == "https" {
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
+		}
+		b.WriteString("    networks:\n      application: {}\n")
+	}
+	b.WriteString("networks:\n  application:\n    external: true\n")
+	fmt.Fprintf(&b, "    name: %s\n", state.Network)
+	return b.String()
+}
+
+func caddyfile(route Route) string {
+	listen := ":80"
+	var tlsLine string
+	if route.Protocol == "https" {
+		listen = ":443"
+		tlsLine = "  tls /certs/cert.pem /certs/key.pem\n"
+	}
+	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
+}
+
+func chooseLoopbackPort(preferred int, used map[int]struct{}) (int, error) {
+	if _, taken := used[preferred]; !taken {
+		ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(preferred)))
+		if err == nil {
+			_ = ln.Close()
+			return preferred, nil
+		}
+	}
+	for attempt := 0; attempt < 32; attempt++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return 0, fmt.Errorf("allocate Caddy exposure host port: %w", err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		_ = ln.Close()
+		if _, taken := used[port]; !taken {
+			return port, nil
+		}
+	}
+	return 0, errors.New("allocate Caddy exposure host port: exhausted retries")
+}
+
+func writeOwnerOnly(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func sameState(a, b State) bool {
+	if a.Version != b.Version || a.Project != b.Project || a.Network != b.Network || a.Host != b.Host || len(a.Routes) != len(b.Routes) {
+		return false
+	}
+	for i := range a.Routes {
+		if a.Routes[i] != b.Routes[i] {
+			return false
+		}
+	}
+	return true
+}
