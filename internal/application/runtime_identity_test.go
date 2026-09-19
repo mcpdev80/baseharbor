@@ -93,7 +93,6 @@ func TestEnsureRuntimeIdentityDisabledWithoutRuntimeBroker(t *testing.T) {
 	}
 }
 
-
 func TestEnsureRuntimeIdentityForRuntimeOnlyPermission(t *testing.T) {
 	files := RuntimeFiles{Bindings: filepath.Join(t.TempDir(), "bindings")}
 	m := New("demo", "dev", false, false, false)
