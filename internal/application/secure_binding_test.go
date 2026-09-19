@@ -60,7 +60,6 @@ func TestManagedSecretsSecureBindingContainsNoSecretValues(t *testing.T) {
 	}
 }
 
-
 func TestManagedSecretsSecureBindingsAreApplicationAndEnvironmentScoped(t *testing.T) {
 	alpha := ManagedSecretsSecureBinding(Manifest{
 		Version: CurrentVersion, Name: "alpha", Environment: "production",
