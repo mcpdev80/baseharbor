@@ -303,17 +303,6 @@ func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application
 	return state, statuses, nil
 }
 
-func Quiesce(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
-	state, files, err := Load(runtime)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return compose.StopProject(ctx, state.Project, files.Compose, files.Env)
-}
-
 func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
 	state, files, err := Load(runtime)
 	if errors.Is(err, os.ErrNotExist) {
