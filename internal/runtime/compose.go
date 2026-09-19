@@ -215,6 +215,14 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 	return result, nil
 }
 
+func (c Compose) ContainerHealthStatus(ctx context.Context, container string) (string, error) {
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}`, strings.TrimSpace(container))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func (c Compose) ContainerNetworks(ctx context.Context, container string) ([]string, error) {
 	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}`, strings.TrimSpace(container))
 	if err != nil {
