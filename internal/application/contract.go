@@ -10,7 +10,7 @@ type CapabilityKind = capability.Kind
 const (
 	CapabilitySQL          CapabilityKind = capability.SQL
 	CapabilityKeyValue     CapabilityKind = capability.KeyValue
-	CapabilityExposureHTTP CapabilityKind = capability.ExposureHTTP
+	CapabilityExposureHTTP CapabilityKind = capability.ExposureHTTP\n\tCapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 )
 
 type CapabilityRequirement = capability.Requirement
