@@ -24,9 +24,9 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	if err != nil {
 		return nil, err
 	}
-	enabled := policy.Enabled
+	enabled := policy.Enabled && policy.Collect[application.MetricsSourceApplication]
 
-	if policy.ProviderScope == capability.ScopeExternal && enabled && len(m.Metrics.Sources) > 0 {
+	if policy.ProviderScope == capability.ScopeExternal && enabled && (len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)) {
 		return nil, fmt.Errorf("external metrics scope is selected but no external collection adapter is configured")
 	}
 
@@ -86,7 +86,7 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 			return err
 		}
 		if len(prepared.manifest.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(prepared.manifest) {
-			fmt.Fprintf(out, "[SKIP] metrics            collection disabled by deployment policy for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[SKIP] metrics            application-source collection disabled by deployment policy for %s\n", prepared.manifest.Name)
 		}
 		return nil
 	}
