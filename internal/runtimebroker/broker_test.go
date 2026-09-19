@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 func TestEnsureImageCreatesDefaultState(t *testing.T) {
@@ -207,5 +208,51 @@ func TestEnsureDocsPortDisabledOutsideDevelopment(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "broker-docs-port")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("production docs state should not exist: %v", err)
+	}
+}
+
+
+func TestComposeYAMLInitializesRuntimeOperationVolumeBeforeBroker(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+	got, err := composeYAML(
+		m,
+		mtls,
+		write("runtime-token"),
+		"",
+		write("permissions.json"),
+		"baseharbor-runtime:test",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"state-init:",
+		"user: \"0:0\"",
+		"network_mode: \"none\"",
+		"- CHOWN",
+		"condition: service_completed_successfully",
+		"chown 65532:65532 /var/lib/baseharbor/runtime-operations",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime broker compose missing %q:\n%s", want, got)
+		}
 	}
 }
