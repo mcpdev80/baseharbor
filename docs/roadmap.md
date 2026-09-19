@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.7 portable application foundation
+## Current v0.4.8 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -29,6 +29,8 @@ Implemented foundations include:
 - a provider-neutral `PortableContract` adapter for application intent;
 - a shared capability/provider/resource/binding domain core with fail-closed provider negotiation and machine-readable lifecycle results;
 - a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
+- `metrics/v1` with Prometheus 3.14.0 as the first Compose reference provider, shared/application placement, isolated metrics networks and real scrape/ingestion verification;
+- explicit directional cross-application connectivity through `baha connect`, separate from provider sharing and realized in Compose through a hardened BaseHarbor relay;
 - Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
 - one or multiple named logical Valkey/Redis-protocol resources;\n- one or multiple logical S3 buckets through `object-storage.s3/v1`;\n- SeaweedFS as the current lazy shared Compose S3 reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
