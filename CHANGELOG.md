@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.4.8] - 2026-09-19
+## [0.4.8] - 2026-09-20
 
 ### Added
 
@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Provider-neutral Manifest v1 metrics source declarations with logical source name, workload service, target port and path.
 - Prometheus 3.14.0 as the first lazy shared Compose metrics provider with automatic file-based target discovery.
 - Real scrape/ingestion verification and manual-only two-application shared-provider acceptance coverage.
+- Minimal platform-level cross-application connectivity commands: `baha connect SOURCE TARGET`, `baha disconnect SOURCE TARGET` and `baha connections`.
+- Directed Compose connectivity realized through a hardened BaseHarbor Runtime relay instead of a shared source/target bridge network.
 
 ### Changed
 
@@ -36,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Metrics collection is deployment policy rather than application product intent: development defaults on; test/staging/production require explicit opt-in unless overridden with `BASEHARBOR_METRICS_ENABLED`.
 - Each participating application gets an isolated metrics network; only declared/authorized metrics-source services join it, while the selected Prometheus instance is attached only to explicitly registered application networks.
 - Prometheus placement now uses the generic provider-placement model: safe shared default, optional named sharing boundaries and application-scoped placement, with unsupported placement failing before mutation.
+- Provider placement semantics are explicit: `application` means a dedicated provider instance for one application/environment; `shared` means lazy BaseHarbor Platform/Core Runtime infrastructure; `external` remains externally lifecycle-owned.
+- Cross-application connectivity is independent from provider sharing; `app down` suspends relay runtime while preserving policy and `app up`/`apply` reconcile it.
 - Application destroy removes only its metrics target/trust-edge state or dedicated provider according to placement; global destroy removes every BaseHarbor-owned shared Prometheus default/sharing-boundary instance and data volume.
 
 ### Security
@@ -48,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Runtime S3 credentials are excluded from asynchronous operation state, normal resource metadata, logs and manifests and are returned only by the authenticated binding endpoint.
 - Prometheus target state contains endpoint identity and attribution labels only; it does not contain application credentials, provider-global credentials or portable product configuration.
 - Metrics collection does not implicitly provision Grafana, Loki or Tempo.
+- Cross-application connectivity is deny-by-default and directional; target services never join source link networks, and connectivity relays have no host-published port or Docker/Podman socket and run hardened non-root/read-only.
 
 ## [0.4.7] - 2026-09-19
 
