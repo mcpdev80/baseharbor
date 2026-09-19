@@ -126,6 +126,22 @@ v0.4.3 makes repository inspection a shared, read-only core capability.
 - current PostgreSQL/Valkey detection and guided `app init` reuse the same engine;
 - inspection never mutates repository/runtime state and never emits environment secret values.
 
+## Continuous application evolution foundation before v0.4.8
+
+Before the v0.4.8 metrics/Prometheus implementation, BaseHarbor standardizes how application intent changes over time.
+
+- manifest output is sparse: disabled optional capabilities are omitted;
+- repository inspection is repeatable throughout development rather than limited to initial setup;
+- inspection reconciles repository evidence with explicit contract state as satisfied/new/ambiguous/stale;
+- newly discovered requirements are additive suggestions;
+- missing evidence never causes automatic capability removal;
+- capability evidence carries application direction such as consume/provide/export and runtime-operation hints;
+- S3 runtime creation patterns, OpenMetrics `/metrics` and OTLP export become first concrete examples;
+- runtime-operation evidence never grants authorization;
+- future application-time resource provisioning must reuse the existing capability/provider boundary.
+
+This is architecture foundation, not the Prometheus implementation and not a public runtime-resource API.
+
 ## Next architecture tracks
 
 ### v0.5 – Compose platform capabilities
