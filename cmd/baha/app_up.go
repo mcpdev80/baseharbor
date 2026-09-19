@@ -26,6 +26,9 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			if err := printResolvedMetricsPlacement(out, m); err != nil {
+				return err
+			}
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
