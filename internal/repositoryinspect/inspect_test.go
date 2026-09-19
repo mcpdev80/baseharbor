@@ -323,7 +323,6 @@ workload:
 	}
 }
 
-
 func TestInspectDetectsEvolvingCapabilitiesAndRuntimeIntent(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "baseharbor.yaml", `version: 1
