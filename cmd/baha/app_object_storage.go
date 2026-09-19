@@ -14,6 +14,7 @@ import (
 type managedObjectStorageExecution struct {
 	execution *capability.Execution
 	driver    *objectstorage.Driver
+	manifest  application.Manifest
 }
 
 func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedObjectStorageExecution, error) {
@@ -38,7 +39,7 @@ func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose,
 	if err != nil {
 		return nil, err
 	}
-	return &managedObjectStorageExecution{execution: execution, driver: driver}, nil
+	return &managedObjectStorageExecution{execution: execution, driver: driver, manifest: m}, nil
 }
 
 func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *managedObjectStorageExecution) error {
@@ -53,7 +54,7 @@ func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *
 		prepared.driver.Rollback(context.WithoutCancel(ctx))
 		return err
 	}
-	for _, bucket := range application.ObjectStorageBucketNames(prepared.driver.Manifest()) {
+	for _, bucket := range application.ObjectStorageBucketNames(prepared.manifest) {
 		fmt.Fprintf(out, "[OK] object-storage    %s authenticated S3 Put/Get succeeded\n", bucket)
 	}
 	return nil
