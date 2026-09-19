@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-09-19
+
 ### Added
 
 - Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
@@ -395,7 +397,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...HEAD
+[0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mcpdev80/baseharbor/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/mcpdev80/baseharbor/compare/v0.4.4...v0.4.5
