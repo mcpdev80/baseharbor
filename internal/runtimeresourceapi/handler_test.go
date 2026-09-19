@@ -127,3 +127,71 @@ func waitHTTPState(t *testing.T, h http.Handler, id, want string) {
 	}
 	t.Fatalf("operation %s did not reach %s", id, want)
 }
+
+
+func TestCrossApplicationResourceAccessFailsClosed(t *testing.T) {
+	executorCalls := 0
+	executor := runtimeoperation.ExecutorFunc(func(_ context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
+		executorCalls++
+		return runtimeoperation.Result{
+			ResourceID: "res-s3-owned-by-alpha",
+			Binding: map[string]any{
+				"endpoint":          "http://seaweedfs:8333",
+				"bucket":            "alpha-bucket",
+				"access_key_id":     "scoped-access",
+				"secret_access_key": "scoped-secret",
+			},
+		}, nil
+	})
+	manager, err := runtimeoperation.New(t.TempDir(), map[string]runtimeoperation.Executor{
+		"object-storage.s3/v1\x00runtime.create": executor,
+		"object-storage.s3/v1\x00runtime.delete": executor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha, err := New("alpha", manager, allowAuthorizer{}, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := httptest.NewRequest(http.MethodPost, "/runtime/v1/resources", strings.NewReader(`{"capability":"object-storage.s3/v1","name":"assets"}`))
+	create.Header.Set("Idempotency-Key", "alpha-assets")
+	createRes := httptest.NewRecorder()
+	alpha.ServeHTTP(createRes, create)
+	if createRes.Code != http.StatusAccepted {
+		t.Fatalf("alpha create status = %d body=%s", createRes.Code, createRes.Body.String())
+	}
+	var accepted map[string]any
+	if err := json.Unmarshal(createRes.Body.Bytes(), &accepted); err != nil {
+		t.Fatal(err)
+	}
+	operationID, _ := accepted["id"].(string)
+	waitHTTPState(t, alpha, operationID, "succeeded")
+
+	beta, err := New("beta", manager, allowAuthorizer{}, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/runtime/v1/resources/res-s3-owned-by-alpha"},
+		{method: http.MethodGet, path: "/runtime/v1/resources/res-s3-owned-by-alpha/binding"},
+		{method: http.MethodDelete, path: "/runtime/v1/resources/res-s3-owned-by-alpha"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		if tc.method == http.MethodDelete {
+			req.Header.Set("Idempotency-Key", "cross-app-delete")
+		}
+		res := httptest.NewRecorder()
+		beta.ServeHTTP(res, req)
+		if res.Code != http.StatusNotFound {
+			t.Fatalf("%s %s status = %d body=%s", tc.method, tc.path, res.Code, res.Body.String())
+		}
+	}
+
+	if executorCalls != 1 {
+		t.Fatalf("cross-application access reached executor: calls=%d want=1", executorCalls)
+	}
+}
