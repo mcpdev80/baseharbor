@@ -18,7 +18,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 
 ## Component matrix
 
-| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.7 | Replacement paths / alternatives | Architecture note |
+| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.8 | Replacement paths / alternatives | Architecture note |
 | --- | --- | --- | --- | --- | --- |
 | Relational SQL database | Manifest v1 PostgreSQL compatibility input normalized to `database.sql` in `PortableContract` | PostgreSQL | Implemented | external PostgreSQL, managed PostgreSQL/RDS-style services, compatible enterprise PostgreSQL platforms; other SQL engines only where the declared capability permits their semantics | PostgreSQL is the current reference provider, not the permanent conceptual capability name |
 | Cache / key-value | Manifest v1 Redis/Valkey compatibility input normalized to `cache.key-value` in `PortableContract` | Valkey | Implemented | Redis, Dragonfly, managed Redis/Valkey; other KV systems only through a capability with matching semantics | Protocol/feature requirements must be explicit enough to avoid false interchangeability |
@@ -125,11 +125,11 @@ A future provider interface must describe more than a product name. Providers ne
 
 If the selected provider cannot satisfy a requested guarantee, BaseHarbor must reject the plan rather than silently reduce the guarantee.
 
-## v0.4.7 boundary
+## v0.4.8 boundary
 
-v0.4.7 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, `object-storage.s3/v1`, and provider-neutral `telemetry.otlp/v1` export binding with a lazy shared OpenTelemetry Collector reference provider or external OTLP endpoint.
+v0.4.8 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, `object-storage.s3/v1`, provider-neutral `telemetry.otlp/v1` export binding, and `metrics/v1` with Prometheus as the first Compose reference provider. It also adds explicit directional cross-application connectivity as a separate deny-by-default platform policy.
 
-Manifest v1 remains the supported compatibility surface. Managed exposure is additive and explicit; application-owned publishers remain application-owned observation/readiness state.
+Manifest v1 remains the supported compatibility surface. Managed exposure and metrics sources are additive and explicit; application-owned publishers remain application-owned observation/readiness state. Provider sharing never implies cross-application connectivity.
 
 These seams must not be misread as Kubernetes/OpenShift support. Additional S3/object-storage providers and public provider-selection policy, HA profiles, managed ACME/OpenBao-PKI certificate issuance and Kubernetes/OpenShift runtime providers remain future work.
 
