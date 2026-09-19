@@ -39,13 +39,13 @@ type Result struct {
 }
 
 type Operation struct {
-	ID        string     `json:"id"`
-	Request   Request    `json:"request"`
-	State     State      `json:"state"`
-	Result    Result     `json:"result,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID        string    `json:"id"`
+	Request   Request   `json:"request"`
+	State     State     `json:"state"`
+	Result    Result    `json:"result,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Executor interface {
