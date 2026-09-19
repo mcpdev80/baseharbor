@@ -343,5 +343,7 @@ Repository inspection already provides the first concrete evidence for this mode
 - application-provided OpenMetrics `/metrics`;
 - OTLP export.
 
+Repository-first `baha up` reuses this reconciliation path and reports newly detected/ambiguous capability changes and runtime-operation hints before normal convergence, without mutating the contract.
+
 This foundation intentionally does not add the public runtime resource API yet. It defines the semantics that such an API must reuse. See ADR 0009.
 
