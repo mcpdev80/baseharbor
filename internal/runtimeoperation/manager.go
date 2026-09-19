@@ -147,6 +147,22 @@ func (m *Manager) Get(id string) (Operation, error) {
 	return cloneOperation(op), nil
 }
 
+func (m *Manager) FindResource(resourceID string) (Request, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return Request{}, ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, op := range m.ops {
+		if op.Request.Operation != "runtime.create" || op.State != StateSucceeded || op.Result.ResourceID != resourceID {
+			continue
+		}
+		return cloneRequest(op.Request), nil
+	}
+	return Request{}, ErrNotFound
+}
+
 func (m *Manager) Resume(ctx context.Context) error {
 	m.mu.Lock()
 	var pending []string

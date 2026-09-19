@@ -81,6 +81,7 @@ func TestManagerIdempotencyReturnsSameOperation(t *testing.T) {
 	if !replay || first.ID != second.ID {
 		t.Fatalf("idempotency replay = %v first=%s second=%s", replay, first.ID, second.ID)
 	}
+	waitForState(t, manager, first.ID, StateSucceeded)
 }
 
 func TestManagerFailureIsObservable(t *testing.T) {

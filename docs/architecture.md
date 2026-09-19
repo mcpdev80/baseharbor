@@ -334,7 +334,18 @@ The model supports four lifecycle moments with one capability architecture:
 
 Capability evidence includes direction (`consume`, `provide`, `export`, `receive`, `provision`) and may include runtime-operation hints such as `runtime.create`. Detection is never authorization.
 
-Deployment-time and application-time resources use the same logical capability/provider boundary. A future application request to create an S3 resource therefore resolves through `object-storage.s3`; it does not introduce a SeaweedFS-, AWS- or Ceph-specific lifecycle.
+Deployment-time and application-time resources use the same logical capability/provider boundary. An authorized application-time request to create an S3 resource resolves through `object-storage.s3/v1`; it does not introduce a SeaweedFS-, AWS- or Ceph-specific lifecycle.
+
+The first real runtime mutation path uses a shared Runtime Provider Executor:
+
+```text
+authorized workload
+    -> Application Runtime Broker
+    -> mTLS/SPIFFE Runtime Provider Executor
+    -> selected S3 provider / IAM API
+```
+
+The application and per-app broker have no Docker/Podman socket and no provider-global administrator credential. The shared executor also has no container-runtime socket or host-published port. Provider mutation stays behind the executor boundary, while the application receives only its resource-scoped binding.
 
 Repository inspection already provides the first concrete evidence for this model:
 

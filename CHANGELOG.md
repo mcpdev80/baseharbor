@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
 - Repository inspection detection for S3-compatible usage/runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export.
+- Real `object-storage.s3/v1` application-time create/get/delete execution through a shared mTLS Runtime Provider Executor.
+- Persistent asynchronous runtime-resource operations with idempotent mutation keys and restart/resume reconciliation.
+- Real runtime S3 bindings with bucket-scoped IAM credentials and authenticated native S3 Put/Get consumption.
 
 ### Changed
 
@@ -21,11 +24,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The per-application runtime component is generalized as the **Application Runtime Broker**: managed OpenBao secrets remain a runtime module, canonical application-bound secret routes move under `/runtime/v1/secrets`, and existing app-qualified routes remain compatibility aliases.
 - Development brokers now serve embedded Swagger/OpenAPI documentation on a stable automatically allocated host-loopback port; no public CDN or public bind is required.
 - The canonical broker DNS endpoint is `baseharbor-runtime`; the legacy `baseharbor-secrets` alias remains available for compatibility.
+- `baha app apply` and `baha app up` now lazily start/reuse the shared Runtime Provider Executor whenever an explicit runtime resource permission requires it.
+- Runtime-only applications receive a deterministic broker backend network without requiring artificial PostgreSQL/Valkey services; S3 provider-network access is attached only to workload services explicitly authorized for `object-storage.s3/v1`.
+- Global `baha destroy --yes` removes the BaseHarbor-owned shared Runtime Provider Executor before the shared object-storage provider.
 
 ### Security
 
 - Missing repository evidence never authorizes capability removal.
 - Detected runtime operations such as S3 bucket creation are evidence only and never grant runtime authorization or provision infrastructure.
+- Applications and per-app brokers never receive provider-global S3 administrator credentials; those remain at the Runtime Provider Executor boundary.
+- Broker and executor run without Docker/Podman sockets; the executor has no host-published port and accepts only BaseHarbor SPIFFE/mTLS workload identities.
+- Runtime resource ownership is application/environment scoped; resource IDs cannot be used to read, bind or delete another application's resource.
+- Runtime S3 credentials are excluded from asynchronous operation state, normal resource metadata, logs and manifests and are returned only by the authenticated binding endpoint.
 
 ## [0.4.7] - 2026-09-19
 

@@ -15,7 +15,7 @@ const runtimeIdentityTokenFile = "token"
 const runtimeIdentityRevokedFile = "revoked"
 
 func EnsureRuntimeIdentity(m Manifest, files RuntimeFiles) (string, error) {
-	if !m.Services.Secrets {
+	if !RequiresRuntimeBroker(m) {
 		return "", nil
 	}
 	binding := filepath.Join(files.Bindings, runtimeIdentityBinding)
@@ -54,7 +54,7 @@ func RotateRuntimeIdentity(m Manifest, files RuntimeFiles) error {
 		return err
 	}
 	if path == "" {
-		return errors.New("application does not enable managed secrets")
+		return errors.New("application does not require the runtime broker")
 	}
 	if err := ownerOnlyRuntimeIdentity(path); err != nil {
 		return err
@@ -93,7 +93,7 @@ func RevokeRuntimeIdentity(m Manifest, files RuntimeFiles) error {
 		return err
 	}
 	if path == "" {
-		return errors.New("application does not enable managed secrets")
+		return errors.New("application does not require the runtime broker")
 	}
 	if err := ownerOnlyRuntimeIdentity(path); err != nil {
 		return err

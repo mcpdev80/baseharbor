@@ -18,16 +18,20 @@ type Handler struct {
 	app        string
 	operations *runtimeoperation.Manager
 	authorizer Authorizer
+	executor   runtimeoperation.Executor
 	mux        *http.ServeMux
 }
 
-func New(app string, operations *runtimeoperation.Manager, authorizer Authorizer) (*Handler, error) {
+func New(app string, operations *runtimeoperation.Manager, authorizer Authorizer, executor runtimeoperation.Executor) (*Handler, error) {
 	app = strings.TrimSpace(app)
-	if app == "" || operations == nil || authorizer == nil {
+	if app == "" || operations == nil || authorizer == nil || executor == nil {
 		return nil, errors.New("runtime resource API dependencies are required")
 	}
-	h := &Handler{app: app, operations: operations, authorizer: authorizer, mux: http.NewServeMux()}
+	h := &Handler{app: app, operations: operations, authorizer: authorizer, executor: executor, mux: http.NewServeMux()}
 	h.mux.HandleFunc("POST /runtime/v1/resources", h.create)
+	h.mux.HandleFunc("GET /runtime/v1/resources/{resourceId}", h.get)
+	h.mux.HandleFunc("DELETE /runtime/v1/resources/{resourceId}", h.delete)
+	h.mux.HandleFunc("GET /runtime/v1/resources/{resourceId}/binding", h.binding)
 	h.mux.HandleFunc("GET /runtime/v1/operations/{operationId}", h.operation)
 	return h, nil
 }
@@ -88,6 +92,105 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	writeJSON(w, status, operationResponse(op))
+}
+
+func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.resourceRequest(w, r, "runtime.get")
+	if !ok {
+		return
+	}
+	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
+		Application:  h.app,
+		Capability:   request.Capability,
+		Operation:    "runtime.get",
+		ResourceName: request.ResourceName,
+	})
+	if err != nil {
+		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist or is not ready")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":         result.ResourceID,
+		"capability": request.Capability,
+		"name":       request.ResourceName,
+		"state":      "ready",
+	})
+}
+
+func (h *Handler) binding(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.resourceRequest(w, r, "runtime.get")
+	if !ok {
+		return
+	}
+	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
+		Application:  h.app,
+		Capability:   request.Capability,
+		Operation:    "runtime.get",
+		ResourceName: request.ResourceName,
+	})
+	if err != nil || result.Binding == nil {
+		writeProblem(w, http.StatusNotFound, "runtime resource binding not found", "binding does not exist or is not ready")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resource_id": result.ResourceID,
+		"capability":  request.Capability,
+		"binding":     result.Binding,
+	})
+}
+
+func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.resourceRequest(w, r, "runtime.delete")
+	if !ok {
+		return
+	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		writeProblem(w, http.StatusBadRequest, "missing idempotency key", "Idempotency-Key is required")
+		return
+	}
+	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
+		Application:    h.app,
+		Capability:     request.Capability,
+		Operation:      "runtime.delete",
+		ResourceName:   request.ResourceName,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "unsupported capability operation") {
+			writeProblem(w, http.StatusUnprocessableEntity, "unsupported capability operation", err.Error())
+			return
+		}
+		writeProblem(w, http.StatusInternalServerError, "runtime operation failed", "the delete operation could not be accepted")
+		return
+	}
+	status := http.StatusAccepted
+	if replay {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, operationResponse(op))
+}
+
+func (h *Handler) resourceRequest(w http.ResponseWriter, r *http.Request, operation string) (runtimeoperation.Request, bool) {
+	id := strings.TrimSpace(r.PathValue("resourceId"))
+	if id == "" {
+		writeProblem(w, http.StatusBadRequest, "invalid resource id", "resource id is required")
+		return runtimeoperation.Request{}, false
+	}
+	request, err := h.operations.FindResource(id)
+	if errors.Is(err, runtimeoperation.ErrNotFound) || request.Application != h.app {
+		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist")
+		return runtimeoperation.Request{}, false
+	}
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError, "runtime resource lookup failed", "resource state could not be loaded")
+		return runtimeoperation.Request{}, false
+	}
+	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, request.Capability, operation); err != nil {
+		writeProblem(w, http.StatusForbidden, "runtime operation not allowed", "the application is not authorized for this capability operation")
+		return runtimeoperation.Request{}, false
+	}
+	return request, true
 }
 
 func (h *Handler) operation(w http.ResponseWriter, r *http.Request) {

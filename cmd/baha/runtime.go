@@ -18,6 +18,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
@@ -328,6 +329,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
 		return err
+	}
+	if err := runtimeexecutor.DestroyShared(ctx, compose, dataDir); err != nil {
+		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
 	if err := objectstorage.DestroySharedProvider(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared object-storage provider: %w", err)

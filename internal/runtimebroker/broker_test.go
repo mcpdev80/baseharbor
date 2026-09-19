@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 func TestEnsureImageCreatesDefaultState(t *testing.T) {
@@ -207,5 +208,76 @@ func TestEnsureDocsPortDisabledOutsideDevelopment(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "broker-docs-port")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("production docs state should not exist: %v", err)
+	}
+}
+
+func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+	got, err := composeYAML(
+		m,
+		mtls,
+		write("runtime-token"),
+		"",
+		write("permissions.json"),
+		"baseharbor-runtime:test",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "state-init:") {
+		t.Fatalf("runtime broker compose unexpectedly contains privileged state init service:\n%s", got)
+	}
+	if !strings.Contains(got, "runtime-operations:/var/lib/baseharbor/runtime-operations") {
+		t.Fatalf("runtime broker compose missing persistent operations volume:\n%s", got)
+	}
+}
+
+func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T) {
+	root := t.TempDir()
+	files := application.RuntimeFiles{
+		Dir:      filepath.Join(root, "runtime"),
+		Bindings: filepath.Join(root, "runtime", "bindings"),
+	}
+	if err := os.MkdirAll(files.Bindings, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
+
+	path, err := ensureRuntimePermissionsFile(m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("runtime permissions projection mode = %o, want 644", got)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("runtime permissions directory mode = %o, want 700", got)
 	}
 }

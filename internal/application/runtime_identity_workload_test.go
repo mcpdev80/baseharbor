@@ -116,6 +116,28 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("token mode = %o, want 600", info.Mode().Perm())
 	}
+	projectionDir := filepath.Join(files.Bindings, "runtime-workload")
+	projectionDirInfo, err := os.Stat(projectionDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectionDirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("runtime workload projection directory mode = %o, want 700", got)
+	}
+	for _, name := range []string{
+		"baseharbor-runtime-token",
+		"baseharbor-runtime-ca",
+		"baseharbor-runtime-client-cert",
+		"baseharbor-runtime-client-key",
+	} {
+		projectedInfo, err := os.Stat(filepath.Join(projectionDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := projectedInfo.Mode().Perm(); got != 0o644 {
+			t.Fatalf("runtime workload projection %s mode = %o, want 644", name, got)
+		}
+	}
 	overrideInfo, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)

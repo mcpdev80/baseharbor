@@ -1,6 +1,7 @@
 package runtimebroker
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -30,16 +31,19 @@ func ProjectName(m application.Manifest) string {
 }
 
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
-	if !m.Services.Secrets {
-		return Files{}, errors.New("application runtime broker currently requires a managed runtime capability")
+	if !application.RequiresRuntimeBroker(m) {
+		return Files{}, errors.New("application runtime broker requires at least one managed runtime capability")
 	}
 	canonicalToken, err := application.EnsureRuntimeIdentity(m, appFiles)
 	if err != nil {
 		return Files{}, err
 	}
-	credentialProjection, err := projectOwnerOnlyFile(appFiles, openbao.ApplicationCredentialsPath(appFiles.Dir), "openbao.env", "OpenBao application credentials")
-	if err != nil {
-		return Files{}, err
+	credentialProjection := ""
+	if m.Services.Secrets {
+		credentialProjection, err = projectOwnerOnlyFile(appFiles, openbao.ApplicationCredentialsPath(appFiles.Dir), "openbao.env", "OpenBao application credentials")
+		if err != nil {
+			return Files{}, err
+		}
 	}
 	tokenProjection, err := projectOwnerOnlyFile(appFiles, canonicalToken, "runtime-token", "application runtime identity token")
 	if err != nil {
@@ -57,7 +61,11 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err != nil {
 		return Files{}, err
 	}
-	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, image, docsPort)
+	permissionsPath, err := ensureRuntimePermissionsFile(m, appFiles)
+	if err != nil {
+		return Files{}, err
+	}
+	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, permissionsPath, image, docsPort)
 	if err != nil {
 		return Files{}, err
 	}
@@ -232,16 +240,43 @@ func docsURL(port string) string {
 	return "http://127.0.0.1:" + strings.TrimSpace(port) + "/"
 }
 
-func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, image, docsPort string) (string, error) {
+func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.RuntimeFiles) (string, error) {
+	dir := filepath.Join(appFiles.Bindings, "runtime-broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create runtime broker binding directory: %w", err)
+	}
+	path := filepath.Join(dir, "permissions.json")
+	data, err := json.MarshalIndent(m.Runtime.Permissions, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode runtime broker permissions: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", fmt.Errorf("write runtime broker permissions: %w", err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		return "", fmt.Errorf("prepare runtime broker permissions projection: %w", err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve runtime broker permissions: %w", err)
+	}
+	return absolute, nil
+}
+
+func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, image, docsPort string) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	paths := map[string]string{
 		"runtime token":            tokenPath,
-		"OpenBao credentials":      credPath,
+		"runtime permissions":      permissionsPath,
 		"runtime CA":               mtls.CA,
 		"broker certificate":       mtls.BrokerCert,
 		"broker private key":       mtls.BrokerKey,
 		"probe client certificate": mtls.ClientCert,
 		"probe client private key": mtls.ClientKey,
+	}
+	if m.Services.Secrets {
+		paths["OpenBao credentials"] = credPath
 	}
 	for label, path := range paths {
 		absolute, err := filepath.Abs(path)
@@ -258,7 +293,10 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		paths[label] = absolute
 	}
 	tokenPath = paths["runtime token"]
-	credPath = paths["OpenBao credentials"]
+	permissionsPath = paths["runtime permissions"]
+	if m.Services.Secrets {
+		credPath = paths["OpenBao credentials"]
+	}
 	mtls.CA = paths["runtime CA"]
 	mtls.BrokerCert = paths["broker certificate"]
 	mtls.BrokerKey = paths["broker private key"]
@@ -281,9 +319,20 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	if docsPort != "" {
 		b.WriteString("      BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR: \"0.0.0.0:8081\"\n")
 	}
-	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"http://openbao:8200\"\n")
-	b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE: \"/run/secrets/openbao-credentials\"\n")
+	if m.Services.Secrets {
+		b.WriteString("      BASEHARBOR_RUNTIME_SECRETS_ENABLED: \"true\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"http://openbao:8200\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE: \"/run/secrets/openbao-credentials\"\n")
+	}
 	b.WriteString("      BASEHARBOR_RUNTIME_TOKEN_FILE: \"/run/secrets/runtime-token\"\n")
+	b.WriteString("      BASEHARBOR_RUNTIME_PERMISSIONS_FILE: \"/run/baseharbor/runtime/permissions.json\"\n")
+	if len(m.Runtime.Permissions) > 0 {
+		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_URL: \"https://baseharbor-runtime-executor:9443\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_CA_FILE: \"/run/baseharbor/identity/ca.pem\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_CERT_FILE: \"/run/secrets/probe-client-cert\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_EXECUTOR_KEY_FILE: \"/run/secrets/probe-client-key\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_OPERATIONS_DIR: \"/var/lib/baseharbor/runtime-operations\"\n")
+	}
 	if docsPort != "" {
 		b.WriteString("    ports:\n")
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote("127.0.0.1:"+docsPort+":8081"))
@@ -298,9 +347,15 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mtls.CA+":/run/baseharbor/identity/ca.pem:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mtls.BrokerCert+":/run/baseharbor/identity/broker-cert.pem:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(permissionsPath+":/run/baseharbor/runtime/permissions.json:ro"))
+	if len(m.Runtime.Permissions) > 0 {
+		b.WriteString("      - runtime-operations:/var/lib/baseharbor/runtime-operations\n")
+	}
 	b.WriteString("    secrets:\n")
 	b.WriteString("      - broker-key\n")
-	b.WriteString("      - openbao-credentials\n")
+	if m.Services.Secrets {
+		b.WriteString("      - openbao-credentials\n")
+	}
 	b.WriteString("      - runtime-token\n")
 	b.WriteString("      - probe-client-cert\n")
 	b.WriteString("      - probe-client-key\n")
@@ -315,24 +370,44 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("        aliases:\n")
 	b.WriteString("          - baseharbor-runtime\n")
 	b.WriteString("          - baseharbor-secrets\n")
-	b.WriteString("      secrets: {}\n")
+	if m.Services.Secrets {
+		b.WriteString("      secrets: {}\n")
+	}
+	if len(m.Runtime.Permissions) > 0 {
+		b.WriteString("      runtime-control: {}\n")
+	}
 	b.WriteString("\nsecrets:\n")
 	b.WriteString("  broker-key:\n")
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.BrokerKey))
-	b.WriteString("  openbao-credentials:\n")
-	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(credPath))
+	if m.Services.Secrets {
+		b.WriteString("  openbao-credentials:\n")
+		fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(credPath))
+	}
 	b.WriteString("  runtime-token:\n")
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(tokenPath))
 	b.WriteString("  probe-client-cert:\n")
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.ClientCert))
 	b.WriteString("  probe-client-key:\n")
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(mtls.ClientKey))
+	if len(m.Runtime.Permissions) > 0 {
+		b.WriteString("\nvolumes:\n")
+		b.WriteString("  runtime-operations:\n")
+	}
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
-	b.WriteString("    external: true\n")
+	if application.HasManagedRuntimeServices(m) {
+		b.WriteString("    external: true\n")
+	}
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
-	b.WriteString("  secrets:\n")
-	b.WriteString("    external: true\n")
-	b.WriteString("    name: baseharbor-secrets\n")
+	if m.Services.Secrets {
+		b.WriteString("  secrets:\n")
+		b.WriteString("    external: true\n")
+		b.WriteString("    name: baseharbor-secrets\n")
+	}
+	if len(m.Runtime.Permissions) > 0 {
+		b.WriteString("  runtime-control:\n")
+		b.WriteString("    external: true\n")
+		b.WriteString("    name: baseharbor-runtime-control\n")
+	}
 	return b.String(), nil
 }

@@ -60,6 +60,8 @@ GET    /runtime/v1/capabilities
 
 A capability is only advertised as supported when an authorized provider execution path exists. Source-code detection never grants runtime authorization.
 
+For `object-storage.s3/v1`, the broker delegates provider mutation to one shared **Runtime Provider Executor**. The executor authenticates the broker through the existing BaseHarbor workload SPIFFE identity, owns the provider-global administrative boundary, and performs bucket/IAM mutations against the selected S3 provider. The application and broker never receive provider-global credentials.
+
 ## Development Swagger / OpenAPI
 
 When the broker is required in a dev or development environment, BaseHarbor enables interactive runtime API documentation by default.
@@ -84,6 +86,8 @@ Operators can explicitly override deployment policy with BASEHARBOR_RUNTIME_DOCS
 
 ## Security boundary
 
-The broker continues to run without a Docker/Podman socket and without provider-global administrator credentials.
+The broker continues to run without a Docker/Podman socket and without provider-global administrator credentials. The Runtime Provider Executor also has no Docker/Podman socket, has no host-published port, and is reachable only from broker containers through the internal `baseharbor-runtime-control` network.
+
+For runtime-only applications the per-app broker owns the deterministic backend network used by authorized workload services to reach `baseharbor-runtime`. When the app already has managed PostgreSQL/Valkey runtime services, that existing backend network remains authoritative. Runtime S3 provider-network attachment is service-specific: only services explicitly listed in the runtime permission receive it.
 
 The development docs listener exposes documentation only. It does not bypass the authenticated runtime API and does not expose application credentials, OpenBao credentials, runtime bearer tokens or secure bindings.

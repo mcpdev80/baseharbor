@@ -138,9 +138,12 @@ Before the v0.4.8 metrics/Prometheus implementation, BaseHarbor standardizes how
 - capability evidence carries application direction such as consume/provide/export and runtime-operation hints;
 - S3 runtime creation patterns, OpenMetrics `/metrics` and OTLP export become first concrete examples;
 - runtime-operation evidence never grants authorization;
-- future application-time resource provisioning must reuse the existing capability/provider boundary.
+- application-time resource provisioning reuses the existing capability/provider boundary;
+- the Runtime Resource API is executable for explicitly authorized `object-storage.s3/v1` create/get/delete requests;
+- a shared mTLS Runtime Provider Executor keeps provider-global credentials outside applications and per-app brokers;
+- asynchronous operation state is persistent and unfinished operations are reconciled after broker restart.
 
-This is architecture foundation, not the Prometheus implementation and not a public runtime-resource API.
+This completes the runtime-resource execution prerequisite before v0.4.8. It is still not the Prometheus implementation; OpenMetrics evidence remains input for the next capability track.
 
 ## Next architecture tracks
 

@@ -59,11 +59,17 @@ func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compos
 		selected[service] = struct{}{}
 	}
 	plan := application.WorkloadBindingPlan{FileSecretsByService: map[string][]string{}}
+	runtimePermissionServices := map[string]struct{}{}
+	for _, service := range application.RuntimeAuthorizedServices(resolved.Manifest) {
+		runtimePermissionServices[service] = struct{}{}
+	}
 	for service, definition := range config.Services {
 		if _, ok := selected[service]; !ok {
 			continue
 		}
-		if _, ok := definition.Environment["BASEHARBOR_RUNTIME_TOKEN_FILE"]; ok {
+		_, explicitlyAuthorized := runtimePermissionServices[service]
+		_, legacyRuntimeBinding := definition.Environment["BASEHARBOR_RUNTIME_TOKEN_FILE"]
+		if explicitlyAuthorized || legacyRuntimeBinding {
 			plan.RuntimeIdentityServices = append(plan.RuntimeIdentityServices, service)
 		}
 		for _, requirement := range resolved.Manifest.Secrets.Required {
