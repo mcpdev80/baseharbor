@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -251,7 +252,46 @@ func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, ru
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("start directed connectivity relay: %w", err)
 	}
+	if err := waitConnectivityRelayReady(ctx, compose, files.Project); err != nil {
+		return err
+	}
 	return nil
+}
+
+func waitConnectivityRelayReady(ctx context.Context, compose bhruntime.Compose, project string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var lastStatus string
+	for waitCtx.Err() == nil {
+		containers, err := compose.ListComposeContainers(waitCtx)
+		if err != nil {
+			return err
+		}
+		var relay string
+		for _, container := range containers {
+			if container.Project == project && container.Service == "relay" {
+				if relay != "" && relay != container.Name {
+					return fmt.Errorf("connectivity relay project %s has multiple relay containers", project)
+				}
+				relay = container.Name
+			}
+		}
+		if relay != "" {
+			status, err := compose.ContainerHealthStatus(waitCtx, relay)
+			if err != nil {
+				return err
+			}
+			lastStatus = status
+			if status == "healthy" {
+				return nil
+			}
+		}
+		select {
+		case <-waitCtx.Done():
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("directed connectivity relay did not become ready: last status %q: %w", lastStatus, waitCtx.Err())
 }
 
 func suspendConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, containers []bhruntime.ComposeContainer) error {
