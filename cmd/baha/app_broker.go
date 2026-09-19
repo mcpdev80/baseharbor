@@ -144,6 +144,7 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 	}
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--fail", "--silent", "--show-error",
+		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
 		"--cacert", "/run/baseharbor/identity/ca.pem",
 		"--cert", "/run/secrets/probe-client-cert",
 		"--key", "/run/secrets/probe-client-key",
