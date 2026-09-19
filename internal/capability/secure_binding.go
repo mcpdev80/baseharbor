@@ -2,6 +2,7 @@ package capability
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -130,6 +131,10 @@ func validateNamedReference(kind, name, reference string) error {
 	}
 	if strings.ContainsAny(name, "\r\n") || strings.ContainsAny(reference, "\r\n") {
 		return fmt.Errorf("secure binding %s %q contains invalid control characters", kind, name)
+	}
+	parsed, err := url.Parse(reference)
+	if err != nil || parsed.Scheme != "baseharbor" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("secure binding %s %q reference must be an opaque baseharbor:// reference", kind, name)
 	}
 	return nil
 }
