@@ -138,3 +138,23 @@ Portable Felder beschreiben nur die Anwendungsanforderung: logischer Exposure-Na
 In v0.4.4 ist Caddy der Compose-Referenzprovider. Verwaltetes HTTPS verwendet den bestehenden Existing/BYOC-Deployment-TLS-State. Managed ACME, OpenBao-PKI-Issuance und automatische Zertifikatserneuerung bleiben Future Work.
 
 `visibility: public` ist der kanonische Default. `visibility: internal` bindet der aktuelle Compose-Referenzprovider nur lokal/auf Loopback.
+
+## Secure Bindings und Workload Identity in v0.4.5
+
+v0.4.5 fuehrt unterhalb des Application Manifests ein providerneutrales Secure-Binding-Modell ein. Es beschreibt die Security-Metadaten fuer die Verbindung eines Workloads mit einer Capability, ohne Provider-Interna oder Secret-Werte in den portablen Application Intent zu verschieben.
+
+Ein Secure Binding kann enthalten:
+
+- Workload-Identitaet;
+- opake Credential-Referenzen;
+- Trust-/CA-Referenzen;
+- Least-Privilege-Authorization-Metadaten;
+- opake Referenzen auf Required Secrets;
+- deklarierte Unterstuetzung fuer Renewal, Rotation und Revocation;
+- maschinenlesbare Security-Diagnostik.
+
+Der bestehende Managed-Secrets-Pfad bildet seine Runtime Identity auf das SPIFFE-Subject `spiffe://baseharbor/apps/<application>/<environment>` ab. Das Binding enthaelt nur logische Referenzen. OpenBao-AppRole-Namen, RoleIDs, SecretIDs, KV-Pfade, Policy-Namen, Private Keys und Secret-Werte bleiben geschuetzter Provider-/Runtime-State.
+
+Das Modell liegt bewusst unter Manifest v1. Anwendungen deklarieren weiterhin nur Secret-Namen und Capability-Anforderungen; SPIFFE, OpenBao, Zertifikatsdateien oder BaseHarbor-Credential-Referenzen werden nicht zu neuen Manifest-Feldern.
+
+Secure-Binding-Metadaten werden vor dem Provider-Preflight validiert. Ungueltige oder mehrdeutige Referenzen scheitern damit vor jeder Provider-Mutation.
