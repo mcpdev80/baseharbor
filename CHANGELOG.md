@@ -32,8 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Runtime-only applications receive a deterministic broker backend network without requiring artificial PostgreSQL/Valkey services; S3 provider-network access is attached only to workload services explicitly authorized for `object-storage.s3/v1`.
 - Global `baha destroy --yes` removes the BaseHarbor-owned shared Runtime Provider Executor before the shared object-storage provider.
 - Metrics collection is deployment policy rather than application product intent: development defaults on; test/staging/production require explicit opt-in unless overridden with `BASEHARBOR_METRICS_ENABLED`.
-- Only declared metrics-source services join the internal metrics network and receive deterministic collision-resistant provider DNS aliases.
-- Application destroy removes its Prometheus target state; global destroy removes the shared Prometheus provider and BaseHarbor-owned data volume.
+- Each participating application gets an isolated metrics network; only declared/authorized metrics-source services join it, while the selected Prometheus instance is attached only to explicitly registered application networks.
+- Prometheus placement now uses the generic provider-placement model: safe shared default, optional named sharing boundaries and application-scoped placement, with unsupported placement failing before mutation.
+- Application destroy removes only its metrics target/trust-edge state or dedicated provider according to placement; global destroy removes every BaseHarbor-owned shared Prometheus default/sharing-boundary instance and data volume.
 
 ### Security
 
