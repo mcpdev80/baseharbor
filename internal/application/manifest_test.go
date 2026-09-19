@@ -165,10 +165,10 @@ func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Exposures, []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}) {
+	if !reflect.DeepEqual(got.Exposures, []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "public"}}) {
 		t.Fatalf("unexpected exposures: %#v", got.Exposures)
 	}
-	for _, want := range []string{"exposure:\n", "  http:\n", "    - name: public\n", "      service: web\n", "      port: 8080\n", "      protocol: http\n"} {
+	for _, want := range []string{"exposure:\n", "  http:\n", "    - name: public\n", "      service: web\n", "      port: 8080\n", "      protocol: http\n", "      visibility: public\n"} {
 		if !strings.Contains(got.YAML(), want) {
 			t.Fatalf("exposure YAML missing %q:\n%s", want, got.YAML())
 		}
@@ -187,5 +187,15 @@ func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 	m.Workload.Services = []string{"api"}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "not selected") {
 		t.Fatalf("expected target selection validation, got %v", err)
+	}
+}
+
+func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "private-ish"}}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "visibility must be public or internal") {
+		t.Fatalf("expected invalid visibility rejection, got %v", err)
 	}
 }
