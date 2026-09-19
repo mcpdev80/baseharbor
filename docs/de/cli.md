@@ -35,6 +35,19 @@ baha update --help
 baha openbao --help
 ```
 
+## Read-only Repository Inspection und Reconciliation
+
+```bash
+baha app inspect .
+baha app inspect . --json
+```
+
+`app inspect` bleibt strikt read-only. Bei vorhandenem `baseharbor.yaml` vergleicht der gemeinsame Inspection-Core Repository-Evidenz mit dem deklarierten Contract und unterscheidet `satisfied`, `new`, `ambiguous` und `stale`.
+
+Aktuelle semantische Detectoren erkennen neben PostgreSQL/Redis auch S3-kompatible Nutzung, moegliche S3-Runtime-Bucket-Erzeugung, OpenMetrics-`/metrics`-Endpoints und OTLP-Export. Findings tragen eine Capability-Richtung und koennen Runtime-Hinweise wie `runtime.create` enthalten.
+
+`stale` entfernt niemals Contract-State. Eine erkannte Runtime-Operation vergibt keine Berechtigung und provisioniert keine Ressource.
+
 ## Control Plane
 
 ```bash
