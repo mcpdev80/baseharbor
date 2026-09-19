@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestWorkloadManifestRoundTrip(t *testing.T) {
@@ -236,3 +238,21 @@ func TestMetricsCollectionPolicyDefaultsToDevOnly(t *testing.T) {
 		t.Fatalf("explicit production metrics enabled=%v err=%v", enabled, err)
 	}
 }
+
+func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPrometheus), "external")
+	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderPrometheus), "metrics-prod")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("unused metrics provider policy affected workload: %v", err)
+	}
+	if strings.Contains(got, "baseharbor-metrics") {
+		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
+	}
+}
+
