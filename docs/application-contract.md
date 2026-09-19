@@ -392,3 +392,50 @@ The current managed-secrets path maps its existing runtime identity to the SPIFF
 This is intentionally below Manifest v1. Applications still declare only secret names and capability requirements; they do not configure SPIFFE, OpenBao, certificate files or BaseHarbor credential references.
 
 Secure-binding metadata is validated before provider preflight. Invalid or ambiguous references therefore fail before provider mutation.
+
+
+## S3-compatible object storage in v0.4.6
+
+Object storage is explicit portable application intent. Applications declare logical bucket identities, not a storage product:
+
+```yaml
+services:
+  object_storage:
+    buckets:
+      attachments: {}
+      exports: {}
+```
+
+The deterministic CLI path is equivalent:
+
+```bash
+baha app init mailflow \
+  --s3-bucket attachments \
+  --s3-bucket exports
+```
+
+A single default bucket can also be requested with `--s3`.
+
+Each logical bucket maps to `object-storage.s3/v1`. SeaweedFS is the current shared Compose reference provider, but `baseharbor.yaml` contains no SeaweedFS image, port, physical bucket name, IAM user or credential value. Those details remain provider/deployment state.
+
+For the preferred bucket, BaseHarbor materializes standard S3/AWS-compatible variables:
+
+```text
+S3_ENDPOINT=http://...
+S3_BUCKET=...
+S3_REGION=us-east-1
+AWS_ENDPOINT_URL=http://...
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+Named buckets additionally receive `S3_<NAME>_ENDPOINT`, `S3_<NAME>_BUCKET`, `S3_<NAME>_REGION`, `S3_<NAME>_ACCESS_KEY_ID` and `S3_<NAME>_SECRET_ACCESS_KEY`.
+
+File bindings are written below `bindings/object-storage-s3/<bucket>/` and contain endpoint, bucket, region, access key and secret key. Credential files are owner-only, and normal `baha app env` output masks access/secret keys.
+
+The current SeaweedFS provider creates a separate bucket-scoped identity for every logical bucket and verifies readiness with a real authenticated SigV4 Put/Get flow. A shared provider instance therefore does not imply shared authorization between applications or buckets.
+
+Repository workloads use the provider's internal Compose endpoint over the BaseHarbor-owned object-storage integration network; host-side consumers use the protected loopback endpoint. Neither address is portable application identity.
+
+Backup/restore does **not** yet capture object contents. v0.4.6 therefore refuses `baha app backup` and `baha app restore` for applications containing managed object storage instead of producing or accepting an incomplete recovery unit.
