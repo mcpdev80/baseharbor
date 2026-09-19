@@ -43,6 +43,14 @@ func RequiredSecretUsesFileBinding(name string) bool {
 	return strings.HasSuffix(name, "_FILE")
 }
 
+// RequiresRuntimeBroker reports whether the application currently needs the
+// per-application Application Runtime Broker. Keep broker lifecycle decisions
+// centralized here so new authorized runtime capabilities can extend the
+// requirement without duplicating lifecycle conditionals throughout the CLI.
+func RequiresRuntimeBroker(m Manifest) bool {
+	return m.Services.Secrets
+}
+
 func HasRequiredFileSecrets(m Manifest) bool {
 	for _, requirement := range m.Secrets.Required {
 		if RequiredSecretUsesFileBinding(requirement.Name) {
