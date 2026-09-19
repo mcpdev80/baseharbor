@@ -78,10 +78,6 @@ func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile st
 	return c.runProject(ctx, project, composeFile, envFile, "up", "-d")
 }
 
-func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile string) error {
-	return c.runProject(ctx, project, composeFile, envFile, "stop")
-}
-
 func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
