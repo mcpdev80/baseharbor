@@ -10,9 +10,10 @@ import (
 type Kind string
 
 const (
-	SQL      Kind = "database.sql"
-	KeyValue Kind = "cache.key-value"
-	Secrets  Kind = "secrets"
+	SQL          Kind = "database.sql"
+	KeyValue     Kind = "cache.key-value"
+	Secrets      Kind = "secrets"
+	ExposureHTTP Kind = "exposure.http"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -29,6 +30,7 @@ const (
 	ProviderPostgreSQL ProviderKind = "postgresql"
 	ProviderValkey     ProviderKind = "valkey"
 	ProviderOpenBao    ProviderKind = "openbao"
+	ProviderCaddy      ProviderKind = "caddy"
 )
 
 // Provider describes the capability surface of one provider implementation.
