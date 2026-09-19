@@ -128,7 +128,6 @@ func waitHTTPState(t *testing.T, h http.Handler, id, want string) {
 	t.Fatalf("operation %s did not reach %s", id, want)
 }
 
-
 func TestCrossApplicationResourceAccessFailsClosed(t *testing.T) {
 	executorCalls := 0
 	executor := runtimeoperation.ExecutorFunc(func(_ context.Context, request runtimeoperation.Request) (runtimeoperation.Result, error) {
