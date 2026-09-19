@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 var ErrWorkloadComposeAmbiguous = errors.New("multiple application Compose files found")
