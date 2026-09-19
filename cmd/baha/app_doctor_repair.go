@@ -103,7 +103,7 @@ func classifyAppDoctorOutput(output string) []appDoctorFinding {
 			Action: "inspect the failed application prerequisite and correct it manually",
 		}
 		switch name {
-		case "runtime state", "managed runtime definition", "running services", "repository workload", "postgres running", "postgres readiness", "valkey running", "valkey readiness", "runtime secret broker":
+		case "runtime state", "managed runtime definition", "running services", "repository workload", "postgres running", "postgres readiness", "valkey running", "valkey readiness", "runtime secret broker", "application runtime broker":
 			finding.Class = doctorAutoFixable
 			finding.Action = "reconverge the application through 'baha app apply'"
 		case "required application secrets":
