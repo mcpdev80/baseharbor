@@ -76,6 +76,9 @@ func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (cap
 	if raw := strings.TrimSpace(os.Getenv(ProviderSharingBoundaryEnv(provider))); raw != "" {
 		placement.SharingBoundary = raw
 	}
+	if placement.SharingBoundary != "" && provider != capability.ProviderPrometheus {
+		return capability.ProviderPlacement{}, fmt.Errorf("%s is not supported by the current %s adapter; named shared boundaries are implemented for Prometheus only", ProviderSharingBoundaryEnv(provider), provider)
+	}
 	if raw := strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(provider))); raw != "" {
 		placement.ExternalReference = raw
 	}
