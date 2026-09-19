@@ -33,12 +33,12 @@ Enabling an interactive documentation UI never weakens API authentication or aut
 The initial v1 contract defines:
 
 ```text
-GET    /v1/capabilities
-POST   /v1/resources
-GET    /v1/resources/{resourceId}
-DELETE /v1/resources/{resourceId}
-GET    /v1/resources/{resourceId}/binding
-GET    /v1/operations/{operationId}
+GET    /runtime/v1/capabilities
+POST   /runtime/v1/resources
+GET    /runtime/v1/resources/{resourceId}
+DELETE /runtime/v1/resources/{resourceId}
+GET    /runtime/v1/resources/{resourceId}/binding
+GET    /runtime/v1/operations/{operationId}
 ```
 
 A create request is provider-neutral:
@@ -64,11 +64,11 @@ Every mutating runtime request requires an `Idempotency-Key`.
 
 If an application retries after a timeout or lost response, the same logical request must resolve to the same operation/resource outcome rather than creating duplicates.
 
-The API also supports asynchronous provider work. A request may return a resource in `provisioning` state with an operation identity that is queried through `GET /v1/operations/{operationId}`.
+The API also supports asynchronous provider work. A request may return a resource in `provisioning` state with an operation identity that is queried through `GET /runtime/v1/operations/{operationId}`.
 
 ## Bindings and secrets
 
-`GET /v1/resources/{resourceId}/binding` exposes provider-neutral binding metadata.
+`GET /runtime/v1/resources/{resourceId}/binding` exposes provider-neutral binding metadata.
 
 Secret material is not returned through ordinary metadata fields. Credentials remain behind BaseHarbor's secure-binding/runtime-identity boundary.
 
