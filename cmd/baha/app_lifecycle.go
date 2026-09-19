@@ -285,6 +285,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if err := metricsprovider.PruneApplicationTargets(m, nil); err != nil {
 					return fmt.Errorf("remove application metrics targets: %w", err)
 				}
+				if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
+					return fmt.Errorf("remove application metrics trust edges: %w", err)
+				}
 			case capability.ScopeApplication:
 				if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
 					return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
