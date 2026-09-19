@@ -57,6 +57,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.PostgreSQL, nil
 	case capability.KeyValue:
 		return capability.Valkey, nil
+	case capability.ExposureHTTP:
+		return capability.Caddy, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}
