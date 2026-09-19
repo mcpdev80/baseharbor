@@ -282,3 +282,61 @@ func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
 		}
 	}
 }
+
+
+func TestManifestMetricsSourceRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	got, err := ParseYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []MetricsSourceRequirement{{Name: "application", Service: "api", Port: 8080, Path: "/metrics"}}
+	if !reflect.DeepEqual(got.Metrics.Sources, want) {
+		t.Fatalf("metrics sources = %#v, want %#v\nyaml:\n%s", got.Metrics.Sources, want, m.YAML())
+	}
+	for _, expected := range []string{
+		"metrics:\n",
+		"  sources:\n",
+		"    - name: application\n",
+		"      service: api\n",
+		"      port: 8080\n",
+		"      path: /metrics\n",
+	} {
+		if !strings.Contains(m.YAML(), expected) {
+			t.Fatalf("metrics YAML missing %q:\n%s", expected, m.YAML())
+		}
+	}
+}
+
+func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
+	base := New("demo", "dev", false, false, false)
+	base.Services.Postgres = false
+	base = WithWorkload(base, "compose.yaml", "api")
+
+	cases := []MetricsSourceRequirement{
+		{Name: "application", Service: "worker", Port: 8080, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 0, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 8080, Path: "metrics"},
+		{Name: "application", Service: "api", Port: 8080, Path: "/metrics?token=secret"},
+	}
+	for _, source := range cases {
+		m := base
+		m.Metrics.Sources = []MetricsSourceRequirement{source}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected metrics source validation failure for %#v", source)
+		}
+	}
+
+	m := base
+	m.Metrics.Sources = []MetricsSourceRequirement{
+		{Name: "application", Service: "api", Port: 8080, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 9090, Path: "/metrics"},
+	}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate metrics source") {
+		t.Fatalf("expected duplicate metrics source rejection, got %v", err)
+	}
+}
