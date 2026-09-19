@@ -46,7 +46,7 @@ secrets
 identity.oidc
 ingress.http
 tls.certificate
-telemetry.otel
+telemetry.otlp
 metrics.openmetrics
 logs
 ```
