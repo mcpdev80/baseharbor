@@ -125,12 +125,29 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 		return "services: {}\n", nil
 	}
 	var b strings.Builder
+	connectivityNetworks := map[string]struct{}{}
 	b.WriteString("services:\n")
 	for _, instance := range PostgresInstanceNames(m) {
-		writePostgresComposeService(&b, instance)
+		service := runtimeServiceName("postgres", instance)
+		attachments, err := ConnectivityAttachmentsForService(m, service)
+		if err != nil {
+			return "", err
+		}
+		for _, attachment := range attachments {
+			connectivityNetworks[attachment.Network] = struct{}{}
+		}
+		writePostgresComposeService(&b, instance, attachments)
 	}
 	for _, instance := range RedisInstanceNames(m) {
-		writeValkeyComposeService(&b, instance)
+		service := runtimeServiceName("valkey", instance)
+		attachments, err := ConnectivityAttachmentsForService(m, service)
+		if err != nil {
+			return "", err
+		}
+		for _, attachment := range attachments {
+			connectivityNetworks[attachment.Network] = struct{}{}
+		}
+		writeValkeyComposeService(&b, instance, attachments)
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range PostgresInstanceNames(m) {
@@ -139,10 +156,21 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	for _, instance := range RedisInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
 	}
+	if len(connectivityNetworks) > 0 {
+		names := make([]string, 0, len(connectivityNetworks))
+		for name := range connectivityNetworks {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		b.WriteString("\nnetworks:\n")
+		for _, name := range names {
+			fmt.Fprintf(&b, "  %s:\n    external: true\n    name: %s\n", name, strconv.Quote(name))
+		}
+	}
 	return b.String(), nil
 }
 
-func writePostgresComposeService(b *strings.Builder, instance string) {
+func writePostgresComposeService(b *strings.Builder, instance string, connectivity []ConnectivityAttachment) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
 	userKey := postgresRuntimeKey(instance, "USER")
@@ -159,17 +187,17 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - "127.0.0.1:${%s}:5432"
     volumes:
       - %s-data:/var/lib/postgresql
-    healthcheck:
+%s    healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${%s} -d ${%s}"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 5s
 
-`, service, dbKey, userKey, passwordKey, portKey, service, userKey, dbKey)
+`, service, dbKey, userKey, passwordKey, portKey, service, connectivityNetworksYAML(connectivity), userKey, dbKey)
 }
 
-func writeValkeyComposeService(b *strings.Builder, instance string) {
+func writeValkeyComposeService(b *strings.Builder, instance string, connectivity []ConnectivityAttachment) {
 	service := runtimeServiceName("valkey", instance)
 	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 	portKey := valkeyRuntimeKey(instance, "HOST_PORT")
@@ -188,14 +216,30 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       - "127.0.0.1:${%s}:6379"
     volumes:
       - %s-data:/data
-    healthcheck:
+%s    healthcheck:
       test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 5s
 
-`, service, passwordKey, portKey, service)
+`, service, passwordKey, portKey, service, connectivityNetworksYAML(connectivity))
+}
+
+func connectivityNetworksYAML(attachments []ConnectivityAttachment) string {
+	if len(attachments) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("    networks:\n")
+	for _, attachment := range attachments {
+		if attachment.Alias == "" {
+			fmt.Fprintf(&b, "      %s: {}\n", attachment.Network)
+			continue
+		}
+		fmt.Fprintf(&b, "      %s:\n        aliases:\n          - %s\n", attachment.Network, strconv.Quote(attachment.Alias))
+	}
+	return b.String()
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
