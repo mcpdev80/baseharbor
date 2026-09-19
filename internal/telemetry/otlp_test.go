@@ -108,4 +108,3 @@ func TestEnsureProviderFilesKeepsRuntimeStatePrivateButCollectorConfigReadable(t
 		t.Fatalf("provider env mode = %o, want 600", got)
 	}
 }
-
