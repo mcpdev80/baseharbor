@@ -52,12 +52,19 @@ func prepareManagedExposure(ctx context.Context, compose bhruntime.Compose, reso
 	return &managedExposureExecution{execution: execution, driver: driver}, nil
 }
 
-func convergeManagedExposure(ctx context.Context, out io.Writer, prepared *managedExposureExecution) error {
+func provisionManagedExposure(ctx context.Context, prepared *managedExposureExecution) error {
 	if prepared == nil {
 		return nil
 	}
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
+	}
+	return nil
+}
+
+func verifyManagedExposure(ctx context.Context, out io.Writer, prepared *managedExposureExecution) error {
+	if prepared == nil {
+		return nil
 	}
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
@@ -68,6 +75,19 @@ func convergeManagedExposure(ctx context.Context, out io.Writer, prepared *manag
 			route.Name, route.Protocol, state.Host, route.PublishedPort, route.Service, route.TargetPort)
 	}
 	return nil
+}
+
+func convergeManagedExposure(ctx context.Context, out io.Writer, prepared *managedExposureExecution) error {
+	if err := provisionManagedExposure(ctx, prepared); err != nil {
+		return err
+	}
+	return verifyManagedExposure(ctx, out, prepared)
+}
+
+func rollbackManagedExposure(ctx context.Context, prepared *managedExposureExecution) {
+	if prepared != nil {
+		_ = prepared.driver.Rollback(context.WithoutCancel(ctx))
+	}
 }
 
 func inspectManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) ([]string, error) {
