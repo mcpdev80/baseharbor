@@ -1,14 +1,7 @@
 name: postgres-backup-acceptance
 
 on:
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'mkdocs.yml'
-      - 'mkdocs.de.yml'
-      - 'requirements-docs.txt'
+  workflow_dispatch:
 
 permissions:
   contents: read

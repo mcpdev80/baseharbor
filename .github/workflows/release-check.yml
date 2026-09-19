@@ -1,18 +1,6 @@
 name: release-check
 
 on:
-  pull_request:
-    paths:
-      - '.goreleaser.yaml'
-      - '.github/workflows/release.yml'
-      - '.github/workflows/release-check.yml'
-      - 'cmd/baha/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'CHANGELOG.md'
-      - 'scripts/install.sh'
-      - 'docs/releases.md'
-      - 'docs/releases/**'
   workflow_dispatch:
 
 permissions:
