@@ -88,7 +88,6 @@ func TestSecureBindingRejectsInvalidDiagnosticSeverity(t *testing.T) {
 	}
 }
 
-
 func TestSecureBindingRejectsCredentialBearingReference(t *testing.T) {
 	binding := SecureBinding{
 		Credentials: []CredentialReference{{
