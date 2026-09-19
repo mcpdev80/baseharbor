@@ -100,27 +100,31 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return err
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
+
+	exists, err := d.bucketExists(ctx, providerFiles, physical)
+	if err != nil {
+		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, err)
+	}
+	if !exists {
+		create := fmt.Sprintf("s3.bucket.create -name=%s", physical)
+		if err := d.runSeaweedShell(ctx, providerFiles, create); err != nil {
+			return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
+		}
+		created, err := d.bucketExists(ctx, providerFiles, physical)
+		if err != nil {
+			return fmt.Errorf("verify S3 bucket %s creation: %w", resource.Name, err)
+		}
+		if !created {
+			return fmt.Errorf("verify S3 bucket %s creation: bucket was not listed after create", resource.Name)
+		}
+		d.createdBuckets[resource.Name] = struct{}{}
+	}
+
 	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
 		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
 	if err := d.runSeaweedShell(ctx, providerFiles, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
-
-	status, _, err := signedS3Request(ctx, d.client, endpoint, http.MethodHead, physical, "", credentials, nil)
-	if err != nil {
-		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, err)
-	}
-	if status >= 200 && status < 300 {
-		return nil
-	}
-	if status != http.StatusNotFound {
-		return fmt.Errorf("inspect S3 bucket %s: unexpected HTTP status %d", resource.Name, status)
-	}
-	create := fmt.Sprintf("s3.bucket.create -name=%s -owner=%s", physical, physical)
-	if err := d.runSeaweedShell(ctx, providerFiles, create); err != nil {
-		return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
-	}
-	d.createdBuckets[resource.Name] = struct{}{}
 	return nil
 }
 
@@ -226,11 +230,31 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 }
 
 func (d *Driver) runSeaweedShell(ctx context.Context, files ProviderFiles, command string) error {
+	_, err := d.runSeaweedShellOutput(ctx, files, command)
+	return err
+}
+
+func (d *Driver) runSeaweedShellOutput(ctx context.Context, files ProviderFiles, command string) (string, error) {
 	input := []byte(command + "\n")
-	if _, err := d.runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
-		return errors.New("SeaweedFS administrative command failed")
+	out, err := d.runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell")
+	if err != nil {
+		return "", errors.New("SeaweedFS administrative command failed")
 	}
-	return nil
+	return out, nil
+}
+
+func (d *Driver) bucketExists(ctx context.Context, files ProviderFiles, bucket string) (bool, error) {
+	out, err := d.runSeaweedShellOutput(ctx, files, "s3.bucket.list")
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == bucket {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func PhysicalBucketName(m application.Manifest, logical string) string {
