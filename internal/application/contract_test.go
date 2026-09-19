@@ -149,7 +149,6 @@ func TestPortableContractIncludesProviderNeutralExposureIntent(t *testing.T) {
 	}
 }
 
-
 func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *testing.T) {
 	m := Manifest{
 		Version:     CurrentVersion,
