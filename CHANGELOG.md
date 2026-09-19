@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-09-19
+
+### Added
+
+- Shared `secure-binding/v1` model for provider-neutral workload identity, credential references, trust material, authorization metadata, secret references, security lifecycle declarations and machine-readable diagnostics.
+- Secure binding support in the shared capability lifecycle and `baseharbor.provider/v1` workload binding protocol.
+- SPIFFE-based identity mapping for the existing managed-secrets/runtime-broker path.
+
+### Changed
+
+- Managed `secrets/v1` bindings now expose existing security semantics through provider-neutral references while preserving OpenBao as the current reference provider.
+- Secure binding metadata is validated during plan construction before provider preflight or mutation.
+- Secure binding references are restricted to opaque `baseharbor://` references.
+
+### Security
+
+- Plaintext credentials, credential-bearing URLs, tokens, private keys and secret values are rejected from the shared secure-binding reference boundary.
+- Application/environment identity and credential references remain isolated across bindings.
+- Provider-specific OpenBao AppRole, policy, KV and PKI internals remain protected provider state.
+
+### Compatibility
+
+- Manifest v1 and existing Compose/OpenBao/runtime-broker behavior remain compatible.
+- No new application-facing security configuration is required.
+- Human OIDC/RBAC/MFA/JIT/breakglass, full cross-provider rotation completion and managed public certificate issuance remain intentionally deferred.
+
 ## [0.4.4] - 2026-09-19
 
 ### Added
