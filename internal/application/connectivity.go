@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -90,6 +91,70 @@ func LoadConnectivityRules() ([]ConnectivityRule, error) {
 	if err != nil {
 		return nil, err
 	}
+	return loadConnectivityRulesAt(path)
+}
+
+func AddConnectivityRule(rule ConnectivityRule) error {
+	if err := rule.Validate(); err != nil {
+		return err
+	}
+	return updateConnectivityRules(func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
+		for _, existing := range rules {
+			if existing == rule {
+				return rules, nil
+			}
+		}
+		rules = append(rules, rule)
+		sortConnectivityRules(rules)
+		return rules, nil
+	})
+}
+
+func RemoveConnectivityRule(rule ConnectivityRule) error {
+	if err := rule.Validate(); err != nil {
+		return err
+	}
+	return updateConnectivityRules(func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
+		filtered := rules[:0]
+		for _, existing := range rules {
+			if existing != rule {
+				filtered = append(filtered, existing)
+			}
+		}
+		return filtered, nil
+	})
+}
+
+func updateConnectivityRules(update func([]ConnectivityRule) ([]ConnectivityRule, error)) error {
+	path, err := connectivityPolicyPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	rules, err := loadConnectivityRulesAt(path)
+	if err != nil {
+		return err
+	}
+	rules, err = update(rules)
+	if err != nil {
+		return err
+	}
+	return saveConnectivityRulesAt(path, rules)
+}
+
+func loadConnectivityRulesAt(path string) ([]ConnectivityRule, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -111,47 +176,6 @@ func LoadConnectivityRules() ([]ConnectivityRule, error) {
 	}
 	sortConnectivityRules(policy.Rules)
 	return policy.Rules, nil
-}
-
-func AddConnectivityRule(rule ConnectivityRule) error {
-	if err := rule.Validate(); err != nil {
-		return err
-	}
-	rules, err := LoadConnectivityRules()
-	if err != nil {
-		return err
-	}
-	for _, existing := range rules {
-		if existing == rule {
-			return nil
-		}
-	}
-	rules = append(rules, rule)
-	sortConnectivityRules(rules)
-	return saveConnectivityRules(rules)
-}
-
-func RemoveConnectivityRule(rule ConnectivityRule) error {
-	if err := rule.Validate(); err != nil {
-		return err
-	}
-	rules, err := LoadConnectivityRules()
-	if err != nil {
-		return err
-	}
-	filtered := rules[:0]
-	found := false
-	for _, existing := range rules {
-		if existing == rule {
-			found = true
-			continue
-		}
-		filtered = append(filtered, existing)
-	}
-	if !found {
-		return nil
-	}
-	return saveConnectivityRules(filtered)
 }
 
 func CheckApplicationConnectivityReleased(m Manifest) error {
@@ -212,14 +236,7 @@ func connectivityPolicyPath() (string, error) {
 	return filepath.Join(dataDir, connectivityPolicyFile), nil
 }
 
-func saveConnectivityRules(rules []ConnectivityRule) error {
-	path, err := connectivityPolicyPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
+func saveConnectivityRulesAt(path string, rules []ConnectivityRule) error {
 	policy := connectivityPolicy{Version: 1, Rules: append([]ConnectivityRule(nil), rules...)}
 	sortConnectivityRules(policy.Rules)
 	data, err := json.MarshalIndent(policy, "", "  ")
