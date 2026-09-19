@@ -249,3 +249,36 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 		t.Fatalf("runtime broker compose missing persistent operations volume:\n%s", got)
 	}
 }
+
+
+func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T) {
+	root := t.TempDir()
+	files := application.RuntimeFiles{
+		Dir:      filepath.Join(root, "runtime"),
+		Bindings: filepath.Join(root, "runtime", "bindings"),
+	}
+	if err := os.MkdirAll(files.Bindings, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
+
+	path, err := ensureRuntimePermissionsFile(m, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("runtime permissions projection mode = %o, want 644", got)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("runtime permissions directory mode = %o, want 700", got)
+	}
+}
