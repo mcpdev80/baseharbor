@@ -130,13 +130,22 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Ownership: capability.OwnershipBaseHarbor,
 			}
 		case capability.ProviderPrometheus:
-			switch metricsPolicy.ProviderScope {
+			placement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+			if err != nil {
+				return err
+			}
+			switch placement.Scope {
 			case capability.ScopeShared:
+				id := "prometheus/shared"
+				if placement.SharingBoundary != "" {
+					id = fmt.Sprintf("prometheus/shared/%s", ProviderPlacementNameToken(placement.SharingBoundary))
+				}
 				instance = capability.ProviderInstance{
-					ID:        "prometheus/shared",
-					Provider:  capability.Prometheus,
-					Scope:     capability.ScopeShared,
-					Ownership: capability.OwnershipBaseHarbor,
+					ID:              id,
+					Provider:        capability.Prometheus,
+					Scope:           capability.ScopeShared,
+					SharingBoundary: placement.SharingBoundary,
+					Ownership:       capability.OwnershipBaseHarbor,
 				}
 			case capability.ScopeApplication:
 				instance = capability.ProviderInstance{
@@ -152,10 +161,10 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 					Provider:  capability.Prometheus,
 					Scope:     capability.ScopeExternal,
 					Ownership: capability.OwnershipExternal,
-					Reference: metricsPolicy.ExternalReference,
+					Reference: placement.ExternalReference,
 				}
 			default:
-				return fmt.Errorf("unsupported metrics provider scope %q", metricsPolicy.ProviderScope)
+				return fmt.Errorf("unsupported provider scope %q", placement.Scope)
 			}
 		case capability.ProviderExternalOTLP:
 			instance = capability.ProviderInstance{
