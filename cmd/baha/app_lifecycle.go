@@ -83,7 +83,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 					return err
 				}
-				fmt.Fprintln(out, "[OK] secret-broker     per-application runtime secret broker stopped")
+				fmt.Fprintln(out, "[OK] runtime-broker    per-application Application Runtime Broker stopped")
 			}
 
 			project := application.RuntimeProjectName(m)
@@ -113,7 +113,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application secret broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
+		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			name, confirmed, fullReset, err := parseDestroyArgs(args)
 			if err != nil {
@@ -208,7 +208,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			if m.Services.Secrets {
 				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
-				fmt.Fprintln(out, "  broker:     per-application mTLS secret broker")
+				fmt.Fprintln(out, "  broker:     per-application mTLS Application Runtime Broker")
 			}
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
