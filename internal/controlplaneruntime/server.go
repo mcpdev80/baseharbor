@@ -163,7 +163,12 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 		runtimeSecrets = applicationsecret.NewRuntime(store, client)
 	}
-	runtimeHandler, err := applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
+	var runtimeHandler http.Handler
+	if cfg.boundRuntimeEnabled() {
+		runtimeHandler, err = applicationruntimeapi.NewBound(runtimeSecrets, runtimeVerifier, cfg.RuntimeAppName)
+	} else {
+		runtimeHandler, err = applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
+	}
 	if err != nil {
 		return err
 	}
