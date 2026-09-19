@@ -1,0 +1,21 @@
+name: otlp-acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  otlp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASEHARBOR_OTLP_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Prove real OTLP export into managed Collector
+        run: go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport$' -count=1 -v
