@@ -30,8 +30,8 @@ type Files struct {
 }
 
 func EnsureFiles(spec RuntimeSpec) (Files, error) {
-	if strings.TrimSpace(spec.ID) == "" {
-		return Files{}, errors.New("connectivity relay id is required")
+	if err := validateRelayID(spec.ID); err != nil {
+		return Files{}, err
 	}
 	for label, value := range map[string]string{
 		"source network": spec.SourceNetwork,
@@ -90,14 +90,17 @@ func RemoveFiles(id string) error {
 	if err != nil {
 		return err
 	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return errors.New("connectivity relay id is required")
+	if err := validateRelayID(id); err != nil {
+		return err
 	}
+	id = strings.TrimSpace(id)
 	return os.RemoveAll(filepath.Join(dataDir, "connectivity", id))
 }
 
 func ExistingFiles(id string) (Files, error) {
+	if err := validateRelayID(id); err != nil {
+		return Files{}, err
+	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Files{}, err
@@ -115,6 +118,23 @@ func ExistingFiles(id string) (Files, error) {
 		}
 	}
 	return files, nil
+}
+
+func validateRelayID(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("connectivity relay id is required")
+	}
+	if len(id) > 64 {
+		return errors.New("connectivity relay id is too long")
+	}
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return errors.New("connectivity relay id contains unsupported characters")
+	}
+	return nil
 }
 
 func composeYAML(spec RuntimeSpec, image string) string {
