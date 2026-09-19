@@ -67,6 +67,13 @@ func CheckControlPlaneDestroySafe() error {
 			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the global control plane", instance.ID)
 		}
 	}
+	rules, err := LoadConnectivityRules()
+	if err != nil {
+		return err
+	}
+	if len(rules) != 0 {
+		return fmt.Errorf("connectivity policy still contains %d cross-application rule(s); disconnect them before the global control plane", len(rules))
+	}
 	return nil
 }
 
