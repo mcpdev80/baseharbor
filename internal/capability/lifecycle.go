@@ -47,6 +47,7 @@ type Binding struct {
 	Resource     Resource             `json:"resource"`
 	Workload     string               `json:"workload"`
 	HTTPExposure *HTTPExposureBinding `json:"http_exposure,omitempty"`
+	Security     *SecureBinding        `json:"security,omitempty"`
 }
 
 type PlanItem struct {
@@ -86,6 +87,7 @@ type Request struct {
 	Requirement  Requirement
 	Workload     string
 	HTTPExposure *HTTPExposureBinding
+	Security     *SecureBinding
 	Driver       Driver
 }
 
@@ -112,6 +114,13 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 		if request.HTTPExposure != nil {
 			value := *request.HTTPExposure
 			binding.HTTPExposure = &value
+		}
+		if request.Security != nil {
+			value := *request.Security
+			if err := value.Validate(); err != nil {
+				return Plan{}, fmt.Errorf("capability secure binding for %s/%s: %w", application, request.Requirement.Name, err)
+			}
+			binding.Security = &value
 		}
 		plan.Items = append(plan.Items, PlanItem{Resource: resource, Binding: binding})
 	}
