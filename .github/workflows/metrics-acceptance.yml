@@ -1,0 +1,34 @@
+name: metrics-acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prometheus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASEHARBOR_METRICS_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Prove real shared Prometheus scrape and ingestion
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -v
+      - name: Show Prometheus diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -a --filter label=com.docker.compose.project=baseharbor-metrics
+          for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-metrics); do
+            docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id"
+            docker logs "$id" || true
+          done
