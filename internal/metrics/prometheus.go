@@ -274,6 +274,21 @@ func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}
 	if err != nil {
 		return err
 	}
+	return pruneApplicationTargetsFromFiles(files, m, desired)
+}
+
+func PruneRegisteredApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
+	files, found, err := ExistingRegisteredProviderFiles(m)
+	if !found || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return pruneApplicationTargetsFromFiles(files, m, desired)
+}
+
+func pruneApplicationTargetsFromFiles(files ProviderFiles, m application.Manifest, desired map[string]struct{}) error {
 	entries, err := os.ReadDir(files.TargetsDir)
 	if err != nil {
 		return err
