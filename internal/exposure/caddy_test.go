@@ -27,7 +27,7 @@ func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t 
 	if !strings.Contains(got, "external: true") || !strings.Contains(got, "name: "+state.Network) {
 		t.Fatalf("Caddy provider must consume the stable exposure network externally:\n%s", got)
 	}
-	if strings.Contains(got, "volumes:\n  ") {
+	if strings.Contains(got, "\nvolumes:\n") {
 		t.Fatalf("provider must not create persistent named volumes:\n%s", got)
 	}
 	if state.Network != "baseharbor-exposure-demo-dev_default" {
