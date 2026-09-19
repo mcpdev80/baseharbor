@@ -15,6 +15,7 @@ const (
 	Secrets         Kind = "secrets"
 	ExposureHTTP    Kind = "exposure.http"
 	ObjectStorageS3 Kind = "object-storage.s3"
+	TelemetryOTLP   Kind = "telemetry.otlp"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -33,6 +34,7 @@ const (
 	ProviderOpenBao    ProviderKind = "openbao"
 	ProviderCaddy      ProviderKind = "caddy"
 	ProviderSeaweedFS  ProviderKind = "seaweedfs"
+	ProviderOTelCollector ProviderKind = "opentelemetry-collector"
 )
 
 // Provider describes the capability surface of one provider implementation.
