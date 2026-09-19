@@ -26,4 +26,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Prove real OTLP export into managed Collector
-        run: go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport$' -count=1 -v
+        run: go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport -count=1 -v
+      - name: Show Collector diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -a --filter label=com.docker.compose.project=baseharbor-telemetry
+          for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-telemetry); do
+            docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id"
+            docker logs "$id" || true
+          done
