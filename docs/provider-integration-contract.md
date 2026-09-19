@@ -341,3 +341,22 @@ The current managed Compose provider is lazy/shared. An external OTLP endpoint i
 Conformance requires fail-closed preflight, idempotent provisioning/binding and a real OTLP HTTP/protobuf export accepted by the selected endpoint. Merely reporting a running Collector process is not sufficient.
 
 The OTLP binding is capability-owned and typed in Provider Protocol v1. Requesting it does not authorize a provider to provision Prometheus, Loki, Tempo, Grafana or any other unrelated observability product.
+
+
+## Metrics / Prometheus conformance in v0.4.8
+
+Prometheus is the first reference provider for `metrics/v1`. The provider boundary remains the same boundary intended for later VictoriaMetrics, Mimir or community implementations.
+
+Conformance requires at least:
+
+- fail-closed preflight for direction, signal format and source endpoint;
+- idempotent shared-provider provisioning;
+- automatic target registration without manual Prometheus configuration;
+- application/environment/service/source attribution;
+- isolation when several applications use the same workload service name;
+- real scrape/ingestion verification through a successful `up=1`;
+- removal of only the affected application's target bindings;
+- no credentials or secret values in target state or normal diagnostics;
+- no implicit provisioning of Grafana, Loki or Tempo.
+
+Collection policy is deployment/operator state. Declaring a `metrics/v1` source does not automatically authorize collection in every environment.
