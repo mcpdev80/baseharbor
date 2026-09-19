@@ -39,7 +39,7 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 		if isSourceFile(base) {
 			if containsAny(lower, []string{
 				"putobject(", "getobject(", "put_object(", "get_object(",
-				"s3client", "client-s3", "boto3.client("s3")", "boto3.client('s3')",
+				"s3client", "client-s3", "boto3.client(\\\"s3\\\")", "boto3.client('s3')",
 			}) {
 				suggested = append(suggested, Evidence{
 					Kind: EvidenceImport, Path: path,
