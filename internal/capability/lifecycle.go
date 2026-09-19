@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type Phase string
@@ -34,6 +35,23 @@ type Diagnostic struct {
 	Code     string   `json:"code"`
 	Severity Severity `json:"severity"`
 	Message  string   `json:"message"`
+}
+
+// ProviderOperationObservation is deliberately metadata-only. It gives
+// observability adapters a stable hook without exposing workload bindings,
+// credentials, endpoints or provider-specific configuration.
+type ProviderOperationObservation struct {
+	Phase       Phase        `json:"phase"`
+	Status      Status       `json:"status"`
+	Application string       `json:"application"`
+	Capability  Kind         `json:"capability"`
+	Resource    string       `json:"resource"`
+	Provider    ProviderKind `json:"provider"`
+	Duration    time.Duration `json:"duration"`
+}
+
+type ProviderOperationObserver interface {
+	ObserveProviderOperation(ProviderOperationObservation)
 }
 
 type HTTPExposureBinding struct {
@@ -103,6 +121,7 @@ type Request struct {
 	TelemetryOTLP   *OTLPTelemetryBinding
 	Security        *SecureBinding
 	Driver          Driver
+	Observer        ProviderOperationObserver
 }
 
 func BuildPlan(application string, requests []Request) (Plan, error) {
@@ -200,11 +219,14 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
 	}
 	for i, item := range plan.Items {
+		started := time.Now()
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(requests[i], item, PhasePreflight, StatusFailed, time.Since(started))
 			result.Steps = append(result.Steps, failedStep(PhasePreflight, item, "provider-preflight-failed", err))
 			result.Status = StatusFailed
 			return nil, result, fmt.Errorf("capability preflight failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(requests[i], item, PhasePreflight, StatusReady, time.Since(started))
 		result.Steps = append(result.Steps, readyStep(PhasePreflight, item))
 	}
 	return &Execution{requests: requests, result: result}, result, nil
@@ -215,18 +237,25 @@ func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
 		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
 	}
 	for i, item := range e.result.Plan.Items {
-		driver := e.requests[i].Driver
+		request := e.requests[i]
+		driver := request.Driver
+		started := time.Now()
 		if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseApply, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseApply, item))
+		started = time.Now()
 		if err := driver.Bind(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseBind, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseBind, item, "provider-bind-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability bind failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseBind, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseBind, item))
 	}
 	return e.result, nil
@@ -237,11 +266,15 @@ func (e *Execution) Verify(ctx context.Context) (Result, error) {
 		return Result{Status: StatusFailed}, fmt.Errorf("capability execution is nil")
 	}
 	for i, item := range e.result.Plan.Items {
-		if err := e.requests[i].Driver.Verify(ctx, item.Resource, item.Binding); err != nil {
+		request := e.requests[i]
+		started := time.Now()
+		if err := request.Driver.Verify(ctx, item.Resource, item.Binding); err != nil {
+			observeProviderOperation(request, item, PhaseVerify, StatusFailed, time.Since(started))
 			e.result.Steps = append(e.result.Steps, failedStep(PhaseVerify, item, "provider-verification-failed", err))
 			e.result.Status = StatusFailed
 			return e.result, fmt.Errorf("capability verification failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
 		}
+		observeProviderOperation(request, item, PhaseVerify, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseVerify, item))
 	}
 	e.result.Status = StatusReady
@@ -278,3 +311,19 @@ func failedStep(phase Phase, item PlanItem, code string, err error) StepResult {
 		}},
 	}
 }
+
+func observeProviderOperation(request Request, item PlanItem, phase Phase, status Status, duration time.Duration) {
+	if request.Observer == nil {
+		return
+	}
+	request.Observer.ObserveProviderOperation(ProviderOperationObservation{
+		Phase: phase,
+		Status: status,
+		Application: item.Resource.Application,
+		Capability: item.Resource.Kind,
+		Resource: item.Resource.Name,
+		Provider: item.Resource.Provider,
+		Duration: duration,
+	})
+}
+
