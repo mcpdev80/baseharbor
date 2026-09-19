@@ -232,3 +232,52 @@ services:
 		t.Fatalf("legacy explicit false flags changed semantics: %#v", parsed.Services)
 	}
 }
+
+
+func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithRuntimePermission(m, "object-storage.s3/v1", "runtime.create", "runtime.get", "runtime.delete")
+
+	got, err := ParseYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.create") ||
+		!RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.get") ||
+		!RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.delete") {
+		t.Fatalf("runtime permissions lost in round trip: %#v", got.Runtime.Permissions)
+	}
+	if RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.rotate") {
+		t.Fatal("undeclared runtime.rotate was granted")
+	}
+	for _, want := range []string{
+		"runtime:\n",
+		"  permissions:\n",
+		"    - capability: object-storage.s3/v1\n",
+		"      operations:\n",
+		"        - runtime.create\n",
+	} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("runtime YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
+	base := New("demo", "dev", true, false, false)
+	cases := []RuntimePermission{
+		{Capability: "object-storage.s3/v9", Operations: []string{"runtime.create"}},
+		{Capability: "object-storage.s3/v1", Operations: nil},
+		{Capability: "object-storage.s3/v1", Operations: []string{"create"}},
+		{Capability: "object-storage.s3/v1", Operations: []string{"runtime.create", "runtime.create"}},
+	}
+	for _, permission := range cases {
+		m := base
+		m.Runtime.Permissions = []RuntimePermission{permission}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected invalid runtime permission to fail: %#v", permission)
+		}
+	}
+}
