@@ -34,6 +34,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
 			}
+			if err := printResolvedMetricsPlacement(out, m); err != nil {
+				return err
+			}
 
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
