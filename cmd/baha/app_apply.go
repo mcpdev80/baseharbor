@@ -161,7 +161,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("application verification failed: %w", verifyErr)
 			}
 
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
 					return err
 				}
