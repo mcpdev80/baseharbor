@@ -44,7 +44,7 @@ func (c Config) Validate() error {
 	if _, err := loadCAPool(c.TLSClientCAFile); err != nil {
 		return err
 	}
-	if _, err := objectstorage.LoadAdminCredentials(c.AdminCredentials); err != nil {
+	if _, err := objectstorage.LoadContainerAdminCredentials(c.AdminCredentials); err != nil {
 		return fmt.Errorf("load runtime executor S3 admin credentials: %w", err)
 	}
 	return nil
