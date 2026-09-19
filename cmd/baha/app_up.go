@@ -98,24 +98,32 @@ func appUpCommand(store application.Store) *cli.Command {
 					return nil
 				}},
 			}
-			if m.Services.Secrets {
+			if application.RequiresRuntimeBroker(m) {
 				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+					preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 						var err error
 						platformFiles, err = bhruntime.ExistingFiles("")
 						return err
 					}},
-					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+					preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
 						if platformFiles.Compose == "" {
 							return errors.New("BaseHarbor OpenBao runtime is not materialized")
 						}
 						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-					}},
-					preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
-						return checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+						return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
 					}},
 				)
+				if m.Services.Secrets {
+					checks = append(checks,
+						preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+							identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+							return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+						}},
+						preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+							return checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+						}},
+					)
+				}
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
