@@ -31,7 +31,7 @@ func ProjectName(m application.Manifest) string {
 
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
 	if !m.Services.Secrets {
-		return Files{}, errors.New("runtime secret broker requires managed secrets")
+		return Files{}, errors.New("application runtime broker currently requires a managed runtime capability")
 	}
 	canonicalToken, err := application.EnsureRuntimeIdentity(m, appFiles)
 	if err != nil {
