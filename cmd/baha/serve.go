@@ -8,6 +8,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/controlplaneruntime"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
@@ -21,6 +22,12 @@ func serveCommand(store application.Store) *cli.Command {
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 0 {
 				return usageError("baha serve does not accept arguments", "Run 'baha serve --help' for usage.")
+			}
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTIVITY_RELAY_MODE")), "true") {
+				return connectivityrelay.Run(ctx, connectivityrelay.Config{
+					ListenAddr: os.Getenv("BASEHARBOR_RELAY_LISTEN_ADDR"),
+					TargetAddr: os.Getenv("BASEHARBOR_RELAY_TARGET_ADDR"),
+				})
 			}
 			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_MODE")), "true") {
 				return runtimeexecutor.Run(ctx, runtimeExecutorConfigFromEnv())
