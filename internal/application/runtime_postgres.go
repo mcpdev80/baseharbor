@@ -33,7 +33,7 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 		if m.Services.Secrets {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
 		}
-		if HasExplicitWorkload(m) {
+		if HasObjectStorage(m) || HasExplicitWorkload(m) {
 			return nil
 		}
 		return fmt.Errorf("%w: no supported runtime service or explicit Compose workload is enabled", ErrUnsupportedService)
@@ -286,6 +286,24 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	for _, bucket := range ObjectStorageBucketNames(m) {
+		accessKey := s3RuntimeKey(bucket, "ACCESS_KEY_ID")
+		secretKey := s3RuntimeKey(bucket, "SECRET_ACCESS_KEY")
+		if values[accessKey] == "" {
+			value, err := randomApplicationSecret(18)
+			if err != nil {
+				return err
+			}
+			values[accessKey] = "BH" + value
+		}
+		if values[secretKey] == "" {
+			value, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[secretKey] = value
+		}
+	}
 	return nil
 }
 
@@ -307,6 +325,12 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	for _, instance := range RedisInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
+	}
+	for _, bucket := range ObjectStorageBucketNames(m) {
+		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
+			key := s3RuntimeKey(bucket, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
@@ -346,6 +370,14 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
+	for _, bucket := range ObjectStorageBucketNames(m) {
+		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
+			key := s3RuntimeKey(bucket, suffix)
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+	}
 	return nil
 }
 
@@ -378,6 +410,10 @@ func postgresRuntimeKey(instance, suffix string) string {
 
 func valkeyRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("VALKEY", instance, suffix)
+}
+
+func s3RuntimeKey(bucket, suffix string) string {
+	return runtimeInstanceKey("S3", bucket, suffix)
 }
 
 func runtimeInstanceKey(prefix, instance, suffix string) string {
