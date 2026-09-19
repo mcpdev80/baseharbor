@@ -250,7 +250,6 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 	}
 }
 
-
 func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T) {
 	root := t.TempDir()
 	files := application.RuntimeFiles{
