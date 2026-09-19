@@ -170,7 +170,6 @@ func writeApplicationEnv(out io.Writer, values map[string]string, format string)
 	return nil
 }
 
-
 func isCredentialEnvironmentValue(key string) bool {
 	return key == "AWS_ACCESS_KEY_ID" ||
 		key == "AWS_SECRET_ACCESS_KEY" ||
