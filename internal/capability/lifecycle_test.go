@@ -230,7 +230,6 @@ func TestBuildPlanRejectsInvalidSecureBindingBeforeProviderPreflight(t *testing.
 	}
 }
 
-
 func TestBuildPlanMetricsBindingIsTypedAndProviderNeutral(t *testing.T) {
 	driver := &fakeDriver{provider: Prometheus}
 	plan, err := BuildPlan("demo", []Request{{
