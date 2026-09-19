@@ -295,3 +295,10 @@ managed exposure intent      -> resolve -> preflight -> provision -> bind -> ver
 ```
 
 Observation never grants BaseHarbor lifecycle ownership. Only explicit managed exposure intent is registered as an application-scoped provider resource. The current Compose reference provider is Caddy; its host ports, network, TLS files and generated configuration remain protected provider/deployment state.
+
+
+### Capability-owned binding parameters
+
+Provider protocol v1 carries capability-owned, provider-neutral binding semantics through preflight/provision/bind. For `exposure.http/v1`, the typed binding contains the logical workload service, target port, HTTP/HTTPS transport and public/internal visibility.
+
+These fields are defined by the capability specification, not by Caddy or another provider. Provider-specific configuration remains separate operator configuration. This allows a future conforming provider to receive the same application intent without reading `baseharbor.yaml` or depending on BaseHarbor's Go implementation.
