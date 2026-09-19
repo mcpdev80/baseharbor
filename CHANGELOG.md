@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
 - Added the versioned OpenAPI 3.1 Runtime Resource API v1 contract for provider-neutral application-time resources, including idempotency, asynchronous operation state and secure binding boundaries.
 - Interactive API documentation policy is now explicit: development on by default; test/staging and production off by default unless platform/operator policy enables it.
+- The per-application runtime component is generalized as the **Application Runtime Broker**: managed OpenBao secrets remain a runtime module, canonical application-bound secret routes move under `/runtime/v1/secrets`, and existing app-qualified routes remain compatibility aliases.
+- Development brokers now serve embedded Swagger/OpenAPI documentation on a stable automatically allocated host-loopback port; no public CDN or public bind is required.
+- The canonical broker DNS endpoint is `baseharbor-runtime`; the legacy `baseharbor-secrets` alias remains available for compatibility.
 
 ### Security
 
