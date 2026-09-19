@@ -91,6 +91,11 @@ func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile 
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
+func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "stop")
+}
+
+
 func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
 }
