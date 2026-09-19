@@ -223,9 +223,17 @@ func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
 		return err
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == name {
-			return nil
+		if strings.TrimSpace(line) != name {
+			continue
 		}
+		label, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "io.baseharbor.managed" }}`, name)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(label) != "connectivity" {
+			return fmt.Errorf("runtime network %s already exists but is not BaseHarbor connectivity-owned", name)
+		}
+		return nil
 	}
 	_, err = c.directOutput(ctx, "network", "create", "--label", "io.baseharbor.managed=connectivity", name)
 	return err
@@ -276,6 +284,13 @@ func (c Compose) RemoveManagedNetwork(ctx context.Context, name string) error {
 	}
 	if !found {
 		return nil
+	}
+	label, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "io.baseharbor.managed" }}`, name)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(label) != "connectivity" {
+		return fmt.Errorf("refusing to remove runtime network %s because it is not BaseHarbor connectivity-owned", name)
 	}
 	_, err = c.directOutput(ctx, "network", "rm", name)
 	return err
