@@ -263,3 +263,33 @@ Inspection kann ausserdem Capability-Richtung und Runtime-Operationen als Hinwei
 
 Das Inspection-Modell darf damit absichtlich detaillierter als `baseharbor.yaml` sein. Evidence-Pfade, Confidence und erkannte Runtime-Operationen bleiben im Inspection-Ergebnis, solange sie kein echter benoetigter Application Intent sind.
 
+
+
+## Von Anwendungen bereitgestellte Metrics in v0.4.8
+
+Anwendungen koennen eine Metrics-Signalquelle deklarieren, ohne ein Collection-/Storage-Produkt zu benennen:
+
+```yaml
+workload:
+  compose: compose.yaml
+  services:
+    - api
+
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+Jede Source bildet `metrics/v1` ab. Das v1-Signalformat ist OpenMetrics-kompatible HTTP-Text-Exposition. Source-Name, Workload-Service, Ziel-Port und HTTP-Pfad beschreiben die portable Schnittstelle der Anwendung.
+
+Prometheus ist **kein** Bestandteil dieses Application Contracts. Ob gesammelt wird, welcher Provider verwendet wird sowie Scrape-Intervall, Retention, Storage-Topologie und Query-Endpunkte sind Deployment-/Plattform-Policy.
+
+Im Compose-Referenzpfad ist Metrics-Collection standardmaessig nur fuer `dev` / `development` aktiv. Test, Staging und Produktion benoetigen ein explizites Operator-Opt-in mit `BASEHARBOR_METRICS_ENABLED=true`. Ein explizites `false` deaktiviert Collection in jeder Umgebung.
+
+Wenn Collection aktiv ist, haengt BaseHarbor nur den deklarierten Source-Service an das interne Metrics-Netz, registriert das Target automatisch beim shared Provider und verifiziert einen echten erfolgreichen Scrape/Ingestion. Gleiche Service-Namen in mehreren Anwendungen bleiben durch app-/environment-spezifische Target-Identitaet getrennt.
+
+OTLP-Transport mit dem Signal `metrics` bleibt davon getrennt. `telemetry.otlp/v1` beschreibt den Export-Transport; `metrics/v1` beschreibt eine von der Anwendung bereitgestellte Metrics-Source. Keiner der Contracts nennt Prometheus.
+
