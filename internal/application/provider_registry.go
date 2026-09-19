@@ -137,140 +137,149 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 	if err != nil {
 		return err
 	}
-	metricsPolicy, err := MetricsPolicy(m)
-	if err != nil {
-		return err
-	}
-	for _, resource := range resources {
-		if resource.Kind == capability.Metrics && !metricsPolicy.Enabled {
-			continue
+
+	var metricsPolicy MetricsDeploymentPolicy
+	metricsPolicyResolved := false
+	resolveMetricsPolicy := func() (MetricsDeploymentPolicy, error) {
+		if metricsPolicyResolved {
+			return metricsPolicy, nil
 		}
-		var instance capability.ProviderInstance
-		switch resource.Provider {
-		case capability.ProviderPostgreSQL:
-			instance = capability.ProviderInstance{
-				ID:               fmt.Sprintf("postgresql/%s/%s/%s", m.Name, m.Environment, resource.Name),
-				Provider:         capability.PostgreSQL,
-				Scope:            capability.ScopeApplication,
-				Ownership:        capability.OwnershipBaseHarbor,
-				OwnerApplication: m.Name,
-			}
-		case capability.ProviderValkey:
-			instance = capability.ProviderInstance{
-				ID:               fmt.Sprintf("valkey/%s/%s/%s", m.Name, m.Environment, resource.Name),
-				Provider:         capability.Valkey,
-				Scope:            capability.ScopeApplication,
-				Ownership:        capability.OwnershipBaseHarbor,
-				OwnerApplication: m.Name,
-			}
-		case capability.ProviderSeaweedFS:
-			instance = capability.ProviderInstance{
-				ID:        "seaweedfs/shared",
-				Provider:  capability.SeaweedFS,
-				Scope:     capability.ScopeShared,
-				Ownership: capability.OwnershipBaseHarbor,
-			}
-		case capability.ProviderOTelCollector:
-			instance = capability.ProviderInstance{
-				ID:        "opentelemetry-collector/shared",
-				Provider:  capability.OTelCollector,
-				Scope:     capability.ScopeShared,
-				Ownership: capability.OwnershipBaseHarbor,
-			}
-		case capability.ProviderPrometheus:
-			instance, err = prometheusProviderInstance(m)
+		metricsPolicy, err = MetricsPolicy(m)
+		if err != nil {
+			return MetricsDeploymentPolicy{}, err
+		}
+		metricsPolicyResolved = true
+		return metricsPolicy, nil
+	}
+
+	for _, resource := range resources {
+		if resource.Kind == capability.Metrics {
+			policy, err := resolveMetricsPolicy()
 			if err != nil {
 				return err
 			}
-		case capability.ProviderExternalOTLP:
-			instance = capability.ProviderInstance{
-				ID:        "external-otlp/default",
-				Provider:  capability.ExternalOTLP,
-				Scope:     capability.ScopeExternal,
-				Ownership: capability.OwnershipExternal,
+			if !policy.Enabled || !policy.Collect[MetricsSourceApplication] {
+				continue
 			}
-		case capability.ProviderOpenBao:
-			instance = capability.ProviderInstance{
-				ID:        "openbao/control-plane",
-				Provider:  capability.OpenBao,
-				Scope:     capability.ScopeShared,
-				Ownership: capability.OwnershipBaseHarbor,
-			}
-		case capability.ProviderCaddy:
-			instance = capability.ProviderInstance{
-				ID:               fmt.Sprintf("caddy/%s/%s", m.Name, m.Environment),
-				Provider:         capability.Caddy,
-				Scope:            capability.ScopeApplication,
-				Ownership:        capability.OwnershipBaseHarbor,
-				OwnerApplication: m.Name,
-			}
-		default:
-			return fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
 		}
-		if err := registry.Register(instance); err != nil {
-			return err
-		}
-		if err := registry.Bind(resource, instance.ID); err != nil {
-			return err
-		}
-	}
-	if metricsPolicy.Enabled && HasRuntimeMetricsPermissions(m) {
-		instance, err := prometheusProviderInstance(m)
+
+		instance, err := referenceProviderInstance(m, resource)
 		if err != nil {
 			return err
 		}
 		if err := registry.Register(instance); err != nil {
 			return err
 		}
-		resource := capability.Resource{
-			Application: m.Name,
-			Kind:        capability.Metrics,
-			Name:        runtimeMetricsRegistryResource,
-			Provider:    capability.ProviderPrometheus,
-		}
 		if err := registry.Bind(resource, instance.ID); err != nil {
 			return err
+		}
+	}
+
+	if HasRuntimeMetricsPermissions(m) {
+		policy, err := resolveMetricsPolicy()
+		if err != nil {
+			return err
+		}
+		if policy.Enabled && policy.Collect[MetricsSourceApplication] {
+			resource := capability.Resource{
+				Application: m.Name,
+				Kind:        capability.Metrics,
+				Name:        runtimeMetricsRegistryResource,
+				Provider:    capability.ProviderPrometheus,
+			}
+			instance, err := referenceProviderInstance(m, resource)
+			if err != nil {
+				return err
+			}
+			if err := registry.Register(instance); err != nil {
+				return err
+			}
+			if err := registry.Bind(resource, instance.ID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func prometheusProviderInstance(m Manifest) (capability.ProviderInstance, error) {
-	placement, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+func referenceProviderInstance(m Manifest, resource capability.Resource) (capability.ProviderInstance, error) {
+	placement, err := ResolveProviderPlacement(m, resource.Provider)
 	if err != nil {
 		return capability.ProviderInstance{}, err
 	}
+
+	instance := capability.ProviderInstance{
+		Provider:         providerDescriptor(resource.Provider),
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		Ownership:        placement.Ownership,
+		Reference:        placement.ExternalReference,
+	}
+	if instance.Provider.Kind == "" {
+		return capability.ProviderInstance{}, fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
+	}
+
 	switch placement.Scope {
 	case capability.ScopeShared:
-		id := "prometheus/shared"
-		if placement.SharingBoundary != "" {
-			id = fmt.Sprintf("prometheus/shared/%s", ProviderPlacementNameToken(placement.SharingBoundary))
-		}
-		return capability.ProviderInstance{
-			ID:              id,
-			Provider:        capability.Prometheus,
-			Scope:           capability.ScopeShared,
-			SharingBoundary: placement.SharingBoundary,
-			Ownership:       capability.OwnershipBaseHarbor,
-		}, nil
+		instance.ID = sharedProviderInstanceID(resource.Provider, placement.SharingBoundary)
 	case capability.ScopeApplication:
-		return capability.ProviderInstance{
-			ID:               fmt.Sprintf("prometheus/%s/%s", m.Name, m.Environment),
-			Provider:         capability.Prometheus,
-			Scope:            capability.ScopeApplication,
-			Ownership:        capability.OwnershipBaseHarbor,
-			OwnerApplication: m.Name,
-		}, nil
+		instance.ID = applicationProviderInstanceID(resource.Provider, m, resource.Name)
+		instance.OwnerApplication = m.Name
 	case capability.ScopeExternal:
-		return capability.ProviderInstance{
-			ID:        fmt.Sprintf("prometheus-external/%s/%s", m.Name, m.Environment),
-			Provider:  capability.Prometheus,
-			Scope:     capability.ScopeExternal,
-			Ownership: capability.OwnershipExternal,
-			Reference: placement.ExternalReference,
-		}, nil
+		instance.ID = externalProviderInstanceID(resource.Provider, m, resource.Name, placement.ExternalReference)
 	default:
 		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
 	}
+	return instance, nil
 }
 
+func providerDescriptor(provider capability.ProviderKind) capability.Provider {
+	switch provider {
+	case capability.ProviderPostgreSQL:
+		return capability.PostgreSQL
+	case capability.ProviderValkey:
+		return capability.Valkey
+	case capability.ProviderOpenBao:
+		return capability.OpenBao
+	case capability.ProviderCaddy:
+		return capability.Caddy
+	case capability.ProviderSeaweedFS:
+		return capability.SeaweedFS
+	case capability.ProviderOTelCollector:
+		return capability.OTelCollector
+	case capability.ProviderExternalOTLP:
+		return capability.ExternalOTLP
+	case capability.ProviderPrometheus:
+		return capability.Prometheus
+	default:
+		return capability.Provider{}
+	}
+}
+
+func sharedProviderInstanceID(provider capability.ProviderKind, boundary string) string {
+	if boundary == "" {
+		switch provider {
+		case capability.ProviderOpenBao:
+			return "openbao/control-plane"
+		default:
+			return string(provider) + "/shared"
+		}
+	}
+	return fmt.Sprintf("%s/shared/%s", provider, ProviderPlacementNameToken(boundary))
+}
+
+func applicationProviderInstanceID(provider capability.ProviderKind, m Manifest, resourceName string) string {
+	switch provider {
+	case capability.ProviderPostgreSQL, capability.ProviderValkey:
+		return fmt.Sprintf("%s/%s/%s/%s", provider, m.Name, m.Environment, resourceName)
+	default:
+		return fmt.Sprintf("%s/%s/%s", provider, m.Name, m.Environment)
+	}
+}
+
+func externalProviderInstanceID(provider capability.ProviderKind, m Manifest, resourceName, reference string) string {
+	if provider == capability.ProviderExternalOTLP && reference == "default" {
+		return "external-otlp/default"
+	}
+	return fmt.Sprintf("%s/external/%s/%s/%s", provider, m.Name, m.Environment, ProviderPlacementNameToken(resourceName+"-"+reference))
+}
