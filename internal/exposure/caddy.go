@@ -144,13 +144,13 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource) er
 
 	state, changed, err := d.ensureFiles()
 	if err != nil {
-		_ = d.Rollback(context.WithoutCancel(ctx))
+		_ = d.restorePreviousFiles()
 		return err
 	}
 	d.state = state
 	d.changed = changed
 	if err := d.compose.ConfigProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
-		_ = d.Rollback(context.WithoutCancel(ctx))
+		_ = d.restorePreviousFiles()
 		return fmt.Errorf("validate Caddy exposure provider: %w", err)
 	}
 	if changed && d.wasRunning {
@@ -167,6 +167,16 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource) er
 	return nil
 }
 
+func (d *Driver) restorePreviousFiles() error {
+	if err := os.RemoveAll(d.files.Dir); err != nil {
+		return err
+	}
+	if len(d.previousFiles) == 0 {
+		return nil
+	}
+	return restoreDirectory(d.files.Dir, d.previousFiles)
+}
+
 func (d *Driver) Rollback(ctx context.Context) error {
 	if !d.changed && d.wasRunning {
 		return nil
@@ -177,13 +187,10 @@ func (d *Driver) Rollback(ctx context.Context) error {
 			result = errors.Join(result, err)
 		}
 	}
-	if err := os.RemoveAll(d.files.Dir); err != nil {
-		result = errors.Join(result, err)
+	if err := d.restorePreviousFiles(); err != nil {
+		return errors.Join(result, err)
 	}
 	if len(d.previousFiles) > 0 {
-		if err := restoreDirectory(d.files.Dir, d.previousFiles); err != nil {
-			return errors.Join(result, err)
-		}
 		if d.wasRunning {
 			if err := d.compose.UpProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
 				result = errors.Join(result, fmt.Errorf("restore previous Caddy exposure provider: %w", err))
