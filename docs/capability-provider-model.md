@@ -131,7 +131,7 @@ v0.4.6 remains Compose-only at runtime. The v0.4 line now includes the shared ca
 
 Manifest v1 remains the supported compatibility surface. Managed exposure is additive and explicit; application-owned publishers remain application-owned observation/readiness state.
 
-These seams must not be misread as Kubernetes/OpenShift support. additional S3/object-storage providers and public provider-selection policy, HA profiles, managed ACME/OpenBao-PKI certificate issuance and Kubernetes/OpenShift runtime providers remain future work.
+These seams must not be misread as Kubernetes/OpenShift support. Additional S3/object-storage providers and public provider-selection policy, HA profiles, managed ACME/OpenBao-PKI certificate issuance and Kubernetes/OpenShift runtime providers remain future work.
 
 
 ## Provider registry in v0.4.2
@@ -146,6 +146,7 @@ Current reference mapping:
 
 ```text
 OpenBao              -> shared
+SeaweedFS            -> shared
 PostgreSQL instances -> application-scoped
 Valkey instances     -> application-scoped
 ```
@@ -175,8 +176,9 @@ Current reference claims are versioned:
 - PostgreSQL implements `database.sql/v1`;
 - Valkey implements `cache.key-value/v1`;
 - OpenBao implements `secrets/v1`;
-- Caddy implements `exposure.http/v1`.
+- Caddy implements `exposure.http/v1`;
+- SeaweedFS implements `object-storage.s3/v1`.
 
-Future S3, telemetry, observability, messaging, AI/MCP and vector providers must define/implement versioned capability specifications rather than introduce product-specific application contracts.
+Additional S3, telemetry, observability, messaging, AI/MCP and vector providers must define/implement versioned capability specifications rather than introduce product-specific application contracts.
 
 The future external transport is gRPC/Protocol Buffers and distribution direction is OCI. Those are open-standard transport/package mechanisms; BaseHarbor capability semantics and conformance remain authoritative.
