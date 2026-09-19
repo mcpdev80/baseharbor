@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 type Config struct {
 	ListenAddr string
 	TargetAddr string
+	HealthAddr string
 }
 
 func Run(ctx context.Context, cfg Config) error {
@@ -31,6 +33,38 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("listen for connectivity relay: %w", err)
 	}
 	defer listener.Close()
+
+	healthAddr := strings.TrimSpace(cfg.HealthAddr)
+	if healthAddr == "" {
+		healthAddr = "127.0.0.1:8081"
+	}
+	healthServer := &http.Server{
+		Addr:              healthAddr,
+		ReadHeaderTimeout: 2 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/readyz" {
+				http.NotFound(w, r)
+				return
+			}
+			conn, err := net.DialTimeout("tcp", targetAddr, time.Second)
+			if err != nil {
+				http.Error(w, "target unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			_ = conn.Close()
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ready\n"))
+		}),
+	}
+	healthListener, err := net.Listen("tcp", healthAddr)
+	if err != nil {
+		return fmt.Errorf("listen for connectivity relay health: %w", err)
+	}
+	defer healthListener.Close()
+	go func() {
+		_ = healthServer.Serve(healthListener)
+	}()
+	defer healthServer.Close()
 
 	go func() {
 		<-ctx.Done()
