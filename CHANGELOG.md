@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Repository workloads using managed OTLP attach to a dedicated BaseHarbor telemetry integration network; external OTLP bindings do not create that network.
 - Global `baha destroy --yes` removes the shared BaseHarbor-owned Collector after application bindings are released.
 - Common telemetry resource identity uses OpenTelemetry service/environment semantic attributes plus BaseHarbor application/resource/provider attribution.
+- Shared provider lifecycle operations expose secret-safe metadata-only instrumentation hooks for preflight/apply/bind/verify so later observability providers can instrument the same core lifecycle.
 
 ### Security
 
