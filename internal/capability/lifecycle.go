@@ -41,12 +41,12 @@ type Diagnostic struct {
 // observability adapters a stable hook without exposing workload bindings,
 // credentials, endpoints or provider-specific configuration.
 type ProviderOperationObservation struct {
-	Phase       Phase        `json:"phase"`
-	Status      Status       `json:"status"`
-	Application string       `json:"application"`
-	Capability  Kind         `json:"capability"`
-	Resource    string       `json:"resource"`
-	Provider    ProviderKind `json:"provider"`
+	Phase       Phase         `json:"phase"`
+	Status      Status        `json:"status"`
+	Application string        `json:"application"`
+	Capability  Kind          `json:"capability"`
+	Resource    string        `json:"resource"`
+	Provider    ProviderKind  `json:"provider"`
 	Duration    time.Duration `json:"duration"`
 }
 
@@ -317,13 +317,12 @@ func observeProviderOperation(request Request, item PlanItem, phase Phase, statu
 		return
 	}
 	request.Observer.ObserveProviderOperation(ProviderOperationObservation{
-		Phase: phase,
-		Status: status,
+		Phase:       phase,
+		Status:      status,
 		Application: item.Resource.Application,
-		Capability: item.Resource.Kind,
-		Resource: item.Resource.Name,
-		Provider: item.Resource.Provider,
-		Duration: duration,
+		Capability:  item.Resource.Kind,
+		Resource:    item.Resource.Name,
+		Provider:    item.Resource.Provider,
+		Duration:    duration,
 	})
 }
-
