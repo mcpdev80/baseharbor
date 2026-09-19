@@ -82,8 +82,16 @@ func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile 
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
+func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
+}
+
 func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes")
+}
+
+func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
 }
 
 func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
