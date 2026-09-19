@@ -36,10 +36,10 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 	}()
 
 	m := application.WithOTLPTelemetry(application.Manifest{
-		Version: 1,
-		Name: "otlp-acceptance",
+		Version:     1,
+		Name:        "otlp-acceptance",
 		Environment: "test",
-		Workload: application.WorkloadConfig{Services: []string{"api"}},
+		Workload:    application.WorkloadConfig{Services: []string{"api"}},
 	}, "traces", "metrics", "logs")
 	store := application.Store{Root: filepath.Join(state, "apps")}
 	files, err := application.EnsureRuntime(store, m)
@@ -51,15 +51,15 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 	binding := capability.Binding{
 		Resource: capability.Resource{
 			Application: m.Name,
-			Kind: capability.TelemetryOTLP,
-			Name: "default",
-			Provider: capability.ProviderOTelCollector,
+			Kind:        capability.TelemetryOTLP,
+			Name:        "default",
+			Provider:    capability.ProviderOTelCollector,
 		},
 		Workload: "application/" + m.Name,
 		TelemetryOTLP: &capability.OTLPTelemetryBinding{
 			Direction: "export",
-			Protocol: "http/protobuf",
-			Signals: []string{"traces", "metrics", "logs"},
+			Protocol:  "http/protobuf",
+			Signals:   []string{"traces", "metrics", "logs"},
 		},
 	}
 	resource := binding.Resource
