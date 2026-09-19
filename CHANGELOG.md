@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
 - Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
 - Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
+- Added the versioned OpenAPI 3.1 Runtime Resource API v1 contract for provider-neutral application-time resources, including idempotency, asynchronous operation state and secure binding boundaries.
+- Interactive API documentation policy is now explicit: development on by default; test/staging and production off by default unless platform/operator policy enables it.
 
 ### Security
 
