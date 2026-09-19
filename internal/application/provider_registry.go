@@ -115,6 +115,20 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Scope:     capability.ScopeShared,
 				Ownership: capability.OwnershipBaseHarbor,
 			}
+		case capability.ProviderOTelCollector:
+			instance = capability.ProviderInstance{
+				ID:        "opentelemetry-collector/shared",
+				Provider:  capability.OTelCollector,
+				Scope:     capability.ScopeShared,
+				Ownership: capability.OwnershipBaseHarbor,
+			}
+		case capability.ProviderExternalOTLP:
+			instance = capability.ProviderInstance{
+				ID:        "external-otlp/default",
+				Provider:  capability.ExternalOTLP,
+				Scope:     capability.ScopeExternal,
+				Ownership: capability.OwnershipExternal,
+			}
 		case capability.ProviderOpenBao:
 			instance = capability.ProviderInstance{
 				ID:        "openbao/control-plane",
