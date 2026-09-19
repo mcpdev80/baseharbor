@@ -53,11 +53,11 @@ func TestObjectStorageS3ContractIsProviderReplaceable(t *testing.T) {
 
 type structS3Driver struct{ provider Provider }
 
-func (d structS3Driver) Descriptor() Provider                                { return d.provider }
-func (structS3Driver) Preflight(context.Context, Resource, Binding) error     { return nil }
-func (structS3Driver) Provision(context.Context, Resource, Binding) error     { return nil }
-func (structS3Driver) Bind(context.Context, Resource, Binding) error          { return nil }
-func (structS3Driver) Verify(context.Context, Resource, Binding) error        { return nil }
+func (d structS3Driver) Descriptor() Provider                             { return d.provider }
+func (structS3Driver) Preflight(context.Context, Resource, Binding) error { return nil }
+func (structS3Driver) Provision(context.Context, Resource, Binding) error { return nil }
+func (structS3Driver) Bind(context.Context, Resource, Binding) error      { return nil }
+func (structS3Driver) Verify(context.Context, Resource, Binding) error    { return nil }
 
 func TestSeaweedFSReferenceIntegrationConforms(t *testing.T) {
 	report := CheckIntegrationContract(SeaweedFSIntegration)
