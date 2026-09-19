@@ -36,6 +36,7 @@ type Runtime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
 	ExecProject(context.Context, string, string, string, string, ...string) (string, error)
+	ExecProjectInput(context.Context, string, string, string, []byte, string, ...string) (string, error)
 	DestroyProject(context.Context, string, string, string) error
 }
 
@@ -101,7 +102,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	physical := PhysicalBucketName(d.app, resource.Name)
 	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
 		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
-	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+configure); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
 
@@ -116,7 +117,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return fmt.Errorf("inspect S3 bucket %s: unexpected HTTP status %d", resource.Name, status)
 	}
 	create := fmt.Sprintf("s3.bucket.create -name=%s -owner=%s", physical, physical)
-	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+create); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, create); err != nil {
 		return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
 	}
 	d.createdBuckets[resource.Name] = struct{}{}
@@ -214,12 +215,20 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 	}
 	physical := PhysicalBucketName(d.app, logicalBucket)
 	command := fmt.Sprintf("s3.bucket.delete -name=%s", physical)
-	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+command); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, command); err != nil {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
 	}
 	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", physical)
-	if _, err := d.runtime.ExecProject(ctx, ProviderProject, providerFiles.Compose, providerFiles.Env, ProviderService, "weed", "shell", "-command="+revoke); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, revoke); err != nil {
 		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
+	}
+	return nil
+}
+
+func (d *Driver) runSeaweedShell(ctx context.Context, files ProviderFiles, command string) error {
+	input := []byte(command + "\n")
+	if _, err := d.runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
+		return errors.New("SeaweedFS administrative command failed")
 	}
 	return nil
 }
