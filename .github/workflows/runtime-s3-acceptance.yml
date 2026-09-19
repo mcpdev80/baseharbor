@@ -195,6 +195,18 @@ jobs:
           ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
           test "$cross_status" = "404"
 
+          cross_binding_status="$(docker exec "$app_b" sh -ec '
+            token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
+            curl --silent --output /tmp/cross-binding.out --write-out "%{http_code}"               --cacert "$BASEHARBOR_RUNTIME_CA_FILE"               --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"               --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"               -H "Authorization: Bearer $token"               "$1"
+          ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id/binding")"
+          test "$cross_binding_status" = "404"
+
+          cross_delete_status="$(docker exec "$app_b" sh -ec '
+            token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
+            curl --silent --output /tmp/cross-delete.out --write-out "%{http_code}"               --cacert "$BASEHARBOR_RUNTIME_CA_FILE"               --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"               --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"               -H "Authorization: Bearer $token"               -H "Idempotency-Key: cross-app-delete"               -X DELETE               "$1"
+          ' sh "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          test "$cross_delete_status" = "404"
+
           cd "$workdir/app-a"
           delete="$(call_a             -H 'Idempotency-Key: runtime-s3-delete-1'             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
           delete_operation="$(printf '%s' "$delete" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
