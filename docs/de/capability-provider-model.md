@@ -18,7 +18,7 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 
 ## Komponentenmatrix
 
-| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.7 | Austauschpfade / Alternativen | Architekturhinweis |
+| Capability | Portable Schnittstelle / Intent | BaseHarbor-Default | Stand v0.4.8 | Austauschpfade / Alternativen | Architekturhinweis |
 | --- | --- | --- | --- | --- | --- |
 | Relationale SQL-Datenbank | Manifest-v1-PostgreSQL-Kompatibilitaetsinput, intern als `database.sql` im `PortableContract` normalisiert | PostgreSQL | implementiert | externe PostgreSQL-Instanz, Managed PostgreSQL/RDS-artige Dienste, Enterprise-PostgreSQL-Plattformen; andere SQL-Engines nur bei passender Semantik | PostgreSQL ist aktueller Referenzprovider, nicht der dauerhafte Capability-Name |
 | Cache / Key-Value | Manifest-v1-Redis/Valkey-Kompatibilitaetsinput, intern als `cache.key-value` im `PortableContract` normalisiert | Valkey | implementiert | Redis, Dragonfly, Managed Redis/Valkey; andere KV-Systeme nur mit passender Semantik | Protokoll-/Feature-Anforderungen muessen echte Austauschbarkeit absichern |
@@ -122,11 +122,11 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.7-Grenze
+## v0.4.8-Grenze
 
-v0.4.7 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, mit `secure-binding/v1` eine gemeinsame Security-Grenze, `object-storage.s3/v1` sowie providerneutrale `telemetry.otlp/v1`-Export-Bindings mit einem lazy shared OpenTelemetry-Collector-Referenzprovider oder externem OTLP-Endpunkt.
+v0.4.8 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst jetzt den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, mit `secure-binding/v1` eine gemeinsame Security-Grenze, `object-storage.s3/v1`, providerneutrale `telemetry.otlp/v1`-Export-Bindings sowie `metrics/v1` mit Prometheus als erstem Compose-Referenzprovider. Hinzu kommt explizite gerichtete Cross-Application-Connectivity als getrennte deny-by-default Platform-Policy.
 
-Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure ist additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State.
+Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure und Metrics-Sources sind additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State. Provider-Sharing erzeugt niemals automatisch Cross-Application-Connectivity.
 
 Diese Seams sind keine Kubernetes/OpenShift-Unterstuetzung. Weitere S3/Object-Storage-Provider und oeffentliche Provider-Auswahl, HA-Profile, Managed ACME/OpenBao-PKI-Zertifikatsausstellung und Kubernetes/OpenShift-Runtime-Provider bleiben Future Work.
 
