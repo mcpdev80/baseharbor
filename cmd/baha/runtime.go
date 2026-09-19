@@ -17,8 +17,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
-	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 var runtimeInput io.Reader = os.Stdin
