@@ -32,15 +32,45 @@ type Handler struct {
 }
 
 func New(secrets SecretService, verifier RuntimeVerifier) (*Handler, error) {
+	return newHandler(secrets, verifier, "")
+}
+
+// NewBound creates the per-application Runtime Broker surface. The application
+// identity is already fixed by mTLS/runtime identity, so canonical bound routes
+// do not repeat /apps/{app}. Legacy app-qualified routes remain available for
+// compatibility with existing clients.
+func NewBound(secrets SecretService, verifier RuntimeVerifier, app string) (*Handler, error) {
+	app = strings.TrimSpace(app)
+	if app == "" {
+		return nil, errors.New("bound application runtime API requires an application")
+	}
+	return newHandler(secrets, verifier, app)
+}
+
+func newHandler(secrets SecretService, verifier RuntimeVerifier, boundApp string) (*Handler, error) {
 	if secrets == nil || verifier == nil {
 		return nil, errors.New("application runtime API dependencies are required")
 	}
 	h := &Handler{secrets: secrets, verifier: verifier, mux: http.NewServeMux()}
+	// Compatibility routes used by existing clients.
 	h.mux.HandleFunc("POST /runtime/v1/apps/{app}/secret-refs", h.create)
 	h.mux.HandleFunc("POST /runtime/v1/apps/{app}/secret-refs/resolve", h.read)
 	h.mux.HandleFunc("PUT /runtime/v1/apps/{app}/secret-refs/resolve", h.rotate)
 	h.mux.HandleFunc("DELETE /runtime/v1/apps/{app}/secret-refs/resolve", h.delete)
+	if boundApp != "" {
+		h.mux.HandleFunc("POST /runtime/v1/secrets", h.bound(boundApp, h.create))
+		h.mux.HandleFunc("POST /runtime/v1/secrets/resolve", h.bound(boundApp, h.read))
+		h.mux.HandleFunc("PUT /runtime/v1/secrets/resolve", h.bound(boundApp, h.rotate))
+		h.mux.HandleFunc("DELETE /runtime/v1/secrets/resolve", h.bound(boundApp, h.delete))
+	}
 	return h, nil
+}
+
+func (h *Handler) bound(app string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.SetPathValue("app", app)
+		next(w, r)
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
