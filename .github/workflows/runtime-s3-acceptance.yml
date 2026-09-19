@@ -35,10 +35,29 @@ jobs:
           recovery="$workdir/openbao-recovery.json"
 
           cleanup() {
+            status=$?
+            trap - EXIT
             set +e
+
+            if [ "$status" -ne 0 ]; then
+              echo "=== runtime acceptance diagnostics ==="
+              docker ps -a
+
+              for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor); do
+                echo "=== runtime executor logs: $id ==="
+                docker logs "$id"
+              done
+
+              for id in $(docker ps -aq --filter label=com.docker.compose.service=broker); do
+                echo "=== runtime broker logs: $id ==="
+                docker logs "$id"
+              done
+            fi
+
             docker ps -q | xargs -r docker unpause >/dev/null 2>&1
             cd "$workdir" >/dev/null 2>&1 || true
             /tmp/baha destroy --yes >/dev/null 2>&1 || true
+            exit "$status"
           }
           trap cleanup EXIT
 
