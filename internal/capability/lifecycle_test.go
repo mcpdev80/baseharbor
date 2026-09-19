@@ -3,6 +3,8 @@ package capability
 import (
 	"context"
 	"errors"
+	"strings"
+	"errors"
 	"testing"
 )
 
@@ -110,4 +112,73 @@ func TestRunStopsAfterVerificationFailure(t *testing.T) {
 	if last.Phase != PhaseVerify || last.Status != StatusFailed || len(last.Diagnostics) != 1 {
 		t.Fatalf("verification result = %#v", last)
 	}
+}
+
+
+func TestPrepareCompletesAllPreflightBeforeMutation(t *testing.T) {
+	var calls []string
+	first := &recordingDriver{provider: Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}, calls: &calls}
+	second := &recordingDriver{provider: Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}, calls: &calls}
+	execution, result, err := Prepare(context.Background(), "mailflow", []Request{
+		{Requirement: Requirement{Kind: SQL, Name: "primary"}, Workload: "application/mailflow", Driver: first},
+		{Requirement: Requirement{Kind: KeyValue, Name: "cache"}, Workload: "application/mailflow", Driver: second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution == nil || result.Status != StatusReady {
+		t.Fatalf("unexpected prepare result: execution=%v result=%#v", execution, result)
+	}
+	if got := strings.Join(calls, ","); got != "preflight:postgresql,preflight:valkey" {
+		t.Fatalf("Prepare calls = %q", got)
+	}
+	if _, err := execution.ProvisionAndBind(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, ","); got != "preflight:postgresql,preflight:valkey,provision:postgresql,bind:postgresql,provision:valkey,bind:valkey" {
+		t.Fatalf("ProvisionAndBind calls = %q", got)
+	}
+	if _, err := execution.Verify(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrepareFailureDoesNotMutateAnyProvider(t *testing.T) {
+	var calls []string
+	first := &recordingDriver{provider: Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}, calls: &calls}
+	second := &recordingDriver{provider: Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}, calls: &calls, preflightErr: errors.New("blocked")}
+	execution, _, err := Prepare(context.Background(), "mailflow", []Request{
+		{Requirement: Requirement{Kind: SQL, Name: "primary"}, Workload: "application/mailflow", Driver: first},
+		{Requirement: Requirement{Kind: KeyValue, Name: "cache"}, Workload: "application/mailflow", Driver: second},
+	})
+	if err == nil || execution != nil {
+		t.Fatalf("expected fail-closed prepare, execution=%v err=%v", execution, err)
+	}
+	if got := strings.Join(calls, ","); got != "preflight:postgresql,preflight:valkey" {
+		t.Fatalf("preflight failure mutated provider: calls=%q", got)
+	}
+}
+
+type recordingDriver struct {
+	provider     Provider
+	calls        *[]string
+	preflightErr error
+}
+
+func (d *recordingDriver) Descriptor() Provider { return d.provider }
+func (d *recordingDriver) Preflight(context.Context, Resource, Binding) error {
+	*d.calls = append(*d.calls, "preflight:"+string(d.provider.Kind))
+	return d.preflightErr
+}
+func (d *recordingDriver) Provision(context.Context, Resource) error {
+	*d.calls = append(*d.calls, "provision:"+string(d.provider.Kind))
+	return nil
+}
+func (d *recordingDriver) Bind(context.Context, Resource, Binding) error {
+	*d.calls = append(*d.calls, "bind:"+string(d.provider.Kind))
+	return nil
+}
+func (d *recordingDriver) Verify(context.Context, Resource, Binding) error {
+	*d.calls = append(*d.calls, "verify:"+string(d.provider.Kind))
+	return nil
 }
