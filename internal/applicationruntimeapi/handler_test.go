@@ -140,7 +140,6 @@ func TestBoundRuntimeHandlerUsesCanonicalSecretRoutes(t *testing.T) {
 	}
 }
 
-
 func TestBoundRuntimeHandlerListsCurrentCapabilities(t *testing.T) {
 	h, err := NewBound(&fakeSecrets{}, fakeVerifier{app: "alpha", token: "runtime-token"}, "alpha")
 	if err != nil {
