@@ -56,7 +56,13 @@ func capabilityResource(m application.Manifest, name string) capability.Resource
 }
 
 func bindingFor(resource capability.Resource, service string) capability.Binding {
-	return capability.Binding{Resource: resource, Workload: "service/" + service}
+	return capability.Binding{
+		Resource: resource,
+		Workload: "service/" + service,
+		HTTPExposure: &capability.HTTPExposureBinding{
+			Service: service, TargetPort: 8080, Protocol: "https", Visibility: "public",
+		},
+	}
 }
 
 func TestComposePublicAndInternalBindings(t *testing.T) {
