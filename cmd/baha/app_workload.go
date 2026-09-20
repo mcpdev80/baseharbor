@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -142,6 +143,13 @@ func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compo
 	}
 	if enabled {
 		composeFiles = append(composeFiles, runtimeIdentityOverride)
+	}
+	loggingOverride, enabled, err := logsprovider.ExistingWorkloadOverride(files)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		composeFiles = append(composeFiles, loggingOverride)
 	}
 	return composeFiles, nil
 }
