@@ -58,6 +58,10 @@ func NewTerminal(ctx context.Context, out, errOut io.Writer) *Terminal {
 	return &Terminal{out: out, errOut: errOut, opts: opts, tty: tty, color: color}
 }
 
+func IsTerminal(w io.Writer) bool {
+	return writerIsTerminal(w)
+}
+
 func writerIsTerminal(w io.Writer) bool {
 	type statWriter interface {
 		Stat() (os.FileInfo, error)
