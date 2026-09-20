@@ -87,6 +87,37 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	return nil
 }
 
+func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resolved resolvedApplication) error {
+	if !resolved.FromRepository {
+		return nil
+	}
+	repoRoot := filepath.Dir(resolved.ManifestPath)
+	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
+	if err != nil || !found {
+		return err
+	}
+	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
+	if err != nil {
+		return err
+	}
+	values, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, variable := range variables {
+		if _, explicit := os.LookupEnv(variable.Name); explicit {
+			continue
+		}
+		if value := strings.TrimSpace(values[variable.Name]); value != "" {
+			environment[variable.Name] = value
+		}
+	}
+	return nil
+}
+
 func mergePersistedWorkloadPortOverrides(environment map[string]string, files application.RuntimeFiles) error {
 	path := filepath.Join(files.Dir, workloadPortOverridesFile)
 	data, err := os.ReadFile(path)
