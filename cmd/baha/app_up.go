@@ -198,7 +198,8 @@ func appUpCommand(store application.Store) *cli.Command {
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
 			defer verifyCancel()
-			if err := activity(ctx, term, "Waiting for backend readiness", func(io.Writer) error {
+			if err := activity(ctx, term, "Waiting for backend readiness", func(progress io.Writer) error {
+				cli.ReportActivityDetail(progress, "checking managed service readiness")
 				var verifyErr error
 				for verifyCtx.Err() == nil {
 					verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
@@ -210,6 +211,7 @@ func appUpCommand(store application.Store) *cli.Command {
 						}
 					}
 					if verifyErr == nil {
+						cli.ReportActivityDetail(progress, "managed services ready")
 						return nil
 					}
 					select {
