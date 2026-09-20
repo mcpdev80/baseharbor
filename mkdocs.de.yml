@@ -49,7 +49,8 @@ extra:
 
 nav:
   - Start: index.md
-  - Einstieg: repository-application-workflow.md
+  - Einstieg: five-minute-onboarding.md
+  - Repository-Workflow: repository-application-workflow.md
   - Anwendungsvertrag: application-contract.md
   - CLI: cli.md
   - Input-Aufloesung: input-resolution.md
