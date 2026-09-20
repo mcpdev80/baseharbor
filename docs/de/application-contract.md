@@ -232,6 +232,13 @@ Ein externes Ziel kann ueber `BASEHARBOR_OTLP_ENDPOINT` im Deployment-Environmen
 
 OTLP-Transport allein provisioniert niemals automatisch Prometheus, Loki, Tempo oder Grafana.
 
+
+### Trace Storage bleibt in v0.4.10 Deployment-Policy
+
+Eine Application kann das OTLP-Signal `traces` exportieren, fordert damit aber weiterhin weder Tempo noch eine andere Trace-Datenbank an. Aktiviert die Deployment-Policy Managed Trace Storage, loest BaseHarbor die providerneutrale Platform-Facility `traces/v1` auf und verbindet den bestehenden OTLP-Transport mit dem ausgewaehlten Provider.
+
+Der aktuelle Compose-Referenzpfad verwendet shared Tempo 3.0.2. Tempo-Placement, Retention, provider-interner Storage und Query-Topologie bleiben Deployment-/Provider-State. Manifest v1 erhaelt kein Tempo-spezifisches Feld.
+
 ## Weiterentwickelnder Application Intent und sparsame Konfiguration
 
 Das Repository-Manifest ist dauerhafter Desired State und kein einmaliger Installationsfragebogen. BaseHarbor geht davon aus, dass sich Anwendungen weiterentwickeln: Ein Projekt kann mit PostgreSQL beginnen, spaeter Redis, S3, Metrics oder Telemetrie hinzufuegen.
