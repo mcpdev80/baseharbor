@@ -569,12 +569,12 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					})
 				}
 				payload := struct {
-					Application     string             `json:"application"`
-					Environment     string             `json:"environment"`
-					Healthy         bool               `json:"healthy"`
-					Checks          []preflight.Result `json:"checks"`
-					Workload        []workloadResult   `json:"workload,omitempty"`
-					RequiredSecrets []map[string]any          `json:"required_secrets,omitempty"`
+					Application     string                     `json:"application"`
+					Environment     string                     `json:"environment"`
+					Healthy         bool                       `json:"healthy"`
+					Checks          []preflight.Result         `json:"checks"`
+					Workload        []workloadResult           `json:"workload,omitempty"`
+					RequiredSecrets []map[string]any           `json:"required_secrets,omitempty"`
 					TLS             *applicationTLSObservation `json:"tls,omitempty"`
 				}{
 					Application: m.Name, Environment: m.Environment, Healthy: ok,
