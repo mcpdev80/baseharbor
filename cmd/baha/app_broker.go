@@ -51,12 +51,14 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	}); err != nil {
 		return fmt.Errorf("start application runtime broker: %w", err)
 	}
+	cli.ReportActivityDetail(progress, "waiting for runtime broker readiness")
 	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	var verifyErr error
 	for verifyCtx.Err() == nil {
 		verifyErr = verifyRuntimeBrokerRunning(verifyCtx, compose, m, files)
 		if verifyErr == nil {
+			cli.ReportActivityDetail(progress, "runtime broker ready")
 			return nil
 		}
 		select {
