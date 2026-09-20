@@ -128,3 +128,37 @@ func TestPlainModeDisablesInteractiveRendering(t *testing.T) {
 		t.Fatalf("plain mode emitted ANSI: %q", out.String())
 	}
 }
+
+
+func TestFormatActivityDuration(t *testing.T) {
+	tests := []struct {
+		in   time.Duration
+		want string
+	}{
+		{500 * time.Millisecond, "<1s"},
+		{1500 * time.Millisecond, "1.5s"},
+		{65 * time.Second, "1m05s"},
+	}
+	for _, tt := range tests {
+		if got := formatActivityDuration(tt.in); got != tt.want {
+			t.Fatalf("formatActivityDuration(%s) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestTerminalActivityIncludesDurationForSlowOperation(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{ReducedMotion: true})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	err := term.Activity(context.Background(), "Measured operation", func(w io.Writer) error {
+		time.Sleep(1100 * time.Millisecond)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "[OK] Measured operation - done (1.") {
+		t.Fatalf("slow activity missing elapsed duration: %q", got)
+	}
+}
