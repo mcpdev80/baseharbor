@@ -26,11 +26,14 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			term := cli.NewTerminal(ctx, out, errOut)
+			term.Header(m.Name, m.Environment)
 			plan, err := application.BuildPlan(m)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "Plan for %s (%s): %d actions\n", plan.Application, plan.Environment, len(plan.Actions))
+			term.Section("Plan")
+			term.Info("changes", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
 			}
@@ -132,9 +135,18 @@ func appApplyCommand(store application.Store) *cli.Command {
 					}},
 				)
 			}
-			results, ok := preflight.Run(checkCtx, checks)
-			preflight.Format(out, results)
-			printWorkloadSecurityFindings(out, workloadSecurity)
+			var results []preflight.Result
+			var ok bool
+			if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
+				results, ok = preflight.Run(checkCtx, checks)
+				return nil
+			}); err != nil {
+				return err
+			}
+			renderPreflightUX(term, results)
+			if term.Verbose() {
+				printWorkloadSecurityFindings(out, workloadSecurity)
+			}
 			if !ok {
 				return errors.New("application preflight failed")
 			}
@@ -149,15 +161,19 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
-			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
-				return fmt.Errorf("converge managed object storage: %w", err)
+			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
+				return convergeManagedObjectStorage(ctx, progress, managedObjectStorage)
+			}); err != nil {
+				return err
 			}
 
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
-				if err := openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
-					return fmt.Errorf("converge OpenBao application secret scope: %w", err)
+				if err := activity(ctx, term, "Preparing application secret scope", func(io.Writer) error {
+					return openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath)
+				}); err != nil {
+					return err
 				}
 				generated, err := reconcileGeneratedApplicationSecrets(ctx, compose, platformFiles, m, files)
 				if err != nil {
@@ -171,13 +187,16 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}
 			}
 
-			if err := startManagedRuntime(ctx, out, compose, m, files); err != nil {
+			if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
+				return startManagedRuntime(ctx, progress, compose, m, files)
+			}); err != nil {
 				return err
 			}
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
 			defer verifyCancel()
 			var verifyErr error
+			if err := activity(ctx, term, "Waiting for backend readiness", func(io.Writer) error {
 			for verifyCtx.Err() == nil {
 				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
 				if verifyErr == nil && m.Services.Secrets {
@@ -198,52 +217,82 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if verifyErr != nil {
 				return fmt.Errorf("application verification failed: %w", verifyErr)
 			}
+			return nil
+			}); err != nil {
+				return err
+			}
 
 			if application.RequiresRuntimeBroker(m) {
-				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
+				if err := activity(ctx, term, "Starting secure runtime broker", func(io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files)
+				}); err != nil {
 					return err
 				}
-				printRuntimeBrokerDocs(out, files)
+				if term.Verbose() {
+					printRuntimeBrokerDocs(out, files)
+				}
 			}
 
 			printRuntimeReady(out, m)
-			if err := convergeManagedTracesBeforeTelemetry(ctx, out, managedTraces); err != nil {
-				return fmt.Errorf("converge managed traces provider: %w", err)
+			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
+				return convergeManagedTracesBeforeTelemetry(ctx, progress, managedTraces)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {
-				return fmt.Errorf("converge managed telemetry: %w", err)
+			if err := activity(ctx, term, "Reconciling telemetry transport", func(progress io.Writer) error {
+				return convergeManagedTelemetry(ctx, progress, managedTelemetry)
+			}); err != nil {
+				return err
 			}
-			if err := verifyManagedTracesAfterTelemetry(ctx, out, managedTraces); err != nil {
-				return fmt.Errorf("verify managed trace ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
+				return verifyManagedTracesAfterTelemetry(ctx, progress, managedTraces)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedLogsBeforeWorkload(ctx, out, files, managedLogs); err != nil {
-				return fmt.Errorf("converge managed logs provider: %w", err)
+			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, managedLogs)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
-				return fmt.Errorf("converge managed metrics provider: %w", err)
+			if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
+				return convergeManagedMetricsBeforeWorkload(ctx, progress, managedMetrics)
+			}); err != nil {
+				return err
 			}
-			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+			if err := activity(ctx, term, "Starting repository workload", func(progress io.Writer) error {
+				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
+				return err
+			}); err != nil {
 				return err
 			}
 			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 			}
-			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
-				return fmt.Errorf("verify managed metrics ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
+				return verifyManagedMetricsAfterWorkload(ctx, progress, managedMetrics)
+			}); err != nil {
+				return err
 			}
-			if err := verifyManagedLogsAfterWorkload(ctx, out, managedLogs); err != nil {
-				return fmt.Errorf("verify managed log ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying log ingestion", func(progress io.Writer) error {
+				return verifyManagedLogsAfterWorkload(ctx, progress, managedLogs)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
-				return fmt.Errorf("converge managed HTTP exposure: %w", err)
+			if err := activity(ctx, term, "Verifying application exposure", func(progress io.Writer) error {
+				return convergeManagedExposure(ctx, progress, managedExposure)
+			}); err != nil {
+				return err
 			}
 			registryResources := managedLogsRegistryResources(managedLogs)
 			registryResources = append(registryResources, managedTracesRegistryResources(managedTraces)...)
 			if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
 			}
-			fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
-			fmt.Fprintln(out, "Environment contract: baha app env --path")
+			term.Section("Application")
+			term.Success("READY", "application and requested infrastructure verified")
+			if !term.Quiet() {
+				fmt.Fprintln(out, "  Environment contract: baha app env --path")
+			}
 			return nil
 		},
 	}
