@@ -77,7 +77,16 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 			}
 
 			fmt.Fprintln(out, "Applying safe repair through the normal application lifecycle...")
-			if err := appApplyCommand(store).Run(ctx, nameArgs, out, errOut); err != nil {
+			if findingsNeedControlPlaneRepair(findings) {
+				fmt.Fprintln(out, "Restoring existing BaseHarbor control-plane runtime...")
+				if err := runtimeUpExisting(ctx, out, ""); err != nil {
+					return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
+				}
+			}
+			repairCtx := withAppApplyRepairContext(ctx, appApplyRepairContext{
+				DeferWorkloadSecurity: findingsContain(findings, "workload security"),
+			})
+			if err := appApplyCommand(store).Run(repairCtx, nameArgs, out, errOut); err != nil {
 				return fmt.Errorf("safe application repair failed: %w", err)
 			}
 
@@ -261,6 +270,25 @@ func classifyAppDoctorOutput(output string) []appDoctorFinding {
 		findings = append(findings, finding)
 	}
 	return findings
+}
+
+func findingsContain(findings []appDoctorFinding, name string) bool {
+	for _, finding := range findings {
+		if finding.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func findingsNeedControlPlaneRepair(findings []appDoctorFinding) bool {
+	for _, finding := range findings {
+		switch finding.Name {
+		case "OpenBao application scope", "application runtime broker", "required application secrets":
+			return true
+		}
+	}
+	return false
 }
 
 func printAppDoctorFindings(out io.Writer, findings []appDoctorFinding) {
