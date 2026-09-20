@@ -255,8 +255,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			registryResources := providers.logsRegistryResources(providers.logs)
-			registryResources = append(registryResources, providers.tracesRegistryResources(providers.traces)...)
+			registryResources := managedLogsRegistryResources(providers.logs)
+			registryResources = append(registryResources, managedTracesRegistryResources(providers.traces)...)
 			if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
 			}
