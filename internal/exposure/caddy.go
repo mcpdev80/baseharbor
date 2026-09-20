@@ -258,7 +258,13 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 		}
 		select {
 		case <-verifyCtx.Done():
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			diagnostics := d.compose.DiagnosticsProject(diagnosticCtx, d.state.Project, d.files.Compose, d.files.Env)
+			diagnosticCancel()
 			_ = d.Rollback(context.WithoutCancel(ctx))
+			if diagnostics != "" {
+				return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s\n%s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail, diagnostics)
+			}
 			return fmt.Errorf("managed exposure %s://%s:%d is not ready: %s", route.Protocol, d.state.Host, route.PublishedPort, status.Detail)
 		case <-time.After(250 * time.Millisecond):
 		}
