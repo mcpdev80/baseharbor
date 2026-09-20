@@ -250,10 +250,10 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 	if resolvedOpts.TLSMode != "acme" && resolvedOpts.TLSMode != "existing" && resolvedOpts.TLSMode != "local" {
 		return usageError("unsupported TLS input value "+resolvedOpts.TLSMode, "Use acme, existing or local.")
 	}
-	return runRepositoryRuntimeInit(resolved, resolvedOpts, out)
+	return runRepositoryRuntimeInit(ctx, resolved, resolvedOpts, out)
 }
 
-func ensureRepositoryDeploymentInputsForUp(in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -330,7 +330,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return nil
 		}
 	}
-	if err := ensureRepositoryDeploymentInputsForUp(runtimeInput, out, opts); err != nil {
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
 	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
