@@ -266,7 +266,6 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 	}
 }
 
-
 func statusHumanDetail(term *cli.Terminal, check application.StatusCheck) string {
 	if term.Verbose() || check.OK {
 		if !term.Verbose() {
