@@ -131,13 +131,17 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 	return findings
 }
 
-func printDoctorFindings(out io.Writer, findings []doctorFinding) {
+func renderDoctorFindings(term *cli.Terminal, findings []doctorFinding) {
 	if len(findings) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "%d problem(s) found:\n", len(findings))
+	term.Section("Problems")
 	for _, finding := range findings {
-		fmt.Fprintf(out, "- %s: %s -> %s\n", finding.Class, finding.Check.Name, finding.Action)
+		state := "FAILED"
+		if finding.Class == doctorAutoFixable {
+			state = "REPAIRABLE"
+		}
+		term.Result(state, finding.Check.Name, finding.Action)
 	}
 }
 
