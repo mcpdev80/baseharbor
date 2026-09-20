@@ -25,6 +25,7 @@ var (
 	ObjectStorageS3V1 = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
 	TelemetryOTLPV1   = CapabilitySpecification{ID: "telemetry.otlp/v1", Kind: TelemetryOTLP, Version: SpecificationV1}
 	MetricsV1         = CapabilitySpecification{ID: "metrics/v1", Kind: Metrics, Version: SpecificationV1}
+	LogsV1            = CapabilitySpecification{ID: "logs/v1", Kind: Logs, Version: SpecificationV1}
 )
 
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
@@ -43,6 +44,8 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return TelemetryOTLPV1, nil
 	case Metrics:
 		return MetricsV1, nil
+	case Logs:
+		return LogsV1, nil
 	default:
 		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
 	}
