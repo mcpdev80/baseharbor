@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -17,11 +18,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
 
-func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
+func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, compose, platformFiles, m); err != nil {
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -45,7 +46,9 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 			return fmt.Errorf("restart application runtime broker after mTLS rotation: %w", err)
 		}
 	}
-	if err := compose.UpProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+	if err := compose.UpProjectProgress(ctx, project, brokerFiles.Compose, files.Env, func(detail string) {
+		cli.ReportActivityDetail(progress, detail)
+	}); err != nil {
 		return fmt.Errorf("start application runtime broker: %w", err)
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -64,7 +67,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, compose bhruntime.Compose,
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -96,7 +99,9 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, compose bhruntim
 			return fmt.Errorf("restart runtime provider executor after mTLS rotation: %w", err)
 		}
 	}
-	if err := compose.UpProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+	if err := compose.UpProjectProgress(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env, func(detail string) {
+		cli.ReportActivityDetail(progress, detail)
+	}); err != nil {
 		return fmt.Errorf("start runtime provider executor: %w", err)
 	}
 	services, err := compose.RunningServicesProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env)
