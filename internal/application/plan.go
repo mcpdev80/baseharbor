@@ -3,15 +3,15 @@ package application
 import "fmt"
 
 type Action struct {
-	Kind        string
-	Resource    string
-	Description string
+	Kind        string `json:"kind"`
+	Resource    string `json:"resource"`
+	Description string `json:"description"`
 }
 
 type Plan struct {
-	Application string
-	Environment string
-	Actions     []Action
+	Application string   `json:"application"`
+	Environment string   `json:"environment"`
+	Actions     []Action `json:"actions"`
 }
 
 func BuildPlan(m Manifest) (Plan, error) {
