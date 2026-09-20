@@ -96,7 +96,7 @@ func Remove(id string) error {
 	})
 }
 
-func ListMetrics(placement capability.ProviderPlacement, application string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
+func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
 	path, err := registryPath()
 	if err != nil {
 		return nil, err
@@ -107,6 +107,12 @@ func ListMetrics(placement capability.ProviderPlacement, application string, inc
 	}
 	if err != nil {
 		return nil, err
+	}
+	allowedApplications := map[string]struct{}{}
+	for _, application := range applications {
+		if application = strings.TrimSpace(application); application != "" {
+			allowedApplications[application] = struct{}{}
+		}
 	}
 	var out []MetricsSource
 	for _, source := range sources {
@@ -124,12 +130,16 @@ func ListMetrics(placement capability.ProviderPlacement, application string, inc
 		case capability.ScopeShared:
 			if source.Scope == capability.ScopeShared && strings.TrimSpace(source.SharingBoundary) == strings.TrimSpace(placement.SharingBoundary) {
 				out = append(out, source)
-			} else if source.Scope == capability.ScopeApplication && source.OwnerApplication == application {
-				out = append(out, source)
+			} else if source.Scope == capability.ScopeApplication {
+				if _, allowed := allowedApplications[source.OwnerApplication]; allowed {
+					out = append(out, source)
+				}
 			}
 		case capability.ScopeApplication:
-			if source.Scope == capability.ScopeApplication && source.OwnerApplication == application {
-				out = append(out, source)
+			if source.Scope == capability.ScopeApplication {
+				if _, allowed := allowedApplications[source.OwnerApplication]; allowed {
+					out = append(out, source)
+				}
 			}
 		}
 	}
