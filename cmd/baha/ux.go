@@ -30,3 +30,7 @@ func activity(ctx context.Context, term *cli.Terminal, label string, fn func(io.
 	}
 	return nil
 }
+
+func noInput(ctx context.Context) bool {
+	return cli.OutputOptionsFromContext(ctx).NonInteractive
+}
