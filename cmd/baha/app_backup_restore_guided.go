@@ -32,6 +32,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		if hasOption(args, "--password-file") {
 			return baseRun(ctx, args, out, errOut)
 		}
+		if noInput(ctx) {
+			return usageError("backup requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
+		}
 		if !appInitReaderIsTerminal(guidedBackupInput) {
 			return usageError("interactive application backup requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
@@ -90,6 +93,9 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if hasOption(args, "--password-file") {
 			return baseRun(ctx, args, out, errOut)
+		}
+		if noInput(ctx) {
+			return usageError("restore requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
 		}
 		if !appInitReaderIsTerminal(guidedBackupInput) {
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
