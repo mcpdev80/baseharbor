@@ -223,8 +223,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 
 			if application.RequiresRuntimeBroker(m) {
-				if err := activity(ctx, term, "Starting secure runtime broker", func(io.Writer) error {
-					return ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files)
+				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
 				}); err != nil {
 					return err
 				}
@@ -306,7 +306,9 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 	project := application.RuntimeProjectName(m)
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProject(ctx, project, files.Compose, files.Env)
+		err := compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		})
 		if err == nil {
 			return nil
 		}
