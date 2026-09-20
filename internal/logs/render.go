@@ -108,6 +108,7 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	b.WriteString("networks:\n")
 	b.WriteString("  logs-internal:\n")
 	b.WriteString("    internal: true\n")
+	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(placement.Network))
 	b.WriteString("  logs-publish:\n")
 	b.WriteString("    driver: bridge\n")
 	b.WriteString("volumes:\n")
