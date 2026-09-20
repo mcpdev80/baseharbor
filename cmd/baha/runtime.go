@@ -250,9 +250,12 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
-	compose, _, err := startControlPlaneRuntime(ctx, out, ports)
+	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
 	if err != nil {
 		return err
+	}
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("wait for OpenBao control-plane readiness: %w", err)
 	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
@@ -260,6 +263,26 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
+}
+
+func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for {
+		if _, err := platformopenbao.Inspect(ctx, compose, files); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
