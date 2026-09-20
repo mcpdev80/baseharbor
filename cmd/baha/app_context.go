@@ -10,6 +10,25 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
+var applicationEnvironmentOverride string
+
+func pushApplicationEnvironmentOverride(environment string) func() {
+	previous := applicationEnvironmentOverride
+	applicationEnvironmentOverride = strings.TrimSpace(environment)
+	return func() { applicationEnvironmentOverride = previous }
+}
+
+func applyApplicationEnvironmentOverride(m application.Manifest) (application.Manifest, error) {
+	if applicationEnvironmentOverride == "" {
+		return m, nil
+	}
+	m.Environment = applicationEnvironmentOverride
+	if err := m.Validate(); err != nil {
+		return application.Manifest{}, fmt.Errorf("invalid --environment override: %w", err)
+	}
+	return m, nil
+}
+
 type resolvedApplication struct {
 	Manifest       application.Manifest
 	ManifestPath   string
@@ -26,6 +45,10 @@ func resolveApplication(store application.Store, args []string, command string) 
 		if err != nil {
 			return resolvedApplication{}, err
 		}
+		m, err = applyApplicationEnvironmentOverride(m)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 		return resolvedApplication{Manifest: m, ManifestPath: path, Store: store}, nil
 	}
 	cwd, err := os.Getwd()
@@ -37,6 +60,10 @@ func resolveApplication(store application.Store, args []string, command string) 
 		return resolvedApplication{}, usageError("no application NAME was provided and no baseharbor.yaml was found", "Run this command inside an application repository or pass NAME explicitly.")
 	}
 	m, err := application.LoadManifestFile(path)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	m, err = applyApplicationEnvironmentOverride(m)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
