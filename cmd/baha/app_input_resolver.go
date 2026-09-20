@@ -22,11 +22,15 @@ const (
 
 func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base := appInitOrConfigureCommand(store)
-	base.Usage = "baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [manifest options]"
-	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir."
+	base.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
+	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		forwarded, injected, err := extractDeclaredInputArgs(args)
+		filtered, agents, err := extractAgentsOption(args)
+		if err != nil {
+			return err
+		}
+		forwarded, injected, err := extractDeclaredInputArgs(filtered)
 		if err != nil {
 			return err
 		}
@@ -39,7 +43,21 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			if len(injected) != 0 {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
-			return baseRun(ctx, forwarded, out, errOut)
+			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
+				return err
+			}
+			if agents {
+				changed, err := ensureBaseHarborAgentsSection(cwd)
+				if err != nil {
+					return err
+				}
+				if changed {
+					fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added")
+				} else {
+					fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
+				}
+			}
+			return nil
 		}
 
 		opts, err := parseRepositoryInitOptions(forwarded)
@@ -53,7 +71,21 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		return runRepositoryRuntimeInitResolved(resolved, filepath.Dir(manifestPath), opts, out)
+		if err := runRepositoryRuntimeInitResolved(resolved, filepath.Dir(manifestPath), opts, out); err != nil {
+			return err
+		}
+		if agents {
+			changed, err := ensureBaseHarborAgentsSection(filepath.Dir(manifestPath))
+			if err != nil {
+				return err
+			}
+			if changed {
+				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added")
+			} else {
+				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
+			}
+		}
+		return nil
 	}
 	return base
 }
