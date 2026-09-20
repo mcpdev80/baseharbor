@@ -350,7 +350,7 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 		case strings.HasPrefix(arg, "--require-secret="):
 			required = append(required, strings.TrimPrefix(arg, "--require-secret="))
 			secrets = true
-		case arg == "--environment":
+		case arg == "--environment" || arg == "-e":
 			if i+1 >= len(args) {
 				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
 			}
