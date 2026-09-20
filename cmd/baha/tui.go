@@ -19,14 +19,21 @@ import (
 )
 
 type tuiDoctorResult struct {
-	Application string             `json:"application"`
-	Environment string             `json:"environment"`
-	Healthy     bool               `json:"healthy"`
-	Checks      []preflight.Result `json:"checks"`
+	Application string                     `json:"application"`
+	Environment string                     `json:"environment"`
+	Healthy     bool                       `json:"healthy"`
+	Checks      []preflight.Result         `json:"checks"`
+	TLS         *applicationTLSObservation `json:"tls,omitempty"`
+}
+
+type tuiApplicationStatusResult struct {
+	application.StatusResult
+	TLS *applicationTLSObservation `json:"tls,omitempty"`
 }
 
 type tuiStatusMsg struct {
 	result application.StatusResult
+	tls    *applicationTLSObservation
 	doctor tuiDoctorResult
 	err    error
 }
@@ -35,6 +42,7 @@ type tuiModel struct {
 	ctx           context.Context
 	store         application.Store
 	result        application.StatusResult
+	tls           *applicationTLSObservation
 	doctor        tuiDoctorResult
 	err           error
 	loading       bool
@@ -95,12 +103,12 @@ func (m tuiModel) Init() tea.Cmd {
 
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
-		result, err := collectApplicationStatus(m.ctx, m.store, nil)
+		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
-			return tuiStatusMsg{result: result, err: err}
+			return tuiStatusMsg{result: status.StatusResult, tls: status.TLS, err: err}
 		}
 		doctor, doctorErr := collectTUIDoctor(m.ctx, m.store)
-		return tuiStatusMsg{result: result, doctor: doctor, err: doctorErr}
+		return tuiStatusMsg{result: status.StatusResult, tls: status.TLS, doctor: doctor, err: doctorErr}
 	}
 }
 
@@ -125,6 +133,7 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiStatusMsg:
 		m.loading = false
 		m.result = msg.result
+		m.tls = msg.tls
 		m.doctor = msg.doctor
 		m.err = msg.err
 	}
@@ -194,7 +203,7 @@ func (m tuiModel) View() tea.View {
 	case m.tab == 0:
 		b.WriteString(renderTUISummary(m.result, contentWidth, success, failure))
 	case m.tab == 1:
-		b.WriteString(renderTUIOverview(m.result, contentWidth, success, failure))
+		b.WriteString(renderTUIOverviewWithTLS(m.result, m.tls, contentWidth, success, failure))
 	default:
 		b.WriteString(renderTUIDoctor(m.doctor, contentWidth, success, failure))
 	}
@@ -206,6 +215,19 @@ func (m tuiModel) View() tea.View {
 	view := tea.NewView(b.String())
 	view.AltScreen = true
 	return view
+}
+
+func collectTUIStatus(ctx context.Context, store application.Store) (tuiApplicationStatusResult, error) {
+	var out bytes.Buffer
+	err := appStatusCommandWithTLS(store).Run(ctx, []string{"-o", "json"}, &out, io.Discard)
+	var result tuiApplicationStatusResult
+	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
+		if err != nil {
+			return tuiApplicationStatusResult{}, errors.Join(err, decodeErr)
+		}
+		return tuiApplicationStatusResult{}, decodeErr
+	}
+	return result, nil
 }
 
 func collectTUIDoctor(ctx context.Context, store application.Store) (tuiDoctorResult, error) {
@@ -253,6 +275,10 @@ func renderTUISummary(result application.StatusResult, width int, success, failu
 }
 
 func renderTUIOverview(result application.StatusResult, width int, success, failure lipgloss.Style) string {
+	return renderTUIOverviewWithTLS(result, nil, width, success, failure)
+}
+
+func renderTUIOverviewWithTLS(result application.StatusResult, tlsObservation *applicationTLSObservation, width int, success, failure lipgloss.Style) string {
 	var b strings.Builder
 	state := "READY"
 	if result.State == "stopped" {
@@ -318,6 +344,11 @@ func renderTUIOverview(result application.StatusResult, width int, success, fail
 		}
 		b.WriteString("\n")
 	}
+	if tlsObservation != nil {
+		b.WriteString("TLS\n")
+		b.WriteString(renderTUITLSObservation(*tlsObservation, width, success, failure))
+		b.WriteString("\n")
+	}
 	if !result.Ready && result.State != "stopped" {
 		b.WriteString("Next\n  baha doctor\n  baha status --verbose\n")
 	}
@@ -353,8 +384,35 @@ func renderTUIDoctor(result tuiDoctorResult, width int, success, failure lipglos
 		b.WriteString(checkStyle.Render(wrapTUIText(line, width)))
 		b.WriteString("\n")
 	}
+	if result.TLS != nil {
+		b.WriteString("\nTLS\n")
+		b.WriteString(renderTUITLSObservation(*result.TLS, width, success, failure))
+	}
 	if !result.Healthy {
 		b.WriteString("\nNext\n  baha doctor --verbose\n  baha status --verbose\n  baha app doctor --fix\n")
+	}
+	return b.String()
+}
+
+func renderTUITLSObservation(observation applicationTLSObservation, width int, success, failure lipgloss.Style) string {
+	state := "READY"
+	style := success
+	if !observation.Healthy {
+		state = "FAILED"
+		style = failure
+	}
+	detail := strings.TrimSpace(observation.Detail)
+	if detail == "" {
+		detail = observation.Mode
+	}
+	var b strings.Builder
+	line := fmt.Sprintf("  %-10s %-20s %s", state, "certificate", detail)
+	b.WriteString(style.Render(wrapTUIText(line, width)))
+	b.WriteString("\n")
+	if observation.SourceState == "unavailable" && observation.Healthy {
+		line = fmt.Sprintf("  %-10s %-20s %s", "WARN", "certificate-source", observation.Detail)
+		b.WriteString(wrapTUIText(line, width))
+		b.WriteString("\n")
 	}
 	return b.String()
 }

@@ -83,10 +83,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
 				}
 			}
-			repairCtx := withAppApplyRepairContext(ctx, appApplyRepairContext{
-				DeferWorkloadSecurity: findingsContain(findings, "workload security"),
-			})
-			if err := appApplyCommand(store).Run(repairCtx, nameArgs, out, errOut); err != nil {
+			if err := appApplyCommand(store).Run(ctx, nameArgs, out, errOut); err != nil {
 				return fmt.Errorf("safe application repair failed: %w", err)
 			}
 
@@ -224,52 +221,6 @@ func classifyAppDoctorFinding(name, detail string, required map[string]struct {
 		finding.Class = doctorManualAction
 	}
 	return finding
-}
-
-func classifyAppDoctorOutput(output string) []appDoctorFinding {
-	findings := make([]appDoctorFinding, 0)
-	for _, line := range strings.Split(output, "\n") {
-		if !strings.HasPrefix(line, "[FAIL] ") {
-			continue
-		}
-		rest := strings.TrimSpace(strings.TrimPrefix(line, "[FAIL] "))
-		name, detail, _ := strings.Cut(rest, ":")
-		name = strings.TrimSpace(name)
-		detail = strings.TrimSpace(detail)
-
-		finding := appDoctorFinding{
-			Name:   name,
-			Detail: detail,
-			Class:  doctorManualAction,
-			Action: "inspect the failed application prerequisite and correct it manually",
-		}
-		switch name {
-		case "runtime state", "managed runtime definition", "running services", "repository workload", "postgres running", "postgres readiness", "valkey running", "valkey readiness", "runtime secret broker", "application runtime broker":
-			finding.Class = doctorAutoFixable
-			finding.Action = "reconverge the application through 'baha app apply'"
-		case "required application secrets":
-			if strings.Contains(output, "missing - user input required") || strings.Contains(output, "present but unusable") {
-				finding.Class = doctorNeedsInput
-				finding.Action = "set each listed external or unusable secret with 'baha app secret set NAME --stdin'"
-			} else if strings.Contains(output, "missing - will be generated automatically") {
-				finding.Class = doctorAutoFixable
-				finding.Action = "generate explicitly declared application secrets through 'baha app apply'"
-			} else {
-				finding.Class = doctorNeedsInput
-				finding.Action = "inspect required-secret status and provide the missing value explicitly"
-			}
-		case "OpenBao application scope":
-			finding.Class = doctorAutoFixable
-			finding.Action = "reconverge the application OpenBao scope through 'baha app apply'"
-		case "OpenBao control-plane runtime":
-			finding.Class = doctorNeedsInput
-			finding.Action = "repair the BaseHarbor control plane first with 'baha doctor' or operator-held OpenBao recovery material"
-		case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "container runtime + compose", "compose configuration":
-			finding.Class = doctorManualAction
-		}
-		findings = append(findings, finding)
-	}
-	return findings
 }
 
 func findingsContain(findings []appDoctorFinding, name string) bool {

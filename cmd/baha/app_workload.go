@@ -40,7 +40,8 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	if err != nil || !found {
 		return application.WorkloadSecurityReport{}, err
 	}
-	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, application.WorkloadProjectName(resolved.Manifest), repositoryRoot, nil, composePath)
+	environment := workloadSecurityPreflightEnvironment(resolved.Manifest)
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, application.WorkloadProjectName(resolved.Manifest), repositoryRoot, environment, composePath)
 	if err != nil {
 		return application.WorkloadSecurityReport{}, fmt.Errorf("render repository Compose for security preflight: %w", err)
 	}
@@ -62,6 +63,22 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	return report, report.Error()
 }
 
+func workloadSecurityPreflightEnvironment(m application.Manifest) map[string]string {
+	required := application.RequiredSecretNames(m)
+	if len(required) == 0 {
+		return nil
+	}
+	environment := make(map[string]string, len(required))
+	for _, name := range required {
+		if application.RequiredSecretUsesFileBinding(name) {
+			environment[name] = "/run/baseharbor/preflight/" + name
+			continue
+		}
+		environment[name] = "baseharbor-preflight-secret"
+	}
+	return environment
+}
+
 func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadSecurityReport, error) {
 	if !resolved.FromRepository {
 		return application.WorkloadSecurityReport{}, nil
@@ -78,6 +95,17 @@ func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bh
 	if err != nil {
 		return application.WorkloadSecurityReport{}, err
 	}
+	return analyzeResolvedRepositoryWorkloadSecurity(ctx, compose, resolved, workload, environment, composeFiles)
+}
+
+func analyzeResolvedRepositoryWorkloadSecurity(
+	ctx context.Context,
+	compose bhruntime.Compose,
+	resolved resolvedApplication,
+	workload application.WorkloadFiles,
+	environment map[string]string,
+	composeFiles []string,
+) (application.WorkloadSecurityReport, error) {
 	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if err != nil {
 		return application.WorkloadSecurityReport{}, fmt.Errorf("render resolved repository Compose for security preflight: %w", err)
@@ -303,6 +331,9 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
 		return false, err
+	}
+	if _, err := analyzeResolvedRepositoryWorkloadSecurity(ctx, compose, resolved, workload, environment, composeFiles); err != nil {
+		return false, fmt.Errorf("workload security preflight before start: %w", err)
 	}
 	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...); err != nil {
 		return false, fmt.Errorf("validate application workload Compose integration: %w", err)

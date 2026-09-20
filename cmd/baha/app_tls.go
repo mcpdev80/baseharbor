@@ -27,6 +27,79 @@ type applicationTLSStatus struct {
 	Warning         string
 }
 
+type applicationTLSObservation struct {
+	Mode            string `json:"mode"`
+	Hostname        string `json:"hostname,omitempty"`
+	Healthy         bool   `json:"healthy"`
+	Certificate     string `json:"certificate,omitempty"`
+	ExpiresAt       string `json:"expires_at,omitempty"`
+	SourceState     string `json:"source_state,omitempty"`
+	UpdateAvailable bool   `json:"update_available,omitempty"`
+	Detail          string `json:"detail,omitempty"`
+}
+
+func collectApplicationTLSObservation(resolved resolvedApplication) (*applicationTLSStatus, *applicationTLSObservation, error) {
+	if !resolved.FromRepository {
+		return nil, nil, nil
+	}
+	state, err := loadRepositoryInitState(filepath.Dir(resolved.ManifestPath))
+	if err != nil {
+		return nil, &applicationTLSObservation{Healthy: false, Detail: "TLS deployment state could not be read"}, err
+	}
+	if strings.TrimSpace(state.TLSMode) == "" {
+		return nil, nil, nil
+	}
+	status, inspectErr := inspectApplicationTLS(resolved)
+	if inspectErr != nil {
+		return nil, &applicationTLSObservation{
+			Mode:     state.TLSMode,
+			Hostname: state.Hostname,
+			Healthy:  false,
+			Detail:   conciseTLSStatusError(inspectErr),
+		}, inspectErr
+	}
+	observation := applicationTLSObservationFromStatus(status)
+	return &status, &observation, nil
+}
+
+func applicationTLSObservationFromStatus(status applicationTLSStatus) applicationTLSObservation {
+	observation := applicationTLSObservation{
+		Mode:            status.State.TLSMode,
+		Hostname:        status.State.Hostname,
+		Healthy:         true,
+		UpdateAvailable: status.UpdateAvailable,
+	}
+	switch status.State.TLSMode {
+	case "existing":
+		if status.Installed != nil {
+			observation.Certificate = certificateDisplayName(status.Installed)
+			observation.ExpiresAt = status.Installed.NotAfter.UTC().Format(time.RFC3339)
+		}
+		switch {
+		case status.Source == nil:
+			observation.SourceState = "unavailable"
+			observation.Detail = "configured certificate source unavailable"
+		case status.UpdateAvailable:
+			observation.SourceState = "update-available"
+			observation.Detail = "different source certificate available"
+		default:
+			observation.SourceState = "verified"
+			observation.Detail = "installed certificate matches configured source"
+		}
+	case "acme":
+		observation.SourceState = "delegated"
+		observation.Detail = "ACME lifecycle delegated to workload TLS provider"
+	case "local":
+		observation.SourceState = "local"
+		observation.Detail = "local development TLS"
+	default:
+		observation.Healthy = false
+		observation.SourceState = "unknown"
+		observation.Detail = "unknown TLS mode"
+	}
+	return observation
+}
+
 func appTLSCommand(store application.Store) *cli.Command {
 	cmd := &cli.Command{
 		Name:    "tls",
@@ -170,10 +243,7 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 	cmd := appStatusCommand(store)
 	cmd.Long += " Repository deployment TLS mode and certificate state are rendered as part of the same status view."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		if requestsJSONOutput(args) {
-			return appStatusCommand(store).Run(ctx, args, out, errOut)
-		}
-		filtered, _, err := parseReadOutputArgs(args, "app status")
+		filtered, format, err := parseReadOutputArgs(args, "app status")
 		if err != nil {
 			return err
 		}
@@ -183,33 +253,46 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 		}
 
 		var tlsStatus *applicationTLSStatus
+		var tlsObservation *applicationTLSObservation
 		var tlsErr error
 		resolved, resolveErr := resolveApplication(store, filtered, "status")
-		if resolveErr == nil && resolved.FromRepository {
-			status, inspectErr := inspectApplicationTLS(resolved)
-			if inspectErr != nil {
-				tlsErr = inspectErr
-			} else if status.State.TLSMode != "" {
-				tlsStatus = &status
-			}
+		if resolveErr != nil {
+			return resolveErr
+		}
+		tlsStatus, tlsObservation, tlsErr = collectApplicationTLSObservation(resolved)
+		if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
+			result.Ready = false
 		}
 
-		renderApplicationStatusWithExtra(ctx, out, errOut, result, func(term *cli.Terminal) {
-			if tlsStatus == nil && tlsErr == nil {
-				return
+		if format == outputJSON {
+			payload := struct {
+				application.StatusResult
+				TLS *applicationTLSObservation `json:"tls,omitempty"`
+			}{
+				StatusResult: result,
+				TLS:          tlsObservation,
 			}
-			term.Section("TLS")
-			if tlsErr != nil {
-				term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
-				return
+			if err := writeJSON(out, payload); err != nil {
+				return err
 			}
-			renderApplicationTLSStatus(term, *tlsStatus)
-		})
+		} else {
+			renderApplicationStatusWithExtra(ctx, out, errOut, result, func(term *cli.Terminal) {
+				if tlsStatus == nil && tlsErr == nil {
+					return
+				}
+				term.Section("TLS")
+				if tlsErr != nil {
+					term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
+					return
+				}
+				renderApplicationTLSStatus(term, *tlsStatus)
+			})
+		}
 
 		if result.State == "stopped" {
 			return nil
 		}
-		if !result.Ready || tlsErr != nil {
+		if !result.Ready {
 			return cli.Presented(errors.New("application is not ready"))
 		}
 		return nil
