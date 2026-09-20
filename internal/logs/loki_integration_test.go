@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
