@@ -132,7 +132,7 @@ The application should not need to know whether a capability is provided by a lo
                providers
 ```
 
-**The application contract stays stable. The provider/runtime realization can change.**
+**The application intent stays provider-neutral. The provider/runtime realization can change underneath it.**
 
 ## A real application contract
 
