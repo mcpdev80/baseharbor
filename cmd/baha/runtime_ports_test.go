@@ -146,18 +146,47 @@ func bufioReader(value string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(value))
 }
 
-func TestRecoveryFileForRepositoryUpRejectsExistingBootstrapOutput(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "openbao-recovery.json")
-	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+func TestRecoveryFileForRepositoryUpRepromptsExistingBootstrapOutput(t *testing.T) {
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "openbao-recovery.json")
+	next := filepath.Join(dir, "openbao-recovery-new.json")
+	if err := os.WriteFile(existing, []byte("existing"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	_, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("expected existing recovery output to fail, got %v", err)
+	path, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(existing+"\n"+next+"\n"), &out, runtimeUpOptions{}, "initialize")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "NEW operator-held recovery output file") {
-		t.Fatalf("prompt did not explain recovery output semantics: %q", out.String())
+	if path != next {
+		t.Fatalf("path = %q, want %q", path, next)
+	}
+	text := out.String()
+	if !strings.Contains(text, "NEW operator-held recovery output file") {
+		t.Fatalf("prompt did not explain recovery output semantics: %q", text)
+	}
+	if !strings.Contains(text, "already exists") || !strings.Contains(text, "never overwrites") {
+		t.Fatalf("interactive flow did not explain retry reason: %q", text)
+	}
+}
+
+func TestRecoveryFileForRepositoryUpRepromptsMissingUnsealFile(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.json")
+	existing := filepath.Join(dir, "existing.json")
+	if err := os.WriteFile(existing, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	path, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(missing+"\n"+existing+"\n"), &out, runtimeUpOptions{}, "unseal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != existing {
+		t.Fatalf("path = %q, want %q", path, existing)
+	}
+	if !strings.Contains(out.String(), "was not found") {
+		t.Fatalf("interactive flow did not explain missing recovery file: %q", out.String())
 	}
 }
 
