@@ -267,8 +267,12 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 }
 
 func statusHumanDetail(term *cli.Terminal, check application.StatusCheck) string {
-	if term.Verbose() || check.OK {
-		if !term.Verbose() {
+	return statusHumanDetailValue(check, term.Verbose())
+}
+
+func statusHumanDetailValue(check application.StatusCheck, verbose bool) string {
+	if verbose || check.OK {
+		if !verbose {
 			switch check.Name {
 			case "postgres":
 				return "authenticated and ready"
@@ -684,7 +688,11 @@ func renderApplicationDoctor(
 }
 
 func doctorHumanDetail(term *cli.Terminal, result preflight.Result) string {
-	if term.Verbose() || result.OK {
+	return doctorHumanDetailValue(result, term.Verbose())
+}
+
+func doctorHumanDetailValue(result preflight.Result, verbose bool) string {
+	if verbose || result.OK {
 		return result.Detail
 	}
 	lowerName := strings.ToLower(result.Name)
