@@ -170,6 +170,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			var existing []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
+			destroyOpenBaoScope := false
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "connectivity policy", Run: func(context.Context) error {
@@ -183,7 +184,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if runtimeErr == nil {
 				checks = append(checks,
 					preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-					preflight.Check{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 					preflight.Check{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 						var err error
 						compose, err = bhruntime.DetectCompose(ctx)
@@ -202,14 +202,27 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+					preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 						var err error
 						platformFiles, err = bhruntime.ExistingFiles("")
-						return err
+						if err != nil {
+							return err
+						}
+						state, err := openbao.Inspect(ctx, compose, platformFiles)
+						if err != nil {
+							return err
+						}
+						var required bool
+						required, err = openBaoDestroyScopeRequired(state)
+						if err != nil {
+							return err
+						}
+						destroyOpenBaoScope = required
+						return nil
 					}},
-					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
-						if platformFiles.Compose == "" {
-							return errors.New("BaseHarbor OpenBao runtime is not materialized")
+					preflight.Check{Name: "OpenBao application scope ownership", Run: func(ctx context.Context) error {
+						if !destroyOpenBaoScope {
+							return nil
 						}
 						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 					}},
@@ -235,7 +248,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 			}
 			if m.Services.Secrets {
-				fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
+				if destroyOpenBaoScope {
+					fmt.Fprintf(out, "  secrets:    baseharbor/apps/%s/%s\n", m.Name, m.Environment)
+				} else {
+					fmt.Fprintln(out, "  secrets:    current OpenBao is uninitialized; no application scope exists to delete")
+				}
 				fmt.Fprintln(out, "  broker:     per-application mTLS Application Runtime Broker")
 			}
 			if len(m.Exposures) > 0 {
@@ -306,7 +323,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					}
 				}
 			}
-			if m.Services.Secrets {
+			if m.Services.Secrets && destroyOpenBaoScope {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
@@ -400,4 +417,15 @@ func parseDestroyArgs(args []string) (string, bool, bool, error) {
 		}
 	}
 	return name, confirmed, fullReset, nil
+}
+
+
+func openBaoDestroyScopeRequired(state openbao.State) (bool, error) {
+	if !state.Initialized {
+		return false, nil
+	}
+	if state.Sealed {
+		return false, openbao.ErrSealed
+	}
+	return true, nil
 }
