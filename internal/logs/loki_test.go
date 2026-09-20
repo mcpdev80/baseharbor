@@ -151,3 +151,31 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 		}
 	}
 }
+
+
+func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.LokiConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(data)
+	for _, required := range []string{
+		"ingester:",
+		"wal:",
+		"enabled: true",
+		"dir: /loki/wal",
+	} {
+		if !strings.Contains(config, required) {
+			t.Fatalf("Loki config missing writable WAL setting %q:\n%s", required, config)
+		}
+	}
+	if strings.Contains(config, "dir: wal") {
+		t.Fatalf("Loki WAL must not use a relative path with read-only root filesystem:\n%s", config)
+	}
+}
