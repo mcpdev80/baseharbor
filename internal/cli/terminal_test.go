@@ -3,10 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
-	"io"
 	"time"
 )
 
