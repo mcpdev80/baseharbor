@@ -254,7 +254,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m, providers.logsRegistryResources(providers.logs)...); err != nil {
+			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(providers.logs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
 			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
