@@ -46,6 +46,13 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := driver.Provision(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
+	for _, service := range []string{"loki", "alloy"} {
+		if err := containersecurity.VerifyComposeService(ctx, "baseharbor-logs", service, containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s runtime security: %v", service, err)
+		}
+	}
 	defer func() { _ = logs.DestroyProvider(context.Background(), compose, m) }()
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatal(err)
