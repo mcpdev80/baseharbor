@@ -169,31 +169,97 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 
 func appStatusCommandWithTLS(store application.Store) *cli.Command {
 	cmd := appStatusCommand(store)
-	baseRun := cmd.Run
-	cmd.Long += " Repository deployment TLS mode, certificate expiry and available existing-certificate updates are reported when runtime initialization state is present."
+	cmd.Long += " Repository deployment TLS mode and certificate state are rendered as part of the same status view."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if requestsJSONOutput(args) {
-			return baseRun(ctx, args, out, errOut)
+			return appStatusCommand(store).Run(ctx, args, out, errOut)
 		}
-		var base bytes.Buffer
-		baseErr := baseRun(ctx, args, &base, errOut)
-		_, _ = io.Copy(out, &base)
-		resolved, resolveErr := resolveApplication(store, args, "status")
+		filtered, _, err := parseReadOutputArgs(args, "app status")
+		if err != nil {
+			return err
+		}
+		result, err := collectApplicationStatus(ctx, store, filtered)
+		if err != nil {
+			return err
+		}
+
+		var tlsStatus *applicationTLSStatus
+		var tlsErr error
+		resolved, resolveErr := resolveApplication(store, filtered, "status")
 		if resolveErr == nil && resolved.FromRepository {
-			if tlsStatus, tlsErr := inspectApplicationTLS(resolved); tlsErr != nil {
-				fmt.Fprintln(out)
-				fmt.Fprintf(out, "[FAIL] tls               %v\n", tlsErr)
-				if baseErr == nil {
-					return tlsErr
-				}
-			} else if tlsStatus.State.TLSMode != "" {
-				fmt.Fprintln(out)
-				printApplicationTLSStatus(out, tlsStatus)
+			status, inspectErr := inspectApplicationTLS(resolved)
+			if inspectErr != nil {
+				tlsErr = inspectErr
+			} else if status.State.TLSMode != "" {
+				tlsStatus = &status
 			}
 		}
-		return baseErr
+
+		renderApplicationStatusWithExtra(ctx, out, errOut, result, func(term *cli.Terminal) {
+			if tlsStatus == nil && tlsErr == nil {
+				return
+			}
+			term.Section("TLS")
+			if tlsErr != nil {
+				term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
+				return
+			}
+			renderApplicationTLSStatus(term, *tlsStatus)
+		})
+
+		if result.State == "stopped" {
+			return nil
+		}
+		if !result.Ready || tlsErr != nil {
+			return cli.Presented(errors.New("application is not ready"))
+		}
+		return nil
 	}
 	return cmd
+}
+
+func renderApplicationTLSStatus(term *cli.Terminal, status applicationTLSStatus) {
+	switch status.State.TLSMode {
+	case "existing":
+		term.Result("READY", "certificate", certificateDisplayName(status.Installed)+" · expires "+formatCertificateTime(status.Installed.NotAfter))
+		if status.Source == nil {
+			if status.Warning != "" {
+				term.Result("WARN", "certificate-source", "configured source unavailable")
+				if term.Verbose() {
+					term.Diagnostic("TLS source detail: %s\n", status.Warning)
+				}
+			}
+			return
+		}
+		if status.UpdateAvailable {
+			term.Result("UPDATED", "certificate-source", "different source certificate available")
+		} else {
+			term.Result("VERIFIED", "certificate-source", "installed certificate matches configured source")
+		}
+	case "acme":
+		term.Result("READY", "certificate", "ACME lifecycle delegated to workload TLS provider")
+	case "local":
+		term.Result("READY", "certificate", "local development TLS")
+	default:
+		term.Result("WARN", "certificate", "unknown TLS mode")
+	}
+}
+
+func conciseTLSStatusError(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "expired"):
+		return "certificate expired"
+	case strings.Contains(text, "does not cover"):
+		return "certificate does not cover configured hostname"
+	case strings.Contains(text, "mismatch"):
+		return "certificate and private key do not match"
+	default:
+		return "certificate state could not be verified"
+	}
 }
 
 func appDoctorRepairCommandWithTLS(store application.Store) *cli.Command {
