@@ -168,3 +168,11 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 		}
 	}
 }
+
+
+func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
+	cfg := lokiConfig()
+	if !strings.Contains(cfg, "http_listen_address: 0.0.0.0") {
+		t.Fatalf("Loki config must bind IPv4 for host loopback publishing:\n%s", cfg)
+	}
+}
