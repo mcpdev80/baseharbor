@@ -86,7 +86,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 		containers = append(containers, containerName)
 		script := `from http.server import BaseHTTPRequestHandler, HTTPServer
 
-payload = b"# TYPE baseharbor_acceptance_metric gauge\\nbaseharbor_acceptance_metric 1\\n# EOF\\n"
+payload = b"# TYPE baseharbor_acceptance_metric gauge\nbaseharbor_acceptance_metric 1\n# EOF\n"
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
