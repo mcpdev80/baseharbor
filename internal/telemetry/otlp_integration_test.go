@@ -10,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedCollectorRealOTLPExport(t *testing.T) {
@@ -74,6 +75,11 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 	}
 	if err := driver.Provision(ctx, resource, binding); err != nil {
 		t.Fatalf("provision Collector: %v", err)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, "baseharbor-telemetry", "otel-collector", containersecurity.Requirements{
+		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+	}); err != nil {
+		t.Fatalf("Collector runtime security: %v", err)
 	}
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatalf("bind Collector: %v", err)
