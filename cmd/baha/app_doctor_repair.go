@@ -49,7 +49,6 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 			findings := classifyAppDoctorOutput(diagnostic.String())
 			printAppDoctorFindings(out, findings)
 			if !fix {
-				fmt.Fprintln(out, "next: run 'baha app doctor --fix' to repair supported safe findings")
 				return diagnosticErr
 			}
 			if len(findings) == 0 {
