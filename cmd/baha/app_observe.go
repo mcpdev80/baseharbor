@@ -570,7 +570,17 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, workloadStatusErr, requiredStatuses, workloadSecurity, ok)
+				var tlsStatus *applicationTLSStatus
+				var tlsErr error
+				if resolved.FromRepository {
+					status, inspectErr := inspectApplicationTLS(resolved)
+					if inspectErr != nil {
+						tlsErr = inspectErr
+					} else if status.State.TLSMode != "" {
+						tlsStatus = &status
+					}
+				}
+				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, workloadStatusErr, requiredStatuses, workloadSecurity, ok, tlsStatus, tlsErr)
 			}
 			if !ok {
 				return cli.Presented(errors.New("application doctor found one or more failures"))
@@ -591,6 +601,8 @@ func renderApplicationDoctor(
 	requiredSecrets []openbao.RequiredSecretStatus,
 	workloadSecurity application.WorkloadSecurityReport,
 	healthy bool,
+	tlsStatus *applicationTLSStatus,
+	tlsErr error,
 ) {
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
@@ -614,13 +626,13 @@ func renderApplicationDoctor(
 			}
 			detail := ""
 			if !result.OK || term.Verbose() {
-				detail = result.Detail
+				detail = doctorHumanDetail(term, result)
 			}
 			term.Result(state, result.Name, detail)
 		}
 	}
 
-	if workload.Found {
+	if workload.Found && len(workload.Services) > 0 {
 		term.Section("Workload services")
 		for _, service := range workload.Services {
 			state := "READY"
@@ -649,19 +661,48 @@ func renderApplicationDoctor(
 	if term.Verbose() {
 		printWorkloadSecurityFindings(out, workloadSecurity)
 	}
-	if workloadErr != nil {
-		term.Section("Problems")
-		term.Result("FAILED", "workload", workloadErr.Error())
+	if tlsStatus != nil || tlsErr != nil {
+		term.Section("TLS")
+		if tlsErr != nil {
+			term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
+		} else {
+			renderApplicationTLSStatus(term, *tlsStatus)
+		}
 	}
 
-	if healthy {
+	if healthy && tlsErr == nil {
 		fmt.Fprintln(out, "\nREADY")
 		return
 	}
 	fmt.Fprintln(out, "\nNext:")
 	fmt.Fprintln(out, "  baha status --verbose")
 	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintln(out, "  baha app doctor --fix")
 	fmt.Fprintln(out, "\nDEGRADED · one or more checks require attention")
+}
+
+func doctorHumanDetail(term *cli.Terminal, result preflight.Result) string {
+	if term.Verbose() || result.OK {
+		return result.Detail
+	}
+	lowerName := strings.ToLower(result.Name)
+	lowerDetail := strings.ToLower(result.Detail)
+	switch {
+	case strings.Contains(lowerName, "managed runtime definition"):
+		return "runtime definition differs from BaseHarbor-managed state"
+	case strings.Contains(lowerName, "openbao application scope"):
+		return "OpenBao application scope unavailable"
+	case strings.Contains(lowerName, "application runtime broker"):
+		return "runtime broker is not ready"
+	case strings.Contains(lowerName, "required application secrets"):
+		return "required secrets could not be verified because OpenBao is unavailable"
+	case strings.Contains(lowerName, "workload security") && strings.Contains(lowerDetail, "web_secret_key"):
+		return "workload requires WEB_SECRET_KEY from BaseHarbor/OpenBao"
+	case strings.Contains(lowerName, "repository workload") && strings.Contains(lowerDetail, "openbao"):
+		return "workload cannot resolve required secrets because OpenBao is unavailable"
+	default:
+		return result.Detail
+	}
 }
 
 func applicationDoctorSection(name string) string {
