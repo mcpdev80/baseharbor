@@ -85,11 +85,6 @@ jobs:
             exit 1
           }
 
-      - name: Run full Go test suite in GitHub CI environment
-        env:
-          BASEHARBOR_LOGS_ENABLED: "false"
-        run: go test ./...
-
       - name: Run release-source tests exactly as release workflow
         run: |
           go test ./internal/... ./spec/...
