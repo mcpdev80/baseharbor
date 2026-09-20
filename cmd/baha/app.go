@@ -192,7 +192,7 @@ func appCommand(store application.Store) *cli.Command {
 				}
 				results, ok := preflight.Run(checkCtx, checks)
 				preflight.Format(out, results)
-				if verbose(ctx) {
+				if cli.NewTerminal(ctx, out, errOut).Verbose() {
 					printWorkloadSecurityFindings(out, workloadSecurity)
 				}
 				if len(application.RequiredSecretNames(m)) > 0 {
