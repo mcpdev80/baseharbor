@@ -3,6 +3,7 @@ package capability
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 const ProviderProtocolV1 = "baseharbor.provider/v1"
