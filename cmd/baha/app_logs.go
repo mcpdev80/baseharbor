@@ -14,12 +14,12 @@ import (
 
 type managedLogsExecution struct {
 	execution *capability.Execution
-	driver *logsprovider.Driver
-	runtime bhruntime.Compose
-	manifest application.Manifest
-	services []string
+	driver    *logsprovider.Driver
+	runtime   bhruntime.Compose
+	manifest  application.Manifest
+	services  []string
 	resources []capability.Resource
-	enabled bool
+	enabled   bool
 }
 
 func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedLogsExecution, error) {
@@ -36,10 +36,10 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 		return nil, err
 	}
 	prepared := &managedLogsExecution{
-		runtime: compose,
+		runtime:  compose,
 		manifest: resolved.Manifest,
 		services: services,
-		enabled: policy.Enabled && policy.Collect[application.LogsSourceApplication],
+		enabled:  policy.Enabled && policy.Collect[application.LogsSourceApplication],
 	}
 	if !prepared.enabled {
 		return prepared, nil
@@ -57,17 +57,17 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	for _, service := range services {
 		resources = append(resources, capability.Resource{
 			Application: resolved.Manifest.Name,
-			Kind: capability.Logs,
-			Name: service,
-			Provider: capability.ProviderLoki,
+			Kind:        capability.Logs,
+			Name:        service,
+			Provider:    capability.ProviderLoki,
 		})
 		requests = append(requests, capability.Request{
 			Requirement: capability.Requirement{Kind: capability.Logs, Name: service},
-			Workload: "service/" + service,
+			Workload:    "service/" + service,
 			Logs: &capability.LogsBinding{
 				Direction: "collect",
-				Format: "syslog-rfc5424",
-				Service: service,
+				Format:    "syslog-rfc5424",
+				Service:   service,
 			},
 			Driver: prepared.driver,
 		})
