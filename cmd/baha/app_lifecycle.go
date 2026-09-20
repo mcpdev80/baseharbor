@@ -16,6 +16,7 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -82,6 +83,13 @@ func appDownCommand(store application.Store) *cli.Command {
 			}
 			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
 				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
+			}
+			if tracePlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo); err != nil {
+				return err
+			} else if found && tracePlacement.Scope == capability.ScopeApplication {
+				if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
+					return fmt.Errorf("stop application-scoped traces provider: %w", err)
+				}
 			}
 			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
@@ -305,6 +313,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 				if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 					return fmt.Errorf("remove workload logging override: %w", err)
+				}
+			}
+			tracePlacement, traceFound, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo)
+			if err != nil {
+				return err
+			}
+			if traceFound && tracePlacement.Scope == capability.ScopeApplication {
+				if err := tracesprovider.DestroyProvider(ctx, compose, m); err != nil {
+					return fmt.Errorf("destroy application-scoped traces provider: %w", err)
 				}
 			}
 			metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
