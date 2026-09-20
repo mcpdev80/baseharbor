@@ -11,8 +11,8 @@ func TestRepositoryWorkloadStopEnvironmentUsesSecretPlaceholders(t *testing.T) {
 		Manifest: application.Manifest{
 			Name:        "demo",
 			Environment: "dev",
-			Secrets: application.Secrets{
-				Required: []application.RequiredSecret{
+			Secrets: application.SecretRequirements{
+				Required: []application.SecretRequirement{
 					{Name: "SECRET_KEY"},
 					{Name: "TOKEN_FILE"},
 				},
