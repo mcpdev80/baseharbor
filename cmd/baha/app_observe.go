@@ -528,7 +528,6 @@ func appDoctorCommand(store application.Store) *cli.Command {
 	}
 }
 
-
 func renderApplicationDoctor(
 	ctx context.Context,
 	out io.Writer,
