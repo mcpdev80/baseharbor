@@ -109,4 +109,3 @@ func containsSecurityOpt(values []string, want string) bool {
 	}
 	return false
 }
-
