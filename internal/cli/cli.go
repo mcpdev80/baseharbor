@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -161,6 +162,12 @@ func isHelp(arg string) bool { return arg == "-h" || arg == "--help" }
 
 // Help renders stable, human-readable command documentation.
 func (c *Command) Help(w io.Writer) {
+	var buffer bytes.Buffer
+	c.renderHelp(&buffer)
+	writeMaybePaged(w, buffer.String())
+}
+
+func (c *Command) renderHelp(w io.Writer) {
 	width := terminalTextWidth()
 	if c.Summary != "" {
 		fmt.Fprintf(w, "%s - %s\n", c.Name, c.Summary)
