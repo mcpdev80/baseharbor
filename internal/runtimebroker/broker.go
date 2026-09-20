@@ -361,6 +361,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("  broker:\n")
 	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    command: [\"serve\"]\n")
 	b.WriteString("    environment:\n")
 	b.WriteString("      BASEHARBOR_API_LISTEN_ADDR: \"0.0.0.0:8443\"\n")
