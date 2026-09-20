@@ -96,3 +96,63 @@ func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *tes
 		t.Fatalf("path prompt missing: %q", text)
 	}
 }
+
+
+func TestPathBrowsingDirectory(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(original) }()
+
+	tests := []struct {
+		typed string
+		want  string
+	}{
+		{"", root},
+		{"a", filepath.Join(root, "a")},
+		{"a/b/", filepath.Join(root, "a", "b")},
+		{"a/b/file.json", filepath.Join(root, "a", "b")},
+		{"../", filepath.Dir(root)},
+	}
+	for _, tt := range tests {
+		got, err := pathBrowsingDirectory(tt.typed)
+		if err != nil {
+			t.Fatalf("pathBrowsingDirectory(%q): %v", tt.typed, err)
+		}
+		if got != filepath.Clean(tt.want) {
+			t.Fatalf("pathBrowsingDirectory(%q) = %q, want %q", tt.typed, got, filepath.Clean(tt.want))
+		}
+	}
+}
+
+func TestDrawPathPromptShowsBrowsingDirectory(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(original) }()
+
+	var out bytes.Buffer
+	if err := drawPathPrompt(&out, "New recovery output file: ", "", true); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Browsing\n  "+root) {
+		t.Fatalf("missing browsing directory: %q", got)
+	}
+	if !strings.Contains(got, "New recovery output file: ") {
+		t.Fatalf("missing prompt: %q", got)
+	}
+}
