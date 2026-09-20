@@ -31,6 +31,19 @@ message DescribeResponse {
   repeated string capability_specifications = 3;
   LifecycleSupport optional_lifecycle = 4;
   JsonSchema configuration_schema = 5;
+  ProviderObservability observability = 6;
+}
+
+message ProviderObservability {
+  repeated ProviderObservabilitySignal signals = 1;
+}
+
+message ProviderObservabilitySignal {
+  string name = 1;
+  string kind = 2;
+  string protocol = 3;
+  uint32 port = 4;
+  string path = 5;
 }
 
 message LifecycleSupport {
