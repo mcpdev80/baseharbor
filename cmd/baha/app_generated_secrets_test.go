@@ -17,8 +17,8 @@ func TestGeneratedSecretReadinessIsActionable(t *testing.T) {
 
 	text := out.String()
 	for _, want := range []string{
-		"SECRET_KEY\tmissing - will be generated automatically\tbaha app apply",
-		"OPENAI_API_KEY\tmissing - user input required\tbaha app secret set OPENAI_API_KEY --stdin",
+		"SECRET_KEY               missing - will be generated automatically baha app apply",
+		"OPENAI_API_KEY           missing - user input required          baha app secret set OPENAI_API_KEY --stdin",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output missing %q:\n%s", want, text)
