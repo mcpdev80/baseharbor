@@ -1,8 +1,9 @@
 name: release
 
 on:
-  # Tag creation is intentional: push-tag workflows are skipped when the tagged commit contains [skip ci].
-  create:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -17,7 +18,7 @@ permissions:
 
 jobs:
   runtime-image:
-    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
@@ -27,7 +28,7 @@ jobs:
     secrets: inherit
 
   release:
-    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Resolve release tag
