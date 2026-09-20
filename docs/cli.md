@@ -73,6 +73,29 @@ baha
 └── version
 ```
 
+## Shell completion
+
+Generate completion code for the current shell:
+
+```bash
+# Bash, current shell
+source <(baha completion bash)
+
+# Bash, persistent for the current user
+mkdir -p ~/.local/share/bash-completion/completions
+baha completion bash > ~/.local/share/bash-completion/completions/baha
+
+# Zsh
+source <(baha completion zsh)
+
+# Fish
+baha completion fish | source
+```
+
+Bash completion uses the current cursor position, supports completion immediately after spaces such as `baha app <TAB>`, partial command completion such as `baha app st<TAB>`, fixed values such as environments/output formats, and read-only locally configured application names.
+
+After writing the persistent Bash completion file, start a new Bash shell or source that file once in the current shell.
+
 Use executable help output for precise syntax:
 
 ```bash

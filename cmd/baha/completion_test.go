@@ -90,3 +90,31 @@ func TestGlobalOutputOptionsIncludePlainNoInputAndVersion(t *testing.T) {
 		t.Fatalf("filtered=%v opts=%+v showVersion=%v", filtered, opts, showVersion)
 	}
 }
+
+func TestBashCompletionUsesCurrentCursorWord(t *testing.T) {
+	script := bashCompletionScript()
+	for _, wanted := range []string{
+		"COMP_CWORD",
+		"COMP_WORDS[@]:1:COMP_CWORD-1",
+		"COMP_WORDS[COMP_CWORD]",
+		"command baha __complete",
+	} {
+		if !strings.Contains(script, wanted) {
+			t.Fatalf("bash completion script missing %q:\n%s", wanted, script)
+		}
+	}
+}
+
+func TestCompletionAfterSubcommandSpaceReturnsChildren(t *testing.T) {
+	root := rootCommand()
+	candidates := completeCommandLine(root, []string{"app", ""}, application.Store{Root: t.TempDir()})
+	values := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		values[candidate.Value] = true
+	}
+	for _, wanted := range []string{"status", "doctor", "apply", "up"} {
+		if !values[wanted] {
+			t.Fatalf("completion after 'baha app ' missing %q: %#v", wanted, candidates)
+		}
+	}
+}

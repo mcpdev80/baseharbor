@@ -203,10 +203,18 @@ func filterCandidates(candidates []completionCandidate, partial string) []comple
 func bashCompletionScript() string {
 	return `_baha_completion() {
     local value
+    local -a words
     COMPREPLY=()
+
+    words=()
+    if (( COMP_CWORD > 1 )); then
+        words+=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+    fi
+    words+=("${COMP_WORDS[COMP_CWORD]-}")
+
     while IFS=$'\t' read -r value _; do
         COMPREPLY+=("$value")
-    done < <(command baha __complete "${COMP_WORDS[@]:1}")
+    done < <(command baha __complete "${words[@]}")
 }
 complete -o default -F _baha_completion baha
 `
