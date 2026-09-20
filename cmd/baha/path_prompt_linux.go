@@ -24,12 +24,15 @@ func promptNewFilePath(reader *bufio.Reader, out io.Writer, label string, input 
 }
 
 func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string, input io.Reader) (string, error) {
-	inputFile, ok := input.(*os.File)
-	if !ok || !readerIsTerminal(input) {
+	if !readerIsTerminal(input) {
 		return promptLine(reader, out, label, "")
 	}
 	if err := writePathPromptContext(out); err != nil {
 		return "", err
+	}
+	inputFile, ok := input.(*os.File)
+	if !ok {
+		return promptLine(reader, out, label, "")
 	}
 
 	fd := int(inputFile.Fd())
