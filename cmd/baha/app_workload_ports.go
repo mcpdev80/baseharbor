@@ -30,6 +30,63 @@ type workloadPublishedPortVariable struct {
 	DefaultPort int
 }
 
+func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out io.Writer, resolved resolvedApplication, repoRoot string) error {
+	if !resolved.FromRepository {
+		return nil
+	}
+	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
+	if err != nil || !found {
+		return err
+	}
+	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
+	if err != nil {
+		return fmt.Errorf("inspect configurable workload host ports: %w", err)
+	}
+	if len(variables) == 0 {
+		return nil
+	}
+	persisted, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
+	if errors.Is(err, os.ErrNotExist) {
+		persisted = map[string]string{}
+	} else if err != nil {
+		return err
+	}
+	for _, variable := range variables {
+		if value, explicit := os.LookupEnv(variable.Name); explicit && strings.TrimSpace(value) != "" {
+			continue
+		}
+		if value := strings.TrimSpace(persisted[variable.Name]); value != "" {
+			continue
+		}
+		port := variable.DefaultPort
+		if portAvailable(port) {
+			if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(port)}); err != nil {
+				return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, port, err)
+			}
+			persisted[variable.Name] = strconv.Itoa(port)
+			fmt.Fprintf(out, "[OK] workload-port      %s=%d available and reserved for this deployment\n", variable.Name, port)
+			continue
+		}
+		fallback := proposedWorkloadPort(port)
+		if fallback == 0 {
+			return fmt.Errorf("no free fallback port found for %s", variable.Name)
+		}
+		accepted, err := acceptWorkloadPortFallback(ctx, in, out, variable.Name, port, fallback)
+		if err != nil {
+			return err
+		}
+		if !accepted {
+			return fmt.Errorf("workload port fallback declined for %s; choose a free host port and retry", variable.Name)
+		}
+		if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(fallback)}); err != nil {
+			return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, fallback, err)
+		}
+		persisted[variable.Name] = strconv.Itoa(fallback)
+		fmt.Fprintf(out, "[OK] workload-port      %s=%d saved for this deployment\n", variable.Name, fallback)
+	}
+	return nil
+}
+
 func mergePersistedWorkloadPortOverrides(environment map[string]string, files application.RuntimeFiles) error {
 	path := filepath.Join(files.Dir, workloadPortOverridesFile)
 	data, err := os.ReadFile(path)
