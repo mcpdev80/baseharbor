@@ -56,7 +56,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	resources := make([]capability.Resource, 0, len(services))
 	for _, service := range services {
 		resources = append(resources, capability.Resource{
-			Application: m.Name,
+			Application: resolved.Manifest.Name,
 			Kind: capability.Logs,
 			Name: service,
 			Provider: capability.ProviderLoki,
@@ -72,7 +72,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 			Driver: prepared.driver,
 		})
 	}
-	if err := application.CheckAdditionalProviderResources(m, resources); err != nil {
+	if err := application.CheckAdditionalProviderResources(resolved.Manifest, resources); err != nil {
 		return nil, fmt.Errorf("logs provider registry preflight: %w", err)
 	}
 	execution, _, err := capability.Prepare(ctx, resolved.Manifest.Name, requests)
