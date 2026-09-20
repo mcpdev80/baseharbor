@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	composeImageProgressRE     = regexp.MustCompile(`(?i)^\\s*(?:image\\s+)?([^\\s]+)\\s+(pulling|pulled)$`)
-	composeContainerProgressRE = regexp.MustCompile(`(?i)^\\s*container\\s+([^\\s]+)\\s+(creating|created|starting|started|waiting|healthy|restarting|stopping|stopped)$`)
-	composeServiceBuildRE      = regexp.MustCompile(`(?i)^\\s*(?:service\\s+)?([^\\s]+)\\s+(building|built)$`)
+	composeImageProgressRE     = regexp.MustCompile(`(?i)^\s*(?:image\s+)?([^\s]+)\s+(pulling|pulled)$`)
+	composeContainerProgressRE = regexp.MustCompile(`(?i)^\s*container\s+([^\s]+)\s+(creating|created|starting|started|waiting|healthy|restarting|stopping|stopped)$`)
+	composeServiceBuildRE      = regexp.MustCompile(`(?i)^\s*(?:service\s+)?([^\s]+)\s+(building|built)$`)
 )
 
 type composeProgressCapture struct {
@@ -31,7 +31,7 @@ func (c *composeProgressCapture) Write(p []byte) (int, error) {
 
 	_, _ = c.raw.Write(p)
 	text := c.partial + string(p)
-	lines := strings.Split(text, "\\n")
+	lines := strings.Split(text, "\n")
 	c.partial = lines[len(lines)-1]
 	for _, line := range lines[:len(lines)-1] {
 		c.report(line)
