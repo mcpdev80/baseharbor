@@ -16,6 +16,7 @@ var (
 	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
 	Prometheus    = Provider{Kind: ProviderPrometheus, Capabilities: []Kind{Metrics}}
 	Loki          = Provider{Kind: ProviderLoki, Capabilities: []Kind{Logs}}
+	Tempo         = Provider{Kind: ProviderTempo, Capabilities: []Kind{Traces}}
 )
 
 var (
@@ -52,6 +53,9 @@ var (
 		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
+			{Name: "collector", Kind: ObservabilityMetrics, Protocol: "openmetrics", Port: 8888, Path: "/metrics"},
+		}},
 	}
 	PrometheusIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Prometheus,
@@ -64,6 +68,18 @@ var (
 		Capabilities:    []SpecificationID{LogsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
+			{Name: "loki", Kind: ObservabilityMetrics, Protocol: "openmetrics", Port: 3100, Path: "/metrics"},
+		}},
+	}
+	TempoIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: Tempo,
+		Capabilities:    []SpecificationID{TracesV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
+			{Name: "tempo", Kind: ObservabilityMetrics, Protocol: "openmetrics", Port: 3200, Path: "/metrics"},
+		}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -92,6 +108,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return PrometheusIntegration, nil
 	case ProviderLoki:
 		return LokiIntegration, nil
+	case ProviderTempo:
+		return TempoIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
