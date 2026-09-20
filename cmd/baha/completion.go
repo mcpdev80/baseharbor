@@ -124,7 +124,6 @@ func completeCommandLine(root *cli.Command, words []string, stores ...applicatio
 	return filterCandidates(uniqueCandidates(candidates), partial)
 }
 
-
 func completionAcceptsApplicationName(command *cli.Command) bool {
 	switch command.Name {
 	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls":
