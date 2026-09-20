@@ -340,6 +340,8 @@ baha app doctor
 
 `baha app create NAME ...` remains for legacy/BaseHarbor-managed stored application state. New application repositories should prefer `baha app init`.
 
+If a repository application has not been applied yet, or was intentionally destroyed while preserving `baseharbor.yaml`, `status` and `doctor` report the explicit `NOT APPLIED` lifecycle state. They do not synthesize backend/OpenBao failures or suggest repair; the normal next step is `baha up` or `baha app apply`.
+
 ## S3-compatible object storage
 
 ```bash
