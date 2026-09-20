@@ -518,7 +518,7 @@ Read-only Git update inspection:
 baha app update --check
 ```
 
-Mutation uses a strict fast-forward-only model: named branch, configured upstream, clean working tree, no divergence, exact fetched target SHA and post-mutation verification. BaseHarbor never resets, stashes, rebases or silently discards local work.
+Mutation uses a strict fast-forward-only model: named branch, configured upstream, clean working tree, no divergence, exact fetched target SHA and post-mutation verification. `baha app update --check` lists the exact staged/modified/deleted/renamed/untracked paths that make the worktree dirty so the operator can resolve them explicitly. BaseHarbor never resets, stashes, rebases or silently discards local work.
 
 For applications with durable BaseHarbor-managed state, mutation requires either an encrypted pre-update recovery point or explicit acknowledgement:
 
