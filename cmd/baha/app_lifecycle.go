@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -86,6 +87,9 @@ func appDownCommand(store application.Store) *cli.Command {
 				return err
 			} else if stopped {
 				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
+			}
+			if err := logsprovider.StopProvider(ctx, compose, m); err != nil {
+				return fmt.Errorf("stop application-scoped logs provider: %w", err)
 			}
 			if application.RequiresRuntimeBroker(m) {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
@@ -224,6 +228,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 			}
+			if resolved.FromRepository {
+				if policy, policyErr := application.LogsPolicy(m); policyErr == nil && policy.Enabled && policy.Collect[application.LogsSourceApplication] {
+					fmt.Fprintln(out, "  logs:       application log registration and BaseHarbor-owned collector state removed according to placement")
+				}
+			}
 			if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
 				metricsPlacement, found, placementErr := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
 				if placementErr != nil {
@@ -288,6 +297,14 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
+				}
+			}
+			if runtimeErr == nil && resolved.FromRepository {
+				if err := logsprovider.UnregisterApplication(ctx, compose, m); err != nil {
+					return fmt.Errorf("remove application log collector registration: %w", err)
+				}
+				if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
+					return fmt.Errorf("remove workload logging override: %w", err)
 				}
 			}
 			metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
