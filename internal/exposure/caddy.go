@@ -477,7 +477,7 @@ func composeYAML(state State, files Files) string {
 		b.WriteString("    command:\n")
 		b.WriteString("      - /bin/sh\n")
 		b.WriteString("      - -ec\n")
-		b.WriteString("      - cp /usr/bin/caddy /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 		b.WriteString("    tmpfs:\n")
 		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
 		b.WriteString("      - /run/baseharbor:rw,nosuid,nodev,mode=0700,uid=65532,gid=65532\n")
