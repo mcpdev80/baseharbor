@@ -134,6 +134,7 @@ func appCommand(store application.Store) *cli.Command {
 				var compose bhruntime.Compose
 				var platformFiles bhruntime.Files
 				var requiredStatuses []openbao.RequiredSecretStatus
+				var workloadSecurity application.WorkloadSecurityReport
 				requiredKnown := false
 				checks := []preflight.Check{
 					{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
@@ -148,6 +149,11 @@ func appCommand(store application.Store) *cli.Command {
 					}},
 					{Name: "desired-state plan", Run: func(context.Context) error {
 						_, err := application.BuildPlan(m)
+						return err
+					}},
+					{Name: "workload security", Run: func(ctx context.Context) error {
+						var err error
+						workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 						return err
 					}},
 				}
@@ -186,6 +192,9 @@ func appCommand(store application.Store) *cli.Command {
 				}
 				results, ok := preflight.Run(checkCtx, checks)
 				preflight.Format(out, results)
+				if verbose(ctx) {
+					printWorkloadSecurityFindings(out, workloadSecurity)
+				}
 				if len(application.RequiredSecretNames(m)) > 0 {
 					if requiredKnown {
 						printRequiredSecretStatus(out, requiredStatuses)
