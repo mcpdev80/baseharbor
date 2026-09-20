@@ -522,3 +522,48 @@ Before a BaseHarbor change is considered ready, verify:
 BaseHarbor is not optimized for architectural novelty.
 
 Optimize for correctness, security, isolation, explicit control flow, reliable operations, and long-term human maintenance.
+
+
+### Mandatory pre-release GitHub gate
+
+Development validation should continue to prefer local and Hugging Face execution to avoid unnecessary GitHub Actions usage.
+
+Immediately before creating or moving a release tag, however, the candidate commit **must** pass the manually triggered `.github/workflows/pre-release.yml` workflow on GitHub Actions.
+
+Why this is mandatory:
+
+- GitHub-hosted runners set CI-specific environment such as `CI=true`;
+- GitHub-hosted runners provide Docker/Compose behavior that cannot be reproduced by the normal Hugging Face CPU jobs;
+- release-only/runtime integration tests can otherwise be skipped locally or on HF;
+- the pre-release gate validates the exact release environment without publishing anything.
+
+Required release order:
+
+```text
+development
+  -> local/Hugging Face validation
+  -> merge candidate to main
+  -> manual pre-release workflow on exact main SHA
+  -> fix and repeat until every pre-release job is green
+  -> create/move release tag to that exact green SHA
+  -> release workflow
+  -> verify release artifacts/provenance
+```
+
+A release tag must not be created merely because local/HF checks are green.
+
+The manual pre-release gate must cover, at minimum:
+
+- full Go test suite in the GitHub CI environment;
+- the exact release-source test commands;
+- gofmt, vet and CLI build;
+- real Docker/Compose runtime acceptance used by the release;
+- strict EN/DE documentation builds;
+- workflow syntax validation;
+- GoReleaser snapshot packaging;
+- runtime image build without publishing.
+
+If the pre-release gate exposes a failure, fix the issue on main and rerun the gate until green before tagging.
+
+
+## Release
