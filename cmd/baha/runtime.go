@@ -250,12 +250,13 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
-	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
+	compose, _, err := startControlPlaneRuntime(ctx, out, ports)
 	if err != nil {
 		return err
 	}
-	_ = compose
-	_ = files
+	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+		return fmt.Errorf("resume shared platform runtime: %w", err)
+	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
@@ -280,6 +281,9 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, strings.TrimSpace(recoveryFile), out); err != nil {
 		return err
 	}
+	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+		return fmt.Errorf("resume shared platform runtime after verified control plane: %w", err)
+	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
@@ -299,9 +303,6 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 	}
 	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
-	}
-	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, fmt.Errorf("resume shared platform runtime: %w", err)
 	}
 	return compose, files, nil
 }
