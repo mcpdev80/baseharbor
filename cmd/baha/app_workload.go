@@ -220,6 +220,23 @@ func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compo
 	return composeFiles, nil
 }
 
+func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
+	environment := workloadSecurityPreflightEnvironment(resolved.Manifest)
+	if environment == nil {
+		environment = map[string]string{}
+	}
+	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+		return nil, err
+	}
+	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
+		return nil, err
+	} else if configured {
+		environment["BASEHARBOR_RUNTIME_API_URL"] = runtimeURL
+		environment["BASEHARBOR_RUNTIME_TOKEN_FILE"] = application.RuntimeIdentityContainerTokenPath
+	}
+	return environment, nil
+}
+
 func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
 	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
@@ -412,7 +429,7 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	if err != nil || !found {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
+	environment, err := repositoryWorkloadStopEnvironment(resolved, files)
 	if err != nil {
 		return false, err
 	}
