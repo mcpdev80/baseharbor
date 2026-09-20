@@ -18,6 +18,10 @@ common:
     instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
 schema_config:
   configs:
     - from: 2020-05-15
@@ -70,7 +74,7 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	b.WriteString("services:\n")
 	b.WriteString("  loki:\n")
 	fmt.Fprintf(&b, "    image: %s\n", LokiImage)
-	b.WriteString("    user: \"10001:10001\"\n")
+	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 	b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\"]\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -84,7 +88,7 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	b.WriteString("    networks: [logs-internal]\n")
 	b.WriteString("  alloy:\n")
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
-	b.WriteString("    user: \"473:473\"\n")
+	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", AlloyRuntimeUID, AlloyRuntimeGID)))
 	b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/var/lib/alloy/data\", \"/etc/alloy/config.alloy\"]\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")

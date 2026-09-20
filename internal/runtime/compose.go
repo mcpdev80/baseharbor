@@ -110,6 +110,12 @@ func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFil
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
+func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
+	args := []string{"logs", "--no-color", "--tail", "120"}
+	args = append(args, services...)
+	return c.outputProject(ctx, project, composeFile, envFile, args...)
+}
+
 // DiagnosticsProject captures stopped/restarting containers and recent logs
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {

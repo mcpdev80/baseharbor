@@ -43,8 +43,23 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.Provision(ctx, resource, binding); err != nil {
-		t.Fatal(err)
+	provisionCtx, cancelProvision := context.WithTimeout(ctx, 45*time.Second)
+	err = driver.Provision(provisionCtx, resource, binding)
+	cancelProvision()
+	if err != nil {
+		placement, placementErr := logs.PlacementFor(m)
+		files, filesErr := logs.ExistingProviderFiles(m)
+		diagnostics := ""
+		if placementErr == nil && filesErr == nil {
+			diagCtx, cancelDiag := context.WithTimeout(context.Background(), 10*time.Second)
+			status, statusErr := compose.StatusProject(diagCtx, placement.Project, files.Compose, files.Env)
+			providerLogs, logsErr := compose.LogsProject(diagCtx, placement.Project, files.Compose, files.Env, "loki", "alloy")
+			cancelDiag()
+			diagnostics = fmt.Sprintf("\ncompose ps (err=%v):\n%s\nprovider logs (err=%v):\n%s", statusErr, status, logsErr, providerLogs)
+		} else {
+			diagnostics = fmt.Sprintf("\nprovider diagnostics unavailable: placement=%v files=%v", placementErr, filesErr)
+		}
+		t.Fatalf("provision Loki provider: %v%s", err, diagnostics)
 	}
 	for _, service := range []string{"loki", "alloy"} {
 		if err := containersecurity.VerifyComposeService(ctx, "baseharbor-logs", service, containersecurity.Requirements{

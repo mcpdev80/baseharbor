@@ -116,7 +116,7 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := string(data)
-	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host"} {
+	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user: \"0:0\"", "cap_add:", "provider-volume-init:"} {
 		if strings.Contains(compose, forbidden) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
@@ -166,6 +166,28 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 		if !strings.Contains(override, required) {
 			t.Fatalf("override missing %q:\n%s", required, override)
 		}
+	}
+}
+
+func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.LokiConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(data)
+	for _, required := range []string{"ingester:", "wal:", "enabled: true", "dir: /loki/wal"} {
+		if !strings.Contains(config, required) {
+			t.Fatalf("Loki config missing writable WAL setting %q:\n%s", required, config)
+		}
+	}
+	if strings.Contains(config, "dir: wal") {
+		t.Fatalf("Loki WAL must not use a relative path with read-only root filesystem:\n%s", config)
 	}
 }
 
