@@ -268,6 +268,7 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	for _, want := range []string{
 		"user: \"postgres\"",
 		"user: \"openbao\"",
+		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
