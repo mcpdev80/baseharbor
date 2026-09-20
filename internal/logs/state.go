@@ -23,11 +23,14 @@ const (
 )
 
 type Placement struct {
-	Scope       capability.ProviderScope
-	Project     string
-	Dir         string
-	LokiVolume  string
-	AlloyVolume string
+	Scope           capability.ProviderScope
+	Project         string
+	Network         string
+	Dir             string
+	LokiVolume      string
+	AlloyVolume     string
+	SharingBoundary string
+	OwnerApplication string
 }
 
 type Registration struct {
@@ -67,15 +70,19 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 			lokiVolume += "-" + token
 			alloyVolume += "-" + token
 		}
-		return Placement{Scope: p.Scope, Project: project, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume}, nil
+		network := project + "-internal"
+		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := m.Name + "-" + m.Environment
+		project := providerProject + "-" + suffix
 		return Placement{
-			Scope:       p.Scope,
-			Project:     providerProject + "-" + suffix,
-			Dir:         filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
-			LokiVolume:  "baseharbor-loki-data-" + suffix,
-			AlloyVolume: "baseharbor-alloy-data-" + suffix,
+			Scope:            p.Scope,
+			Project:          project,
+			Network:          project + "-internal",
+			Dir:              filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
+			LokiVolume:       "baseharbor-loki-data-" + suffix,
+			AlloyVolume:      "baseharbor-alloy-data-" + suffix,
+			OwnerApplication: m.Name,
 		}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: p.Scope}, nil
