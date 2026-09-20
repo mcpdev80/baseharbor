@@ -505,7 +505,7 @@ func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.Compo
 		if err := compose.StopProjectFilesSelected(ctx, project, repositoryRoot, environment, expectedServices, composeFiles...); err != nil {
 			return false, fmt.Errorf("stop selected application workload services during recovery: %w", err)
 		}
-	} else if err := compose.DownProjectFiles(ctx, project, repositoryRoot, composeFiles...); err != nil {
+	} else if err := compose.DownProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...); err != nil {
 		return false, fmt.Errorf("stop application workload during recovery: %w", err)
 	}
 	running, err := compose.RunningServicesProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...)
