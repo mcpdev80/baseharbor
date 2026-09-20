@@ -30,6 +30,7 @@ baha
 ├── connections
 ├── update
 ├── completion bash|zsh|fish
+├── tui
 ├── app
 │   ├── init
 │   ├── inspect
@@ -96,10 +97,36 @@ Global controls:
 -q, --quiet
     --silent
 -v, --verbose
+    --plain
     --no-color
+    --no-input, --non-interactive
+    --version
 ```
 
 `NO_COLOR` and `TERM=dumb` also disable color. Set `BASEHARBOR_REDUCED_MOTION=1` for static activity output even on an interactive terminal.
+
+Interactive dashboard:
+
+```bash
+baha tui
+```
+
+The TUI is read-only and reuses the same structured Status and Doctor models as the normal CLI. It provides **Overview**, **Status** and **Doctor** tabs; use `Tab` / arrow keys to switch, `r` to refresh and `q` or `Ctrl-C` to exit. It requires a real interactive application-repository terminal and deliberately refuses `--plain`, `--no-input`, pipes and CI.
+
+`--plain` disables color and animated redraw while keeping readable semantic human output. `--no-input` guarantees that BaseHarbor never prompts: if an explicit decision/input is missing, the command fails with the exact flag/file/value needed for automation.
+
+Long human details and help descriptions wrap to the available terminal width. Long help uses `$PAGER` only on an interactive TTY. Broken pipes are treated as normal Unix pipeline termination.
+
+Deployment/input precedence is:
+
+```text
+explicit CLI flag/input
+  > process environment
+  > protected local deployment state
+  > safe BaseHarbor default
+```
+
+Portable application intent in `baseharbor.yaml` is not rewritten by these deployment overrides.
 
 Shell completion:
 
