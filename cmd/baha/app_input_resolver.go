@@ -292,13 +292,13 @@ func ensureRepositoryDeploymentInputsForUp(in io.Reader, out io.Writer, opts run
 			initOpts.Hostname = current.Hostname
 			initOpts.TLSMode = "acme"
 		}
-		return runRepositoryRuntimeInitResolved(resolved, repoRoot, initOpts, out)
+		return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, initOpts, out)
 	}
 	fmt.Fprintln(out, "Application deployment inputs are incomplete; resolving only the missing values...")
 	previous := appInitInput
 	appInitInput = in
 	defer func() { appInitInput = previous }()
-	return runRepositoryRuntimeInitResolved(resolved, repoRoot, repositoryInitOptions{}, out)
+	return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, repositoryInitOptions{}, out)
 }
 
 func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
