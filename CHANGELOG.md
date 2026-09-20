@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Repository applications that were intentionally destroyed or have never been applied now report `NOT APPLIED` in status/doctor instead of synthetic downstream service failures and `DEGRADED`; the next action is normal `baha up` / `baha app apply`.
+
 - Repository workload stop/down/destroy no longer resolve required secret payloads merely to render and stop existing Compose services; start/apply paths continue to require real secret resolution.
 
 - `baha app destroy` now remains ownership-safe but recovery-capable: managed-runtime template drift no longer blocks deletion, and an uninitialized OpenBao control plane is treated as having no application scope to delete; sealed or ambiguous OpenBao still fails closed.
