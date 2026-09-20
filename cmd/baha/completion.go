@@ -212,7 +212,7 @@ func bashCompletionScript() string {
     fi
     words+=("${COMP_WORDS[COMP_CWORD]-}")
 
-    while IFS=$'\\t' read -r value _; do
+    while IFS=$'\t' read -r value _; do
         COMPREPLY+=("$value")
     done < <(command baha __complete "${words[@]}")
 }
@@ -227,8 +227,8 @@ _baha_completion() {
     local line value description
     lines=("${(@f)$(command baha __complete "${words[@]:2}")}")
     for line in "${lines[@]}"; do
-        value="${line%%$'\\t'*}"
-        description="${line#*$'\\t'}"
+        value="${line%%$'\t'*}"
+        description="${line#*$'\t'}"
         values+=("$value")
         descriptions+=("$description")
     done
