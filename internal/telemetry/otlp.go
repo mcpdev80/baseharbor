@@ -373,6 +373,10 @@ exporters:
 `, extraExporter, traceExporters)
 }
 
+func ProviderEndpoint(files ProviderFiles) (string, error) {
+	return providerEndpoint(files)
+}
+
 func providerEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
