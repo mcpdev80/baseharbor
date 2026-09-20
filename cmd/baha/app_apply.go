@@ -233,7 +233,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}
 			}
 
-			printRuntimeReady(out, m)
+			renderRuntimeReady(term, m)
 			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
 				return convergeManagedTracesBeforeTelemetry(ctx, progress, managedTraces)
 			}); err != nil {
@@ -342,18 +342,19 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose
 	return nil
 }
 
-func printRuntimeReady(out io.Writer, m application.Manifest) {
+func renderRuntimeReady(term *cli.Terminal, m application.Manifest) {
+	term.Section("Services")
 	if m.Services.Postgres {
-		fmt.Fprintln(out, "[OK] postgres          authenticated SELECT 1 succeeded")
+		term.Result("READY", "PostgreSQL", "authenticated SELECT 1")
 	}
 	if m.Services.Redis {
-		fmt.Fprintln(out, "[OK] valkey            authenticated PING returned PONG")
+		term.Result("READY", "Valkey", "authenticated PING")
 	}
 	if m.Services.Secrets {
-		fmt.Fprintln(out, "[OK] secrets           isolated OpenBao AppRole and secret scope verified")
-		fmt.Fprintln(out, "[OK] runtime-broker    mTLS identity and app-scoped OpenBao readiness succeeded")
+		term.Result("VERIFIED", "secrets", "isolated OpenBao application scope")
+		term.Result("READY", "runtime-broker", "mTLS identity verified")
 		if len(m.Secrets.Required) > 0 {
-			fmt.Fprintf(out, "[OK] required-secrets  %d declared secret(s) present\n", len(m.Secrets.Required))
+			term.Result("VERIFIED", "required-secrets", fmt.Sprintf("%d declared secret(s) present", len(m.Secrets.Required)))
 		}
 	}
 }
