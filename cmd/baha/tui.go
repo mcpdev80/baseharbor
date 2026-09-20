@@ -249,7 +249,7 @@ func renderTUISummary(result application.StatusResult, width int, success, failu
 	if !result.Ready && result.State != "stopped" {
 		b.WriteString("\nNext\n  baha doctor\n  baha status --verbose\n")
 	}
-	return wrapTUIText(b.String(), width)
+	return wrapTUIBlock(b.String(), width)
 }
 
 func renderTUIOverview(result application.StatusResult, width int, success, failure lipgloss.Style) string {
@@ -355,6 +355,17 @@ func renderTUIDoctor(result tuiDoctorResult, width int, success, failure lipglos
 		b.WriteString("\nNext\n  baha doctor --verbose\n  baha status --verbose\n")
 	}
 	return b.String()
+}
+
+func wrapTUIBlock(text string, width int) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines[i] = wrapTUIText(line, width)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func wrapTUIText(text string, width int) string {
