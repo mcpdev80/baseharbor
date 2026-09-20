@@ -10,12 +10,12 @@ import (
 func fakeTarget(driver *FakeDriver) Target {
 	resource := capability.Requirement{Kind: capability.Metrics, Name: "application"}
 	return Target{
-		Descriptor: capability.PrometheusIntegration,
-		Application: "demo",
+		Descriptor:       capability.PrometheusIntegration,
+		Application:      "demo",
 		UnsupportedScope: capability.ScopeExternal,
 		Request: capability.Request{
 			Requirement: resource,
-			Workload: "service/api",
+			Workload:    "service/api",
 			Metrics: &capability.MetricsBinding{
 				Direction: "provide", Format: "openmetrics", Service: "api", Port: 8080, Path: "/metrics",
 			},
