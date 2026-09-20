@@ -10,8 +10,7 @@ import (
 const pagerLineThreshold = 28
 
 func writeMaybePaged(w io.Writer, content string) {
-	if !writerIsTerminal(w) || strings.Count(content, "
-") < pagerLineThreshold || os.Getenv("TERM") == "dumb" {
+	if !writerIsTerminal(w) || strings.Count(content, "\n") < pagerLineThreshold || os.Getenv("TERM") == "dumb" {
 		_, _ = io.WriteString(w, content)
 		return
 	}
