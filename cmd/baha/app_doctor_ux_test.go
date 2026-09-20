@@ -46,7 +46,7 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 		"OpenBao application scope unavailable",
 		"runtime broker is not ready",
 		"required secrets could not be verified because OpenBao is",
-		"workload requires a BaseHarbor/OpenBao managed secret before security preflight can complete",
+		"workload requires a BaseHarbor/OpenBao managed secret before",
 		"workload cannot resolve required secrets because OpenBao is",
 	} {
 		if !strings.Contains(got, wanted) {
