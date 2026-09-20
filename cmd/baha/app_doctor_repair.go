@@ -83,10 +83,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
 				}
 			}
-			repairCtx := withAppApplyRepairContext(ctx, appApplyRepairContext{
-				DeferWorkloadSecurity: findingsContain(findings, "workload security"),
-			})
-			if err := appApplyCommand(store).Run(repairCtx, nameArgs, out, errOut); err != nil {
+			if err := appApplyCommand(store).Run(ctx, nameArgs, out, errOut); err != nil {
 				return fmt.Errorf("safe application repair failed: %w", err)
 			}
 
