@@ -155,7 +155,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 	}
-	root.Children = append(root.Children, completionCommand(root), internalCompletionCommand(root))
+	root.Children = append(root.Children, tuiCommand(store), completionCommand(root), internalCompletionCommand(root))
 	return root
 }
 
