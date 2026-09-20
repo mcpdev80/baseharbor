@@ -18,8 +18,8 @@ import (
 )
 
 type fakeRuntime struct {
-	mu sync.Mutex
-	server *http.Server
+	mu       sync.Mutex
+	server   *http.Server
 	listener net.Listener
 }
 
@@ -66,7 +66,7 @@ func (r *fakeRuntime) UpProject(_ context.Context, _ string, _ string, envFile s
 	return nil
 }
 
-func (r *fakeRuntime) StopProject(context.Context, string, string, string) error { return nil }
+func (r *fakeRuntime) StopProject(context.Context, string, string, string) error    { return nil }
 func (r *fakeRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
 
 func (r *fakeRuntime) Close() {
@@ -88,14 +88,14 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	m := application.New("demo", "dev", false, false, false)
 	driver := logs.NewDriver(runtime, m)
 	target := providerconformance.Target{
-		Descriptor: capability.LokiIntegration,
-		Application: m.Name,
+		Descriptor:       capability.LokiIntegration,
+		Application:      m.Name,
 		UnsupportedScope: capability.ScopeExternal,
 		Request: capability.Request{
 			Requirement: capability.Requirement{Kind: capability.Logs, Name: "api"},
-			Workload: "service/api",
-			Logs: &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
-			Driver: driver,
+			Workload:    "service/api",
+			Logs:        &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
+			Driver:      driver,
 		},
 	}
 	report := providerconformance.Run(context.Background(), target)
