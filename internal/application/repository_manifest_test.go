@@ -71,7 +71,6 @@ func TestStoreSyncPreservesRuntimeState(t *testing.T) {
 	}
 }
 
-
 func TestFindRepositoryManifestReturnsSentinelWhenMissing(t *testing.T) {
 	_, err := FindRepositoryManifest(t.TempDir())
 	if !errors.Is(err, ErrRepositoryManifestNotFound) {
