@@ -61,6 +61,6 @@ func convergeManagedTelemetry(ctx context.Context, out io.Writer, prepared *mana
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] telemetry          OTLP export verified for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[VERIFIED] telemetry       OTLP export verified for %s\n", prepared.manifest.Name)
 	return nil
 }
