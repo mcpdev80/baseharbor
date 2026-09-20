@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Application doctor now follows the same concise human-output policy: raw Compose/OpenBao/curl diagnostics stay behind `--verbose`, duplicate workload problems and empty workload-service sections are suppressed, TLS is integrated before the final health state, and repair guidance is presented through the normal Next actions.
 - TUI Status and Doctor views use the same concise human-detail mapping as the CLI, so raw Compose/OpenBao/curl diagnostics never leak into the interactive dashboard.
 - `baha app doctor --fix` now classifies repairability from structured doctor results instead of rendered terminal text, so human-output changes cannot silently disable safe repair.
+- Safe doctor repair can restore an existing stopped BaseHarbor control plane before application convergence and may defer only bootstrap-blocked workload-security rendering until managed secrets are restored; security is re-checked against the resolved workload before any workload start.
 
 ### Security
 
