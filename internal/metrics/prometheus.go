@@ -257,8 +257,14 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 		}
 		select {
 		case <-deadline.Done():
-			if last == nil {
-				last = deadline.Err()
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			diagnostic := prometheusTargetDiagnostic(diagnosticCtx, d.client, endpoint, d.app, resource.Name)
+			diagnosticCancel()
+			if diagnostic != "" {
+				return fmt.Errorf("verify Prometheus scrape for %s/%s: %s", d.app.Name, resource.Name, diagnostic)
+			}
+			if last == nil || errors.Is(last, context.DeadlineExceeded) {
+				last = errors.New("Prometheus target has not produced an up=1 sample before verification deadline")
 			}
 			return fmt.Errorf("verify Prometheus scrape for %s/%s: %w", d.app.Name, resource.Name, last)
 		case <-ticker.C:
@@ -815,6 +821,47 @@ func waitReady(ctx context.Context, client *http.Client, endpoint string) error 
 		case <-ticker.C:
 		}
 	}
+}
+
+func prometheusTargetDiagnostic(ctx context.Context, client *http.Client, endpoint string, app application.Manifest, source string) string {
+	target := strings.TrimRight(endpoint, "/") + "/api/v1/targets?state=active"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ""
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Data   struct {
+			ActiveTargets []struct {
+				Labels    map[string]string `json:"labels"`
+				Health    string            `json:"health"`
+				LastError string            `json:"lastError"`
+			} `json:"activeTargets"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil || payload.Status != "success" {
+		return ""
+	}
+	for _, active := range payload.Data.ActiveTargets {
+		if active.Labels["baseharbor_application"] != app.Name ||
+			active.Labels["baseharbor_environment"] != app.Environment ||
+			active.Labels["baseharbor_source"] != source {
+			continue
+		}
+		if strings.TrimSpace(active.LastError) != "" {
+			return fmt.Sprintf("target health=%s last_error=%s", active.Health, active.LastError)
+		}
+		return fmt.Sprintf("target health=%s but no up=1 sample was observed", active.Health)
+	}
+	return "Prometheus has no active target matching the application metrics binding"
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {
