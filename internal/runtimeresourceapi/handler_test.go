@@ -229,7 +229,17 @@ func TestRuntimeResourceAuthorizationIsServiceScoped(t *testing.T) {
 	if res := makeRequest("worker"); res.Code != http.StatusForbidden {
 		t.Fatalf("worker status = %d body=%s", res.Code, res.Body.String())
 	}
-	if res := makeRequest("api"); res.Code != http.StatusAccepted {
+	res := makeRequest("api")
+	if res.Code != http.StatusAccepted {
 		t.Fatalf("api status = %d body=%s", res.Code, res.Body.String())
 	}
+	var accepted map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &accepted); err != nil {
+		t.Fatal(err)
+	}
+	operationID, _ := accepted["id"].(string)
+	if operationID == "" {
+		t.Fatalf("operation id missing: %s", res.Body.String())
+	}
+	waitHTTPState(t, h, operationID, "succeeded")
 }
