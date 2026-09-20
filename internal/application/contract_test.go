@@ -170,3 +170,82 @@ func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *te
 		t.Fatalf("metrics contract = %#v, want %#v", contract.Metrics, m.Metrics.Sources)
 	}
 }
+
+
+func TestPortableContractCarriesExplicitLogsIntent(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithLogsCollection(m, "application")
+
+	contract, err := PortableContractFromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(contract.Logs, []string{"application"}) {
+		t.Fatalf("logs intent = %#v", contract.Logs)
+	}
+	var got []CapabilityRequirement
+	for _, requirement := range contract.Capabilities {
+		if requirement.Kind == CapabilityLogs {
+			got = append(got, requirement)
+		}
+	}
+	want := []CapabilityRequirement{
+		{Kind: CapabilityLogs, Name: "api"},
+		{Kind: CapabilityLogs, Name: "worker"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("logs capabilities = %#v, want %#v", got, want)
+	}
+}
+
+func TestPortableContractDoesNotInventProviderCapabilities(t *testing.T) {
+	m := New("demo", "dev", true, true, true)
+	m = WithWorkload(m, "compose.yaml", "api")
+
+	contract, err := PortableContractFromManifest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, requirement := range contract.Capabilities {
+		switch requirement.Kind {
+		case CapabilityMetrics, CapabilityLogs, CapabilityTelemetryOTLP, CapabilityExposureHTTP, CapabilityObjectStorageS3:
+			t.Fatalf("undeclared provider capability invented: %#v", requirement)
+		}
+	}
+}
+
+func TestCapabilityBindingsIncludeLogsOnlyWhenDeclared(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+
+	bindings, err := CapabilityBindings(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if binding.Resource.Kind == CapabilityLogs || binding.Logs != nil {
+			t.Fatalf("undeclared logs binding invented: %#v", binding)
+		}
+	}
+
+	m = WithLogsCollection(m, "application")
+	bindings, err = CapabilityBindings(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, binding := range bindings {
+		if binding.Resource.Kind == CapabilityLogs {
+			found = true
+			if binding.Workload != "service/api" || binding.Logs == nil || binding.Logs.Service != "api" {
+				t.Fatalf("unexpected logs binding: %#v", binding)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("declared logs capability missing from bindings")
+	}
+}
