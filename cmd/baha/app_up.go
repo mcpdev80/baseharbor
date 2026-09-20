@@ -224,7 +224,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
 				return fmt.Errorf("converge managed HTTP exposure: %w", err)
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
 			fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
