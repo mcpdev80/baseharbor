@@ -27,6 +27,79 @@ type applicationTLSStatus struct {
 	Warning         string
 }
 
+type applicationTLSObservation struct {
+	Mode            string `json:"mode"`
+	Hostname        string `json:"hostname,omitempty"`
+	Healthy         bool   `json:"healthy"`
+	Certificate     string `json:"certificate,omitempty"`
+	ExpiresAt       string `json:"expires_at,omitempty"`
+	SourceState     string `json:"source_state,omitempty"`
+	UpdateAvailable bool   `json:"update_available,omitempty"`
+	Detail          string `json:"detail,omitempty"`
+}
+
+func collectApplicationTLSObservation(resolved resolvedApplication) (*applicationTLSStatus, *applicationTLSObservation, error) {
+	if !resolved.FromRepository {
+		return nil, nil, nil
+	}
+	state, err := loadRepositoryInitState(filepath.Dir(resolved.ManifestPath))
+	if err != nil {
+		return nil, &applicationTLSObservation{Healthy: false, Detail: "TLS deployment state could not be read"}, err
+	}
+	if strings.TrimSpace(state.TLSMode) == "" {
+		return nil, nil, nil
+	}
+	status, inspectErr := inspectApplicationTLS(resolved)
+	if inspectErr != nil {
+		return nil, &applicationTLSObservation{
+			Mode:     state.TLSMode,
+			Hostname: state.Hostname,
+			Healthy:  false,
+			Detail:   conciseTLSStatusError(inspectErr),
+		}, inspectErr
+	}
+	observation := applicationTLSObservationFromStatus(status)
+	return &status, &observation, nil
+}
+
+func applicationTLSObservationFromStatus(status applicationTLSStatus) applicationTLSObservation {
+	observation := applicationTLSObservation{
+		Mode:            status.State.TLSMode,
+		Hostname:        status.State.Hostname,
+		Healthy:         true,
+		UpdateAvailable: status.UpdateAvailable,
+	}
+	switch status.State.TLSMode {
+	case "existing":
+		if status.Installed != nil {
+			observation.Certificate = certificateDisplayName(status.Installed)
+			observation.ExpiresAt = status.Installed.NotAfter.UTC().Format(time.RFC3339)
+		}
+		switch {
+		case status.Source == nil:
+			observation.SourceState = "unavailable"
+			observation.Detail = "configured certificate source unavailable"
+		case status.UpdateAvailable:
+			observation.SourceState = "update-available"
+			observation.Detail = "different source certificate available"
+		default:
+			observation.SourceState = "verified"
+			observation.Detail = "installed certificate matches configured source"
+		}
+	case "acme":
+		observation.SourceState = "delegated"
+		observation.Detail = "ACME lifecycle delegated to workload TLS provider"
+	case "local":
+		observation.SourceState = "local"
+		observation.Detail = "local development TLS"
+	default:
+		observation.Healthy = false
+		observation.SourceState = "unknown"
+		observation.Detail = "unknown TLS mode"
+	}
+	return observation
+}
+
 func appTLSCommand(store application.Store) *cli.Command {
 	cmd := &cli.Command{
 		Name:    "tls",
