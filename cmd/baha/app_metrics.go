@@ -149,6 +149,9 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		}
 		fmt.Fprintf(out, "[OK] metrics            %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	}
+	if err := metricsprovider.VerifyProviderSources(ctx, prepared.manifest); err != nil {
+		return err
+	}
 	if prepared.placementChanged {
 		if err := cleanupRegisteredMetricsPlacement(ctx, prepared); err != nil {
 			return fmt.Errorf("remove previous metrics placement after successful convergence: %w", err)
