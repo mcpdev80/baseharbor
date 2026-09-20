@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
 func TestParseGuidedBackupArgs(t *testing.T) {
@@ -133,9 +134,11 @@ func TestPromptGuidedConfirmationDefaultsAreSafe(t *testing.T) {
 	}
 }
 
-func TestRunGuidedActivityShowsProgressAndFlushesBufferedOutput(t *testing.T) {
+func TestRunGuidedActivityUsesSharedReadableProgress(t *testing.T) {
 	var out bytes.Buffer
-	err := runGuidedActivity(context.Background(), &out, "Restoring encrypted backup", func(buffer io.Writer) error {
+	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{Verbose: true, ReducedMotion: true})
+	err := runGuidedActivity(ctx, &out, "Restoring encrypted backup", func(buffer io.Writer) error {
+		time.Sleep(400 * time.Millisecond)
 		_, err := io.WriteString(buffer, "restore detail\n")
 		return err
 	})
@@ -143,10 +146,13 @@ func TestRunGuidedActivityShowsProgressAndFlushesBufferedOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, wanted := range []string{"Restoring encrypted backup", "[####################] Restoring encrypted backup - done", "restore detail"} {
+	for _, wanted := range []string{"[START] Restoring encrypted backup", "[OK] Restoring encrypted backup - done", "restore detail"} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("guided activity output missing %q:\n%s", wanted, text)
 		}
+	}
+	if strings.Contains(text, "\r") || strings.Contains(text, "\x1b[") {
+		t.Fatalf("plain guided activity contains terminal control sequences: %q", text)
 	}
 }
 
