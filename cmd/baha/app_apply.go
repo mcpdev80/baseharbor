@@ -33,7 +33,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			term.Section("Plan")
-			term.Info("changes", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
+			term.Info("desired actions", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
 			}
