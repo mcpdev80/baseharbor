@@ -49,8 +49,11 @@ func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, f
 		}
 	}
 	values, readErr := readApplicationSecretValues(ctx, executor, files, token, identity, presentRequired)
-	if readErr != nil && ctx.Err() != nil {
-		return nil, ctx.Err()
+	if readErr != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("read required application secrets: %w", readErr)
 	}
 
 	statuses := make([]RequiredSecretStatus, 0, len(required))
@@ -61,9 +64,7 @@ func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, f
 			continue
 		}
 		status.Present = true
-		if readErr == nil {
-			_, status.Usable = values[name]
-		}
+		_, status.Usable = values[name]
 		statuses = append(statuses, status)
 	}
 	return statuses, nil
