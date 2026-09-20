@@ -212,7 +212,13 @@ func bashCompletionScript() string {
     fi
     words+=("${COMP_WORDS[COMP_CWORD]-}")
 
-    while IFS=
+    while IFS=$'\\t' read -r value _; do
+        COMPREPLY+=("$value")
+    done < <(command baha __complete "${words[@]}")
+}
+complete -o default -F _baha_completion baha
+`
+}
 
 func zshCompletionScript() string {
 	return `#compdef baha
