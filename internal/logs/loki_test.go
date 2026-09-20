@@ -179,3 +179,60 @@ func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 		t.Fatalf("Loki WAL must not use a relative path with read-only root filesystem:\n%s", config)
 	}
 }
+
+
+func TestManagedProviderFilesSupportNonRootContainerReaders(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{files.LokiConfig, files.AlloyConfig} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o644 {
+			t.Fatalf("%s mode=%#o want 0644 for non-root container bind-mount reads", path, got)
+		}
+	}
+	for _, path := range []string{files.Env, files.Registrations, files.Compose} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s mode=%#o want 0600 for host-only provider state", path, got)
+		}
+	}
+}
+
+func TestLokiProviderInitializesNamedVolumesForRuntimeUIDs(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := string(data)
+	for _, required := range []string{
+		"provider-volume-init:",
+		"image: busybox:1.37",
+		"user: \"0:0\"",
+		"cap_add: [\"CHOWN\"]",
+		"chown -R 10001:10001 /loki",
+		"chown -R 473:473 /var/lib/alloy/data",
+		"user: \"10001:10001\"",
+		"user: \"473:473\"",
+		"condition: service_completed_successfully",
+	} {
+		if !strings.Contains(compose, required) {
+			t.Fatalf("provider Compose missing non-root volume initialization %q:\n%s", required, compose)
+		}
+	}
+}
