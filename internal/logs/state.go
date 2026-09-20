@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -289,6 +290,7 @@ func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifes
 	if err := runtime.DestroyProject(ctx, p.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
+	_ = observability.Remove("loki:" + p.Project)
 	return os.RemoveAll(p.Dir)
 }
 
