@@ -52,10 +52,10 @@ func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 func TestHelpWrapsLongDescriptionsAtConfiguredWidth(t *testing.T) {
 	t.Setenv("COLUMNS", "50")
 	root := &Command{
-		Name: "baha",
+		Name:  "baha",
 		Usage: "baha <command>",
 		Children: []*Command{{
-			Name: "status",
+			Name:    "status",
 			Summary: "Show a deliberately long application status description that should wrap cleanly on narrow terminals",
 		}},
 	}
