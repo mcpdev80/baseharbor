@@ -17,11 +17,11 @@ func baseHarborAgentsSection() string {
 	return baseHarborAgentsStart + "\n" +
 		"## BaseHarbor\n\n" +
 		"- Use BaseHarbor for infrastructure managed by this project.\n" +
-		"- Run \`baha app inspect .\` and \`baha app plan\` before infrastructure mutation.\n" +
-		"- Keep provider, placement and runtime topology out of portable \`baseharbor.yaml\`; declare application requirements instead.\n" +
-		"- Never place secret or credential values in \`baseharbor.yaml\`.\n" +
+		"- Run `baha app inspect .` and `baha app plan` before infrastructure mutation.\n" +
+		"- Keep provider, placement and runtime topology out of portable `baseharbor.yaml`; declare application requirements instead.\n" +
+		"- Never place secret or credential values in `baseharbor.yaml`.\n" +
 		"- Never bypass BaseHarbor security, ownership or provider-binding boundaries.\n" +
-		"- Use \`baha up\` or \`baha app apply\` to converge managed runtime infrastructure.\n" +
+		"- Use `baha up` or `baha app apply` to converge managed runtime infrastructure.\n" +
 		baseHarborAgentsEnd
 }
 
