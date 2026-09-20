@@ -72,6 +72,36 @@ Breaking protocol semantics require a new provider protocol major version.
 
 Breaking application-facing capability semantics require a new capability specification major version.
 
+
+## Provider observability declarations in v0.4.10
+
+Provider Protocol v1 can advertise provider-owned observability signals through `Describe`. This is metadata about the provider implementation, not application intent.
+
+A provider may declare signals such as:
+
+```text
+metrics:
+  protocol: openmetrics
+  port: 3200
+  path: /metrics
+```
+
+The declaration does not authorize collection by itself. BaseHarbor combines the declaration with actual provider runtime registration, collection policy, provider placement and sharing-boundary authorization.
+
+The metrics backend consumes a generic signal registry. It must not contain product-specific branches such as `if provider == tempo` or `if provider == loki`.
+
+For shared metrics providers, application-scoped provider signals are filtered by the applications registered in that exact shared provider boundary. A shared provider process never grants broad cross-application observability access.
+
+Current v0.4.10 reference declarations include metrics exposed by the managed OpenTelemetry Collector, Loki and Tempo. Providers that do not expose a safe supported signal require no synthetic exporter merely to satisfy this mechanism.
+
+## Trace platform boundary in v0.4.10
+
+`traces/v1` is a provider-neutral platform contract for trace retention/query. Application instrumentation and transport remain `telemetry.otlp/v1`.
+
+Tempo 3.0.2 is the first Compose reference provider. The current adapter supports only the safe shared placement it can actually isolate. Unsupported application/external/named-boundary placement fails before mutation rather than silently weakening isolation.
+
+Managed trace storage is opt-in deployment policy. Requesting OTLP transport alone still does not provision Tempo, Grafana or another storage/visualization product.
+
 ## Required lifecycle
 
 The existing BaseHarbor lifecycle remains authoritative:
