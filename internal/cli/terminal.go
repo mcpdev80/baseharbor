@@ -134,7 +134,12 @@ func stateColor(state string) string {
 // verbose mode; failed detail is always revealed.
 func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer) error) error {
 	if t.opts.Quiet {
-		return fn(io.Discard)
+		var buffer bytes.Buffer
+		err := fn(&buffer)
+		if err != nil {
+			_, _ = io.Copy(t.errOut, &buffer)
+		}
+		return err
 	}
 
 	var buffer bytes.Buffer
