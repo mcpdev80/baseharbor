@@ -21,6 +21,9 @@ func TracesCollectionEnabled(m Manifest) (bool, error) {
 }
 
 func HasTraceSignal(m Manifest) bool {
+	if m.Telemetry.OTLP == nil {
+		return false
+	}
 	for _, signal := range m.Telemetry.OTLP.Signals {
 		if strings.EqualFold(strings.TrimSpace(signal), "traces") {
 			return true
