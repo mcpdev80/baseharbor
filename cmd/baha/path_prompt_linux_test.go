@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,5 +62,37 @@ func TestCompleteDirectoryPathIgnoresFiles(t *testing.T) {
 	got, matches := completeDirectoryPath(typed)
 	if got != typed || len(matches) != 0 {
 		t.Fatalf("got %q, %#v; files must not be offered for a directory prompt", got, matches)
+	}
+}
+
+
+func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(original) }()
+
+	input := strings.NewReader("recovery.json\n")
+	reader := bufio.NewReader(input)
+	var out bytes.Buffer
+
+	got, err := promptPathWithCompletion(reader, &out, "New recovery output file", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "recovery.json" {
+		t.Fatalf("path = %q, want recovery.json", got)
+	}
+	text := out.String()
+	if !strings.Contains(text, "Path base") || !strings.Contains(text, dir) {
+		t.Fatalf("interactive path context missing: %q", text)
+	}
+	if !strings.Contains(text, "New recovery output file:") {
+		t.Fatalf("path prompt missing: %q", text)
 	}
 }
