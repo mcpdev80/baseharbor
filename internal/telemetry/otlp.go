@@ -18,6 +18,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -27,6 +28,7 @@ const (
 	ProviderNetwork    = "baseharbor-telemetry"
 	ProviderImage      = "otel/opentelemetry-collector-contrib:0.161.0"
 	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
+	ProbeTraceIDHex     = "42617365486172626f72303430370001"
 )
 
 type Runtime interface {
@@ -40,6 +42,8 @@ type Driver struct {
 	app              application.Manifest
 	files            application.RuntimeFiles
 	externalEndpoint string
+	traceEndpoint    string
+	traceNetwork     string
 	client           *http.Client
 }
 
@@ -62,6 +66,11 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 
 func (d *Driver) Descriptor() capability.Provider {
 	return application.TelemetryProviderForDeployment()
+}
+
+func (d *Driver) SetTraceBackend(endpoint, network string) {
+	d.traceEndpoint = strings.TrimSpace(endpoint)
+	d.traceNetwork = strings.TrimSpace(network)
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -96,7 +105,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
 	}
-	files, err := EnsureProviderFiles()
+	files, err := EnsureProviderFilesWithTraceBackend(d.traceEndpoint, d.traceNetwork)
 	if err != nil {
 		return err
 	}
@@ -110,7 +119,23 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if err != nil {
 		return err
 	}
-	return waitOTLP(ctx, d.client, endpoint)
+	if err := waitOTLP(ctx, d.client, endpoint); err != nil {
+		return err
+	}
+	if resource.Provider == capability.ProviderOTelCollector {
+		if err := observability.Update(observability.MetricsSource{
+			ID: "opentelemetry-collector:" + ProviderProject,
+			Provider: capability.ProviderOTelCollector,
+			Class: observability.SourcePlatformProvider,
+			Scope: capability.ScopeShared,
+			Network: ProviderNetwork,
+			Target: ProviderService + ":8888",
+			Path: "/metrics",
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capability.Binding) error {
@@ -198,6 +223,10 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func EnsureProviderFiles() (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackend("", "")
+}
+
+func EnsureProviderFilesWithTraceBackend(traceEndpoint, traceNetwork string) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
@@ -232,7 +261,7 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_OTLP_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(collectorConfig()), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(collectorConfigWithTraceBackend(traceEndpoint)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	// The Collector image runs as a non-root user. This generated configuration
@@ -241,7 +270,7 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML()), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetwork(traceNetwork)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -277,7 +306,17 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 }
 
 func providerComposeYAML() string {
-	return `services:
+	return providerComposeYAMLWithTraceNetwork("")
+}
+
+func providerComposeYAMLWithTraceNetwork(traceNetwork string) string {
+	var networks = "      - telemetry\n"
+	var networkDecl = ""
+	if strings.TrimSpace(traceNetwork) != "" {
+		networks += "      - traces\n"
+		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
+	}
+	return fmt.Sprintf(`services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
     restart: unless-stopped
@@ -293,18 +332,25 @@ func providerComposeYAML() string {
     volumes:
       - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
-      telemetry:
-        aliases:
-          - otel-collector
-
+%s
 networks:
   telemetry:
     name: baseharbor-telemetry
-`
+%s`, networks, networkDecl)
 }
 
 func collectorConfig() string {
-	return `receivers:
+	return collectorConfigWithTraceBackend("")
+}
+
+func collectorConfigWithTraceBackend(traceEndpoint string) string {
+	traceExporters := "[debug]"
+	extraExporter := ""
+	if strings.TrimSpace(traceEndpoint) != "" {
+		traceExporters = "[debug, otlphttp/tempo]"
+		extraExporter = fmt.Sprintf("  otlphttp/tempo:\n    endpoint: %s\n", strings.TrimRight(strings.TrimSpace(traceEndpoint), "/"))
+	}
+	return fmt.Sprintf(`receivers:
   otlp:
     protocols:
       http:
@@ -312,18 +358,18 @@ func collectorConfig() string {
 exporters:
   debug:
     verbosity: basic
-service:
+%sservice:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: %s
     metrics:
       receivers: [otlp]
       exporters: [debug]
     logs:
       receivers: [otlp]
       exporters: [debug]
-`
+`, extraExporter, traceExporters)
 }
 
 func providerEndpoint(files ProviderFiles) (string, error) {
@@ -390,6 +436,10 @@ func externalHeaders() map[string]string {
 		}
 	}
 	return result
+}
+
+func VerificationTracePayload(m application.Manifest) []byte {
+	return probeTracePayload(m)
 }
 
 func probeTracePayload(m application.Manifest) []byte {
