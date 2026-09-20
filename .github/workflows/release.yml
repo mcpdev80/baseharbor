@@ -84,6 +84,8 @@ jobs:
           cache: true
 
       - name: Test release source
+        env:
+          BASEHARBOR_LOGS_ENABLED: "false"
         run: go test ./...
 
       - name: Verify control-plane restart and operator-held unseal recovery
