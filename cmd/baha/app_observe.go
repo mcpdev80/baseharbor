@@ -76,7 +76,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 
 	if application.HasObjectStorage(m) {
-		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
 		cancel()
 		if err != nil {
@@ -99,7 +99,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if !containsString(services, "postgres") {
 			result.AddCheck("postgres", false, "not running")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			err := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
 			cancel()
 			if err != nil {
@@ -128,7 +128,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 			err := openbao.InspectApplicationScope(checkCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 			if err != nil {
@@ -148,7 +148,9 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			}
 			cancel()
 		}
-		brokerErr := waitRuntimeBrokerReady(ctx, compose, m, files, 10*time.Second)
+		brokerCtx, brokerCancel := context.WithTimeout(ctx, 2*time.Second)
+		brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
+		brokerCancel()
 		if brokerErr != nil {
 			result.AddCheck("runtime-broker", false, brokerErr.Error())
 		} else {
@@ -177,7 +179,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		for _, service := range workloadStatus.Services {
 			logServices = append(logServices, service.Service)
 		}
-		checkCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := logsprovider.VerifyApplication(checkCtx, m, logServices)
 		cancel()
 		if err != nil {
@@ -239,7 +241,7 @@ func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result 
 			if !check.OK {
 				state = "FAILED"
 			}
-			term.Result(state, check.Name, check.Detail)
+			term.Result(state, check.Name, statusHumanDetail(term, check))
 		}
 	}
 
@@ -250,6 +252,46 @@ func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result 
 		fmt.Fprintln(out, "\nNext:")
 		fmt.Fprintln(out, "  baha doctor")
 		fmt.Fprintln(out, "  baha status --verbose")
+	}
+}
+
+
+func statusHumanDetail(term *cli.Terminal, check application.StatusCheck) string {
+	if term.Verbose() || check.OK {
+		if !term.Verbose() {
+			switch check.Name {
+			case "postgres":
+				return "authenticated and ready"
+			case "valkey":
+				return "authenticated and ready"
+			case "secrets":
+				return "OpenBao application scope ready"
+			case "runtime-broker":
+				return "mTLS readiness verified"
+			case "managed-exposure":
+				return "configured endpoint(s) ready"
+			}
+		}
+		return check.Detail
+	}
+
+	switch {
+	case check.Name == "secrets":
+		return "OpenBao application scope unavailable"
+	case check.Name == "runtime-broker":
+		return "runtime broker is not ready"
+	case check.Name == "workload" && strings.Contains(strings.ToLower(check.Detail), "openbao"):
+		return "required secrets unavailable because OpenBao is not running"
+	case strings.HasPrefix(check.Name, "workload/"):
+		return "workload service is not ready"
+	case check.Name == "logs":
+		return "log ingestion is not ready"
+	case check.Name == "telemetry/otlp":
+		return "telemetry endpoint is not ready"
+	case check.Name == "object-storage":
+		return "object storage is not ready"
+	default:
+		return check.Detail
 	}
 }
 
