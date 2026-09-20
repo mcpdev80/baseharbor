@@ -16,10 +16,10 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
-	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 func appDownCommand(store application.Store) *cli.Command {
