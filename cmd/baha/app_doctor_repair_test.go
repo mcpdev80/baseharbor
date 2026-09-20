@@ -107,3 +107,24 @@ func TestFindingsNeedControlPlaneRepair(t *testing.T) {
 		t.Fatal("expected managed runtime definition finding")
 	}
 }
+
+
+func TestClassifyStructuredAppDoctorUninitializedControlPlaneNeedsInput(t *testing.T) {
+	result := appDoctorStructuredResult{
+		Healthy: false,
+		Checks: []preflight.Result{
+			{Name: "OpenBao control-plane runtime", OK: false, Detail: "OpenBao is not initialized"},
+			{Name: "OpenBao application scope", OK: false, Detail: "OpenBao application scope unavailable"},
+		},
+	}
+	findings := classifyStructuredAppDoctor(result)
+	if len(findings) != 2 {
+		t.Fatalf("len(findings) = %d, want 2: %#v", len(findings), findings)
+	}
+	if findings[0].Class != doctorNeedsInput {
+		t.Fatalf("expected control-plane failure to require operator input: %#v", findings)
+	}
+	if allAppDoctorFindingsAutoFixable(findings) {
+		t.Fatalf("uninitialized OpenBao control plane must block automatic application repair: %#v", findings)
+	}
+}
