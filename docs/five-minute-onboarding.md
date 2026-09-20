@@ -1,5 +1,23 @@
 # Five-minute onboarding
 
+## Optional: enable shell completion
+
+BaseHarbor can generate completion without a separate plugin:
+
+```bash
+# Bash
+source <(baha completion bash)
+
+# Zsh
+source <(baha completion zsh)
+
+# Fish
+baha completion fish | source
+```
+
+For a persistent installation, save the generated script in the normal completion directory for your shell. Completion is read-only and can suggest commands, flags and fixed values such as `dev`, `test` and `prod`.
+
+
 BaseHarbor adopts an existing repository without requiring the developer to understand provider topology first.
 
 ## 1. Inspect
@@ -91,6 +109,22 @@ baha doctor -o json
 ```
 
 Structured results never include secret values. Required-secret diagnostics expose readiness metadata only.
+
+## Terminal experience
+
+Normal output is optimized for humans: grouped sections, semantic states such as `READY`, `VERIFIED`, `UPDATED` and `DELETED`, and visible activity for operations that take noticeable time.
+
+Useful global controls:
+
+```bash
+baha status --quiet
+baha doctor --verbose
+baha up --no-color
+```
+
+`NO_COLOR` and `TERM=dumb` are respected. Non-TTY/CI progress is line-oriented and contains no spinner control sequences. BaseHarbor never invents progress percentages or ETAs.
+
+`status` answers what is healthy and what needs attention. `doctor` groups checks, problems, safe repairs and next actions instead of dumping an unstructured diagnostic list.
 
 ## Safety defaults
 
