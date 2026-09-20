@@ -89,57 +89,7 @@ jobs:
       - name: Verify control-plane restart and operator-held unseal recovery
         env:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
-      - name: Attest release archives
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/baseharbor_linux_*.tar.gz'
-
-      - name: Attest checksum manifest
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/checksums.txt'
- -count=1 -v
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean --release-notes docs/releases/${{ steps.release_ref.outputs.tag }}.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attest release archives
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/baseharbor_linux_*.tar.gz'
-
-      - name: Attest checksum manifest
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/checksums.txt'
- -count=1 -v
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean --release-notes docs/releases/${{ steps.release_ref.outputs.tag }}.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attest release archives
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/baseharbor_linux_*.tar.gz'
-
-      - name: Attest checksum manifest
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/checksums.txt'
- -count=1 -v
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
