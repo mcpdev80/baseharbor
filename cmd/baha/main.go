@@ -21,7 +21,7 @@ var (
 
 func main() {
 	signal.Ignore(syscall.SIGPIPE)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := interruptibleProcessContext()
 	defer stop()
 
 	if os.Getenv("BASEHARBOR_RUNTIME_IMAGE") == "" {
@@ -32,8 +32,40 @@ func main() {
 	if err == nil {
 		return
 	}
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, "Interrupted.")
+		os.Exit(130)
+	}
 	formatCLIError(os.Stderr, err)
 	os.Exit(cli.ExitCode(err))
+}
+
+func interruptibleProcessContext() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		seen := false
+		for sig := range signals {
+			if !seen {
+				seen = true
+				cancel()
+				continue
+			}
+			signal.Stop(signals)
+			if sig == syscall.SIGTERM {
+				os.Exit(143)
+			}
+			os.Exit(130)
+		}
+	}()
+
+	stop := func() {
+		signal.Stop(signals)
+		cancel()
+	}
+	return ctx, stop
 }
 
 func defaultRuntimeImage(buildVersion string) string {
