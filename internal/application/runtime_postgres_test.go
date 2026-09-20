@@ -353,3 +353,24 @@ func TestRuntimeProjectNameIncludesApplicationAndEnvironment(t *testing.T) {
 		t.Fatalf("unexpected project name %q", got)
 	}
 }
+
+
+func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	got, err := RuntimeComposeYAML(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"user: \"postgres\"",
+		"user: \"valkey\"",
+		"read_only: true",
+		"cap_drop: [\"ALL\"]",
+		"no-new-privileges:true",
+		"/var/run/postgresql:rw,noexec,nosuid,nodev",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("managed runtime compose missing %q:\n%s", want, got)
+		}
+	}
+}
