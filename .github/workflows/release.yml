@@ -94,23 +94,7 @@ jobs:
       - name: Verify real Loki and Alloy workload log ingestion
         env:
           BASEHARBOR_LOGS_INTEGRATION: "1"
-        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean --release-notes docs/releases/${{ steps.release_ref.outputs.tag }}.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attest release archives
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/baseharbor_linux_*.tar.gz'
-
-      - name: Attest checksum manifest
-        uses: actions/attest@v4
-        with:
-          subject-path: 'dist/checksums.txt'
- -count=1 -v
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
