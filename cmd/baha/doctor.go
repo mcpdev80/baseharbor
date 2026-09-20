@@ -39,10 +39,12 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 	}
 
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header("Doctor", "")
 	checks := health.Doctor()
-	formatted, ok := health.Format(checks)
-	fmt.Fprint(out, formatted)
+	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
+		fmt.Fprintln(out, "\nREADY")
 		return nil
 	}
 
