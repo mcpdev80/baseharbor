@@ -90,10 +90,6 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err := waitLokiReady(ctx, d.client, endpoint); err != nil {
 		return err
 	}
-	placement, err := PlacementFor(d.app)
-	if err != nil {
-		return err
-	}
 	class := observability.SourcePlatformProvider
 	if placement.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
