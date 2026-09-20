@@ -19,6 +19,7 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 		{Name: "OpenBao application scope", OK: false, Detail: "compose exec -T openbao sh -c bao status -format=json: service openbao is not running"},
 		{Name: "application runtime broker", OK: false, Detail: "compose exec -T broker curl --fail https://baseharbor-runtime:8443/readyz: 503"},
 		{Name: "required application secrets", OK: false, Detail: "inspect OpenBao status: compose exec -T openbao sh -c bao status"},
+		{Name: "workload security", OK: false, Detail: "render repository Compose for security preflight: compose config --format json: services.api.environment.SECRET_KEY: required variable SECRET_KEY is missing a value"},
 		{Name: "repository workload", OK: false, Detail: "resolve required workload secret SECRET_KEY: inspect OpenBao status: compose exec -T openbao sh -c bao status"},
 	}
 	var out bytes.Buffer
@@ -45,6 +46,7 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 		"OpenBao application scope unavailable",
 		"runtime broker is not ready",
 		"required secrets could not be verified because OpenBao is",
+		"workload requires a BaseHarbor/OpenBao managed secret before",
 		"workload cannot resolve required secrets because OpenBao is",
 	} {
 		if !strings.Contains(got, wanted) {

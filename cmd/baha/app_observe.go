@@ -698,8 +698,11 @@ func doctorHumanDetail(term *cli.Terminal, result preflight.Result) string {
 		return "runtime broker is not ready"
 	case strings.Contains(lowerName, "required application secrets"):
 		return "required secrets could not be verified because OpenBao is unavailable"
-	case strings.Contains(lowerName, "workload security") && strings.Contains(lowerDetail, "web_secret_key"):
-		return "workload requires WEB_SECRET_KEY from BaseHarbor/OpenBao"
+	case strings.Contains(lowerName, "workload security") && strings.Contains(lowerDetail, "required variable"):
+		if strings.Contains(lowerDetail, "secret_key") {
+			return "workload requires a BaseHarbor/OpenBao managed secret before security preflight can complete"
+		}
+		return "workload requires a missing environment value before security preflight can complete"
 	case strings.Contains(lowerName, "repository workload") && strings.Contains(lowerDetail, "openbao"):
 		return "workload cannot resolve required secrets because OpenBao is unavailable"
 	default:
