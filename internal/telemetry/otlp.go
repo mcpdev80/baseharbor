@@ -302,6 +302,7 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 	if err := runtime.DestroyProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
 		return err
 	}
+	_ = observability.Remove("opentelemetry-collector:" + ProviderProject)
 	return os.RemoveAll(files.Dir)
 }
 
