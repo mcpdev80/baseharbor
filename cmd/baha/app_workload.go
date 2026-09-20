@@ -62,6 +62,44 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	return report, report.Error()
 }
 
+func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadSecurityReport, error) {
+	if !resolved.FromRepository {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	if err != nil || !found {
+		return application.WorkloadSecurityReport{}, err
+	}
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, fmt.Errorf("render resolved repository Compose for security preflight: %w", err)
+	}
+	report, err := application.AnalyzeRenderedComposeSecurity(resolved.Manifest, []byte(rendered))
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	selectedSet := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		selectedSet[service] = struct{}{}
+	}
+	filtered := report.Findings[:0]
+	for _, finding := range report.Findings {
+		if _, ok := selectedSet[finding.Service]; ok {
+			filtered = append(filtered, finding)
+		}
+	}
+	report.Findings = filtered
+	return report, report.Error()
+}
+
 func printWorkloadSecurityFindings(out io.Writer, report application.WorkloadSecurityReport) {
 	for _, finding := range report.Findings {
 		switch finding.Decision {

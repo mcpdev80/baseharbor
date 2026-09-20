@@ -14,6 +14,21 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+type appApplyRepairContextKey struct{}
+
+type appApplyRepairContext struct {
+	DeferWorkloadSecurity bool
+}
+
+func withAppApplyRepairContext(ctx context.Context, repair appApplyRepairContext) context.Context {
+	return context.WithValue(ctx, appApplyRepairContextKey{}, repair)
+}
+
+func appApplyRepairContextFrom(ctx context.Context) appApplyRepairContext {
+	repair, _ := ctx.Value(appApplyRepairContextKey{}).(appApplyRepairContext)
+	return repair
+}
+
 func appApplyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "apply",
@@ -26,6 +41,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			repairMode := appApplyRepairContextFrom(ctx)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
 			plan, err := application.BuildPlan(m)
@@ -77,6 +93,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}},
 				{Name: "workload security", Run: func(ctx context.Context) error {
+					if repairMode.DeferWorkloadSecurity {
+						return nil
+					}
 					var err error
 					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
@@ -258,6 +277,19 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return convergeManagedMetricsBeforeWorkload(ctx, progress, managedMetrics)
 			}); err != nil {
 				return err
+			}
+			if repairMode.DeferWorkloadSecurity {
+				var repairedSecurity application.WorkloadSecurityReport
+				if err := activity(ctx, term, "Re-checking workload security", func(io.Writer) error {
+					var err error
+					repairedSecurity, err = preflightResolvedRepositoryWorkloadSecurity(ctx, compose, resolved, files)
+					return err
+				}); err != nil {
+					return fmt.Errorf("resolved workload security preflight failed after repair: %w", err)
+				}
+				if term.Verbose() {
+					printWorkloadSecurityFindings(out, repairedSecurity)
+				}
 			}
 			if err := activity(ctx, term, "Starting repository workload", func(progress io.Writer) error {
 				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
