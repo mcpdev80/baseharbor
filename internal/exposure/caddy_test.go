@@ -95,10 +95,11 @@ func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",
 		"/tmp:rw,noexec,nosuid,nodev",
+		"/run/baseharbor:rw,nosuid,nodev,mode=0700,uid=65532,gid=65532",
 		"/config:rw,noexec,nosuid,nodev,mode=1777",
 		"/data:rw,noexec,nosuid,nodev,mode=1777",
-		"cp /usr/bin/caddy /tmp/baseharbor-caddy",
-		"exec /tmp/baseharbor-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"cp /usr/bin/caddy /run/baseharbor/caddy",
+		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 		"127.0.0.1:18080:8080",
 	} {
 		if !strings.Contains(got, want) {
