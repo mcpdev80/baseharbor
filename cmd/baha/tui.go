@@ -309,8 +309,9 @@ func renderTUIOverview(result application.StatusResult, width int, success, fail
 				style = failure
 			}
 			line := fmt.Sprintf("  %-10s %-20s", state, check.Name)
-			if strings.TrimSpace(check.Detail) != "" {
-				line += " " + check.Detail
+			detail := statusHumanDetailValue(check, false)
+			if strings.TrimSpace(detail) != "" {
+				line += " " + detail
 			}
 			b.WriteString(style.Render(wrapTUIText(line, width)))
 			b.WriteString("\n")
@@ -345,14 +346,15 @@ func renderTUIDoctor(result tuiDoctorResult, width int, success, failure lipglos
 			checkStyle = failure
 		}
 		line := fmt.Sprintf("%-8s %-24s", checkState, check.Name)
-		if strings.TrimSpace(check.Detail) != "" {
-			line += " " + check.Detail
+		detail := doctorHumanDetailValue(check, false)
+		if strings.TrimSpace(detail) != "" {
+			line += " " + detail
 		}
 		b.WriteString(checkStyle.Render(wrapTUIText(line, width)))
 		b.WriteString("\n")
 	}
 	if !result.Healthy {
-		b.WriteString("\nNext\n  baha doctor --verbose\n  baha status --verbose\n")
+		b.WriteString("\nNext\n  baha doctor --verbose\n  baha status --verbose\n  baha app doctor --fix\n")
 	}
 	return b.String()
 }
