@@ -190,9 +190,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		result.AddCheck("workload", false, "repository Compose integration could not be resolved: "+workloadErr.Error())
 	}
 
-	if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
-		result.AddCheck("logs", false, policyErr.Error())
-	} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] && workloadStatus.Found {
+	if application.HasLogsCollection(m) {
+		if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
+			result.AddCheck("logs", false, policyErr.Error())
+		} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] && workloadStatus.Found {
 		logServices := make([]string, 0, len(workloadStatus.Services))
 		for _, service := range workloadStatus.Services {
 			logServices = append(logServices, service.Service)
@@ -204,6 +205,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			result.AddCheck("logs", false, err.Error())
 		} else {
 			result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
+		}
 		}
 	}
 	if len(m.Exposures) > 0 {
@@ -469,9 +471,10 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					return nil
 				}},
 			}
-			if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
-				checks = append(checks, preflight.Check{Name: "logs deployment policy", Run: func(context.Context) error { return policyErr }})
-			} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
+			if application.HasLogsCollection(m) {
+				if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
+					checks = append(checks, preflight.Check{Name: "logs deployment policy", Run: func(context.Context) error { return policyErr }})
+				} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
 				checks = append(checks, preflight.Check{Name: "Loki log ingestion", Run: func(ctx context.Context) error {
 					if runtimeErr != nil {
 						return runtimeErr
@@ -489,6 +492,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					}
 					return logsprovider.VerifyApplication(ctx, m, services)
 				}})
+				}
 			}
 			if len(m.Exposures) > 0 {
 				checks = append(checks, preflight.Check{Name: "managed HTTP exposure", Run: func(ctx context.Context) error {
