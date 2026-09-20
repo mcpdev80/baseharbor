@@ -207,7 +207,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -255,7 +255,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
