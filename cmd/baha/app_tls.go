@@ -263,34 +263,7 @@ func conciseTLSStatusError(err error) string {
 }
 
 func appDoctorRepairCommandWithTLS(store application.Store) *cli.Command {
-	cmd := appDoctorRepairCommand(store)
-	baseRun := cmd.Run
-	cmd.Long += " Repository TLS state is also checked for certificate/key validity, FQDN coverage, remaining validity and an available newer certificate in the configured source directory."
-	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		if requestsJSONOutput(args) {
-			return baseRun(ctx, args, out, errOut)
-		}
-		var base bytes.Buffer
-		baseErr := baseRun(ctx, args, &base, errOut)
-		_, _ = io.Copy(out, &base)
-		resolved, resolveErr := resolveApplication(store, doctorApplicationArgs(args), "doctor")
-		if resolveErr == nil && resolved.FromRepository {
-			if tlsStatus, tlsErr := inspectApplicationTLS(resolved); tlsErr != nil {
-				fmt.Fprintln(out)
-				fmt.Fprintln(out, "TLS")
-				fmt.Fprintf(out, "[FAIL] tls certificate lifecycle: %v\n", tlsErr)
-				if baseErr == nil {
-					return tlsErr
-				}
-			} else if tlsStatus.State.TLSMode != "" {
-				fmt.Fprintln(out)
-				fmt.Fprintln(out, "TLS")
-				printApplicationTLSDiagnostics(out, tlsStatus)
-			}
-		}
-		return baseErr
-	}
-	return cmd
+	return appDoctorRepairCommand(store)
 }
 
 func doctorApplicationArgs(args []string) []string {
