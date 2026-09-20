@@ -53,7 +53,7 @@ func TestTUISummaryAndDoctorRemainReadableWithoutColor(t *testing.T) {
 
 	doctor := renderTUIDoctor(tuiDoctorResult{
 		Healthy: false,
-		Checks: []preflight.Result{{Name: "workload", OK: false, Detail: "health check timed out"}},
+		Checks:  []preflight.Result{{Name: "workload", OK: false, Detail: "health check timed out"}},
 	}, 60, success, failure)
 	for _, wanted := range []string{"DEGRADED", "FAILED", "workload", "baha doctor --verbose"} {
 		if !strings.Contains(doctor, wanted) {
