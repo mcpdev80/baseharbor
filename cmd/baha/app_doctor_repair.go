@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
 type appDoctorFinding struct {
@@ -17,6 +19,17 @@ type appDoctorFinding struct {
 	Detail string
 	Class  doctorRepairClass
 	Action string
+}
+
+type appDoctorStructuredResult struct {
+	Healthy         bool               `json:"healthy"`
+	Checks          []preflight.Result `json:"checks"`
+	RequiredSecrets []struct {
+		Name      string `json:"name"`
+		Present   bool   `json:"present"`
+		Usable    bool   `json:"usable"`
+		Generated bool   `json:"generated"`
+	} `json:"required_secrets,omitempty"`
 }
 
 func appDoctorRepairCommand(store application.Store) *cli.Command {
@@ -46,13 +59,18 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 				return nil
 			}
 
-			findings := classifyAppDoctorOutput(diagnostic.String())
-			printAppDoctorFindings(out, findings)
 			if !fix {
 				return diagnosticErr
 			}
+
+			structured, structuredErr := collectStructuredAppDoctor(ctx, store, nameArgs)
+			if structuredErr != nil {
+				return fmt.Errorf("classify application doctor findings: %w", structuredErr)
+			}
+			findings := classifyStructuredAppDoctor(structured)
+			printAppDoctorFindings(out, findings)
 			if len(findings) == 0 {
-				return diagnosticErr
+				return errors.New("application doctor reported failure but no structured findings were available for safe repair")
 			}
 			if !allAppDoctorFindingsAutoFixable(findings) {
 				return errors.New("application doctor found findings that require developer or manual action before safe repair")
@@ -90,6 +108,113 @@ func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
 		}
 	}
 	return nameArgs, fix, nil
+}
+
+func collectStructuredAppDoctor(ctx context.Context, store application.Store, nameArgs []string) (appDoctorStructuredResult, error) {
+	args := append(append([]string{}, nameArgs...), "-o", "json")
+	var out bytes.Buffer
+	err := appDoctorCommand(store).Run(ctx, args, &out, io.Discard)
+	var result appDoctorStructuredResult
+	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
+		if err != nil {
+			return appDoctorStructuredResult{}, errors.Join(err, decodeErr)
+		}
+		return appDoctorStructuredResult{}, decodeErr
+	}
+	// A degraded doctor intentionally returns a presented error. The structured
+	// payload is authoritative for classification, so a successfully decoded
+	// payload is sufficient here.
+	return result, nil
+}
+
+func classifyStructuredAppDoctor(result appDoctorStructuredResult) []appDoctorFinding {
+	findings := make([]appDoctorFinding, 0)
+	requiredByName := make(map[string]struct {
+		present   bool
+		usable    bool
+		generated bool
+	}, len(result.RequiredSecrets))
+	for _, secret := range result.RequiredSecrets {
+		requiredByName[secret.Name] = struct {
+			present   bool
+			usable    bool
+			generated bool
+		}{present: secret.Present, usable: secret.Usable, generated: secret.Generated}
+	}
+
+	for _, check := range result.Checks {
+		if check.OK {
+			continue
+		}
+		finding := classifyAppDoctorFinding(check.Name, check.Detail, requiredByName)
+		findings = append(findings, finding)
+	}
+	return findings
+}
+
+func classifyAppDoctorFinding(name, detail string, required map[string]struct {
+	present   bool
+	usable    bool
+	generated bool
+}) appDoctorFinding {
+	finding := appDoctorFinding{
+		Name:   name,
+		Detail: detail,
+		Class:  doctorManualAction,
+		Action: "inspect the failed application prerequisite and correct it manually",
+	}
+	lowerDetail := strings.ToLower(detail)
+
+	switch name {
+	case "runtime state", "managed runtime definition", "running services", "repository workload", "postgres running", "postgres readiness", "valkey running", "valkey readiness", "runtime secret broker", "application runtime broker":
+		finding.Class = doctorAutoFixable
+		finding.Action = "reconverge the application through 'baha app apply'"
+	case "workload security":
+		if strings.Contains(lowerDetail, "managed by baseharbor/openbao") ||
+			(strings.Contains(lowerDetail, "secret_key") && strings.Contains(lowerDetail, "required variable")) {
+			finding.Class = doctorAutoFixable
+			finding.Action = "reconverge BaseHarbor-managed workload secrets through 'baha app apply'"
+		}
+	case "required application secrets":
+		if strings.Contains(lowerDetail, "openbao") &&
+			(strings.Contains(lowerDetail, "not running") || strings.Contains(lowerDetail, "unavailable")) {
+			finding.Class = doctorAutoFixable
+			finding.Action = "reconverge the application OpenBao scope and re-check required secrets"
+			break
+		}
+		hasNeedsInput := false
+		hasGeneratedMissing := false
+		for _, secret := range required {
+			if secret.present && secret.usable {
+				continue
+			}
+			if secret.generated {
+				hasGeneratedMissing = true
+			} else {
+				hasNeedsInput = true
+			}
+		}
+		switch {
+		case hasNeedsInput:
+			finding.Class = doctorNeedsInput
+			finding.Action = "set each missing external secret with 'baha app secret set NAME --stdin'"
+		case hasGeneratedMissing:
+			finding.Class = doctorAutoFixable
+			finding.Action = "generate declared application secrets through 'baha app apply'"
+		default:
+			finding.Class = doctorNeedsInput
+			finding.Action = "inspect required-secret status and provide any missing value explicitly"
+		}
+	case "OpenBao application scope":
+		finding.Class = doctorAutoFixable
+		finding.Action = "reconverge the application OpenBao scope through 'baha app apply'"
+	case "OpenBao control-plane runtime":
+		finding.Class = doctorNeedsInput
+		finding.Action = "repair the BaseHarbor control plane first with 'baha doctor' or operator-held OpenBao recovery material"
+	case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "container runtime + compose", "compose configuration":
+		finding.Class = doctorManualAction
+	}
+	return finding
 }
 
 func classifyAppDoctorOutput(output string) []appDoctorFinding {
