@@ -3,7 +3,6 @@ package openbao
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -42,6 +41,17 @@ func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, f
 		present[key] = struct{}{}
 	}
 
+	presentRequired := make([]string, 0, len(required))
+	for _, name := range required {
+		if _, ok := present[name]; ok {
+			presentRequired = append(presentRequired, name)
+		}
+	}
+	values, readErr := readApplicationSecretValues(ctx, executor, files, token, identity, presentRequired)
+	if readErr != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	statuses := make([]RequiredSecretStatus, 0, len(required))
 	for _, name := range required {
 		status := RequiredSecretStatus{Name: name}
@@ -50,11 +60,8 @@ func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, f
 			continue
 		}
 		status.Present = true
-		path := applicationSecretKeyPath(identity, name)
-		if _, err := execWithToken(ctx, executor, files, token, fmt.Sprintf(`exec bao kv get -field=value -mount=baseharbor %s`, path)); err == nil {
-			status.Usable = true
-		} else if ctx.Err() != nil {
-			return nil, ctx.Err()
+		if readErr == nil {
+			_, status.Usable = values[name]
 		}
 		statuses = append(statuses, status)
 	}
