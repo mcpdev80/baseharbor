@@ -9,6 +9,8 @@ import (
 
 const RepositoryManifestName = "baseharbor.yaml"
 
+var ErrRepositoryManifestNotFound = errors.New("repository manifest not found")
+
 const stateGitIgnore = "*\n!.gitignore\n"
 
 // FindRepositoryManifest returns the nearest baseharbor.yaml from start upward.
@@ -39,7 +41,7 @@ func FindRepositoryManifest(start string) (string, error) {
 		}
 		current = parent
 	}
-	return "", fmt.Errorf("%s not found in the current directory or any parent", RepositoryManifestName)
+	return "", fmt.Errorf("%w: %s not found in the current directory or any parent", ErrRepositoryManifestNotFound, RepositoryManifestName)
 }
 
 func LoadManifestFile(path string) (Manifest, error) {
