@@ -17,6 +17,10 @@ common:
     instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
 schema_config:
   configs:
     - from: 2020-05-15
