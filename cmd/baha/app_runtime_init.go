@@ -59,7 +59,7 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if _, err := application.FindRepositoryManifest(cwd); err != nil {
-				if strings.Contains(err.Error(), application.RepositoryManifestName+" not found") {
+				if errors.Is(err, application.ErrRepositoryManifestNotFound) {
 					return appGuidedInitCommand().Run(ctx, args, out, errOut)
 				}
 				return err
