@@ -230,6 +230,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			var requiredStatuses []openbao.RequiredSecretStatus
 			var workloadStatus repositoryWorkloadStatus
 			var workloadStatusErr error
+			var workloadSecurity application.WorkloadSecurityReport
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			checks := []preflight.Check{
@@ -255,6 +256,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
+					return err
+				}},
+				{Name: "workload security", Run: func(ctx context.Context) error {
+					if compose == (bhruntime.Compose{}) {
+						return errors.New("container runtime unavailable")
+					}
+					var err error
+					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
@@ -382,6 +391,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
+			printWorkloadSecurityFindings(out, workloadSecurity)
 			printRequiredSecretStatus(out, requiredStatuses)
 			if workloadStatus.Found {
 				fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
