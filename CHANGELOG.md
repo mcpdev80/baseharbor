@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Read-only `baha tui` dashboard with Overview, Status and Doctor views backed by the same structured health models as the CLI.
 - Global `--plain`, `--no-input`/ `--non-interactive` and root `--version` controls.
 - Read-only configured-application completion and typo suggestions for commands/high-frequency flags.
+- Bash completion now honors the active cursor word through `COMP_CWORD` and correctly splits value/description records on tabs, including completion immediately after a subcommand space.
 
 ### Changed
 
