@@ -109,7 +109,6 @@ func TestEnsureProviderFilesKeepsRuntimeStatePrivateButCollectorConfigReadable(t
 	}
 }
 
-
 func TestManagedCollectorRunsUnprivileged(t *testing.T) {
 	text := providerComposeYAML()
 	for _, want := range []string{
