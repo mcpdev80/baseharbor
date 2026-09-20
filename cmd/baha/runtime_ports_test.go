@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -44,6 +45,58 @@ func TestRecoveryFileForRepositoryUpRequiresExplicitPathNonInteractive(t *testin
 	_, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
 	if err == nil || !strings.Contains(err.Error(), "recovery file") {
 		t.Fatalf("error = %v, want actionable recovery-file failure", err)
+	}
+}
+
+func TestRecoveryFileForRepositoryUpInteractivePromptIsVisible(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "openbao-recovery.json")
+	var out bytes.Buffer
+	got, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != path {
+		t.Fatalf("path = %q, want %q", got, path)
+	}
+	text := out.String()
+	if !strings.Contains(text, "Where should BaseHarbor create the new recovery file?") {
+		t.Fatalf("missing explicit recovery question: %q", text)
+	}
+	if !strings.Contains(text, "OpenBao-recovery-key:") {
+		t.Fatalf("missing shell-style recovery prompt: %q", text)
+	}
+}
+
+func TestRecoveryFileForRepositoryUpBlocksUntilInteractiveInput(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := recoveryFileForRepositoryUp(context.Background(), reader, io.Discard, runtimeUpOptions{}, "initialize")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("recovery prompt returned before input: %v", err)
+	case <-time.After(75 * time.Millisecond):
+	}
+
+	path := filepath.Join(t.TempDir(), "openbao-recovery.json")
+	if _, err := io.WriteString(writer, path+"\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("recovery prompt did not resume after input")
 	}
 }
 
