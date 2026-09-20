@@ -539,3 +539,20 @@ Centralized log collection does not add a Loki product field to Manifest v1. Rep
 Provider choice, placement, sharing boundary, collector ports, Loki/Alloy configuration, retention/storage topology and provider lifecycle state remain protected deployment/provider state. The application contract therefore remains portable and unchanged.
 
 The local `baha app logs` developer command remains independent from centralized storage: it is trusted-local runtime access, not an application capability declaration.
+
+
+## Application logs
+
+Application log collection is explicit intent. Development environments do not receive a logging provider merely because the environment is named `dev`.
+
+```yaml
+logs:
+  collect:
+    - application
+```
+
+This requests collection of the selected workload services through the provider-neutral logs capability. Provider placement remains deployment state: the application contract does not select Loki, Alloy, a shared provider, a dedicated provider, or a future external implementation.
+
+When `logs` is absent, BaseHarbor does not provision an application log collector, does not attach a logging override to the workload, and does not require log-ingestion verification for application readiness.
+
+An operator may disable declared collection with deployment policy, but deployment environment variables cannot invent logging intent that is absent from the application contract.
