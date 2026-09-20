@@ -2,8 +2,8 @@ package logs_test
 
 import (
 	"context"
-	"os"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -36,7 +36,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	binding := capability.Binding{
 		Resource: resource,
 		Workload: "service/api",
-		Logs: &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
+		Logs:     &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
 	}
 
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
