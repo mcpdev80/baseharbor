@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
@@ -43,27 +45,43 @@ func main() {
 func interruptibleProcessContext() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	signals := make(chan os.Signal, 2)
+	done := make(chan struct{})
+	var stopOnce sync.Once
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		seen := false
 		for sig := range signals {
+			exitCode := 130
+			if sig == syscall.SIGTERM {
+				exitCode = 143
+			}
 			if !seen {
 				seen = true
 				cancel()
+				go func(code int) {
+					timer := time.NewTimer(2 * time.Second)
+					defer timer.Stop()
+					select {
+					case <-done:
+						return
+					case <-timer.C:
+						os.Exit(code)
+					}
+				}(exitCode)
 				continue
 			}
 			signal.Stop(signals)
-			if sig == syscall.SIGTERM {
-				os.Exit(143)
-			}
-			os.Exit(130)
+			os.Exit(exitCode)
 		}
 	}()
 
 	stop := func() {
-		signal.Stop(signals)
-		cancel()
+		stopOnce.Do(func() {
+			signal.Stop(signals)
+			cancel()
+			close(done)
+		})
 	}
 	return ctx, stop
 }
