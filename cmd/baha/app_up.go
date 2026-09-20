@@ -29,6 +29,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err := printResolvedMetricsPlacement(out, m); err != nil {
 				return err
 			}
+			if err := printResolvedLogsPlacement(out, resolved); err != nil {
+				return err
+			}
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -43,6 +46,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var managedObjectStorage *managedObjectStorageExecution
 			var managedTelemetry *managedTelemetryExecution
 			var managedMetrics *managedMetricsExecution
+			var managedLogs *managedLogsExecution
 			var workloadSecurity application.WorkloadSecurityReport
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
@@ -90,6 +94,11 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "managed metrics provider", Run: func(ctx context.Context) error {
 					var err error
 					managedMetrics, err = prepareManagedMetrics(ctx, compose, resolved)
+					return err
+				}},
+				{Name: "managed logs provider", Run: func(ctx context.Context) error {
+					var err error
+					managedLogs, err = prepareManagedLogs(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
@@ -197,6 +206,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
 				return fmt.Errorf("converge managed metrics provider: %w", err)
 			}
+			if err := convergeManagedLogsBeforeWorkload(ctx, out, files, managedLogs); err != nil {
+				return fmt.Errorf("converge managed logs provider: %w", err)
+			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
 			}
@@ -205,6 +217,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			}
 			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
 				return fmt.Errorf("verify managed metrics ingestion: %w", err)
+			}
+			if err := verifyManagedLogsAfterWorkload(ctx, out, managedLogs); err != nil {
+				return fmt.Errorf("verify managed log ingestion: %w", err)
 			}
 			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
 				return fmt.Errorf("converge managed HTTP exposure: %w", err)
