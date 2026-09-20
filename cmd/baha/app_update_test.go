@@ -56,6 +56,49 @@ func TestInspectGitApplicationUpdateDetectsFastForwardAndDirtyTree(t *testing.T)
 	if !state.Dirty || state.Relation != "update-available" {
 		t.Fatalf("expected dirty tree with update available: %#v", state)
 	}
+	if len(state.DirtyEntries) != 1 || state.DirtyEntries[0].Status != "untracked" || state.DirtyEntries[0].Path != "local.txt" {
+		t.Fatalf("unexpected dirty details: %#v", state.DirtyEntries)
+	}
+}
+
+func TestParseGitDirtyEntriesClassifiesBaseHarborLocalState(t *testing.T) {
+	entries := parseGitDirtyEntries(" M README.md\n?? local.txt\n?? .baseharbor/runtime.env\n")
+	if len(entries) != 3 {
+		t.Fatalf("entries = %#v", entries)
+	}
+	if entries[0].Status != "modified" || entries[0].Path != "README.md" {
+		t.Fatalf("modified entry = %#v", entries[0])
+	}
+	if entries[1].Status != "untracked" || entries[1].BaseHarborLocal {
+		t.Fatalf("untracked entry = %#v", entries[1])
+	}
+	if !entries[2].BaseHarborLocal || entries[2].Path != ".baseharbor/runtime.env" {
+		t.Fatalf("BaseHarbor entry = %#v", entries[2])
+	}
+}
+
+func TestFormatGitApplicationUpdateCheckExplainsDirtyBlockers(t *testing.T) {
+	state := gitUpdateState{
+		RepositoryRoot: "/repo",
+		Branch: "main",
+		Upstream: "origin/main",
+		Current: "aaa",
+		Target: "bbb",
+		Dirty: true,
+		DirtyEntries: []gitDirtyEntry{
+			{Status: "modified", Path: "README.md"},
+			{Status: "untracked", Path: ".baseharbor/runtime.env", BaseHarborLocal: true},
+		},
+		Relation: "update-available",
+	}
+	var out strings.Builder
+	formatGitApplicationUpdateCheck(&out, "demo", "dev", state)
+	text := out.String()
+	for _, wanted := range []string{"Blocking changes:", "modified", "README.md", "BaseHarbor local state", ".baseharbor/runtime.env"} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("output missing %q: %s", wanted, text)
+		}
+	}
 }
 
 func TestInspectGitApplicationUpdateRejectsDetachedHead(t *testing.T) {
