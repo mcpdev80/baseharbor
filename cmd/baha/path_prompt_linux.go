@@ -58,6 +58,9 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	if err := drawPathPrompt(out, prompt, promptPath, string(value), true); err != nil {
 		return "", err
 	}
+	if err := flushPathPrompt(out); err != nil {
+		return "", err
+	}
 	for {
 		b, err := reader.ReadByte()
 		if err != nil {
@@ -113,11 +116,21 @@ func promptShellPathLine(reader *bufio.Reader, out io.Writer, label string) (str
 	if _, err := fmt.Fprintf(out, "%s:%s$ ", label, shellDisplayPath(cwd)); err != nil {
 		return "", err
 	}
+	if err := flushPathPrompt(out); err != nil {
+		return "", err
+	}
 	value, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
 	return strings.TrimSpace(value), nil
+}
+
+func flushPathPrompt(out io.Writer) error {
+	if flusher, ok := out.(interface{ Flush() error }); ok {
+		return flusher.Flush()
+	}
+	return nil
 }
 
 func drawPathPrompt(out io.Writer, prompt, promptPath, value string, fresh bool) error {
