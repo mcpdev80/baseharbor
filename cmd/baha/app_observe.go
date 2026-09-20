@@ -279,7 +279,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 				return nil
 			}
 			if !result.Ready {
-				return errors.New("application is not ready")
+				return cli.Presented(errors.New("application is not ready"))
 			}
 			return nil
 		},
@@ -536,7 +536,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				}
 			}
 			if !ok {
-				return errors.New("application doctor found one or more failures")
+				return cli.Presented(errors.New("application doctor found one or more failures"))
 			}
 			if format != outputJSON {
 				fmt.Fprintln(out, "Application runtime is healthy.")
