@@ -36,3 +36,32 @@ func TestRuntimeErrorExitCode(t *testing.T) {
 		t.Fatalf("expected exit code 1, got %d", got)
 	}
 }
+
+func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
+	root := &Command{Name: "baha", Children: []*Command{{Name: "status"}, {Name: "doctor"}}}
+	err := root.Execute(context.Background(), []string{"statsu"}, &bytes.Buffer{}, &bytes.Buffer{})
+	var usage *UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("expected UsageError, got %T: %v", err, err)
+	}
+	if !strings.Contains(usage.Hint, "status") {
+		t.Fatalf("expected status suggestion, got %q", usage.Hint)
+	}
+}
+
+func TestHelpWrapsLongDescriptionsAtConfiguredWidth(t *testing.T) {
+	t.Setenv("COLUMNS", "50")
+	root := &Command{
+		Name: "baha",
+		Usage: "baha <command>",
+		Children: []*Command{{
+			Name: "status",
+			Summary: "Show a deliberately long application status description that should wrap cleanly on narrow terminals",
+		}},
+	}
+	var out bytes.Buffer
+	root.Help(&out)
+	if !strings.Contains(out.String(), "\n          ") {
+		t.Fatalf("expected wrapped continuation indentation, got:\n%s", out.String())
+	}
+}
