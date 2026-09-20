@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Repository-aware first `baha up` once again resolves configurable Compose host ports before the first workload start, persists BaseHarbor-selected values in protected deployment state and reuses the existing post-start bind-conflict retry only as a race-condition fallback.
+
 - Compose-backed lifecycle activities now stream secret-safe live detail such as image pulls, builds, container creation/start and readiness phases into the current CLI activity instead of hiding runtime progress until completion.
 
 - Long-running CLI lifecycle activities now expose elapsed time while running and include actual duration on completion, so slow fresh-start phases can be identified without verbose/debug mode or guessed ETAs.

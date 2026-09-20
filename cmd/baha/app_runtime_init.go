@@ -435,22 +435,27 @@ func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 	}, nil
 }
 
-func writeRepositoryInitState(repoRoot string, state repositoryInitState) error {
+func updateRepositoryInitValues(repoRoot string, updates map[string]string) error {
 	path := repositoryInitEnvPath(repoRoot)
+	values := map[string]string{}
+	if current, err := readSimpleEnvFile(path); err == nil {
+		for key, value := range current {
+			values[key] = value
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for key, value := range updates {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		values[key] = strings.TrimSpace(value)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	values := map[string]string{
-		"BASEHARBOR_HOSTNAME":       state.Hostname,
-		"BASEHARBOR_PUBLIC_SCHEME":  "https",
-		"BASEHARBOR_TLS_MODE":       state.TLSMode,
-		"BASEHARBOR_TLS_CERT_DIR":   state.TLSDir,
-		"BASEHARBOR_TLS_SOURCE_DIR": state.CertDir,
-	}
-	if err := deployment.ApplyRuntimeProviderState(values, deployment.RuntimeProviderState{Provider: state.RuntimeProvider}); err != nil {
 		return err
 	}
 	keys := make([]string, 0, len(values))
@@ -475,6 +480,20 @@ func writeRepositoryInitState(repoRoot string, state repositoryInitState) error 
 		return err
 	}
 	return nil
+}
+
+func writeRepositoryInitState(repoRoot string, state repositoryInitState) error {
+	values := map[string]string{
+		"BASEHARBOR_HOSTNAME":       state.Hostname,
+		"BASEHARBOR_PUBLIC_SCHEME":  "https",
+		"BASEHARBOR_TLS_MODE":       state.TLSMode,
+		"BASEHARBOR_TLS_CERT_DIR":   state.TLSDir,
+		"BASEHARBOR_TLS_SOURCE_DIR": state.CertDir,
+	}
+	if err := deployment.ApplyRuntimeProviderState(values, deployment.RuntimeProviderState{Provider: state.RuntimeProvider}); err != nil {
+		return err
+	}
+	return updateRepositoryInitValues(repoRoot, values)
 }
 
 func readSimpleEnvFile(path string) (map[string]string, error) {
