@@ -108,7 +108,7 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, usageError("unknown argument "+args[i], "Run 'baha up --help' for usage.")
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
 		}
 	}
 	return opts, nil
