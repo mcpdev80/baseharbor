@@ -370,7 +370,7 @@ Read-only pruefen:
 baha app update --check
 ```
 
-Mutation ist strict fast-forward only. Dirty/Ahead/Diverged schlagen fail-closed fehl. Anwendungen mit dauerhaftem BaseHarbor-State benoetigen entweder ein verschluesseltes Pre-Update-Recovery oder eine explizite `--no-backup`-Bestaetigung. Nach dem Source-Update wird der normale Apply-/Readiness-Pfad wiederverwendet.
+Mutation ist strict fast-forward only. Dirty/Ahead/Diverged schlagen fail-closed fehl. `baha app update --check` zeigt bei einem Dirty Worktree die konkreten staged/modified/deleted/renamed/untracked Pfade, damit der Operator sie bewusst aufloesen kann. BaseHarbor resetet, stash't oder verwirft lokale Aenderungen niemals automatisch. Anwendungen mit dauerhaftem BaseHarbor-State benoetigen entweder ein verschluesseltes Pre-Update-Recovery oder eine explizite `--no-backup`-Bestaetigung. Nach dem Source-Update wird der normale Apply-/Readiness-Pfad wiederverwendet.
 
 ## BaseHarbor Self-Update
 
