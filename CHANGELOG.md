@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Provider preflight/status visibility now follows explicit application capability intent: undeclared object storage, traces, telemetry, metrics, logs and exposure providers are absent from normal output instead of appearing as meaningless OK checks. Obsolete logs/metrics state can still be discovered internally for cleanup.
+- Fixed the Manifest v1 logs validation insertion regression that broke compilation after the explicit-logs change.
+
 - Capability-intent audit completed: metrics, telemetry, traces, exposure, object storage, secrets and runtime broker already gate provider lifecycle behind explicit application intent. Logs now also participate in the central PortableContract/capability-binding model, and regression tests enforce that deployment/environment policy cannot invent undeclared provider capabilities.
 
 - Application log collection is now explicit Manifest v1 intent via `logs.collect`; `environment: dev` no longer silently provisions Loki/Alloy. Without declared logs intent, BaseHarbor removes stale workload log overrides/registrations and skips log-ingestion verification.
