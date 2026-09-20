@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	LokiImage = "grafana/loki:3.7.8"
+	LokiImage  = "grafana/loki:3.7.8"
 	AlloyImage = "grafana/alloy:v1.19.2"
 )
 
@@ -26,8 +26,8 @@ type Runtime interface {
 
 type Driver struct {
 	runtime Runtime
-	app application.Manifest
-	client *http.Client
+	app     application.Manifest
+	client  *http.Client
 }
 
 func NewDriver(runtime Runtime, app application.Manifest) *Driver {
