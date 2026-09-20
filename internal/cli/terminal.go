@@ -203,6 +203,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 
 	var buffer bytes.Buffer
 	done := make(chan error, 1)
+	startedAt := time.Now()
 	go func() { done <- fn(&buffer) }()
 
 	delay := time.NewTimer(350 * time.Millisecond)
@@ -218,14 +219,19 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 		if ticker != nil {
 			ticker.Stop()
 		}
+		elapsed := time.Since(startedAt)
 		if started {
 			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
 				fmt.Fprint(t.errOut, "\r\x1b[2K")
 			}
+			suffix := ""
+			if elapsed >= time.Second {
+				suffix = " (" + formatActivityDuration(elapsed) + ")"
+			}
 			if err == nil {
-				t.activityLine("OK", label+" - done")
+				t.activityLine("OK", label+" - done"+suffix)
 			} else {
-				t.activityLine("FAIL", label+" - failed")
+				t.activityLine("FAIL", label+" - failed"+suffix)
 			}
 		}
 		if err != nil || t.opts.Verbose {
@@ -243,16 +249,22 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 		case <-delay.C:
 			started = true
 			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
-				fmt.Fprintf(t.errOut, "\r%s %s", frames[0], label)
+				fmt.Fprintf(t.errOut, "\r%s %s (%s)", frames[0], label, formatActivityDuration(time.Since(startedAt)))
 				ticker = time.NewTicker(800 * time.Millisecond)
 				ticks = ticker.C
 				frame = 1
 			} else {
 				t.activityLine("START", label)
+				ticker = time.NewTicker(10 * time.Second)
+				ticks = ticker.C
 			}
 		case <-ticks:
-			fmt.Fprintf(t.errOut, "\r%s %s", frames[frame%len(frames)], label)
-			frame++
+			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
+				fmt.Fprintf(t.errOut, "\r%s %s (%s)", frames[frame%len(frames)], label, formatActivityDuration(time.Since(startedAt)))
+				frame++
+			} else {
+				t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
+			}
 		}
 	}
 }
@@ -268,4 +280,17 @@ func (t *Terminal) Diagnostic(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(t.errOut, format, args...)
+}
+
+
+func formatActivityDuration(d time.Duration) string {
+	if d < time.Second {
+		return "<1s"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	minutes := int(d / time.Minute)
+	seconds := int((d % time.Minute) / time.Second)
+	return fmt.Sprintf("%dm%02ds", minutes, seconds)
 }
