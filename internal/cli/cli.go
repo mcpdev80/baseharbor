@@ -14,6 +14,7 @@ type RunFunc func(context.Context, []string, io.Writer, io.Writer) error
 // Command describes one CLI command. Commands can be nested arbitrarily.
 type Command struct {
 	Name     string
+	Hidden   bool
 	Aliases  []string
 	Summary  string
 	Usage    string
@@ -130,11 +131,17 @@ func (c *Command) Help(w io.Writer) {
 		fmt.Fprintln(w, "\nCommands:")
 		width := 0
 		for _, child := range c.Children {
+			if child.Hidden {
+				continue
+			}
 			if len(child.Name) > width {
 				width = len(child.Name)
 			}
 		}
 		for _, child := range c.Children {
+			if child.Hidden {
+				continue
+			}
 			fmt.Fprintf(w, "  %-*s  %s\n", width, child.Name, child.Summary)
 		}
 	}
