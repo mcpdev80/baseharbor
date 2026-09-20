@@ -243,10 +243,7 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 	cmd := appStatusCommand(store)
 	cmd.Long += " Repository deployment TLS mode and certificate state are rendered as part of the same status view."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		if requestsJSONOutput(args) {
-			return appStatusCommand(store).Run(ctx, args, out, errOut)
-		}
-		filtered, _, err := parseReadOutputArgs(args, "app status")
+		filtered, format, err := parseReadOutputArgs(args, "app status")
 		if err != nil {
 			return err
 		}
@@ -256,33 +253,46 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 		}
 
 		var tlsStatus *applicationTLSStatus
+		var tlsObservation *applicationTLSObservation
 		var tlsErr error
 		resolved, resolveErr := resolveApplication(store, filtered, "status")
-		if resolveErr == nil && resolved.FromRepository {
-			status, inspectErr := inspectApplicationTLS(resolved)
-			if inspectErr != nil {
-				tlsErr = inspectErr
-			} else if status.State.TLSMode != "" {
-				tlsStatus = &status
-			}
+		if resolveErr != nil {
+			return resolveErr
+		}
+		tlsStatus, tlsObservation, tlsErr = collectApplicationTLSObservation(resolved)
+		if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
+			result.Ready = false
 		}
 
-		renderApplicationStatusWithExtra(ctx, out, errOut, result, func(term *cli.Terminal) {
-			if tlsStatus == nil && tlsErr == nil {
-				return
+		if format == outputJSON {
+			payload := struct {
+				application.StatusResult
+				TLS *applicationTLSObservation `json:"tls,omitempty"`
+			}{
+				StatusResult: result,
+				TLS:          tlsObservation,
 			}
-			term.Section("TLS")
-			if tlsErr != nil {
-				term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
-				return
+			if err := writeJSON(out, payload); err != nil {
+				return err
 			}
-			renderApplicationTLSStatus(term, *tlsStatus)
-		})
+		} else {
+			renderApplicationStatusWithExtra(ctx, out, errOut, result, func(term *cli.Terminal) {
+				if tlsStatus == nil && tlsErr == nil {
+					return
+				}
+				term.Section("TLS")
+				if tlsErr != nil {
+					term.Result("FAILED", "certificate", conciseTLSStatusError(tlsErr))
+					return
+				}
+				renderApplicationTLSStatus(term, *tlsStatus)
+			})
+		}
 
 		if result.State == "stopped" {
 			return nil
 		}
-		if !result.Ready || tlsErr != nil {
+		if !result.Ready {
 			return cli.Presented(errors.New("application is not ready"))
 		}
 		return nil
