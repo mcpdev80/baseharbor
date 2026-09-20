@@ -36,7 +36,9 @@ func TestWriteJSONUsesStructuredPlanFields(t *testing.T) {
 	plan := application.Plan{
 		Application: "demo",
 		Environment: "dev",
-		Actions: []application.Action{{Kind: "ensure", Resource: "network", Description: "ready"}},
+		Actions: []application.Action{
+			{Kind: "ensure", Resource: "network", Description: "ready"},
+		},
 	}
 	var out bytes.Buffer
 	if err := writeJSON(&out, plan); err != nil {
