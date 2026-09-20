@@ -14,9 +14,9 @@ Applications keep using normal protocols, environment variables and files. A rep
 
 ## Status
 
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The documented v0.4.7 line keeps Compose as the complete runtime implementation while adding provider-neutral OTLP telemetry transport on top of the v0.4.6 capability/provider foundation, without tying application intent to the OpenTelemetry Collector or an observability backend. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
+BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current v0.4 architecture keeps Compose as the complete runtime implementation while separating portable application intent from provider choice, provider placement and runtime topology. v0.4.8 added the Runtime Resource API, provider-neutral metrics and directed cross-application connectivity; v0.4.9 adds centralized logs through a provider-neutral logs lifecycle plus zero-trust Compose workload preflight and executable provider conformance. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
 
-The v0.4.7 line includes:
+The current v0.4 line includes:
 
 - single-node BaseHarbor control plane with PostgreSQL and OpenBao;
 - guided first-run host-port selection for the control plane;
@@ -39,6 +39,16 @@ The v0.4.7 line includes:
 - provider-neutral `telemetry.otlp/v1` export semantics with standard `OTEL_*` workload bindings;
 - OpenTelemetry Collector 0.161.0 as a lazy shared Compose reference provider plus external OTLP destination support;
 - real OTLP HTTP/protobuf export verification without implicitly provisioning Prometheus, Loki, Tempo or Grafana;
+- provider-neutral `metrics/v1` collection with Prometheus 3.14.0 as shared or application-scoped reference provider;
+- isolated metrics collection with real scrape/ingestion verification;
+- provider-neutral `logs/v1` lifecycle with Loki 3.7.8 and Grafana Alloy 1.19.2 as the first Compose reference implementation;
+- shared or application-scoped Loki placement with optional named sharing boundaries;
+- real Loki readiness plus query-based workload log ingestion verification;
+- a provider-neutral Runtime Resource API with asynchronous/idempotent operations and the Application Runtime Broker;
+- runtime S3 resource creation with application-scoped authorization and scoped bindings;
+- explicit directed cross-application connectivity through a hardened relay rather than a broad shared workload network;
+- rendered-Compose workload security preflight for privileged mode, runtime sockets, host namespaces, dangerous capabilities, devices and critical host mounts;
+- executable Provider Integration Contract conformance tests plus deterministic fake-provider fault injection;
 - explicit workload-only Compose applications without artificial backend dependencies;
 - application environment/file bindings using standard connection information;
 - managed required/generated secrets with fail-closed workload startup gates;
@@ -59,6 +69,51 @@ The v0.4.7 line includes:
 Kubernetes and OpenShift are not implemented in v0.4. They are future runtime providers that should map the same logical application requirements to their native primitives instead of requiring applications to adopt a second operational contract.
 
 The public compatibility contract is still allowed to evolve during `0.x`. Patch releases are expected to remain compatible; minor releases may contain documented breaking changes until `v1.0.0`.
+
+## Architecture at a glance
+
+BaseHarbor keeps application intent simple and infrastructure topology outside the portable contract:
+
+```text
+Application intent
+  -> Capability
+  -> Provider resolution
+  -> Provider placement
+       - application
+       - shared
+           - optional sharing boundary
+       - external
+  -> Isolation / deployment boundary
+  -> Runtime/provider implementation
+```
+
+Applications ask for capabilities, not products. A concrete provider is selected by BaseHarbor/platform policy and must satisfy the same versioned lifecycle contract.
+
+Examples:
+
+- SQL remains an application capability even when PostgreSQL is the current reference provider.
+- S3-compatible storage remains provider-neutral even when SeaweedFS realizes it.
+- OTLP telemetry is independent from the bundled OpenTelemetry Collector.
+- Metrics are modeled as `metrics/v1`; Prometheus is the current provider.
+- Centralized logs are platform policy through `logs/v1`; applications do not request Loki.
+- Shared provider placement does not imply shared application access. Access stays explicit and deny-by-default.
+
+### v0.4.9 security hardening
+
+Before a repository Compose workload is started, BaseHarbor evaluates the fully rendered Compose configuration.
+
+Managed environments fail closed for isolation-breaking settings such as:
+
+- `privileged: true`;
+- Docker/Podman runtime socket mounts;
+- host network/PID/IPC namespaces;
+- dangerous `cap_add` values;
+- host device mappings;
+- critical host filesystem mounts.
+
+The Loki/Alloy reference provider itself runs without Docker/Podman sockets, with read-only roots, dropped capabilities, `no-new-privileges` and loopback-only host listeners.
+
+Provider Integration Contract v1 also has executable lifecycle conformance in v0.4.9, including deterministic CREATE/NOOP/DRIFT/REPAIR/failure scenarios.
 
 ## Install `baha`
 
