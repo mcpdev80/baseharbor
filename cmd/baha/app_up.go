@@ -182,8 +182,10 @@ func appUpCommand(store application.Store) *cli.Command {
 
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
-				if err := activity(ctx, term, "Starting managed application services", func(io.Writer) error {
-					return compose.UpProject(ctx, project, files.Compose, files.Env)
+				if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
+					return compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
+						cli.ReportActivityDetail(progress, detail)
+					})
 				}); err != nil {
 					return err
 				}
@@ -221,8 +223,8 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			if application.RequiresRuntimeBroker(m) {
-				if err := activity(ctx, term, "Starting secure runtime broker", func(io.Writer) error {
-					return ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files)
+				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
 				}); err != nil {
 					return err
 				}
