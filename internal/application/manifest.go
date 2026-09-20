@@ -434,7 +434,10 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 			seenOperations[operation] = struct{}{}
 		}
 	}
-	retufunc validateLogsRequirements(workload WorkloadConfig, logs LogsRequirements) error {
+	return nil
+}
+
+func validateLogsRequirements(workload WorkloadConfig, logs LogsRequirements) error {
 	if len(logs.Collect) == 0 {
 		return nil
 	}
@@ -455,8 +458,6 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 	return nil
 }
 
-rn nil
-}
 
 func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequirement) error {
 	if len(sources) == 0 {
