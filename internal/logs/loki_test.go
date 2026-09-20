@@ -86,6 +86,7 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	runtime := &fakeRuntime{}
 	defer runtime.Close()
 	m := application.New("demo", "dev", false, false, false)
+	m.Logs = application.LogsRequirements{Collect: []string{"application"}}
 	driver := logs.NewDriver(runtime, m)
 	target := providerconformance.Target{
 		Descriptor:       capability.LokiIntegration,
