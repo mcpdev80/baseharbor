@@ -376,7 +376,11 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		beforeServices[state.Service] = struct{}{}
 	}
 	cleanupNewResources := func() {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		timeout := 30 * time.Second
+		if ctx.Err() != nil {
+			timeout = 2 * time.Second
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		defer cancel()
 		if len(beforeStates) == 0 {
 			_ = compose.DownProjectFilesEnv(cleanupCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
