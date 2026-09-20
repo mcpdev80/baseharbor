@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ProviderImage = "grafana/tempo:2.7.2"
+	ProviderImage = "grafana/tempo:3.0.2"
 	ProviderService = "tempo"
 )
 
@@ -295,6 +295,8 @@ storage:
       path: /var/tempo/wal
     local:
       path: /var/tempo/traces
+usage_report:
+  reporting_enabled: false
 `
 }
 
