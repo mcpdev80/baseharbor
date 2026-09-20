@@ -580,7 +580,10 @@ func appDoctorCommand(store application.Store) *cli.Command {
 						tlsStatus = &status
 					}
 				}
-				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, workloadStatusErr, requiredStatuses, workloadSecurity, ok, tlsStatus, tlsErr)
+				if tlsErr != nil {
+					ok = false
+				}
+				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, requiredStatuses, workloadSecurity, ok, tlsStatus, tlsErr)
 			}
 			if !ok {
 				return cli.Presented(errors.New("application doctor found one or more failures"))
@@ -597,7 +600,6 @@ func renderApplicationDoctor(
 	m application.Manifest,
 	results []preflight.Result,
 	workload repositoryWorkloadStatus,
-	workloadErr error,
 	requiredSecrets []openbao.RequiredSecretStatus,
 	workloadSecurity application.WorkloadSecurityReport,
 	healthy bool,
