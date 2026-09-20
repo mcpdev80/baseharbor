@@ -16,10 +16,12 @@ type outputOptionsKey struct{}
 // OutputOptions controls human terminal rendering. Machine-readable command
 // output must remain independent from these settings.
 type OutputOptions struct {
-	Quiet         bool
-	Verbose       bool
-	NoColor       bool
-	ReducedMotion bool
+	Quiet          bool
+	Verbose        bool
+	NoColor        bool
+	ReducedMotion  bool
+	Plain          bool
+	NonInteractive bool
 }
 
 // WithOutputOptions attaches process-wide human-output preferences to a command
@@ -48,6 +50,10 @@ type Terminal struct {
 func NewTerminal(ctx context.Context, out, errOut io.Writer) *Terminal {
 	opts := OutputOptionsFromContext(ctx)
 	tty := writerIsTerminal(errOut)
+	if opts.Plain {
+		opts.NoColor = true
+		opts.ReducedMotion = true
+	}
 	color := tty && !opts.NoColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 	return &Terminal{out: out, errOut: errOut, opts: opts, tty: tty, color: color}
 }
@@ -64,9 +70,11 @@ func writerIsTerminal(w io.Writer) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-func (t *Terminal) Quiet() bool   { return t.opts.Quiet }
-func (t *Terminal) Verbose() bool { return t.opts.Verbose }
-func (t *Terminal) TTY() bool     { return t.tty }
+func (t *Terminal) Quiet() bool          { return t.opts.Quiet }
+func (t *Terminal) Verbose() bool        { return t.opts.Verbose }
+func (t *Terminal) Plain() bool          { return t.opts.Plain }
+func (t *Terminal) NonInteractive() bool { return t.opts.NonInteractive }
+func (t *Terminal) TTY() bool            { return t.tty && !t.opts.Plain }
 
 func (t *Terminal) Header(app, environment string) {
 	if t.opts.Quiet {
@@ -162,7 +170,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			ticker.Stop()
 		}
 		if started {
-			if t.tty && !t.opts.ReducedMotion {
+			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
 				fmt.Fprint(t.errOut, "\r\x1b[2K")
 			}
 			if err == nil {
@@ -185,7 +193,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			return finish(ctx.Err())
 		case <-delay.C:
 			started = true
-			if t.tty && !t.opts.ReducedMotion {
+			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
 				fmt.Fprintf(t.errOut, "\r%s %s", frames[0], label)
 				ticker = time.NewTicker(800 * time.Millisecond)
 				ticks = ticker.C
