@@ -145,6 +145,35 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 	}
 }
 
+func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := string(data)
+	for _, required := range []string{
+		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100",
+		"networks: [logs-internal, logs-publish]",
+		"logs-internal:",
+		"internal: true",
+		"logs-publish:",
+		"driver: bridge",
+	} {
+		if !strings.Contains(compose, required) {
+			t.Fatalf("provider Compose missing publishing topology %q:\n%s", required, compose)
+		}
+	}
+	if strings.Count(compose, "\n  logs-publish:\n") != 1 {
+		t.Fatalf("provider Compose must define logs-publish exactly once:\n%s", compose)
+	}
+}
+
 func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
