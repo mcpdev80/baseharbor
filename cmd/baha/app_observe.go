@@ -506,10 +506,23 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			}
 			if m.Services.Secrets {
 				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(ctx context.Context) error {
 						var err error
 						platformFiles, err = bhruntime.ExistingFiles("")
-						return err
+						if err != nil {
+							return err
+						}
+						state, err := openbao.Inspect(ctx, compose, platformFiles)
+						if err != nil {
+							return err
+						}
+						if !state.Initialized {
+							return openbao.ErrNotInitialized
+						}
+						if state.Sealed {
+							return openbao.ErrSealed
+						}
+						return nil
 					}},
 					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
 						if runtimeErr != nil {
