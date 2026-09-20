@@ -92,6 +92,17 @@ func Run(ctx context.Context, cfg Config) error {
 			}
 			defer target.Close()
 
+			stopWatch := make(chan struct{})
+			defer close(stopWatch)
+			go func() {
+				select {
+				case <-ctx.Done():
+					_ = source.Close()
+					_ = target.Close()
+				case <-stopWatch:
+				}
+			}()
+
 			done := make(chan struct{}, 2)
 			copyStream := func(dst, src net.Conn) {
 				_, _ = io.Copy(dst, src)
