@@ -349,7 +349,7 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
 	extraExporter := ""
 	if strings.TrimSpace(traceEndpoint) != "" {
 		traceExporters = "[debug, otlp_http/tempo]"
-		extraExporter = fmt.Sprintf("  otlphttp/tempo:\n    endpoint: %s\n", strings.TrimRight(strings.TrimSpace(traceEndpoint), "/"))
+		extraExporter = fmt.Sprintf("  otlp_http/tempo:\n    endpoint: %s\n", strings.TrimRight(strings.TrimSpace(traceEndpoint), "/"))
 	}
 	return fmt.Sprintf(`receivers:
   otlp:
