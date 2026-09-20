@@ -116,16 +116,61 @@ func (t *Terminal) Result(state, subject, detail string) {
 		state = "INFO"
 	}
 	const stateWidth = 10
-	const subjectWidth = 20
-	paddedState := fmt.Sprintf("%-*s", stateWidth, state)
+	const subjectWidth = 24
+	paddedStatePlain := fmt.Sprintf("%-*s", stateWidth, state)
+	paddedState := paddedStatePlain
 	if t.color {
-		paddedState = stateColor(state) + paddedState + "\x1b[0m"
+		paddedState = stateColor(state) + paddedStatePlain + "\x1b[0m"
 	}
 	if strings.TrimSpace(detail) == "" {
 		fmt.Fprintf(t.out, "  %s %-*s\n", paddedState, subjectWidth, subject)
 		return
 	}
-	fmt.Fprintf(t.out, "  %s %-*s %s\n", paddedState, subjectWidth, subject, detail)
+
+	prefix := fmt.Sprintf("  %s %-*s ", paddedState, subjectWidth, subject)
+	visiblePrefixWidth := 2 + stateWidth + 1 + subjectWidth + 1
+	available := terminalTextWidth() - visiblePrefixWidth
+	if available < 24 {
+		available = 24
+	}
+	lines := wrapWords(strings.TrimSpace(detail), available)
+	if len(lines) == 0 {
+		fmt.Fprintln(t.out, strings.TrimRight(prefix, " "))
+		return
+	}
+	fmt.Fprintln(t.out, prefix+lines[0])
+	continuation := strings.Repeat(" ", visiblePrefixWidth)
+	for _, line := range lines[1:] {
+		fmt.Fprintln(t.out, continuation+line)
+	}
+}
+
+func wrapWords(text string, width int) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if width < 8 {
+		width = 8
+	}
+	words := strings.Fields(text)
+	lines := make([]string, 0, 1)
+	line := ""
+	for _, word := range words {
+		if line == "" {
+			line = word
+			continue
+		}
+		if len([]rune(line))+1+len([]rune(word)) > width {
+			lines = append(lines, line)
+			line = word
+			continue
+		}
+		line += " " + word
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func stateColor(state string) string {
