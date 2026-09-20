@@ -189,5 +189,8 @@ func repositoryUpCurrentDecision(ctx context.Context, resolved resolvedApplicati
 	if err != nil {
 		return repositoryUpApply, files, nil
 	}
+	if status.State == "running" && !status.Ready {
+		return repositoryUpApply, files, nil
+	}
 	return decideRepositoryUp(status.State, runtimeDefinitionOK, fingerprintMatch), files, nil
 }
