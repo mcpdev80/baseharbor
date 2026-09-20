@@ -70,7 +70,7 @@ func initializeRepositoryManifestForUp(ctx context.Context, in io.Reader, out, e
 		return true, nil
 	}
 
-	if !readerIsTerminal(in) {
+	if noInput(ctx) || !readerIsTerminal(in) {
 		return true, usageError(
 			"an application project was detected but baseharbor.yaml is missing",
 			"Run 'baha up --yes' to use unambiguous detected defaults, or run 'baha app init' interactively to review the application contract.",
@@ -102,14 +102,14 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 
 	switch {
 	case !state.Initialized:
-		recoveryPath, err := recoveryFileForRepositoryUp(in, out, opts, "initialize")
+		recoveryPath, err := recoveryFileForRepositoryUp(ctx, in, out, opts, "initialize")
 		if err != nil {
 			return err
 		}
 		fmt.Fprintln(out, "OpenBao is not initialized; bootstrapping managed secrets...")
 		return openBaoBootstrapCommand().Run(ctx, []string{"--recovery-file", recoveryPath}, out, errOut)
 	case state.Sealed:
-		recoveryPath, err := recoveryFileForRepositoryUp(in, out, opts, "unseal")
+		recoveryPath, err := recoveryFileForRepositoryUp(ctx, in, out, opts, "unseal")
 		if err != nil {
 			return err
 		}
@@ -124,11 +124,11 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 	}
 }
 
-func recoveryFileForRepositoryUp(in io.Reader, out io.Writer, opts runtimeUpOptions, action string) (string, error) {
+func recoveryFileForRepositoryUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions, action string) (string, error) {
 	if path := strings.TrimSpace(opts.RecoveryFile); path != "" {
 		return path, nil
 	}
-	if opts.Yes || !readerIsTerminal(in) {
+	if opts.Yes || noInput(ctx) || !readerIsTerminal(in) {
 		return "", usageError(
 			"OpenBao requires an operator-held recovery file before the application can start",
 			"Re-run 'baha up --recovery-file /secure/openbao-recovery.json'. The path must be outside .baseharbor state.",

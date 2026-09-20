@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"regexp"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // RunFunc executes a command after command routing and built-in help handling.
@@ -19,6 +24,7 @@ type Command struct {
 	Summary  string
 	Usage    string
 	Long     string
+	Examples []string
 	Run      RunFunc
 	Children []*Command
 }
@@ -98,9 +104,13 @@ func (c *Command) Execute(ctx context.Context, args []string, out, errOut io.Wri
 		return child.Execute(ctx, args[1:], out, errOut)
 	}
 	if len(c.Children) > 0 && c.Run == nil {
+		hint := fmt.Sprintf("Run '%s --help' to see available commands.", c.Name)
+		if suggestion := c.suggest(args[0]); suggestion != "" {
+			hint = fmt.Sprintf("Did you mean '%s'?\n  Run '%s %s --help' for details.", suggestion, c.Name, suggestion)
+		}
 		return &UsageError{
 			Message: fmt.Sprintf("unknown command %q for %s", args[0], c.Name),
-			Hint:    fmt.Sprintf("Run '%s --help' to see available commands.", c.Name),
+			Hint:    hint,
 		}
 	}
 	if c.Run == nil {
@@ -112,7 +122,8 @@ func (c *Command) Execute(ctx context.Context, args []string, out, errOut io.Wri
 			return nil
 		}
 	}
-	return c.Run(ctx, args, out, errOut)
+	err := c.Run(ctx, args, out, errOut)
+	return c.decorateUsageError(args, err)
 }
 
 func (c *Command) helpPath(path []string, out io.Writer) error {
@@ -120,9 +131,13 @@ func (c *Command) helpPath(path []string, out io.Writer) error {
 	for _, part := range path {
 		next := current.find(part)
 		if next == nil {
+			hint := fmt.Sprintf("Run '%s --help' to see available commands.", current.Name)
+			if suggestion := current.suggest(part); suggestion != "" {
+				hint = fmt.Sprintf("Did you mean '%s'?\n  Run '%s %s --help' for details.", suggestion, current.Name, suggestion)
+			}
 			return &UsageError{
 				Message: fmt.Sprintf("unknown command %q for %s", part, current.Name),
-				Hint:    fmt.Sprintf("Run '%s --help' to see available commands.", current.Name),
+				Hint:    hint,
 			}
 		}
 		current = next
@@ -145,38 +160,269 @@ func (c *Command) find(name string) *Command {
 	return nil
 }
 
+func (c *Command) decorateUsageError(args []string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var usage *UsageError
+	if !errors.As(err, &usage) || !strings.Contains(strings.ToLower(usage.Message), "unknown") {
+		return err
+	}
+	known := c.knownFlags()
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		flag := arg
+		if before, _, ok := strings.Cut(flag, "="); ok {
+			flag = before
+		}
+		if containsString(known, flag) {
+			continue
+		}
+		if suggestion := nearest(flag, known, 3); suggestion != "" {
+			copy := *usage
+			base := strings.TrimSpace(copy.Hint)
+			if base != "" {
+				base += "\n  "
+			}
+			copy.Hint = base + "Did you mean '" + suggestion + "'?"
+			return &copy
+		}
+	}
+	return err
+}
+
+var helpUsageFlagPattern = regexp.MustCompile(`--[A-Za-z0-9][A-Za-z0-9-]*|-[A-Za-z]`)
+
+func (c *Command) knownFlags() []string {
+	flags := []string{"-h", "--help", "-q", "--quiet", "--silent", "-v", "--verbose", "--plain", "--no-color", "--no-input", "--non-interactive", "--version"}
+	for _, flag := range helpUsageFlagPattern.FindAllString(c.Usage, -1) {
+		if !containsString(flags, flag) {
+			flags = append(flags, flag)
+		}
+	}
+	return flags
+}
+
+func nearest(input string, candidates []string, maxDistance int) string {
+	best := ""
+	bestDistance := maxDistance + 1
+	for _, candidate := range candidates {
+		distance := levenshtein(strings.ToLower(input), strings.ToLower(candidate))
+		if distance < bestDistance {
+			bestDistance = distance
+			best = candidate
+		}
+	}
+	if bestDistance <= maxDistance {
+		return best
+	}
+	return ""
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func isHelp(arg string) bool { return arg == "-h" || arg == "--help" }
 
 // Help renders stable, human-readable command documentation.
 func (c *Command) Help(w io.Writer) {
+	var buffer bytes.Buffer
+	c.renderHelp(&buffer)
+	writeMaybePaged(w, buffer.String())
+}
+
+func (c *Command) renderHelp(w io.Writer) {
+	width := terminalTextWidth()
 	if c.Summary != "" {
 		fmt.Fprintf(w, "%s - %s\n", c.Name, c.Summary)
 	} else {
 		fmt.Fprintln(w, c.Name)
 	}
 	if strings.TrimSpace(c.Long) != "" {
-		fmt.Fprintf(w, "\n%s\n", strings.TrimSpace(c.Long))
+		fmt.Fprintln(w)
+		writeWrapped(w, strings.TrimSpace(c.Long), width, "")
 	}
 	if c.Usage != "" {
 		fmt.Fprintf(w, "\nUsage:\n  %s\n", c.Usage)
 	}
 	if len(c.Children) > 0 {
 		fmt.Fprintln(w, "\nCommands:")
-		width := 0
+		nameWidth := 0
 		for _, child := range c.Children {
 			if child.Hidden {
 				continue
 			}
-			if len(child.Name) > width {
-				width = len(child.Name)
+			if len(child.Name) > nameWidth {
+				nameWidth = len(child.Name)
 			}
 		}
 		for _, child := range c.Children {
 			if child.Hidden {
 				continue
 			}
-			fmt.Fprintf(w, "  %-*s  %s\n", width, child.Name, child.Summary)
+			prefix := fmt.Sprintf("  %-*s  ", nameWidth, child.Name)
+			writeWrapped(w, child.Summary, width, prefix)
 		}
 	}
-	fmt.Fprintln(w, "\nHelp:\n  Use '<command> --help' for command-specific help.")
+	if len(c.Examples) > 0 {
+		fmt.Fprintln(w, "\nExamples:")
+		for _, example := range c.Examples {
+			fmt.Fprintf(w, "  %s\n", example)
+		}
+	}
+	fmt.Fprintln(w, "\nGlobal options:")
+	writeHelpOption(w, width, "-q, --quiet", "Suppress progress and non-essential human output")
+	writeHelpOption(w, width, "--silent", "Alias for --quiet")
+	writeHelpOption(w, width, "-v, --verbose", "Show diagnostic runtime details")
+	writeHelpOption(w, width, "--plain", "Stable styling-free line-oriented human output")
+	writeHelpOption(w, width, "--no-color", "Disable ANSI color")
+	writeHelpOption(w, width, "--no-input", "Never prompt; fail with an actionable error instead")
+	writeHelpOption(w, width, "--version", "Print the BaseHarbor version")
+	fmt.Fprintln(w, "\nHelp:")
+	fmt.Fprintln(w, "  Use '<command> --help' for command-specific help.")
+}
+
+func writeHelpOption(w io.Writer, width int, option, description string) {
+	const optionWidth = 18
+	prefix := fmt.Sprintf("  %-*s  ", optionWidth, option)
+	writeWrapped(w, description, width, prefix)
+}
+
+func terminalTextWidth() int {
+	const fallback = 100
+	value := strings.TrimSpace(os.Getenv("COLUMNS"))
+	if value == "" {
+		return fallback
+	}
+	width, err := strconv.Atoi(value)
+	if err != nil || width < 40 {
+		return fallback
+	}
+	if width > 160 {
+		return 160
+	}
+	return width
+}
+
+func writeWrapped(w io.Writer, text string, width int, prefix string) {
+	if width < 40 {
+		width = 40
+	}
+	available := width - utf8.RuneCountInString(prefix)
+	if available < 20 {
+		available = 20
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		fmt.Fprintln(w, prefix)
+		return
+	}
+	line := prefix
+	lineLen := utf8.RuneCountInString(prefix)
+	continuation := strings.Repeat(" ", utf8.RuneCountInString(prefix))
+	for _, word := range words {
+		wordLen := utf8.RuneCountInString(word)
+		separator := 0
+		if lineLen > utf8.RuneCountInString(prefix) {
+			separator = 1
+		}
+		if lineLen+separator+wordLen > width && lineLen > utf8.RuneCountInString(prefix) {
+			fmt.Fprintln(w, line)
+			line = continuation + word
+			lineLen = utf8.RuneCountInString(continuation) + wordLen
+			continue
+		}
+		if separator != 0 {
+			line += " "
+			lineLen++
+		}
+		line += word
+		lineLen += wordLen
+	}
+	fmt.Fprintln(w, line)
+}
+
+func SuggestClosest(input string, candidates []string) string {
+	best := ""
+	bestDistance := 3
+	for _, candidate := range candidates {
+		distance := levenshtein(strings.ToLower(input), strings.ToLower(candidate))
+		if distance < bestDistance {
+			bestDistance = distance
+			best = candidate
+		}
+	}
+	if bestDistance <= 2 {
+		return best
+	}
+	return ""
+}
+
+func (c *Command) suggest(input string) string {
+	best := ""
+	bestDistance := 3
+	for _, child := range c.Children {
+		if child.Hidden {
+			continue
+		}
+		distance := levenshtein(strings.ToLower(input), strings.ToLower(child.Name))
+		if distance < bestDistance {
+			bestDistance = distance
+			best = child.Name
+		}
+		for _, alias := range child.Aliases {
+			distance = levenshtein(strings.ToLower(input), strings.ToLower(alias))
+			if distance < bestDistance {
+				bestDistance = distance
+				best = child.Name
+			}
+		}
+	}
+	if bestDistance <= 2 {
+		return best
+	}
+	return ""
+}
+
+func levenshtein(a, b string) int {
+	ar := []rune(a)
+	br := []rune(b)
+	prev := make([]int, len(br)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i, ra := range ar {
+		cur := make([]int, len(br)+1)
+		cur[0] = i + 1
+		for j, rb := range br {
+			cost := 0
+			if ra != rb {
+				cost = 1
+			}
+			del := prev[j+1] + 1
+			ins := cur[j] + 1
+			sub := prev[j] + cost
+			cur[j+1] = minInt(del, ins, sub)
+		}
+		prev = cur
+	}
+	return prev[len(br)]
+}
+
+func minInt(values ...int) int {
+	best := values[0]
+	for _, value := range values[1:] {
+		if value < best {
+			best = value
+		}
+	}
+	return best
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestCompletionEnvironmentValues(t *testing.T) {
@@ -45,18 +47,46 @@ func TestCompletionCommandGeneratesSupportedShells(t *testing.T) {
 }
 
 func TestGlobalOutputOptions(t *testing.T) {
-	filtered, opts, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
+	filtered, opts, showVersion, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Quiet || !opts.NoColor || opts.Verbose {
+	if !opts.Quiet || !opts.NoColor || opts.Verbose || showVersion {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
 	if strings.Join(filtered, " ") != "status" {
 		t.Fatalf("unexpected forwarded args: %v", filtered)
 	}
 
-	if _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
+	if _, _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
 		t.Fatal("quiet + verbose must fail")
+	}
+}
+
+func TestCompletionIncludesConfiguredApplicationsReadOnly(t *testing.T) {
+	store := application.Store{Root: t.TempDir()}
+	if _, err := store.Create(application.New("mailflow", "dev", true, false, false)); err != nil {
+		t.Fatal(err)
+	}
+	candidates := completeCommandLine(rootCommand(), []string{"app", "status", "mail"}, store)
+	found := false
+	for _, candidate := range candidates {
+		if candidate.Value == "mailflow" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("configured application missing from completion: %#v", candidates)
+	}
+}
+
+func TestGlobalOutputOptionsIncludePlainNoInputAndVersion(t *testing.T) {
+	filtered, opts, showVersion, err := extractGlobalOutputOptions([]string{"--plain", "--no-input", "--version"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 0 || !opts.Plain || !opts.NonInteractive || !showVersion {
+		t.Fatalf("filtered=%v opts=%+v showVersion=%v", filtered, opts, showVersion)
 	}
 }

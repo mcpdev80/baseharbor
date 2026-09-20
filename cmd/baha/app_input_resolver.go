@@ -71,7 +71,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		if err := runRepositoryRuntimeInitResolved(resolved, filepath.Dir(manifestPath), opts, out); err != nil {
+		if err := runRepositoryRuntimeInitResolved(ctx, resolved, filepath.Dir(manifestPath), opts, out); err != nil {
 			return err
 		}
 		if agents {
@@ -160,7 +160,7 @@ func repositoryDeploymentInputDefinitions(needsTLS bool) []applicationinput.Defi
 	return definitions
 }
 
-func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
+func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
 	current, err := loadRepositoryInitState(repoRoot)
 	if err != nil {
 		return err
@@ -169,7 +169,7 @@ func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot str
 	if err != nil {
 		return err
 	}
-	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes
+	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
 	supplied := map[string]string{
 		inputHostname: firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname),
 		inputTLSMode:  firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode),
@@ -250,10 +250,10 @@ func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot str
 	if resolvedOpts.TLSMode != "acme" && resolvedOpts.TLSMode != "existing" && resolvedOpts.TLSMode != "local" {
 		return usageError("unsupported TLS input value "+resolvedOpts.TLSMode, "Use acme, existing or local.")
 	}
-	return runRepositoryRuntimeInit(resolved, resolvedOpts, out)
+	return runRepositoryRuntimeInit(ctx, resolved, resolvedOpts, out)
 }
 
-func ensureRepositoryDeploymentInputsForUp(in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -292,13 +292,13 @@ func ensureRepositoryDeploymentInputsForUp(in io.Reader, out io.Writer, opts run
 			initOpts.Hostname = current.Hostname
 			initOpts.TLSMode = "acme"
 		}
-		return runRepositoryRuntimeInitResolved(resolved, repoRoot, initOpts, out)
+		return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, initOpts, out)
 	}
 	fmt.Fprintln(out, "Application deployment inputs are incomplete; resolving only the missing values...")
 	previous := appInitInput
 	appInitInput = in
 	defer func() { appInitInput = previous }()
-	return runRepositoryRuntimeInitResolved(resolved, repoRoot, repositoryInitOptions{}, out)
+	return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, repositoryInitOptions{}, out)
 }
 
 func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -330,7 +330,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return nil
 		}
 	}
-	if err := ensureRepositoryDeploymentInputsForUp(runtimeInput, out, opts); err != nil {
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
 	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)

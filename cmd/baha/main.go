@@ -20,6 +20,7 @@ var (
 )
 
 func main() {
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -48,17 +49,25 @@ func run(args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
-	filtered, opts, err := extractGlobalOutputOptions(args)
+	filtered, opts, showVersion, err := extractGlobalOutputOptions(args)
 	if err != nil {
 		return err
+	}
+	if showVersion {
+		if len(filtered) != 0 {
+			return usageError("--version cannot be combined with a command", "Run 'baha --version' by itself.")
+		}
+		fmt.Fprintf(out, "BaseHarbor %s\ncommit %s\nbuilt %s\n", version, commit, date)
+		return nil
 	}
 	ctx = cli.WithOutputOptions(ctx, opts)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 
-func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, error) {
+func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, error) {
 	opts := cli.OutputOptions{}
 	filtered := make([]string, 0, len(args))
+	showVersion := false
 	passthrough := false
 	for _, arg := range args {
 		if passthrough {
@@ -77,20 +86,29 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, err
 			opts.Verbose = true
 		case "--no-color":
 			opts.NoColor = true
+		case "--plain":
+			opts.Plain = true
+		case "--no-input", "--non-interactive":
+			opts.NonInteractive = true
+		case "--version":
+			showVersion = true
 		default:
 			filtered = append(filtered, arg)
 		}
 	}
 	if opts.Quiet && opts.Verbose {
-		return nil, opts, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
+		return nil, opts, showVersion, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
 	}
 	if value := strings.TrimSpace(os.Getenv("BASEHARBOR_REDUCED_MOTION")); value != "" && value != "0" && !strings.EqualFold(value, "false") {
 		opts.ReducedMotion = true
 	}
-	return filtered, opts, nil
+	return filtered, opts, showVersion, nil
 }
 
 func formatCLIError(w io.Writer, err error) {
+	if errors.Is(err, syscall.EPIPE) {
+		return
+	}
 	if cli.IsPresented(err) {
 		return
 	}

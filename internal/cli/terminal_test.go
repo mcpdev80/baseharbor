@@ -101,3 +101,30 @@ func TestTerminalQuietPreservesFailureDiagnostics(t *testing.T) {
 		t.Fatalf("quiet mode hid failure diagnostics: %q", out.String())
 	}
 }
+
+func TestTerminalResultWrapsLongDetailsAtTerminalWidth(t *testing.T) {
+	t.Setenv("COLUMNS", "60")
+	var out bytes.Buffer
+	term := NewTerminal(context.Background(), &out, &out)
+	term.Result("FAILED", "workload", "this is a deliberately long diagnostic detail that should wrap below the detail column instead of drifting off screen")
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected wrapped output, got %q", out.String())
+	}
+	if !strings.HasPrefix(lines[1], strings.Repeat(" ", 37)) {
+		t.Fatalf("continuation is not aligned under detail column: %q", lines[1])
+	}
+}
+
+func TestPlainModeDisablesInteractiveRendering(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{Plain: true})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	if term.TTY() {
+		t.Fatal("plain mode must not behave like an interactive TTY")
+	}
+	term.Result("READY", "application", "ready")
+	if strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("plain mode emitted ANSI: %q", out.String())
+	}
+}

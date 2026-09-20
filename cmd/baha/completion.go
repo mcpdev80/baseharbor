@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
@@ -18,7 +19,7 @@ type completionCandidate struct {
 
 var usageFlagPattern = regexp.MustCompile(`(^|[[:space:]\[|])(-[A-Za-z]|--[A-Za-z0-9][A-Za-z0-9-]*)([ =][A-Z][A-Z0-9_-]*)?`)
 
-func completionCommand(root *cli.Command) *cli.Command {
+func completionCommand(root *cli.Command, stores ...application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "completion",
 		Summary: "Generate shell completion for Bash, Zsh or Fish",
@@ -43,13 +44,13 @@ func completionCommand(root *cli.Command) *cli.Command {
 	}
 }
 
-func internalCompletionCommand(root *cli.Command) *cli.Command {
+func internalCompletionCommand(root *cli.Command, stores ...application.Store) *cli.Command {
 	return &cli.Command{
 		Name:   "__complete",
 		Hidden: true,
 		Usage:  "baha __complete [WORDS...]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			for _, candidate := range completeCommandLine(root, args) {
+			for _, candidate := range completeCommandLine(root, args, stores...) {
 				fmt.Fprintf(out, "%s\t%s\n", candidate.Value, candidate.Description)
 			}
 			return nil
@@ -57,7 +58,7 @@ func internalCompletionCommand(root *cli.Command) *cli.Command {
 	}
 }
 
-func completeCommandLine(root *cli.Command, words []string) []completionCandidate {
+func completeCommandLine(root *cli.Command, words []string, stores ...application.Store) []completionCandidate {
 	current := root
 	consumed := make([]string, 0, len(words))
 	for i := 0; i < len(words)-1; i++ {
@@ -104,13 +105,32 @@ func completeCommandLine(root *cli.Command, words []string) []completionCandidat
 	for _, flag := range commandUsageFlags(current) {
 		candidates = append(candidates, flag)
 	}
+	if len(stores) != 0 && completionAcceptsApplicationName(current) {
+		if items, err := stores[0].List(); err == nil {
+			for _, item := range items {
+				candidates = append(candidates, completionCandidate{Value: item.Name, Description: "configured BaseHarbor application"})
+			}
+		}
+	}
 	candidates = append(candidates,
 		completionCandidate{Value: "--help", Description: "show command help"},
 		completionCandidate{Value: "--quiet", Description: "suppress progress and non-essential human output"},
 		completionCandidate{Value: "--verbose", Description: "show diagnostic runtime details"},
 		completionCandidate{Value: "--no-color", Description: "disable ANSI color"},
+		completionCandidate{Value: "--plain", Description: "stable styling-free line-oriented output"},
+		completionCandidate{Value: "--no-input", Description: "never prompt for interactive input"},
+		completionCandidate{Value: "--version", Description: "print the BaseHarbor version"},
 	)
 	return filterCandidates(uniqueCandidates(candidates), partial)
+}
+
+func completionAcceptsApplicationName(command *cli.Command) bool {
+	switch command.Name {
+	case "show", "plan", "status", "doctor", "apply", "up", "down", "destroy", "backup", "env", "psql", "redis", "logs", "shell", "exec", "update", "tls":
+		return true
+	default:
+		return false
+	}
 }
 
 func visibleChild(command *cli.Command, name string) *cli.Command {

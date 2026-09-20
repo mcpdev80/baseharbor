@@ -72,7 +72,7 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return runRepositoryRuntimeInit(resolved, opts, out)
+			return runRepositoryRuntimeInit(ctx, resolved, opts, out)
 		},
 	}
 }
@@ -105,7 +105,7 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 		case strings.HasPrefix(arg, "--cert-dir="):
 			opts.CertDir = strings.TrimSpace(strings.TrimPrefix(arg, "--cert-dir="))
 		default:
-			return repositoryInitOptions{}, usageError("unknown app init option "+arg, "With an existing baseharbor.yaml use --hostname, --tls, --cert-dir and --yes.")
+			return repositoryInitOptions{}, unknownOptionUsage("baha app init", arg, "--hostname", "--tls", "--cert-dir", "--yes", "-y")
 		}
 		if err != nil {
 			return repositoryInitOptions{}, err
@@ -117,7 +117,7 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 	return opts, nil
 }
 
-func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitOptions, out io.Writer) error {
+func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication, opts repositoryInitOptions, out io.Writer) error {
 	repoRoot := filepath.Dir(resolved.ManifestPath)
 	current, err := loadRepositoryInitState(repoRoot)
 	if err != nil {
@@ -131,7 +131,7 @@ func runRepositoryRuntimeInit(resolved resolvedApplication, opts repositoryInitO
 		provider = bhruntime.ProviderCompose
 	}
 
-	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes
+	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
 	reader := bufio.NewReader(appInitInput)
 	if hostname == "" {
 		if interactive {

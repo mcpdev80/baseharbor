@@ -117,6 +117,22 @@ baha up --no-color
 
 `status` beantwortet, was gesund ist und was Aufmerksamkeit benoetigt. `doctor` gruppiert Checks, Probleme, sichere Reparaturen und naechste Aktionen statt eine unstrukturierte Diagnoseliste auszugeben.
 
+## Optional: interaktives Dashboard
+
+Nach der Materialisierung der Application:
+
+```bash
+baha tui
+```
+
+Das read-only Dashboard bietet Overview, Status und Doctor ueber dieselben strukturierten Health-Modelle wie die CLI. In CI/Pipes sowie mit `--plain` oder `--no-input` wird es bewusst nicht gestartet.
+
+Fuer deterministische Automation:
+
+```bash
+baha --no-input status -o json
+```
+
 ## Sichere Defaults
 
 - Inspection mutiert weder Repository noch Runtime;

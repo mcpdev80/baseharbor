@@ -108,7 +108,7 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, usageError("unknown argument "+args[i], "Run 'baha up --help' for usage.")
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
 		}
 	}
 	return opts, nil
@@ -145,7 +145,7 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
 
-	interactive := !opts.Yes && readerIsTerminal(in)
+	interactive := !opts.Yes && !noInput(parent) && readerIsTerminal(in)
 	if interactive {
 		reader := bufio.NewReader(in)
 		fmt.Fprintln(out, "BaseHarbor control-plane setup")

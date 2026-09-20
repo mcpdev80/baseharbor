@@ -41,14 +41,14 @@ func TestParseRuntimeUpOptionsRejectsInvalidPort(t *testing.T) {
 
 func TestRecoveryFileForRepositoryUpRequiresExplicitPathNonInteractive(t *testing.T) {
 	var out bytes.Buffer
-	_, err := recoveryFileForRepositoryUp(strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
+	_, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
 	if err == nil || !strings.Contains(err.Error(), "recovery file") {
 		t.Fatalf("error = %v, want actionable recovery-file failure", err)
 	}
 }
 
 func TestRecoveryFileForRepositoryUpUsesExplicitPath(t *testing.T) {
-	path, err := recoveryFileForRepositoryUp(strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true, RecoveryFile: "/secure/recovery.json"}, "initialize")
+	path, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true, RecoveryFile: "/secure/recovery.json"}, "initialize")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestRecoveryFileForRepositoryUpRejectsExistingBootstrapOutput(t *testing.T)
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	_, err := recoveryFileForRepositoryUp(strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
+	_, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected existing recovery output to fail, got %v", err)
 	}

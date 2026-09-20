@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
 func TestInitCreatesConfig(t *testing.T) {
@@ -95,5 +99,45 @@ func TestAppCreateListShowPlan(t *testing.T) {
 func TestUnknownCommandFails(t *testing.T) {
 	if err := run([]string{"does-not-exist"}); err == nil {
 		t.Fatal("expected unknown command to fail")
+	}
+}
+
+func TestRootVersionFlag(t *testing.T) {
+	oldVersion, oldCommit, oldDate := version, commit, date
+	version, commit, date = "0.4.11-test", "abc123", "2026-09-20"
+	t.Cleanup(func() {
+		version, commit, date = oldVersion, oldCommit, oldDate
+	})
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"--version"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, wanted := range []string{"BaseHarbor 0.4.11-test", "commit abc123", "built 2026-09-20"} {
+		if !strings.Contains(out.String(), wanted) {
+			t.Fatalf("version output missing %q: %s", wanted, out.String())
+		}
+	}
+}
+
+func TestBrokenPipeErrorIsSilent(t *testing.T) {
+	var out bytes.Buffer
+	formatCLIError(&out, syscall.EPIPE)
+	if out.Len() != 0 {
+		t.Fatalf("broken pipe produced user-facing noise: %q", out.String())
+	}
+}
+
+func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
+	var out bytes.Buffer
+	err := runWithIO(context.Background(), []string{"statsu"}, &out, &out)
+	if err == nil {
+		t.Fatal("expected typo to fail")
+	}
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("expected usage error, got %T: %v", err, err)
+	}
+	if !strings.Contains(usage.Hint, "status") {
+		t.Fatalf("expected status suggestion, got %q", usage.Hint)
 	}
 }

@@ -166,12 +166,15 @@ func commandAssumesYes() bool {
 	return false
 }
 
-func acceptWorkloadPortFallback(in io.Reader, out io.Writer, variable string, from, to int) (bool, error) {
+func acceptWorkloadPortFallback(ctx context.Context, in io.Reader, out io.Writer, variable string, from, to int) (bool, error) {
 	fmt.Fprintf(out, "Workload host port %d is already in use.\n", from)
 	fmt.Fprintf(out, "Found free host port %d for %s.\n", to, variable)
-	if commandAssumesYes() || !readerIsTerminal(in) {
-		fmt.Fprintf(out, "[RETRY] using %s=%d automatically.\n", variable, to)
+	if commandAssumesYes() || (!noInput(ctx) && !readerIsTerminal(in)) {
+		fmt.Fprintf(out, "[RETRYING] using %s=%d automatically.\n", variable, to)
 		return true, nil
+	}
+	if noInput(ctx) {
+		return false, usageError("workload port conflict requires an explicit override in --no-input mode", "Set the published port environment variable explicitly to a free port and retry.")
 	}
 	fmt.Fprintf(out, "Use %d instead? [Y/n]: ", to)
 	answer, err := bufio.NewReader(in).ReadString('\n')
@@ -220,7 +223,7 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 		if fallback == 0 {
 			return fmt.Errorf("%w; no free fallback port found for %s", err, candidate.Name)
 		}
-		accepted, promptErr := acceptWorkloadPortFallback(in, out, candidate.Name, conflict, fallback)
+		accepted, promptErr := acceptWorkloadPortFallback(ctx, in, out, candidate.Name, conflict, fallback)
 		if promptErr != nil {
 			return promptErr
 		}

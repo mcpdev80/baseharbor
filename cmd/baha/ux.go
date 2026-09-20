@@ -30,3 +30,15 @@ func activity(ctx context.Context, term *cli.Terminal, label string, fn func(io.
 	}
 	return nil
 }
+
+func noInput(ctx context.Context) bool {
+	return cli.OutputOptionsFromContext(ctx).NonInteractive
+}
+
+func unknownOptionUsage(command, value string, candidates ...string) error {
+	hint := "Run '" + command + " --help' for usage."
+	if suggestion := cli.SuggestClosest(value, candidates); suggestion != "" {
+		hint = "Did you mean '" + suggestion + "'?\n  Run '" + command + " --help' for usage."
+	}
+	return usageError("unknown option "+value, hint)
+}
