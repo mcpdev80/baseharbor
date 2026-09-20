@@ -169,7 +169,6 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 	}
 }
 
-
 func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
