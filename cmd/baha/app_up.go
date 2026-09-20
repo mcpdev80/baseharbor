@@ -26,6 +26,9 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			if err := printResolvedTracesPlacement(out, m); err != nil {
+				return err
+			}
 			if err := printResolvedMetricsPlacement(out, m); err != nil {
 				return err
 			}
@@ -44,6 +47,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			var managedExposure *managedExposureExecution
 			var managedObjectStorage *managedObjectStorageExecution
+			var managedTraces *managedTracesExecution
 			var managedTelemetry *managedTelemetryExecution
 			var managedMetrics *managedMetricsExecution
 			var managedLogs *managedLogsExecution
@@ -86,9 +90,14 @@ func appUpCommand(store application.Store) *cli.Command {
 					managedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved)
 					return err
 				}},
+				{Name: "managed traces provider", Run: func(ctx context.Context) error {
+					var err error
+					managedTraces, err = prepareManagedTraces(ctx, compose, resolved)
+					return err
+				}},
 				{Name: "managed telemetry provider", Run: func(ctx context.Context) error {
 					var err error
-					managedTelemetry, err = prepareManagedTelemetry(ctx, compose, resolved)
+					managedTelemetry, err = prepareManagedTelemetry(ctx, compose, resolved, managedTraces)
 					return err
 				}},
 				{Name: "managed metrics provider", Run: func(ctx context.Context) error {
@@ -200,14 +209,20 @@ func appUpCommand(store application.Store) *cli.Command {
 				printRuntimeBrokerDocs(out, files)
 			}
 			printRuntimeReady(out, m)
+			if err := convergeManagedTracesBeforeTelemetry(ctx, out, managedTraces); err != nil {
+				return fmt.Errorf("converge managed traces provider: %w", err)
+			}
 			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {
 				return fmt.Errorf("converge managed telemetry: %w", err)
 			}
-			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
-				return fmt.Errorf("converge managed metrics provider: %w", err)
+			if err := verifyManagedTracesAfterTelemetry(ctx, out, managedTraces); err != nil {
+				return fmt.Errorf("verify managed trace ingestion: %w", err)
 			}
 			if err := convergeManagedLogsBeforeWorkload(ctx, out, files, managedLogs); err != nil {
 				return fmt.Errorf("converge managed logs provider: %w", err)
+			}
+			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
+				return fmt.Errorf("converge managed metrics provider: %w", err)
 			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
