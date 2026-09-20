@@ -226,6 +226,9 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 	if environment == nil {
 		environment = map[string]string{}
 	}
+	if err := mergeRepositoryDeploymentWorkloadPorts(environment, resolved); err != nil {
+		return nil, err
+	}
 	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
 		return nil, err
 	}
