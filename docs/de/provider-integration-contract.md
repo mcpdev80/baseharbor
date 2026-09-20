@@ -66,6 +66,36 @@ Breaking Protocol-Semantik benoetigt eine neue Protocol-Major-Version.
 
 Breaking application-facing Capability-Semantik benoetigt eine neue Capability-Specification-Major-Version.
 
+
+## Provider-Observability-Deklarationen in v0.4.10
+
+Provider Protocol v1 kann provider-eigene Observability-Signale ueber `Describe` bekanntgeben. Diese Metadaten beschreiben die Provider-Implementierung und sind kein Application Intent.
+
+Ein Provider kann beispielsweise deklarieren:
+
+```text
+metrics:
+  protocol: openmetrics
+  port: 3200
+  path: /metrics
+```
+
+Die Deklaration allein autorisiert keine Collection. BaseHarbor kombiniert sie mit der tatsaechlichen Runtime-Registrierung des Providers, Collection-Policy, Provider-Placement und Sharing-Boundary-Autorisierung.
+
+Das Metrics-Backend konsumiert eine generische Signal-Registry. Produktspezifische Verzweigungen wie `if provider == tempo` oder `if provider == loki` gehoeren nicht in den Metrics-Core.
+
+Bei shared Metrics-Providern werden application-scoped Provider-Signale auf die Applications begrenzt, die in genau dieser Shared Boundary registriert sind. Ein geteilter Provider-Prozess erzeugt niemals pauschalen Cross-Application-Observability-Zugriff.
+
+Aktuelle v0.4.10-Referenzdeklarationen umfassen Metrics des Managed OpenTelemetry Collectors, Loki und Tempo. Provider ohne sicheren unterstuetzten Signal-Endpunkt benoetigen keinen kuenstlichen Exporter nur fuer diesen Mechanismus.
+
+## Trace-Platform-Grenze in v0.4.10
+
+`traces/v1` ist der providerneutrale Platform-Contract fuer Trace-Retention und -Query. Application-Instrumentierung und Transport bleiben `telemetry.otlp/v1`.
+
+Tempo 3.0.2 ist der erste Compose-Referenzprovider. Der aktuelle Adapter unterstuetzt nur das shared Placement, das er tatsaechlich sicher realisieren kann. Nicht implementiertes Application-/External-/Named-Boundary-Placement bricht vor Mutation fail-closed ab.
+
+Managed Trace Storage ist opt-in Deployment-Policy. Ein OTLP-Transport allein provisioniert weiterhin weder Tempo noch Grafana oder ein anderes Storage-/Visualisierungsprodukt.
+
 ## Lifecycle
 
 Der bestehende Lifecycle bleibt autoritativ:
