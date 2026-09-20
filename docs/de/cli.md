@@ -274,6 +274,8 @@ baha app doctor
 
 Fehlende Pflicht-Secrets blockieren `apply`/`up`. Secret-Werte selbst werden nie ausgegeben.
 
+Wurde eine Repository-Anwendung noch nicht angewendet oder bewusst zerstoert, waehrend `baseharbor.yaml` erhalten bleibt, melden `status` und `doctor` den expliziten Lifecycle-Zustand `NOT APPLIED`. Es werden dann keine kuenstlichen Backend-/OpenBao-Fehler erzeugt und keine Reparatur vorgeschlagen; der normale naechste Schritt ist `baha up` oder `baha app apply`.
+
 ## Runtime-Truth
 
 Ein laufender Container ist nicht automatisch READY. Fuer ausgewaehlte Compose-Services unterscheidet BaseHarbor Running/Healthy, Starting, Unhealthy, Exited und Missing. Konventionelle app-eigene HTTP/HTTPS-Publisher werden lokal aktiv geprueft.
