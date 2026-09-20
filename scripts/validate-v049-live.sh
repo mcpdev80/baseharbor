@@ -141,6 +141,7 @@ printf '[12/13] broker/executor/SeaweedFS live security fixture\n'
 security_workdir="$(mktemp -d)"
 export BASEHARBOR_STATE_DIR="$security_workdir/platform-state"
 export BASEHARBOR_RUNTIME_IMAGE="$runtime_image"
+export BASEHARBOR_LOGS_ENABLED=false
 
 postgres_port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 openbao_port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
