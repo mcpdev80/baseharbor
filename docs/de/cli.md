@@ -13,6 +13,7 @@ baha
 ├── connections
 ├── update
 ├── completion bash|zsh|fish
+├── tui
 ├── app
 │   ├── init / create / list / show
 │   ├── plan / preflight / apply
@@ -51,10 +52,36 @@ Globale Controls:
 -q, --quiet
     --silent
 -v, --verbose
+    --plain
     --no-color
+    --no-input, --non-interactive
+    --version
 ```
 
 `NO_COLOR` und `TERM=dumb` deaktivieren Farbe ebenfalls. `BASEHARBOR_REDUCED_MOTION=1` erzwingt auch im interaktiven Terminal statische Aktivitaetsausgabe.
+
+Interaktives Dashboard:
+
+```bash
+baha tui
+```
+
+Die TUI ist read-only und verwendet dieselben strukturierten Status-/Doctor-Modelle wie die normale CLI. Sie bietet **Overview**, **Status** und **Doctor**; mit `Tab`/Pfeiltasten wechseln, `r` aktualisiert und `q` bzw. `Ctrl-C` beendet. Sie benoetigt ein echtes interaktives Terminal in einem Application-Repository und wird bei `--plain`, `--no-input`, Pipes und CI bewusst abgelehnt.
+
+`--plain` deaktiviert Farbe und animiertes Redraw, behaelt aber die lesbare semantische Human-Ausgabe. `--no-input` garantiert, dass BaseHarbor niemals fragt: fehlt eine explizite Entscheidung, bricht der Command mit der konkreten benoetigten Flag-/Datei-/Wert-Angabe ab.
+
+Lange Details und Help-Texte werden an die Terminalbreite angepasst. Langes Help verwendet `$PAGER` nur im interaktiven TTY. Broken Pipe ist normales Unix-Pipeline-Verhalten und erzeugt keine stoerende Fehlermeldung.
+
+Prioritaet fuer Deployment-/Runtime-Eingaben:
+
+```text
+explizites CLI-Flag/Input
+  > Prozess-Environment
+  > geschuetzter lokaler Deployment-State
+  > sicherer BaseHarbor-Default
+```
+
+Der portable Application Intent in `baseharbor.yaml` wird durch diese Deployment-Overrides nicht umgeschrieben.
 
 Shell-Completion:
 
