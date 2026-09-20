@@ -4,326 +4,451 @@
 [![GitHub Release](https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver)](https://github.com/mcpdev80/baseharbor/releases)
 [![License](https://img.shields.io/github/license/mcpdev80/baseharbor)](LICENSE)
 
-Secure, modular, self-hosted backend infrastructure for independent applications, operated through the `baha` CLI.
+## Your application declares what infrastructure it needs. BaseHarbor handles the infrastructure underneath.
 
-BaseHarbor provides common backend capabilities such as PostgreSQL, Valkey, managed secrets, runtime identity, backup/restore and lifecycle management without forcing applications into a proprietary SDK or monolith.
+BaseHarbor inspects existing applications, turns infrastructure requirements into a portable contract, and provisions those capabilities through interchangeable providers — without coupling application code to the underlying infrastructure.
 
-> BaseHarbor should hide operational complexity without hiding standard interfaces.
-
-Applications keep using normal protocols, environment variables and files. A repository can declare the backend it needs in `baseharbor.yaml`; developers do not need a BaseHarbor login for the current trusted local/Compose workflow and workloads do not need the `baha` process at runtime.
-
-## Status
-
-BaseHarbor is **pre-v1 and already consumed by real reference applications**. The current v0.4 architecture keeps Compose as the complete runtime implementation while separating portable application intent from provider choice, provider placement and runtime topology. v0.4.8 added the Runtime Resource API, provider-neutral metrics and directed cross-application connectivity; v0.4.9 adds centralized logs through a provider-neutral logs lifecycle plus zero-trust Compose workload preflight and executable provider conformance. Use the GitHub Releases badge above as the source of truth for the latest published stable version.
-
-The current v0.4 line includes:
-
-- single-node BaseHarbor control plane with PostgreSQL and OpenBao;
-- guided first-run host-port selection for the control plane;
-- user-global control-plane runtime state that survives application checkout changes;
-- repository-owned Manifest v1 `baseharbor.yaml` application contracts;
-- a provider-neutral `PortableContract` compatibility adapter for logical application intent;
-- a reusable capability/provider/resource/binding core with fail-closed negotiation and machine-readable lifecycle results;
-- a protected provider registry supporting shared, application-scoped and external/BYO provider instances without moving provider placement into application intent;
-- explicit separation between application requirements, runtime-provider selection and capability-provider/product selection;
-- Compose as the current runtime provider behind an explicit provider/capability seam;
-- protected deployment-owned runtime-provider state and fail-closed unsupported-provider behavior;
-- declarative input resolution for default, generated, external and conditional deployment values;
-- `baha app init --input NAME=VALUE` for automation-safe non-secret deployment input injection;
-- repository-aware `baha up` that resolves only missing deployment inputs before application convergence;
-- detect-first guided repository initialization and deterministic automation flags;
-- one or multiple named PostgreSQL instances per application;
-- one or multiple named Valkey/Redis-protocol instances per application;
-- one or multiple logical S3 buckets per application through `object-storage.s3/v1`;
-- a lazy shared SeaweedFS Compose reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
-- provider-neutral `telemetry.otlp/v1` export semantics with standard `OTEL_*` workload bindings;
-- OpenTelemetry Collector 0.161.0 as a lazy shared Compose reference provider plus external OTLP destination support;
-- real OTLP HTTP/protobuf export verification without implicitly provisioning Prometheus, Loki, Tempo or Grafana;
-- provider-neutral `metrics/v1` collection with Prometheus 3.14.0 as shared or application-scoped reference provider;
-- isolated metrics collection with real scrape/ingestion verification;
-- provider-neutral `logs/v1` lifecycle with Loki 3.7.8 and Grafana Alloy 1.19.2 as the first Compose reference implementation;
-- shared or application-scoped Loki placement with optional named sharing boundaries;
-- real Loki readiness plus query-based workload log ingestion verification;
-- a provider-neutral Runtime Resource API with asynchronous/idempotent operations and the Application Runtime Broker;
-- runtime S3 resource creation with application-scoped authorization and scoped bindings;
-- explicit directed cross-application connectivity through a hardened relay rather than a broad shared workload network;
-- rendered-Compose workload security preflight for privileged mode, runtime sockets, host namespaces, dangerous capabilities, devices and critical host mounts;
-- executable Provider Integration Contract conformance tests plus deterministic fake-provider fault injection;
-- explicit workload-only Compose applications without artificial backend dependencies;
-- application environment/file bindings using standard connection information;
-- managed required/generated secrets with fail-closed workload startup gates;
-- app-scoped dynamic secret references and per-application mTLS runtime broker isolation;
-- provider-neutral `secure-binding/v1` metadata for workload identity, credential/trust/secret references, least-privilege authorization, lifecycle support and machine-readable security diagnostics;
-- service-level, health-aware workload status plus application-owned HTTP/HTTPS exposure readiness;
-- shared logical endpoint/readiness semantics reused by app-owned publishers and managed exposure;
-- optional provider-neutral `exposure.http/v1` intent with public/internal visibility;
-- application-scoped Caddy managed exposure for Compose without changing application Compose source;
-- trusted-local developer access through database/cache clients, logs, shell and exec;
-- guided encrypted backup/restore with verified recovery metadata and fail-closed post-restore readiness;
-- strict fast-forward Git-backed application updates with optional encrypted pre-update recovery points;
-- guarded BaseHarbor self-update with checksum verification, atomic replacement and rollback;
-- repository deployment initialization for public FQDN and TLS mode;
-- existing/BYOC TLS certificate lifecycle with validation, downgrade protection, reload and readiness verification;
-- automatic persisted fallback for configurable workload host-port conflicts, including IPv4/IPv6 Docker bind errors.
-
-Kubernetes and OpenShift are not implemented in v0.4. They are future runtime providers that should map the same logical application requirements to their native primitives instead of requiring applications to adopt a second operational contract.
-
-The public compatibility contract is still allowed to evolve during `0.x`. Patch releases are expected to remain compatible; minor releases may contain documented breaking changes until `v1.0.0`.
-
-## Architecture at a glance
-
-BaseHarbor keeps application intent simple and infrastructure topology outside the portable contract:
+> Describe requirements once. Keep the infrastructure underneath replaceable.
 
 ```text
-Application intent
-  -> Capability
-  -> Provider resolution
-  -> Provider placement
-       - application
-       - shared
-           - optional sharing boundary
-       - external
-  -> Isolation / deployment boundary
-  -> Runtime/provider implementation
+                         YOUR APPLICATION
+                                |
+                                v
+                        baha app inspect
+                                |
+                                v
+                         baseharbor.yaml
+                                |
+                                v
+                       +----------------+
+                       |   BaseHarbor   |
+                       |                |
+                       | inspect        |
+                       | plan           |
+                       | preflight      |
+                       | provision      |
+                       | bind           |
+                       | verify         |
+                       | reconcile      |
+                       +-------+--------+
+                               |
+                  +------------+------------+
+                  |            |            |
+                  v            v            v
+               Compose     Kubernetes    OpenShift
+              available      planned       planned
+                  |
+                  v
+        PostgreSQL · Valkey · S3 · Secrets
+          HTTP · OTLP · Metrics · Logs
 ```
 
-Applications ask for capabilities, not products. A concrete provider is selected by BaseHarbor/platform policy and must satisfy the same versioned lifecycle contract.
+Compose is the complete runtime implementation today. Kubernetes and OpenShift are future runtime providers that must preserve the same application contract.
 
-Examples:
+## 30-second demo
 
-- SQL remains an application capability even when PostgreSQL is the current reference provider.
-- S3-compatible storage remains provider-neutral even when SeaweedFS realizes it.
-- OTLP telemetry is independent from the bundled OpenTelemetry Collector.
-- Metrics are modeled as `metrics/v1`; Prometheus is the current provider.
-- Centralized logs are platform policy through `logs/v1`; applications do not request Loki.
-- Shared provider placement does not imply shared application access. Access stays explicit and deny-by-default.
-
-### v0.4.9 security hardening
-
-Before a repository Compose workload is started, BaseHarbor evaluates the fully rendered Compose configuration.
-
-Managed environments fail closed for isolation-breaking settings such as:
-
-- `privileged: true`;
-- Docker/Podman runtime socket mounts;
-- host network/PID/IPC namespaces;
-- dangerous `cap_add` values;
-- host device mappings;
-- critical host filesystem mounts.
-
-The Loki/Alloy reference provider itself runs without Docker/Podman sockets, with read-only roots, dropped capabilities, `no-new-privileges` and loopback-only host listeners.
-
-Provider Integration Contract v1 also has executable lifecycle conformance in v0.4.9, including deterministic CREATE/NOOP/DRIFT/REPAIR/failure scenarios.
-
-## Install `baha`
-
-Released Linux binaries are the normal installation path. Releases are published for amd64 and arm64 together with SHA-256 checksums and GitHub build-provenance attestations.
-
-Install the latest stable release:
+Start with an existing application:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
+cd my-app
+
+# Inspect the repository without changing it
+baha app inspect .
+
+# Create/review the portable application contract
+baha app init
+
+# See what BaseHarbor intends to do
+baha app plan
+
+# Converge infrastructure and workload
+baha app apply
 ```
 
-For production automation, pin both installer and requested version to the immutable published release tag:
+Repository inspection reports evidence as:
 
-```bash
-release_tag=vX.Y.Z
-curl -fsSL "https://raw.githubusercontent.com/mcpdev80/baseharbor/${release_tag}/scripts/install.sh" \
-  | bash -s -- "${release_tag}"
+```text
+Detected
+  PostgreSQL usage
+  Redis/Valkey usage
+  HTTP workload port
+
+Suggested
+  S3-compatible object storage
+  OpenTelemetry export
+
+Possible
+  secret names
+  additional runtime operations
 ```
 
-The installer downloads the matching archive over HTTPS, verifies it against the published SHA-256 manifest, installs `baha` to `~/.local/bin/baha` by default and prints the installed build metadata.
+Detection is evidence-based:
 
-```bash
-baha version
+- **Detected** means strong evidence.
+- **Suggested** requires developer confirmation.
+- **Possible** is weak evidence and is never silently adopted.
+- Inspection is read-only.
+- Repository evidence never silently grants permissions or creates infrastructure.
+
+That distinction is intentional: BaseHarbor should discover aggressively, but mutate conservatively.
+
+## The idea
+
+Applications know **what** they need. Infrastructure knows **how** to provide it. BaseHarbor connects the two.
+
+```text
+Application
+    |
+    v
+"I need SQL, cache, S3, secrets and metrics."
+    |
+    v
+Portable application contract
+    |
+    v
+Capability resolution
+    |
+    v
+Provider + placement
+    |
+    v
+Actual infrastructure
 ```
 
-Building from source is a development/contributor path, not the production install contract:
+The application should not need to know whether a capability is provided by a local Compose service, a shared platform service, an external system, or a future Kubernetes/OpenShift implementation.
 
-```bash
-go build -o baha ./cmd/baha
+### One contract. Different infrastructure.
+
+```text
+                         baseharbor.yaml
+                                |
+                   +------------+------------+
+                   |            |            |
+                   v            v            v
+                Compose     Kubernetes    OpenShift
+               available      planned       planned
+                   |
+                   v
+               providers
 ```
 
-## Preferred application workflow
+**The application contract stays stable. The provider/runtime realization can change.**
 
-The preferred portable contract lives with the application source:
+## A real application contract
 
 ```yaml
 version: 1
 
 app:
-  name: mailflow
+  name: my-app
   environment: production
 
 services:
   postgres:
     enabled: true
+
   redis:
     enabled: true
+
   object_storage:
     buckets:
-      attachments: {}
-  secrets:
-    enabled: true
+      uploads: {}
 
 secrets:
   required:
-    - name: SECRET_KEY
+    - name: APP_SECRET
 ```
 
-`app.name` is the stable logical application identity. In manifest v1, `app.environment` identifies deployment context; it is not an intrinsic business property of the application. The same logical application may later be realized independently in development, staging, production or customer-specific environments. See [`docs/decisions/0002-application-environment-is-deployment-context.md`](docs/decisions/0002-application-environment-is-deployment-context.md).
+BaseHarbor materializes standard application-facing bindings such as:
 
-Manifest v1 remains the supported compatibility surface in v0.4. Internally, BaseHarbor translates portable intent into provider-neutral logical capabilities while keeping Compose/deployment implementation details outside that contract.
+```text
+DATABASE_URL
+REDIS_URL
+VALKEY_URL
+S3_ENDPOINT
+S3_BUCKET
+APP_SECRET
+```
 
-Interactive repository setup is detect-first:
+Applications keep using native ecosystem clients and protocols. They do not need a BaseHarbor SDK in their business code.
+
+Manifest v1 is the current v0.4 compatibility surface. Provider-specific topology, credentials and runtime state stay outside the portable application intent.
+
+## Bring your existing application
+
+BaseHarbor does not require a rewrite.
 
 ```bash
+baha app inspect .
+baha app inspect . --json
+```
+
+The shared repository-inspection core understands evidence from sources such as:
+
+- Compose files and Dockerfiles;
+- dependency manifests;
+- environment-variable **names**;
+- source imports and configuration;
+- published ports and health checks;
+- PostgreSQL and Redis/Valkey usage;
+- S3-compatible usage and likely runtime bucket creation;
+- OpenMetrics endpoints;
+- OTLP export.
+
+`baha app init` consumes the same inspection model to help create the initial contract.
+
+Weak evidence remains a suggestion. Existing contract state is not deleted simply because current repository evidence becomes stale.
+
+## What BaseHarbor provides today
+
+| Need | Portable boundary | Current reference implementation |
+| --- | --- | --- |
+| SQL | capability lifecycle | PostgreSQL |
+| Cache / key-value | capability lifecycle | Valkey / Redis protocol |
+| Secrets / trust | secure bindings | OpenBao |
+| S3-compatible storage | `object-storage.s3/v1` | SeaweedFS |
+| HTTP exposure | `exposure.http/v1` | Caddy |
+| Telemetry export | `telemetry.otlp/v1` | OpenTelemetry Collector or external OTLP |
+| Metrics | `metrics/v1` | Prometheus 3.14.0 |
+| Centralized logs | `logs/v1` | Loki 3.7.8 + Grafana Alloy 1.19.2 |
+| Runtime-created resources | Runtime Resource API | Application Runtime Broker + Provider Executor |
+| Cross-app access | explicit directed policy | hardened Compose relay |
+
+Built-in components are reference providers behind versioned semantic boundaries rather than application-facing product requirements.
+
+## Provider placement
+
+Provider placement is platform/operator state, not application intent.
+
+```text
+application
+    dedicated provider instance for one application/environment
+
+shared
+    platform provider instance
+    + optional named sharing boundary
+
+external
+    lifecycle owned outside BaseHarbor
+```
+
+A shared provider does **not** mean every application can access it.
+
+Access stays explicit and deny-by-default. Logical resources remain application-owned even when the backing provider is shared.
+
+Unsupported requested placement fails closed before mutation; BaseHarbor does not silently downgrade to another placement.
+
+## Built for interchangeable providers
+
+BaseHarbor owns the capability semantics and lifecycle. Providers implement them.
+
+```text
+Capability Specification
+        |
+        v
+Provider Integration Contract
+        |
+        +--> built-in/reference provider
+        |
+        +--> future external provider
+```
+
+Provider Integration Contract v1 defines the common lifecycle model:
+
+```text
+plan
+  -> preflight
+  -> provision
+  -> bind
+  -> verify
+  -> reconcile
+```
+
+v0.4.9 also includes executable provider conformance and deterministic fault-injection coverage for:
+
+- CREATE;
+- repeated NOOP convergence;
+- DRIFT -> REPAIR;
+- provider unavailable;
+- malformed binding;
+- verify failure;
+- retry convergence;
+- ownership-safe destroy;
+- secret-safe diagnostics.
+
+The repository already contains the future language-neutral provider schema in `spec/provider/v1/provider.proto`.
+
+gRPC/Protocol Buffers and OCI are the planned open transport and packaging boundary for future external providers. A dynamic external-provider loader is **not implemented yet**.
+
+See [Provider Integration Contract](docs/provider-integration-contract.md).
+
+## Security is behavior, not a marketing label
+
+BaseHarbor aims for least privilege, deny by default and fail closed.
+
+Concrete properties in the current v0.4 line include:
+
+- secrets are not stored in portable application manifests;
+- application/runtime credentials are scoped rather than provider-global;
+- S3 credentials are bucket-scoped;
+- runtime identities and brokers are application-scoped;
+- cross-application connectivity is explicit and directional;
+- shared providers do not imply shared application access;
+- unsupported provider placement fails before mutation;
+- readiness verifies real protocols/data flow instead of only checking container state;
+- ambiguous repository findings require confirmation;
+- protected deployment/provider state uses owner-only permissions.
+
+### Compose workload security preflight
+
+Before BaseHarbor starts a repository-provided Compose workload, it evaluates the **fully rendered Compose configuration**.
+
+Managed environments fail closed for isolation-breaking settings such as:
+
+- `privileged: true`;
+- Docker/Podman runtime socket mounts;
+- `network_mode: host`;
+- host PID/IPC namespaces;
+- dangerous `cap_add` values;
+- host device mappings;
+- critical host mounts such as `/`, `/etc`, `/run`, `/var/run` and `/dev`.
+
+Development can explicitly acknowledge selected exceptions where policy permits.
+
+The v0.4.9 Loki/Alloy provider itself runs without Docker/Podman socket access, uses read-only roots, drops Linux capabilities, sets `no-new-privileges` and binds host-facing listeners to loopback.
+
+## Metrics without Prometheus in application intent
+
+An application can expose OpenMetrics-compatible endpoints while platform policy decides whether and where to collect them.
+
+The current reference implementation provides:
+
+- `metrics/v1`;
+- shared or application-scoped Prometheus;
+- optional named shared boundaries;
+- isolated per-application metrics networks;
+- automatic target registration;
+- real scrape/ingestion verification.
+
+Prometheus is a provider implementation, not part of the portable application identity.
+
+## Centralized logs without Loki in application intent
+
+Applications already produce logs. Platform policy decides whether those logs are collected centrally.
+
+v0.4.9 adds:
+
+- `logs/v1`;
+- Loki 3.7.8 as the reference log store/query provider;
+- Grafana Alloy 1.19.2 as collector/forwarder;
+- shared or application-scoped placement;
+- optional named shared boundaries;
+- RFC5424 forwarding from selected repository workload services;
+- real Loki query verification before the log path is considered ready.
+
+Loki/Alloy do not get the Docker/Podman socket.
+
+`baha app logs` remains an independent trusted-local developer workflow; it does not couple the application to Loki.
+
+## Runtime Resource API
+
+Some infrastructure is needed only after an application is running.
+
+The Runtime Resource API allows authorized application-time operations while keeping provider credentials and provider-specific APIs outside application code.
+
+Current examples include runtime S3 bucket lifecycle.
+
+The Application Runtime Broker:
+
+- authenticates the application with BaseHarbor-managed identity;
+- authorizes only declared runtime permissions;
+- forwards provider-neutral operations;
+- persists asynchronous operation state;
+- returns scoped bindings rather than provider-global credentials.
+
+Development can expose embedded OpenAPI/Swagger documentation on loopback. Test/staging/production keep interactive docs disabled by default unless operator policy enables them.
+
+## Explicit cross-application connectivity
+
+Provider sharing and application connectivity are separate concerns.
+
+BaseHarbor connectivity is explicit and directional:
+
+```bash
+baha connect app-a/api app-b/sql
+baha connections
+baha disconnect app-a/api app-b/sql
+```
+
+The current Compose implementation uses a hardened relay rather than placing both workloads onto one broad shared network.
+
+## BaseHarbor is
+
+- a portable application infrastructure contract;
+- a capability/provider abstraction;
+- a lifecycle and reconciliation engine;
+- a bridge between applications and infrastructure;
+- a secure way to keep product/runtime choices outside application intent.
+
+## BaseHarbor is not
+
+- a replacement for your application framework;
+- a proprietary database or secret store;
+- a Kubernetes distribution;
+- a promise that Kubernetes/OpenShift are already implemented;
+- a cloud lock-in layer;
+- a reason to replace standard infrastructure tools that already solve their layer well.
+
+BaseHarbor can sit **above** technologies such as Compose today and future Kubernetes/OpenShift runtimes. It can also work with externally managed providers rather than requiring ownership of every dependency.
+
+## Install `baha`
+
+Released Linux binaries are the normal installation path.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcpdev80/baseharbor/main/scripts/install.sh | bash
+```
+
+Verify the installation:
+
+```bash
+baha version
+```
+
+For production automation, consume an immutable published release rather than following `main`.
+
+Building from source is intended for development/contribution:
+
+```bash
+go build -o baha ./cmd/baha
+```
+
+## Normal application workflow
+
+```bash
+baha app inspect .
 baha app init
-```
-
-For deterministic application-contract creation:
-
-```bash
-baha app init mailflow \
-  --environment production \
-  --postgres \
-  --redis \
-  --s3-bucket attachments \
-  --require-secret SECRET_KEY
-```
-
-The guided flow detects the current project first and asks only for missing or ambiguous application-contract information. Deployment/runtime values use the reusable input resolver and remain protected deployment state rather than portable requirements in `baseharbor.yaml`.
-
-Existing dedicated deployment flags remain supported, and non-interactive automation can inject declared non-secret inputs explicitly:
-
-```bash
-baha app init --yes \
-  --input hostname=mail.example.com \
-  --input tls_mode=existing \
-  --input cert_dir=/secure/certificates
-```
-
-Then operate from the repository without repeating the application name:
-
-```bash
 baha app plan
 baha app preflight
 baha app apply
-baha app show
 baha app status
 baha app doctor
 ```
 
-## Control-plane bootstrap
-
-On first initialization:
+Repository-aware startup is also available:
 
 ```bash
 baha up
 ```
 
-`baha` checks the default loopback ports before writing runtime state. Interactive terminals can accept or change the proposed ports. Automation can accept safe proposals non-interactively:
-
-```bash
-baha up --yes
-```
-
-Inside an application repository, `baha up` also resolves required deployment inputs before convergence. Complete protected state causes no additional questions; non-interactive mode uses only safe defaults/derivations and never invents an external certificate path.
-
-Explicit control-plane ports are also supported and still fail closed when occupied:
-
-```bash
-baha up --postgres-port 15432 --openbao-port 18200
-```
-
-Control-plane state is user-global by default:
-
-```text
-$XDG_DATA_HOME/baseharbor/runtime
-```
-
-or, when `XDG_DATA_HOME` is unset:
-
-```text
-~/.local/share/baseharbor/runtime
-```
-
-`BASEHARBOR_STATE_DIR` remains an explicit operator/CI override, and a legacy `.baseharbor/runtime` is reused only when no global state exists yet.
-
-Inspect the runtime:
-
-```bash
-baha status
-baha doctor
-```
-
-Bootstrap the bundled OpenBao trust plane with an explicit recovery destination:
-
-```bash
-baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
-baha openbao status
-```
-
-After a restart, unseal the current manual Shamir profile explicitly:
-
-```bash
-baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
-```
-
-The initial root token is not persisted and is revoked after the restricted BaseHarbor manager identity has been established and verified.
-
-## Multiple service instances
-
-One default instance stays simple:
-
-```yaml
-services:
-  postgres:
-    enabled: true
-  redis:
-    enabled: true
-```
-
-Applications that need several independent logical services use names:
-
-```yaml
-services:
-  postgres:
-    instances:
-      primary: {}
-      analytics: {}
-  redis:
-    instances:
-      cache: {}
-      sessions: {}
-```
-
-Each named instance gets independent credentials, persistent data and stable bindings. Multiple logical instances are not HA; HA is a topology behind one stable logical service and is tracked separately as future architecture work.
-
-## Native application consumption
-
-BaseHarbor materializes owner-only standard application connection information and file bindings. Examples include:
-
-```text
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
-VALKEY_URL=redis://...
-```
-
-For named instances, stable variables such as `DATABASE_PRIMARY_URL` and `REDIS_SESSIONS_URL` are generated.
-
-Inspect the contract without making BaseHarbor a runtime dependency:
+Inspect standard application bindings:
 
 ```bash
 baha app env
 baha app env --format json
-baha app env --path
 ```
 
-Credential-bearing values are masked by default; revealing them requires an explicit operation.
-
-Trusted local developer access is available through logical resources and services:
+Trusted-local developer access includes:
 
 ```bash
 baha app psql
@@ -333,114 +458,74 @@ baha app shell SERVICE
 baha app exec SERVICE COMMAND
 ```
 
-## Managed secrets
+## Current status
 
-Applications declare secret **names**, never values:
+BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 
-```yaml
-secrets:
-  required:
-    - name: OPENAI_API_KEY
-    - name: SMTP_PASSWORD
-```
+### Available now
 
-Set values without exposing them on the command line:
+- Compose runtime;
+- repository inspection with Detected / Suggested / Possible evidence;
+- application contract and capability lifecycle;
+- PostgreSQL and Valkey;
+- OpenBao-backed secrets/trust;
+- S3-compatible object storage;
+- managed HTTP/HTTPS exposure;
+- OTLP telemetry;
+- Prometheus metrics;
+- Loki/Alloy centralized logs;
+- Runtime Resource API;
+- explicit directional cross-application connectivity;
+- backup/restore and update lifecycle;
+- provider placement/ownership registry;
+- executable provider conformance;
+- Compose workload security preflight.
 
-```bash
-printf '%s' "$OPENAI_API_KEY" | baha app secret set OPENAI_API_KEY --stdin
-printf '%s' "$SMTP_PASSWORD" | baha app secret set SMTP_PASSWORD --stdin
-```
+### Planned / future runtime tracks
 
-`baha app apply` and `baha app up` fail closed before workload start when required secrets are missing or unusable. Status, show and doctor expose readiness metadata only, never secret values.
+- dynamic external-provider loading over the defined gRPC/Protobuf + OCI boundary;
+- Kubernetes runtime realization;
+- OpenShift runtime realization;
+- API/Web UI control surfaces over the shared core;
+- broader provider ecosystem.
 
-BaseHarbor also supports app-scoped dynamic secret references through the runtime broker so applications can store an opaque reference while the credential remains in OpenBao.
+Planned items are architecture targets, not claims of current availability.
 
-The v0.4 declarative input resolver can represent secret inputs, but generic persistable output excludes them and string rendering is redacted. Secret delivery/storage remains a dedicated capability-provider concern rather than becoming ordinary committed deployment state.
+## Documentation
 
-## Deployment TLS
+Start here:
 
-The v0.4 Compose deployment initializer supports deployment TLS modes without adding TLS provider details to the portable application manifest. For existing/BYOC certificates, BaseHarbor validates and stores the normalized certificate/key pair in protected runtime state.
+- [Architecture](docs/architecture.md)
+- [Application contract](docs/application-contract.md)
+- [Repository workflow](docs/repository-application-workflow.md)
+- [Capability / provider model](docs/capability-provider-model.md)
+- [Provider Integration Contract](docs/provider-integration-contract.md)
+- [CLI reference](docs/cli.md)
+- [Roadmap](docs/roadmap.md)
+- [Release policy](docs/releases.md)
 
-Check or install a newer certificate from the configured source directory:
+## Design principles
 
-```bash
-baha app tls update --check
-baha app tls update
-```
+- application intent describes requirements, not infrastructure products;
+- so little as possible, as much as necessary;
+- least privilege and deny by default;
+- fail closed before unsafe mutation;
+- standard protocols over proprietary application APIs;
+- one shared core for CLI and future control surfaces;
+- real readiness/data-flow verification;
+- idempotent reconciliation;
+- provider/runtime details remain deployment state;
+- Compose remains first-class even as additional runtimes arrive later.
 
-The update path validates certificate/key matching and FQDN coverage, refuses certificate downgrades, restarts the repository workload when required and verifies readiness. ACME automation, OpenBao PKI issuance and provider-neutral certificate realization remain future capability-provider work.
+## Contributing
 
-## Backup and restore
+Provider and architecture contributions should preserve the portable application boundary and reuse the existing capability/provider lifecycle rather than adding product-specific paths.
 
-Interactive terminals can use the guided flow:
+Start with:
 
-```bash
-baha app backup
-baha app restore ./mailflow-production.bhbackup
-```
-
-Automation keeps the deterministic password-file path:
-
-```bash
-baha app backup --password-file ./backup-password.txt
-baha app restore ./mailflow-production.bhbackup --password-file ./backup-password.txt
-```
-
-The recovery unit includes desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope. Restore validates and decrypts before mutation, rebuilds protected state, restores data while the workload is stopped, regenerates runtime identities and reports READY only after the restarted application boundary has been verified.
-
-## Updates
-
-Inspect a Git-backed application update without mutation:
-
-```bash
-baha app update --check
-```
-
-Application mutation is strict fast-forward only and reuses the normal application reconciliation/readiness lifecycle. Durable applications require either an encrypted pre-update recovery point or explicit acknowledgement to proceed without one.
-
-Inspect BaseHarbor itself for an available stable release:
-
-```bash
-baha update --check
-```
-
-Actual self-update requires explicit confirmation and verifies release artifacts before atomic replacement. A retained recovery binary is used to roll back when post-update verification fails.
-
-## Runtime/provider direction
-
-v0.4 introduces runtime-provider identity and capability negotiation without pretending Kubernetes/OpenShift already exist. The current application runtime is Compose. Future providers must satisfy the requested runtime capabilities or fail clearly; they must not silently downgrade into Compose-specific behavior.
-
-Runtime-provider choice and backend capability-provider choice remain independent. A future Kubernetes/OpenShift deployment may therefore use bundled, external or customer-managed PostgreSQL, Valkey, S3 and secrets providers behind the same logical application requirements.
-
-See [`docs/roadmap.md`](docs/roadmap.md) for the staged provider roadmap.
-
-## CLI discovery
-
-```bash
-baha --help
-baha app --help
-baha openbao --help
-baha version
-```
-
-The detailed current command tree is documented in [`docs/cli.md`](docs/cli.md).
-
-## Design goals
-
-- one dependable CLI for setup and lifecycle management;
-- secure defaults, least privilege and fail-closed behavior;
-- isolated backend service stacks for independent applications;
-- native protocols and standard interfaces for application consumption;
-- applications remain runnable without BaseHarbor when equivalent interfaces are supplied elsewhere;
-- developer-first from local/self-hosted development through progressively stricter environments;
-- Compose first and complete; later runtime providers may include Kubernetes and OpenShift without redefining logical application requirements;
-- mature open-source components instead of unnecessary reinvention;
-- observable health, backup/restore, certificates and lifecycle operations;
-- independent runtime-provider and capability-provider boundaries that avoid locking applications to bundled infrastructure products.
-
-## Release policy
-
-`main` is development state. Real products should consume published releases. During `0.x`, patch releases remain compatible within a minor line; minor releases may contain explicitly documented breaking changes. See [`docs/releases.md`](docs/releases.md).
+- [Development Guidelines](docs/DEVELOPMENT_GUIDELINES.md)
+- [Provider Integration Contract](docs/provider-integration-contract.md)
+- [Capability Specifications](spec/capabilities/)
 
 ## License
 
