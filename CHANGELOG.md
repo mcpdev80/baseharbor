@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Interactive Linux path prompts now use literal shell-style `label:path$` syntax, with `~` under the user's home directory; OpenBao bootstrap/unseal prompts use `OpenBao-recovery-key` / `OpenBao-decrypt-key` labels.
+
 - Interactive Linux path prompts now use a shell-like current-directory prefix (`~/.../` or `/.../`) directly on the input line, replacing the separate path-base/browsing blocks.
 
 - Interactive Linux path prompts now show a live `Browsing` directory that follows the currently typed relative, absolute or `~/...` path while preserving the original process working directory.

@@ -47,7 +47,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	}
 	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, oldState) }()
 
-	prompt := label + ": "
+	prompt := label
 	var value []byte
 	if err := drawPathPrompt(out, prompt, string(value), true); err != nil {
 		return "", err
@@ -105,14 +105,12 @@ func drawPathPrompt(out io.Writer, prompt, value string, fresh bool) error {
 		return err
 	}
 	prefix := shellDisplayPath(browsing)
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
-	}
+	line := fmt.Sprintf("%s:%s$ %s", prompt, prefix, value)
 	if fresh {
-		_, err = fmt.Fprintf(out, "%s %s%s", prefix, prompt, value)
+		_, err = fmt.Fprint(out, line)
 		return err
 	}
-	_, err = fmt.Fprintf(out, "\r\x1b[2K%s %s%s", prefix, prompt, value)
+	_, err = fmt.Fprintf(out, "\r\x1b[2K%s", line)
 	return err
 }
 
