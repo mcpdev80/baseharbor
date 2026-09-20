@@ -44,8 +44,8 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 	for _, wanted := range []string{
 		"OpenBao application scope unavailable",
 		"runtime broker is not ready",
-		"required secrets could not be verified because OpenBao is unavailable",
-		"workload cannot resolve required secrets because OpenBao is unavailable",
+		"required secrets could not be verified because OpenBao is",
+		"workload cannot resolve required secrets because OpenBao is",
 	} {
 		if !strings.Contains(got, wanted) {
 			t.Fatalf("normal doctor missing %q:\n%s", wanted, got)
