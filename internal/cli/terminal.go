@@ -114,7 +114,6 @@ func (t *Terminal) Result(state, subject, detail string) {
 	fmt.Fprintf(t.out, "  %-9s %-20s %s\n", marker, subject, detail)
 }
 
-
 func stateColor(state string) string {
 	switch state {
 	case "FAILED", "ERROR":
