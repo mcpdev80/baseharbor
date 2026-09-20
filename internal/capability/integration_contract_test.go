@@ -127,6 +127,7 @@ func TestIntegrationDescriptorRejectsDuplicatePlacementScope(t *testing.T) {
 
 func TestIntegrationDescriptorValidatesObservabilitySignals(t *testing.T) {
 	descriptor := TempoIntegration
+	descriptor.Observability.Signals = append([]ProviderObservabilitySignal(nil), TempoIntegration.Observability.Signals...)
 	descriptor.Observability.Signals[0].Path = "metrics"
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("relative provider metrics path accepted")
