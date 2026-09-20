@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.9
+## Aktueller Stand v0.4.11
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -145,7 +145,7 @@ In v0.4.9 umgesetzt:
 
 ## v0.4.11 Developer Experience und Repository Adoption
 
-v0.4.11 macht die vorhandene providerneutrale Runtime fuer bestehende Repositories leichter nutzbar, ohne die fuer v0.4.12 geplante Agent-/MCP-Schicht vorwegzunehmen.
+In v0.4.11 veroeffentlicht/abgeschlossen. Die vorhandene providerneutrale Runtime ist fuer bestehende Repositories leichter nutzbar, ohne die fuer v0.4.12 geplante Agent-/MCP-Schicht vorwegzunehmen.
 
 Umgesetzt:
 
