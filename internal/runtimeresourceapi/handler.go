@@ -1,6 +1,7 @@
 package runtimeresourceapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,7 +12,21 @@ import (
 )
 
 type Authorizer interface {
-	AuthorizeRuntimeOperation(app, capability, operation string) error
+	AuthorizeRuntimeOperation(app, service, capability, operation string) error
+}
+
+type runtimeServiceContextKey struct{}
+
+func WithRuntimeService(r *http.Request, service string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), runtimeServiceContextKey{}, strings.TrimSpace(service)))
+}
+
+func RuntimeService(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	value, _ := ctx.Value(runtimeServiceContextKey{}).(string)
+	return strings.TrimSpace(value)
 }
 
 type Handler struct {
@@ -66,13 +81,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, "invalid resource request", "capability and name are required")
 		return
 	}
-	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, request.Capability, "runtime.create"); err != nil {
+	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, RuntimeService(r.Context()), request.Capability, "runtime.create"); err != nil {
 		writeProblem(w, http.StatusForbidden, "runtime operation not allowed", "the application is not authorized for this capability operation")
 		return
 	}
 
 	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
 		Application:    h.app,
+		CallerService:  RuntimeService(r.Context()),
 		Capability:     request.Capability,
 		Operation:      "runtime.create",
 		ResourceName:   request.Name,
@@ -100,10 +116,12 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
-		Application:  h.app,
-		Capability:   request.Capability,
-		Operation:    "runtime.get",
-		ResourceName: request.ResourceName,
+		Application:   h.app,
+		CallerService: request.CallerService,
+		Capability:    request.Capability,
+		Operation:     "runtime.get",
+		ResourceName:  request.ResourceName,
+		Parameters:    request.Parameters,
 	})
 	if err != nil {
 		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist or is not ready")
@@ -123,10 +141,11 @@ func (h *Handler) binding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.executor.Execute(r.Context(), runtimeoperation.Request{
-		Application:  h.app,
-		Capability:   request.Capability,
-		Operation:    "runtime.get",
-		ResourceName: request.ResourceName,
+		Application:   h.app,
+		CallerService: RuntimeService(r.Context()),
+		Capability:    request.Capability,
+		Operation:     "runtime.get",
+		ResourceName:  request.ResourceName,
 	})
 	if err != nil || result.Binding == nil {
 		writeProblem(w, http.StatusNotFound, "runtime resource binding not found", "binding does not exist or is not ready")
@@ -151,10 +170,12 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	op, replay, err := h.operations.Submit(r.Context(), runtimeoperation.Request{
 		Application:    h.app,
+		CallerService:  request.CallerService,
 		Capability:     request.Capability,
 		Operation:      "runtime.delete",
 		ResourceName:   request.ResourceName,
 		IdempotencyKey: idempotencyKey,
+		Parameters:     request.Parameters,
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "unsupported capability operation") {
@@ -186,7 +207,11 @@ func (h *Handler) resourceRequest(w http.ResponseWriter, r *http.Request, operat
 		writeProblem(w, http.StatusInternalServerError, "runtime resource lookup failed", "resource state could not be loaded")
 		return runtimeoperation.Request{}, false
 	}
-	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, request.Capability, operation); err != nil {
+	if request.Capability == "metrics/v1" && strings.TrimSpace(request.CallerService) != RuntimeService(r.Context()) {
+		writeProblem(w, http.StatusNotFound, "runtime resource not found", "resource does not exist")
+		return runtimeoperation.Request{}, false
+	}
+	if err := h.authorizer.AuthorizeRuntimeOperation(h.app, RuntimeService(r.Context()), request.Capability, operation); err != nil {
 		writeProblem(w, http.StatusForbidden, "runtime operation not allowed", "the application is not authorized for this capability operation")
 		return runtimeoperation.Request{}, false
 	}

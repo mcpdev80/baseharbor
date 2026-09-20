@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -68,11 +70,17 @@ func appDownCommand(store application.Store) *cli.Command {
 				return errors.New("application down preflight failed")
 			}
 
+			if err := suspendConnectivityForManifest(ctx, compose, m); err != nil {
+				return fmt.Errorf("suspend cross-application connectivity: %w", err)
+			}
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
 					return err
 				}
 				fmt.Fprintln(out, "[OK] managed-exposure  Caddy exposure provider stopped")
+			}
+			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
+				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
 			}
 			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
@@ -147,6 +155,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			var platformFiles bhruntime.Files
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+				{Name: "connectivity policy", Run: func(context.Context) error {
+					return application.CheckApplicationConnectivityReleased(m)
+				}},
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 				}},
@@ -213,6 +224,17 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if len(m.Exposures) > 0 {
 				fmt.Fprintf(out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 			}
+			if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
+				metricsPlacement, found, placementErr := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+				if placementErr != nil {
+					return placementErr
+				}
+				if found {
+					fmt.Fprintf(out, "  metrics:    registered provider placement %s; application-owned metrics state/trust edges removed according to placement\n", metricsPlacement.Scope)
+				} else {
+					fmt.Fprintln(out, "  metrics:    no registered provider placement; no provider lifecycle ownership will be assumed")
+				}
+			}
 			appDir := filepath.Join(resolved.Store.Root, m.Name)
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
@@ -266,6 +288,26 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
+				}
+			}
+			metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+			if err != nil {
+				return err
+			}
+			if found {
+				switch metricsPlacement.Scope {
+				case capability.ScopeShared:
+					if err := metricsprovider.PruneRegisteredApplicationTargets(m, nil); err != nil {
+						return fmt.Errorf("remove application metrics targets: %w", err)
+					}
+					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
+						return fmt.Errorf("remove application metrics trust edges: %w", err)
+					}
+				case capability.ScopeApplication:
+					if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
+						return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
+					}
+				case capability.ScopeExternal:
 				}
 			}
 			if err := resolved.Store.Delete(m.Name); err != nil {

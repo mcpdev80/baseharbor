@@ -26,6 +26,7 @@ const (
 
 type Request struct {
 	Application    string         `json:"application"`
+	CallerService  string         `json:"caller_service,omitempty"`
 	Capability     string         `json:"capability"`
 	Operation      string         `json:"operation"`
 	ResourceName   string         `json:"resource_name"`

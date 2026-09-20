@@ -21,6 +21,7 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 		ValkeyIntegration,
 		OpenBaoIntegration,
 		CaddyIntegration,
+		PrometheusIntegration,
 	} {
 		report := CheckIntegrationContract(descriptor)
 		if report.Status != ConformancePass {
@@ -52,7 +53,8 @@ func TestIntegrationDescriptorRequiresEveryProviderCapabilityToHaveSpecification
 			Kind:         ProviderPostgreSQL,
 			Capabilities: []Kind{SQL, KeyValue},
 		},
-		Capabilities: []SpecificationID{SQLV1.ID},
+		Capabilities:    []SpecificationID{SQLV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("provider capability without specification accepted")
@@ -81,7 +83,7 @@ func TestDriverAdapterRejectsDifferentProvider(t *testing.T) {
 }
 
 func TestSpecificationIDsAreCanonical(t *testing.T) {
-	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1} {
+	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1} {
 		parsed, err := ParseSpecificationID(spec.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -99,5 +101,21 @@ func TestDriverAdapterRejectsCapabilityDescriptorMismatch(t *testing.T) {
 	}}
 	if _, err := NewDriverAdapter(driver, PostgreSQLIntegration); err == nil {
 		t.Fatal("same-kind driver with different capability set accepted")
+	}
+}
+
+func TestIntegrationDescriptorRequiresSupportedPlacementScope(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.SupportedScopes = nil
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without supported placement scope accepted")
+	}
+}
+
+func TestIntegrationDescriptorRejectsDuplicatePlacementScope(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.SupportedScopes = []ProviderScope{ScopeApplication, ScopeApplication}
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("duplicate provider placement scope accepted")
 	}
 }

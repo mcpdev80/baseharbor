@@ -24,6 +24,9 @@ baha
 ├── status
 ├── doctor
 ├── serve
+├── connect SOURCE TARGET
+├── disconnect SOURCE TARGET
+├── connections
 ├── update
 ├── app
 │   ├── init
@@ -130,6 +133,46 @@ Inspection remains strictly read-only. `stale` never removes contract state, and
 
 Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
 
+## Metrics collection policy
+
+A repository may declare one or more provider-neutral `metrics/v1` sources:
+
+```yaml
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+This does not request Prometheus. It declares an application-provided OpenMetrics-compatible HTTP endpoint.
+
+Compose collection policy is deployment-owned:
+
+- `dev` / `development`: enabled by default;
+- test/staging/production: disabled by default;
+- `BASEHARBOR_METRICS_ENABLED=true|false`: explicit operator override.
+
+When collection is enabled, `baha app apply` and `baha app up` resolve Prometheus through the generic provider-placement layer, print the resolved placement before mutation, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. The safe default is shared Prometheus with an isolated metrics network per application. Advanced operators may select application-scoped Prometheus or a named shared boundary through the generic provider policy: `BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=shared|application` and, for grouped shared placement, `BASEHARBOR_PROVIDER_PROMETHEUS_SHARING_BOUNDARY=<name>`. Unsupported placement fails closed before mutation. An external Prometheus adapter is intentionally not implemented in v0.4.8. Grafana, Loki and Tempo are not started.
+
+## Cross-application connectivity
+
+Cross-application access is deny-by-default and is configured once at the BaseHarbor platform level rather than duplicated in both application contracts.
+
+```bash
+baha connect app-a/api app-b/sql
+baha connections
+baha disconnect app-a/api app-b/sql
+```
+
+The short form is preferred. BaseHarbor resolves the active environment, concrete runtime service, target network and target TCP port from runtime state. Only when that information is ambiguous does the CLI require qualification such as `app-b@prod/api:8080`.
+
+The rule is directional. Compose does not place source and target containers on one shared bridge. BaseHarbor creates a connection-specific source link network and starts a hardened relay from the version-matched BaseHarbor Runtime image. Only the source service and relay join that link; the relay additionally joins one existing target network and forwards only to the resolved target service/port. The target service never joins the source link.
+
+`baha app down` suspends affected relay runtimes while preserving policy. `baha app up`/`apply` reconciles them again when both endpoints are running. `baha app destroy` fails closed while a connectivity rule still references the application; remove the rule explicitly first.
+
+Provider sharing is independent from connectivity. A `shared` provider never grants application-to-application network access by itself.
 ## Repository-first application workflow
 
 The normal developer path can start inside an existing application repository with:

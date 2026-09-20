@@ -227,14 +227,16 @@ The schema describes operator/deployment configuration only. It must not smuggle
 
 The v0.4.2 provider registry remains authoritative for:
 
-- shared provider instances;
-- application-scoped provider instances;
-- external/BYO providers;
+- `shared` provider instances in the BaseHarbor Platform/Core Runtime;
+- `application` provider instances dedicated to exactly one application/environment;
+- `external`/BYO providers;
 - BaseHarbor lifecycle ownership versus external lifecycle ownership.
+
+These scopes have strict semantics. In the Compose runtime, `application` means a dedicated provider container/project and provider state for that application; it is never reused by another application. `shared` means one BaseHarbor-owned platform provider instance that is created lazily and may serve one or multiple explicitly authorized applications. Consumer count does not change the scope. `external` means the provider lifecycle remains outside BaseHarbor.
 
 External provider compatibility does not grant BaseHarbor permission to mutate an externally owned provider.
 
-Logical resources remain application-owned even when the provider instance is shared.
+Logical resources remain application-owned even when the provider instance is shared. Sharing a provider instance never implies shared credentials, data access or cross-application network connectivity.
 
 ## Conformance
 
@@ -341,3 +343,134 @@ The current managed Compose provider is lazy/shared. An external OTLP endpoint i
 Conformance requires fail-closed preflight, idempotent provisioning/binding and a real OTLP HTTP/protobuf export accepted by the selected endpoint. Merely reporting a running Collector process is not sufficient.
 
 The OTLP binding is capability-owned and typed in Provider Protocol v1. Requesting it does not authorize a provider to provision Prometheus, Loki, Tempo, Grafana or any other unrelated observability product.
+
+
+## Metrics / Prometheus conformance in v0.4.8
+
+Prometheus is the first reference provider for `metrics/v1`. The provider boundary remains the same boundary intended for later VictoriaMetrics, Mimir or community implementations.
+
+Conformance requires at least:
+
+- fail-closed preflight for direction, signal format and source endpoint;
+- idempotent shared-provider provisioning;
+- automatic target registration without manual Prometheus configuration;
+- application/environment/service/source attribution;
+- isolation when several applications use the same workload service name;
+- real scrape/ingestion verification through a successful `up=1`;
+- removal of only the affected application's target bindings;
+- no credentials or secret values in target state or normal diagnostics;
+- no implicit provisioning of Grafana, Loki or Tempo.
+
+Collection policy is deployment/operator state. Declaring a `metrics/v1` source does not automatically authorize collection in every environment.
+
+## Provider placement, sharing boundaries and runtime realization
+
+Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
+
+```text
+Application intent
+        |
+        v
+Capability
+        |
+        v
+Provider resolution
+        |
+        v
+Provider placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optional sharing boundary
+        |
+        v
+Runtime realization of the selected placement
+```
+
+The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary.
+
+Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+Placement semantics are fixed before runtime realization. The runtime may choose platform-native mechanisms to implement those semantics, but it may not reinterpret them: `application` remains one dedicated provider instance for exactly one application/environment, `shared` remains BaseHarbor Platform/Core Runtime infrastructure, and `external` remains externally lifecycle-owned. Compose currently realizes these guarantees through dedicated/shared projects, networks and volumes. Future Kubernetes/OpenShift runtimes may use namespaces/projects, Operators, NetworkPolicies or other platform-native mechanisms without changing the placement meaning or application intent.
+
+A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
+
+Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
+
+Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
+
+## Progressive disclosure and explicit operator control
+
+BaseHarbor must be simple by default without becoming restrictive.
+
+The normal developer path should require only application intent and should use safe, explainable defaults:
+
+```text
+developer declares capability
+        |
+        v
+BaseHarbor detects/resolves sensible defaults
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Advanced users and operators must still be able to override deployment decisions explicitly where the platform supports them, including provider selection, provider placement, optional sharing boundary, lifecycle ownership where applicable, external provider references, isolation/deployment policy and supported provider/runtime options.
+
+The control model is therefore progressive disclosure:
+
+```text
+simple path
+  -> automatic safe defaults
+
+advanced path
+  -> explicit deployment/operator policy
+
+expert path
+  -> fully specified supported provider/runtime realization
+```
+
+Explicit control must not require polluting the portable application contract with infrastructure details. Portable application intent remains product-neutral; concrete infrastructure choices belong to deployment/operator configuration and control surfaces.
+
+BaseHarbor must show the resolved plan before mutation so users can see what defaults were selected and can override supported decisions deliberately. Explicit user/operator configuration wins over defaults, but never bypasses capability conformance, security boundaries, validation or fail-closed behavior.
+
+The goal is: easy when the user does not care about infrastructure details, precise when the user does.
+
+## Convention by default, configuration by choice
+
+BaseHarbor follows one UX and architecture principle across all capabilities and runtimes:
+
+> **Convention by default, configuration by choice.**
+
+The default path minimizes decisions. BaseHarbor detects what it can, chooses safe and explainable defaults, shows the resolved plan and proceeds through the normal validation lifecycle.
+
+Users who want more control may progressively override supported deployment decisions without changing portable application intent.
+
+```text
+default
+  -> capabilities only
+  -> safe automatic provider/placement/runtime defaults
+
+advanced
+  -> explicit provider / placement / sharing / external references
+
+expert
+  -> supported naming, topology, runtime and provider realization hints
+```
+
+Examples of optional expert control may include stable resource prefixes, logical hostnames, Compose project/network/volume names, DNS aliases and later Kubernetes/OpenShift namespace/project naming. Ephemeral runtime-generated identities such as replica or Pod instance names remain runtime-owned unless the runtime explicitly supports a safe stable override.
+
+Every configurable field must have explicit semantics:
+
+- stable and safely overridable;
+- hint/template only;
+- generated/runtime-owned and not overridable.
+
+Overrides are accepted only when the active runtime/provider can honor them safely and deterministically. They must never bypass security, ownership, reconciliation, conformance or fail-closed validation.
+
+The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.

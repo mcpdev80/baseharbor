@@ -4,8 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestWorkloadManifestRoundTrip(t *testing.T) {
@@ -181,5 +184,91 @@ func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *te
 	}
 	if strings.Contains(worker, "baseharbor-object-storage: {}") {
 		t.Fatalf("unauthorized service joined runtime S3 network:\n%s", got)
+	}
+}
+
+func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "true")
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiStart := strings.Index(got, "  api:")
+	workerStart := strings.Index(got, "  worker:")
+	if apiStart < 0 || workerStart < 0 || apiStart >= workerStart {
+		t.Fatalf("unexpected service order:\n%s", got)
+	}
+	api := got[apiStart:workerStart]
+	worker := got[workerStart:]
+	if networksStart := strings.Index(worker, "networks:\n"); networksStart >= 0 {
+		worker = worker[:networksStart]
+	}
+	if !strings.Contains(api, "baseharbor-metrics:") || !strings.Contains(api, MetricsTargetAlias(m, "api")) {
+		t.Fatalf("metrics source service missing network/alias:\n%s", got)
+	}
+	if strings.Contains(worker, "baseharbor-metrics:") {
+		t.Fatalf("non-source service joined metrics network:\n%s", got)
+	}
+	if !strings.Contains(got, "name: "+strconv.Quote(MetricsProviderNetworkName(m))) {
+		t.Fatalf("isolated metrics network definition missing:\n%s", got)
+	}
+}
+
+func TestMetricsCollectionPolicyDefaultsToDevOnly(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "")
+	dev := New("demo", "dev", true, false, false)
+	enabled, err := MetricsCollectionEnabled(dev)
+	if err != nil || !enabled {
+		t.Fatalf("dev metrics enabled=%v err=%v", enabled, err)
+	}
+	prod := dev
+	prod.Environment = "production"
+	enabled, err = MetricsCollectionEnabled(prod)
+	if err != nil || enabled {
+		t.Fatalf("production metrics enabled=%v err=%v", enabled, err)
+	}
+	t.Setenv(MetricsEnabledEnv, "true")
+	enabled, err = MetricsCollectionEnabled(prod)
+	if err != nil || !enabled {
+		t.Fatalf("explicit production metrics enabled=%v err=%v", enabled, err)
+	}
+}
+
+func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPrometheus), "external")
+	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderPrometheus), "metrics-prod")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("unused metrics provider policy affected workload: %v", err)
+	}
+	if strings.Contains(got, "baseharbor-metrics") {
+		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
+	}
+}
+
+func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "not-a-bool")
+	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("malformed unused metrics policy affected workload: %v", err)
+	}
+	if strings.Contains(got, "baseharbor-metrics") {
+		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
 	}
 }

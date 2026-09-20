@@ -211,6 +211,28 @@ Managed-Collector-Platzierung ist lazy/shared. Externe OTLP-Ziele verwenden dies
 
 Die gemeinsame Resource Identity verwendet Standard-OpenTelemetry-Attribute fuer Service und Environment sowie BaseHarbor-Attribute fuer Application, logische Telemetrie-Ressource und Provider. OTLP-Transport startet nicht implizit Prometheus, Loki, Tempo, Grafana oder andere Observability-Produkte.
 
+## Metrics-Collection und Prometheus-Provider in v0.4.8
+
+Metrics werden in drei unabhaengige Ebenen getrennt:
+
+```text
+von der Anwendung bereitgestellte Signalquelle
+        !=
+Deployment-Collection-Policy
+        !=
+Metrics-Provider-Implementierung
+```
+
+`metrics/v1` beschreibt eine von der Anwendung bereitgestellte OpenMetrics-kompatible HTTP-Source. Das Manifest enthaelt logischen Source-Namen, Workload-Service, Ziel-Port und Pfad. Prometheus oder ein anderer Backend-Produktname gehoeren nicht in diesen Contract.
+
+Die aktuelle Compose-Policy aktiviert Collection standardmaessig nur in Development-Umgebungen. Test/Staging/Produktion benoetigen ein explizites Operator-Opt-in. Die Policy wird vor Provider-Mutation aufgeloest.
+
+Prometheus 3.14.0 ist der erste von BaseHarbor verwaltete Compose-Metrics-Provider. Das sichere Default-Placement ist `shared`, dieselbe generische Provider-Placement-Schicht unterstuetzt aber auch eine application-scoped Prometheus-Instanz. Shared Placement kann optional eine benannte Sharing Boundary verwenden, sodass ausgewaehlte Applications genau eine Provider-Instanz teilen, waehrend andere Applications ausserhalb dieser Provider-Trust-Boundary bleiben. Targets werden ueber file-based Service Discovery aus geschuetztem BaseHarbor-State erzeugt; manuelle Scrape-Target-Pflege ist nicht erforderlich. Jede teilnehmende Application erhaelt ihr eigenes isoliertes Metrics-Netz und die ausgewaehlte Prometheus-Instanz wird nur an die explizit registrierten Application-Netze angebunden. App/Environment/Service erhalten deterministische kollisionsresistente DNS-Aliase, sodass identische Compose-Service-Namen verschiedener Anwendungen nicht kollidieren.
+
+Target-Labels enthalten Application, Environment, Workload-Service und logische Source-Identitaet. Readiness verlangt einen echten erfolgreichen Scrape, der in Prometheus als `up=1` sichtbar ist; ein nur laufender Prometheus-Prozess reicht nicht.
+
+Der Provider hat keinen Docker-/Podman-Socket. Seine API wird nur auf Loopback fuer lokale Lifecycle-Verifikation/Queries publiziert. Grafana, Loki und Tempo bleiben getrennte Provider-Tracks und werden nicht als Nebenwirkung von Metrics-Collection provisioniert.
+
 ## Fundament fuer kontinuierliche Application-Evolution
 
 BaseHarbor behandelt Application Intent als dauerhaft abgleichbaren Desired State.
@@ -258,3 +280,182 @@ Repository-first `baha up` verwendet denselben Reconciliation-Pfad und meldet ne
 
 Dieses Fundament implementiert bewusst noch keine grosse oeffentliche Runtime-Resource-API. Es definiert die Semantik, die eine solche API spaeter wiederverwenden muss. Siehe ADR 0010.
 
+## Provider-Placement, Sharing Boundaries und Runtime-Realisierung
+
+Provider-Placement ist eine BaseHarbor-weite Deployment-/Operator-Entscheidung. Sie ist unabhaengig von Application Intent, Runtime-Topologie und konkreter Produktauswahl.
+
+```text
+Application Intent
+        |
+        v
+Capability
+        |
+        v
+Provider-Aufloesung
+        |
+        v
+Provider-Placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optionale Sharing Boundary
+        |
+        v
+Runtime-Realisierung des gewaehlten Placements
+```
+
+Die kanonischen Placement-Scopes bleiben exakt `application`, `shared` und `external`. Eine Sharing Boundary ist eine optionale Eigenschaft von `shared` und kein vierter Scope.
+
+Placement hat konkrete Ownership- und Runtime-Folgen:
+
+```text
+shared
+  -> eine BaseHarbor Platform-/Core-Runtime-Provider-Instanz
+  -> gehoert keiner einzelnen Application
+  -> kann eine oder mehrere explizit autorisierte Applications bedienen
+  -> wird lazy erzeugt, sobald eine Capability sie benoetigt
+
+application
+  -> eine dedizierte Provider-Instanz fuer genau eine Application/Environment
+  -> bei Compose bedeutet das einen dedizierten Provider-Container/-Project mit eigenem State
+  -> wird niemals von einer anderen Application wiederverwendet
+
+external
+  -> Provider-Instanz wird ausserhalb von BaseHarbor betrieben
+  -> BaseHarbor bindet sie an, besitzt/provisioniert aber nicht ihren Lifecycle
+```
+
+Ein Provider wird **nicht** deshalb von `shared` zu `application`, weil ihn aktuell nur eine einzige Application nutzt. `shared` beschreibt Platform-Ownership und Wiederverwendungsgrenze der Provider-Instanz, nicht die aktuelle Anzahl der Consumer. Ein shared Prometheus-, PostgreSQL-, OpenBao-, Object-Storage- oder Telemetry-Provider gehoert deshalb in den BaseHarbor Platform-/Core-Runtime-Bereich, auch wenn ihn momentan nur eine Application verwendet. Umgekehrt bedeutet `application` immer eine dedizierte Provider-Instanz fuer genau diese Application.
+
+Shared Provider sind on-demand Platform-Infrastruktur und keine pauschalen Bootstrap-Abhaengigkeiten. Die minimale BaseHarbor-Control-Plane bleibt klein; ein optionaler shared Provider rueckt erst dann in die Platform-/Core-Runtime, wenn eine Application-Capability auf diesen shared Provider aufgeloest wird. Existiert dort bereits eine kompatible shared Provider-Instanz, wird sie wiederverwendet statt eine zweite Instanz zu starten.
+
+Ein Shared Provider ist niemals automatisch fuer alle Applications erreichbar. Zugriff bleibt explizit, least-privilege und deny-by-default. Eine Sharing Boundary erlaubt es dem Operator, genau eine Provider-Instanz bewusst fuer eine ausgewaehlte Gruppe von Applications gemeinsam zu nutzen, waehrend andere Applications ausserhalb dieser Trust Boundary bleiben. Das Teilen einer physischen Provider-Instanz bedeutet niemals, dass logische Application-Ressourcen, Credentials, Daten oder Netzwerkzugriff geteilt werden.
+
+Provider-Implementierungen deklarieren, welche Placements sie unterstuetzen. Wenn die Policy ein Placement aufloest, das der ausgewaehlte Provider nicht erfuellen kann, bricht BaseHarbor vor jeder Mutation fail-closed ab, statt still auf ein anderes Placement auszuweichen.
+
+Der portable Application Contract enthaelt weder Provider-Placement noch Sharing Boundary, Lifecycle Ownership oder Runtime-Realisierungsmechanik. Der Entwickler beschreibt weiterhin nur die benoetigten Capabilities. BaseHarbor und Deployment Policy loesen die Infrastrukturdetails auf.
+
+Die Placement-Semantik steht vor der Runtime-Realisierung fest. Eine Runtime darf plattformnative Mechanismen zur Umsetzung waehlen, die Bedeutung aber nicht neu interpretieren: `application` bleibt genau eine dedizierte Provider-Instanz fuer eine Application/Environment, `shared` bleibt BaseHarbor Platform-/Core-Runtime-Infrastruktur und `external` bleibt extern lifecycle-owned. Compose realisiert diese Garantien aktuell ueber dedizierte/geteilte Projects, Netze und Volumes. Spaetere Kubernetes-/OpenShift-Runtimes koennen Namespaces/Projects, Operators, NetworkPolicies oder andere plattformnative Mechanismen verwenden, ohne die Placement-Bedeutung oder den Application Intent zu veraendern.
+
+Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provider-Placement oder Resource-Scope. Ein clusterweit installierter Operator kann application-scoped oder sharing-boundary-scoped Ressourcen verwalten.
+
+Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen von Applications bestimmte Provider gemeinsam nutzen. Getrennte BaseHarbor-Control-Planes bleiben echten administrativen, Trust-Domain-, Infrastruktur- oder Compliance-Grenzen vorbehalten.
+
+Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
+
+## Explizite Cross-Application-Connectivity
+
+Provider-Placement und Application-zu-Application-Kommunikation sind getrennte Dinge. `shared` darf niemals als Abkuerzung benutzt werden, um ansonsten isolierte Applications miteinander zu verbinden.
+
+BaseHarbor kennt die aufgeloesten Applications, Services, Capabilities, Provider-Bindings, Runtime-Identitaeten, Netze und Endpoints bereits. Eine Cross-Application-Policy beschreibt deshalb nur die Verbindung, die vom deny-by-default-Grundzustand abweicht:
+
+```text
+app-a/api -> app-b/sql
+```
+
+Das ist genau ein gerichteter Policy-Eintrag und eine einzige Source of Truth. Der Operator traegt keine Ports, URLs, Netzwerknamen, Provider-Placements, Credentials oder spiegelbildliche Definitionen in beiden Applications doppelt ein, wenn BaseHarbor diese Informationen aus dem aufgeloesten Zustand ableiten kann.
+
+Das semantische Modell bleibt bewusst minimal:
+
+```text
+Quell-Application/Service -> Ziel-Application/Service-oder-Resource
+```
+
+BaseHarbor loest daraus die konkreten Connectivity-Details auf und validiert vor jeder Mutation, dass Quelle und Ziel existieren und kompatibel sind.
+
+Default ist keine Cross-Application-Connectivity. Eine explizite Policy erlaubt nur den genannten Source-to-Target-Pfad; sie verbindet nicht pauschal Application-Netze, exponiert keine unbeteiligten Services und erzeugt keinen Rueckkanal.
+
+Runtime Provider setzen dieselbe Policy mit ihren nativen Isolationsmechanismen um:
+
+```text
+BaseHarbor Connectivity Policy
+        |
+        +-- Compose
+        |     -> dediziertes Source-Link-Netz
+        |     -> gehaerteter BaseHarbor-TCP-Relay
+        |     -> Target bleibt in seinem eigenen Netz
+        |
+        +-- Kubernetes
+        |     -> NetworkPolicy
+        |
+        +-- OpenShift
+              -> NetworkPolicy / plattformnative Entsprechung
+```
+
+Die Compose-Realisierung erhaelt die Richtung technisch. BaseHarbor haengt Source und Target **nicht** gemeinsam an dasselbe Bridge-Netz. Nur der Source-Service kommt in ein verbindungsspezifisches Link-Netz. Ein gehaerteter Relay aus dem versionsgleichen BaseHarbor-Runtime-Image haengt an diesem Source-Link sowie an genau einem vorhandenen Target-Netz und leitet nur auf den aufgeloesten Target-TCP-Port weiter. Der Target-Service kommt niemals in das Source-Link-Netz; dadurch entsteht kein reziproker Netzwerkpfad. Der Relay besitzt keinen Host-Port und keinen Container-Runtime-Socket, laeuft non-root, verwendet ein read-only Root-Filesystem, droppt Linux-Capabilities und setzt `no-new-privileges`.
+
+Die Policy ist unabhaengig vom Provider-Placement. Zum Beispiel koennen beide Applications ihre PostgreSQL-/OpenBao-Provider `application`-scoped behalten, waehrend nur `app-a/api -> app-b/sql` als Cross-Application-Pfad erlaubt wird. Umgekehrt erzeugt ein `shared` Provider niemals automatisch Application-zu-Application-Connectivity.
+
+Auch hier gilt derselbe Security-Grundsatz wie im restlichen BaseHarbor: **deny by default; nur die minimale Ausnahme deklarieren; alles Weitere aus dem vorhandenen Plattformwissen ableiten.**
+
+## Progressive Disclosure und explizite Kontrolle
+
+BaseHarbor muss standardmaessig einfach sein, ohne dadurch unflexibel zu werden.
+
+Der normale Entwicklerpfad soll nur Application Intent benoetigen und sichere, nachvollziehbare Defaults verwenden:
+
+```text
+Entwickler deklariert Capability
+        |
+        v
+BaseHarbor erkennt/loest sinnvolle Defaults auf
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Fortgeschrittene Nutzer und Operatoren muessen Deployment-Entscheidungen weiterhin explizit festlegen koennen, soweit die Plattform sie unterstuetzt. Dazu gehoeren insbesondere Provider-Auswahl, Provider-Placement, optionale Sharing Boundary, Lifecycle Ownership soweit anwendbar, externe Provider-Referenzen, Isolation-/Deployment-Policy sowie unterstuetzte Provider-/Runtime-Optionen.
+
+Das Bedienmodell folgt damit Progressive Disclosure:
+
+```text
+einfacher Pfad
+  -> automatische sichere Defaults
+
+fortgeschrittener Pfad
+  -> explizite Deployment-/Operator-Policy
+
+Expertenpfad
+  -> vollstaendig spezifizierte unterstuetzte Provider-/Runtime-Realisierung
+```
+
+Explizite Kontrolle darf nicht dazu fuehren, dass Infrastrukturdetails in den portablen Application Contract gelangen. Portabler Application Intent bleibt produktneutral; konkrete Infrastrukturentscheidungen gehoeren in Deployment-/Operator-Konfiguration und die entsprechenden Control Surfaces.
+
+BaseHarbor muss den aufgeloesten Plan vor der Mutation sichtbar machen, damit Nutzer erkennen koennen, welche Defaults gewaehlt wurden, und unterstuetzte Entscheidungen bewusst ueberschreiben koennen. Explizite Nutzer-/Operator-Konfiguration hat Vorrang vor Defaults, darf aber Capability-Conformance, Security Boundaries, Validierung oder Fail-Closed-Verhalten niemals umgehen.
+
+Das Ziel lautet: einfach, wenn Infrastrukturdetails egal sind; praezise steuerbar, wenn sie wichtig sind.
+
+## Convention by default, Configuration by choice
+
+BaseHarbor folgt ueber alle Capabilities und Runtimes hinweg einem gemeinsamen UX- und Architekturprinzip:
+
+> **Convention by default, configuration by choice.**
+
+Der Default-Pfad minimiert Entscheidungen. BaseHarbor erkennt, was sicher erkennbar ist, waehlt sichere und nachvollziehbare Defaults, zeigt den aufgeloesten Plan und verwendet danach den normalen Validierungs- und Lifecycle-Pfad.
+
+Wer mehr Kontrolle moechte, kann unterstuetzte Deployment-Entscheidungen schrittweise explizit ueberschreiben, ohne den portablen Application Intent zu veraendern.
+
+```text
+Default
+  -> nur Capabilities
+  -> sichere automatische Provider-/Placement-/Runtime-Defaults
+
+Advanced
+  -> Provider / Placement / Sharing / externe Referenzen explizit
+
+Expert
+  -> unterstuetzte Naming-, Topology-, Runtime- und Provider-Realisierungs-Hints
+```
+
+Optionale Expert-Control kann zum Beispiel stabile Resource-Prefixes, logische Hostnamen, Compose-Projekt-/Netz-/Volume-Namen, DNS-Aliase und spaeter Kubernetes-/OpenShift-Namespace-/Project-Naming umfassen. Ephemere runtime-generierte Identitaeten wie Replica- oder Pod-Instanznamen bleiben Runtime-eigen, solange die Runtime keinen sicheren stabilen Override ausdruecklich unterstuetzt.
+
+Jedes konfigurierbare Feld muss klare Semantik besitzen:
+
+- stabil und sicher ueberschreibbar;
+- nur Hint/Template;
+- generiert/runtime-owned und nicht ueberschreibbar.
+
+Overrides werden nur akzeptiert, wenn aktive Runtime und Provider sie sicher und deterministisch umsetzen koennen. Security, Ownership, Reconciliation, Conformance und Fail-Closed-Validierung duerfen dadurch niemals umgangen werden.
+
+Einfacher und Experten-Pfad verwenden denselben Core. Erweiterte Flexibilitaet darf weder einen zweiten Application Contract noch einen parallelen Lifecycle erzeugen.

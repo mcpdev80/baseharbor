@@ -25,6 +25,7 @@ type Manifest struct {
 	Workload    WorkloadConfig
 	Exposures   []HTTPExposureRequirement
 	Telemetry   TelemetryRequirements
+	Metrics     MetricsRequirements
 	Runtime     RuntimeRequirements
 }
 
@@ -44,6 +45,17 @@ type TelemetryRequirements struct {
 
 type OTLPRequirement struct {
 	Signals []string
+}
+
+type MetricsRequirements struct {
+	Sources []MetricsSourceRequirement
+}
+
+type MetricsSourceRequirement struct {
+	Name    string
+	Service string
+	Port    int
+	Path    string
 }
 
 type Services struct {
@@ -172,6 +184,15 @@ func WithOTLPTelemetry(m Manifest, signals ...string) Manifest {
 
 func HasOTLPTelemetry(m Manifest) bool { return m.Telemetry.OTLP != nil }
 
+func WithMetricsSource(m Manifest, name, service string, port int, path string) Manifest {
+	m.Metrics.Sources = append(m.Metrics.Sources, MetricsSourceRequirement{
+		Name: strings.TrimSpace(name), Service: strings.TrimSpace(service), Port: port, Path: strings.TrimSpace(path),
+	})
+	return m
+}
+
+func HasMetricsSources(m Manifest) bool { return len(m.Metrics.Sources) > 0 }
+
 func WithRuntimePermission(m Manifest, capabilityID string, services []string, operations ...string) Manifest {
 	m.Runtime.Permissions = append(m.Runtime.Permissions, RuntimePermission{
 		Capability: strings.TrimSpace(capabilityID),
@@ -294,7 +315,7 @@ func (m Manifest) Validate() error {
 	postgres := PostgresInstanceNames(m)
 	redis := RedisInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) {
+	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range postgres {
@@ -335,6 +356,9 @@ func (m Manifest) Validate() error {
 		return err
 	}
 	if err := validateOTLPTelemetry(m.Workload, m.Telemetry.OTLP); err != nil {
+		return err
+	}
+	if err := validateMetricsSources(m.Workload, m.Metrics.Sources); err != nil {
 		return err
 	}
 	if err := validateRuntimePermissions(m.Workload, m.Runtime.Permissions); err != nil {
@@ -392,6 +416,42 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 				return fmt.Errorf("runtime permission %q repeats operation %q", canonical, operation)
 			}
 			seenOperations[operation] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequirement) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	if len(workload.Services) == 0 {
+		return fmt.Errorf("metrics sources require explicit workload.services so service identity is deterministic")
+	}
+	selected := make(map[string]struct{}, len(workload.Services))
+	for _, service := range workload.Services {
+		selected[service] = struct{}{}
+	}
+	seen := map[string]struct{}{}
+	for _, source := range sources {
+		if err := validateSlug("metrics source name", source.Name); err != nil {
+			return err
+		}
+		if _, exists := seen[source.Name]; exists {
+			return fmt.Errorf("duplicate metrics source %q", source.Name)
+		}
+		seen[source.Name] = struct{}{}
+		if err := validateComposeServiceName(source.Service); err != nil {
+			return fmt.Errorf("metrics source %q: %w", source.Name, err)
+		}
+		if _, ok := selected[source.Service]; !ok {
+			return fmt.Errorf("metrics source %q targets workload service %q which is not selected", source.Name, source.Service)
+		}
+		if source.Port < 1 || source.Port > 65535 {
+			return fmt.Errorf("metrics source %q has invalid target port %d", source.Name, source.Port)
+		}
+		if source.Path == "" || !strings.HasPrefix(source.Path, "/") || strings.ContainsAny(source.Path, "?#\r\n\x00") {
+			return fmt.Errorf("metrics source %q path must be an absolute HTTP path without query or fragment", source.Name)
 		}
 	}
 	return nil
@@ -639,6 +699,17 @@ func (m Manifest) YAML() string {
 			}
 		}
 	}
+	if len(m.Metrics.Sources) > 0 {
+		sources := append([]MetricsSourceRequirement(nil), m.Metrics.Sources...)
+		sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
+		b.WriteString("metrics:\n  sources:\n")
+		for _, source := range sources {
+			fmt.Fprintf(&b, "    - name: %s\n", source.Name)
+			fmt.Fprintf(&b, "      service: %s\n", source.Service)
+			fmt.Fprintf(&b, "      port: %d\n", source.Port)
+			fmt.Fprintf(&b, "      path: %s\n", source.Path)
+		}
+	}
 	if m.Telemetry.OTLP != nil {
 		b.WriteString("telemetry:\n  otlp:\n    signals:\n")
 		signals := append([]string(nil), m.Telemetry.OTLP.Signals...)
@@ -704,6 +775,8 @@ func ParseYAML(input string) (Manifest, error) {
 	exposureField := ""
 	exposureIndex := -1
 	telemetryField := ""
+	metricsField := ""
+	metricsIndex := -1
 	runtimeField := ""
 	runtimePermissionIndex := -1
 	runtimePermissionList := ""
@@ -728,6 +801,8 @@ func ParseYAML(input string) (Manifest, error) {
 			exposureField = ""
 			exposureIndex = -1
 			telemetryField = ""
+			metricsField = ""
+			metricsIndex = -1
 			runtimeField = ""
 			runtimePermissionIndex = -1
 			runtimePermissionList = ""
@@ -751,6 +826,8 @@ func ParseYAML(input string) (Manifest, error) {
 				section = "exposure"
 			case trim == "telemetry:":
 				section = "telemetry"
+			case trim == "metrics:":
+				section = "metrics"
 			case trim == "runtime:":
 				section = "runtime"
 			default:
@@ -793,6 +870,10 @@ func ParseYAML(input string) (Manifest, error) {
 			if section == "telemetry" && trim == "otlp:" {
 				m.Telemetry.OTLP = &OTLPRequirement{}
 				telemetryField = "otlp"
+				continue
+			}
+			if section == "metrics" && trim == "sources:" {
+				metricsField = "sources"
 				continue
 			}
 			if section == "runtime" && trim == "permissions:" {
@@ -864,6 +945,16 @@ func ParseYAML(input string) (Manifest, error) {
 				telemetryField = "otlp-signals"
 				continue
 			}
+			if section == "metrics" && metricsField == "sources" && strings.HasPrefix(trim, "- ") {
+				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+				key, value, ok := strings.Cut(item, ":")
+				if !ok || key != "name" || strings.TrimSpace(value) == "" {
+					return Manifest{}, fmt.Errorf("line %d: metrics source must start with - name: NAME", lineNo)
+				}
+				m.Metrics.Sources = append(m.Metrics.Sources, MetricsSourceRequirement{Name: strings.TrimSpace(value)})
+				metricsIndex = len(m.Metrics.Sources) - 1
+				continue
+			}
 			if section == "runtime" && runtimeField == "permissions" && strings.HasPrefix(trim, "- ") {
 				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
 				key, value, ok := strings.Cut(item, ":")
@@ -902,6 +993,29 @@ func ParseYAML(input string) (Manifest, error) {
 					return Manifest{}, fmt.Errorf("line %d: invalid OTLP telemetry structure", lineNo)
 				}
 				m.Telemetry.OTLP.Signals = append(m.Telemetry.OTLP.Signals, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
+				continue
+			}
+			if section == "metrics" && metricsField == "sources" && metricsIndex >= 0 {
+				key, value, ok := strings.Cut(trim, ":")
+				if !ok {
+					return Manifest{}, fmt.Errorf("line %d: expected metrics source key: value", lineNo)
+				}
+				value = strings.TrimSpace(value)
+				source := &m.Metrics.Sources[metricsIndex]
+				switch key {
+				case "service":
+					source.Service = value
+				case "port":
+					port, err := strconv.Atoi(value)
+					if err != nil {
+						return Manifest{}, fmt.Errorf("line %d: invalid metrics source port", lineNo)
+					}
+					source.Port = port
+				case "path":
+					source.Path = value
+				default:
+					return Manifest{}, fmt.Errorf("line %d: unsupported metrics source field %q", lineNo, key)
+				}
 				continue
 			}
 			if section == "exposure" && exposureField == "http" && exposureIndex >= 0 {

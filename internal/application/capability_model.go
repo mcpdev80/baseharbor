@@ -44,7 +44,14 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 		return nil, err
 	}
 	bindings := make([]capability.Binding, 0, len(resources))
+	metricsEnabled, err := MetricsCollectionEnabled(m)
+	if err != nil {
+		return nil, err
+	}
 	for _, resource := range resources {
+		if resource.Kind == capability.Metrics && !metricsEnabled {
+			continue
+		}
 		workload := "application/" + contract.Application
 		binding := capability.Binding{Resource: resource, Workload: workload}
 		if resource.Kind == capability.ObjectStorageS3 {
@@ -57,6 +64,21 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 		}
 		if resource.Kind == capability.TelemetryOTLP && m.Telemetry.OTLP != nil {
 			binding.TelemetryOTLP = &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: append([]string(nil), m.Telemetry.OTLP.Signals...)}
+		}
+		if resource.Kind == capability.Metrics {
+			for _, source := range m.Metrics.Sources {
+				if source.Name == resource.Name {
+					binding.Workload = "service/" + source.Service
+					binding.Metrics = &capability.MetricsBinding{
+						Direction: "provide",
+						Format:    "openmetrics",
+						Service:   source.Service,
+						Port:      source.Port,
+						Path:      source.Path,
+					}
+					break
+				}
+			}
 		}
 		if resource.Kind == capability.Secrets {
 			security := ManagedSecretsSecureBinding(m)
@@ -94,6 +116,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.SeaweedFS, nil
 	case capability.TelemetryOTLP:
 		return TelemetryProviderForDeployment(), nil
+	case capability.Metrics:
+		return capability.Prometheus, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}

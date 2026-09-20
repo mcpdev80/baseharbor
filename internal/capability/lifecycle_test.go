@@ -229,3 +229,28 @@ func TestBuildPlanRejectsInvalidSecureBindingBeforeProviderPreflight(t *testing.
 		t.Fatal("invalid secure binding reached provider lifecycle")
 	}
 }
+
+func TestBuildPlanMetricsBindingIsTypedAndProviderNeutral(t *testing.T) {
+	driver := &testDriver{provider: Prometheus}
+	plan, err := BuildPlan("demo", []Request{{
+		Requirement: Requirement{Kind: Metrics, Name: "application"},
+		Workload:    "service/api",
+		Metrics: &MetricsBinding{
+			Direction: "provide",
+			Format:    "openmetrics",
+			Service:   "api",
+			Port:      8080,
+			Path:      "/metrics",
+		},
+		Driver: driver,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 1 || plan.Items[0].Binding.Metrics == nil {
+		t.Fatalf("metrics plan = %#v", plan)
+	}
+	if got := plan.Items[0].Resource.Provider; got != ProviderPrometheus {
+		t.Fatalf("metrics provider = %q, want %q", got, ProviderPrometheus)
+	}
+}

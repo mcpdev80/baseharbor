@@ -300,6 +300,28 @@ Managed Collector placement is lazy/shared. External OTLP destinations use the s
 
 Common resource identity includes standard OpenTelemetry service/environment attributes plus BaseHarbor application, logical telemetry resource and provider attribution. OTLP transport does not imply Prometheus, Loki, Tempo, Grafana or another observability backend; those remain independent platform/provider concerns in later releases.
 
+## Metrics collection and Prometheus provider in v0.4.8
+
+Metrics are split into three independent concerns:
+
+```text
+application-provided signal source
+        !=
+deployment collection policy
+        !=
+metrics provider implementation
+```
+
+`metrics/v1` describes an application-provided OpenMetrics-compatible HTTP source. The manifest identifies the logical source, workload service, target port and path. It does not name Prometheus or another backend.
+
+The current Compose policy enables collection by default only for development environments. Test/staging/production require explicit operator opt-in. Policy is resolved before provider mutation.
+
+Prometheus 3.14.0 is the first BaseHarbor-owned Compose metrics provider. The safe default placement is `shared`, but the same generic provider-placement model also supports an application-scoped Prometheus instance. Shared placement may optionally use a named sharing boundary, allowing selected applications to share one provider while unrelated applications remain outside that provider trust boundary. Prometheus uses file-based service discovery generated from protected BaseHarbor state; operators do not edit scrape targets manually. Each participating application receives its own isolated metrics network, and the selected Prometheus instance is attached only to the explicitly registered application networks. Every app/environment/service receives a deterministic collision-resistant DNS alias so identical Compose service names across applications do not collide.
+
+Target labels include BaseHarbor application, environment, workload service and logical source identity. Readiness requires a real successful scrape visible in Prometheus as `up=1`, not merely a running Prometheus process.
+
+The provider has no Docker/Podman socket. Its API is loopback-published only for local lifecycle verification/querying. Grafana, Loki and Tempo remain separate provider tracks and are never provisioned as side effects of metrics collection.
+
 ## Continuous application evolution foundation
 
 BaseHarbor treats application intent as a continuously reconcilable desired state.
@@ -358,3 +380,182 @@ Repository-first `baha up` reuses this reconciliation path and reports newly det
 
 This foundation intentionally does not add the public runtime resource API yet. It defines the semantics that such an API must reuse. See ADR 0010.
 
+## Provider placement, sharing boundaries and runtime realization
+
+Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
+
+```text
+Application intent
+        |
+        v
+Capability
+        |
+        v
+Provider resolution
+        |
+        v
+Provider placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optional sharing boundary
+        |
+        v
+Runtime realization of the selected placement
+```
+
+The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
+
+Placement has concrete ownership and runtime consequences:
+
+```text
+shared
+  -> one BaseHarbor platform/core-runtime provider instance
+  -> not owned by any single application
+  -> may serve one or multiple explicitly authorized applications
+  -> created lazily when a capability needs it
+
+application
+  -> one dedicated provider instance for exactly one application/environment
+  -> on Compose this means a dedicated provider container/project with its own state
+  -> never reused by another application
+
+external
+  -> provider instance is operated outside BaseHarbor
+  -> BaseHarbor binds to it but does not own or provision its lifecycle
+```
+
+A provider does **not** stop being `shared` merely because only one application currently consumes it. `shared` describes the provider instance's platform ownership and reuse boundary, not the current consumer count. Therefore a shared Prometheus, PostgreSQL, OpenBao, object-storage or telemetry provider belongs to the BaseHarbor platform/core-runtime area even when it currently serves only one application. Conversely, `application` always means a dedicated provider instance for that application.
+
+Shared providers are on-demand platform infrastructure, not unconditional bootstrap dependencies. The minimal BaseHarbor control plane stays small; an optional shared provider is added to the platform/core runtime only when an application capability resolves to that shared provider. If the platform already has a compatible shared provider instance, BaseHarbor reuses that instance instead of starting a duplicate.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary. Sharing a physical provider instance never implies sharing an application's logical resources, credentials, data or network access.
+
+Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+Placement semantics are fixed before runtime realization. The runtime may choose platform-native mechanisms to implement those semantics, but it may not reinterpret them: `application` remains one dedicated provider instance for exactly one application/environment, `shared` remains BaseHarbor Platform/Core Runtime infrastructure, and `external` remains externally lifecycle-owned. Compose currently realizes these guarantees through dedicated/shared projects, networks and volumes. Future Kubernetes/OpenShift runtimes may use namespaces/projects, Operators, NetworkPolicies or other platform-native mechanisms without changing the placement meaning or application intent.
+
+A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
+
+Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
+
+Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
+
+## Explicit cross-application connectivity
+
+Provider placement and application-to-application connectivity are separate concerns. A provider being `shared` must never be used as a shortcut for connecting otherwise isolated applications.
+
+BaseHarbor already knows the resolved applications, services, capabilities, provider bindings, runtime identities, networks and endpoints. Cross-application policy therefore states only the connection that differs from the deny-by-default baseline:
+
+```text
+app-a/api -> app-b/sql
+```
+
+This is one directional policy entry and one source of truth. The operator does not repeat ports, URLs, network names, provider placement, credentials or matching declarations in both applications when BaseHarbor can derive them from resolved state.
+
+The semantic model is intentionally minimal:
+
+```text
+source application/service -> target application/service-or-resource
+```
+
+BaseHarbor resolves the concrete connectivity details and validates that both ends exist and are compatible before mutation.
+
+The default is no cross-application connectivity. An explicit policy authorizes only the named source-to-target path; it does not merge application networks, expose unrelated services or grant reciprocal access.
+
+Runtime providers realize the same policy with their native isolation mechanisms:
+
+```text
+BaseHarbor connectivity policy
+        |
+        +-- Compose
+        |     -> dedicated source-side link network
+        |     -> hardened BaseHarbor TCP relay
+        |     -> target remains on its own network
+        |
+        +-- Kubernetes
+        |     -> NetworkPolicy
+        |
+        +-- OpenShift
+              -> NetworkPolicy / platform-native equivalent
+```
+
+The Compose realization preserves directionality. BaseHarbor does **not** attach source and target containers to one common bridge network. Only the source service joins a connection-specific link network. A hardened relay from the version-matched BaseHarbor Runtime image joins that source link plus one existing target network and forwards only the resolved target TCP port. The target service never joins the source link, so the policy does not create a reciprocal network path. The relay has no host-published port, no container-runtime socket, runs non-root, uses a read-only root filesystem, drops Linux capabilities and enables `no-new-privileges`.
+
+The policy is independent from provider placement. For example, both applications may keep application-scoped PostgreSQL/OpenBao providers while `app-a/api -> app-b/sql` is the only cross-application path permitted. Likewise, a shared provider does not by itself create application-to-application connectivity.
+
+This follows the same security rule as the rest of BaseHarbor: **deny by default; declare only the minimum exception; derive the rest from platform knowledge.**
+
+## Progressive disclosure and explicit operator control
+
+BaseHarbor must be simple by default without becoming restrictive.
+
+The normal developer path should require only application intent and should use safe, explainable defaults:
+
+```text
+developer declares capability
+        |
+        v
+BaseHarbor detects/resolves sensible defaults
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Advanced users and operators must still be able to override deployment decisions explicitly where the platform supports them, including provider selection, provider placement, optional sharing boundary, lifecycle ownership where applicable, external provider references, isolation/deployment policy and supported provider/runtime options.
+
+The control model is therefore progressive disclosure:
+
+```text
+simple path
+  -> automatic safe defaults
+
+advanced path
+  -> explicit deployment/operator policy
+
+expert path
+  -> fully specified supported provider/runtime realization
+```
+
+Explicit control must not require polluting the portable application contract with infrastructure details. Portable application intent remains product-neutral; concrete infrastructure choices belong to deployment/operator configuration and control surfaces.
+
+BaseHarbor must show the resolved plan before mutation so users can see what defaults were selected and can override supported decisions deliberately. Explicit user/operator configuration wins over defaults, but never bypasses capability conformance, security boundaries, validation or fail-closed behavior.
+
+The goal is: easy when the user does not care about infrastructure details, precise when the user does.
+
+## Convention by default, configuration by choice
+
+BaseHarbor follows one UX and architecture principle across all capabilities and runtimes:
+
+> **Convention by default, configuration by choice.**
+
+The default path minimizes decisions. BaseHarbor detects what it can, chooses safe and explainable defaults, shows the resolved plan and proceeds through the normal validation lifecycle.
+
+Users who want more control may progressively override supported deployment decisions without changing portable application intent.
+
+```text
+default
+  -> capabilities only
+  -> safe automatic provider/placement/runtime defaults
+
+advanced
+  -> explicit provider / placement / sharing / external references
+
+expert
+  -> supported naming, topology, runtime and provider realization hints
+```
+
+Examples of optional expert control may include stable resource prefixes, logical hostnames, Compose project/network/volume names, DNS aliases and later Kubernetes/OpenShift namespace/project naming. Ephemeral runtime-generated identities such as replica or Pod instance names remain runtime-owned unless the runtime explicitly supports a safe stable override.
+
+Every configurable field must have explicit semantics:
+
+- stable and safely overridable;
+- hint/template only;
+- generated/runtime-owned and not overridable.
+
+Overrides are accepted only when the active runtime/provider can honor them safely and deterministically. They must never bypass security, ownership, reconciliation, conformance or fail-closed validation.
+
+The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.

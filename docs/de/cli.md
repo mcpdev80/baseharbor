@@ -8,6 +8,9 @@
 baha
 ├── up / down / status / doctor
 ├── serve
+├── connect SOURCE TARGET
+├── disconnect SOURCE TARGET
+├── connections
 ├── update
 ├── app
 │   ├── init / create / list / show
@@ -50,6 +53,46 @@ Aktuelle semantische Detectoren erkennen neben PostgreSQL/Redis auch S3-kompatib
 
 Repository-first `baha up` verwendet denselben Reconciliation-Core vor der Convergence. Neu erkannte oder unklare Capabilities und Runtime-Operations-Hinweise werden sichtbar gemeldet, aber `baseharbor.yaml` wird nicht automatisch umgeschrieben und es werden keine Runtime-Berechtigungen vergeben.
 
+## Metrics-Collection-Policy
+
+Ein Repository kann eine oder mehrere providerneutrale `metrics/v1`-Sources deklarieren:
+
+```yaml
+metrics:
+  sources:
+    - name: application
+      service: api
+      port: 8080
+      path: /metrics
+```
+
+Damit wird **nicht** Prometheus angefordert. Deklariert wird ein von der Anwendung bereitgestellter OpenMetrics-kompatibler HTTP-Endpunkt.
+
+Die Compose-Collection-Policy gehoert zum Deployment:
+
+- `dev` / `development`: standardmaessig aktiv;
+- Test/Staging/Produktion: standardmaessig deaktiviert;
+- `BASEHARBOR_METRICS_ENABLED=true|false`: expliziter Operator-Override.
+
+Bei aktiver Collection loesen `baha app apply` und `baha app up` Prometheus ueber die generische Provider-Placement-Schicht auf, zeigen das aufgeloeste Placement vor der Mutation an, registrieren Targets automatisch, starten den Workload und verlangen danach einen echten erfolgreichen Scrape, bevor der Metrics-Pfad als bereit gilt. Der sichere Default ist shared Prometheus mit einem isolierten Metrics-Netz je Application. Fortgeschrittene Operatoren koennen application-scoped Prometheus oder eine benannte Shared Boundary ueber die generische Provider-Policy waehlen: `BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=shared|application` sowie fuer gruppiertes Shared Placement `BASEHARBOR_PROVIDER_PROMETHEUS_SHARING_BOUNDARY=<name>`. Nicht unterstuetztes Placement bricht vor Mutation fail-closed ab. Ein externer Prometheus-Adapter ist in v0.4.8 bewusst noch nicht implementiert. Grafana, Loki und Tempo werden nicht gestartet.
+
+## Cross-Application-Connectivity
+
+Cross-Application-Zugriff ist deny-by-default und wird genau einmal auf BaseHarbor-Platform-Ebene konfiguriert statt in beiden Application Contracts doppelt eingetragen.
+
+```bash
+baha connect app-a/api app-b/sql
+baha connections
+baha disconnect app-a/api app-b/sql
+```
+
+Die kurze Form ist der Normalfall. BaseHarbor loest aktives Environment, konkreten Runtime-Service, Target-Netz und Target-TCP-Port aus dem Runtime-State auf. Nur bei Mehrdeutigkeit verlangt die CLI eine Qualifizierung wie `app-b@prod/api:8080`.
+
+Die Regel ist gerichtet. Compose haengt Source und Target nicht in dasselbe gemeinsame Bridge-Netz. BaseHarbor erzeugt ein verbindungsspezifisches Source-Link-Netz und startet einen gehaerteten Relay aus dem versionsgleichen BaseHarbor-Runtime-Image. Nur Source-Service und Relay haengen am Link; der Relay haengt zusaetzlich in genau einem vorhandenen Target-Netz und leitet ausschliesslich zum aufgeloesten Target-Service/-Port weiter. Das Target kommt niemals in das Source-Link-Netz.
+
+`baha app down` pausiert betroffene Relay-Runtimes und behaelt die Policy. `baha app up`/`apply` reconciled sie erneut, sobald beide Endpunkte laufen. `baha app destroy` bricht fail-closed ab, solange eine Connectivity-Regel auf die Application zeigt; die Regel muss vorher explizit entfernt werden.
+
+Provider-Sharing ist davon unabhaengig. Ein `shared` Provider vergibt niemals automatisch Application-zu-Application-Netzwerkzugriff.
 ## Control Plane
 
 ```bash

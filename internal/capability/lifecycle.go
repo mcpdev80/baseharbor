@@ -71,12 +71,21 @@ type OTLPTelemetryBinding struct {
 	Signals   []string `json:"signals"`
 }
 
+type MetricsBinding struct {
+	Direction string `json:"direction"`
+	Format    string `json:"format"`
+	Service   string `json:"service"`
+	Port      int    `json:"port"`
+	Path      string `json:"path"`
+}
+
 type Binding struct {
 	Resource        Resource                `json:"resource"`
 	Workload        string                  `json:"workload"`
 	HTTPExposure    *HTTPExposureBinding    `json:"http_exposure,omitempty"`
 	ObjectStorageS3 *ObjectStorageS3Binding `json:"object_storage_s3,omitempty"`
 	TelemetryOTLP   *OTLPTelemetryBinding   `json:"telemetry_otlp,omitempty"`
+	Metrics         *MetricsBinding         `json:"metrics,omitempty"`
 	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
@@ -119,6 +128,7 @@ type Request struct {
 	HTTPExposure    *HTTPExposureBinding
 	ObjectStorageS3 *ObjectStorageS3Binding
 	TelemetryOTLP   *OTLPTelemetryBinding
+	Metrics         *MetricsBinding
 	Security        *SecureBinding
 	Driver          Driver
 	Observer        ProviderOperationObserver
@@ -186,6 +196,26 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			}
 			value.Signals = append([]string(nil), value.Signals...)
 			binding.TelemetryOTLP = &value
+		}
+		if request.Requirement.Kind == Metrics && request.Metrics == nil {
+			return Plan{}, fmt.Errorf("capability metrics binding for %s/%s is required", application, request.Requirement.Name)
+		}
+		if request.Metrics != nil {
+			value := *request.Metrics
+			value.Direction = strings.TrimSpace(value.Direction)
+			value.Format = strings.TrimSpace(value.Format)
+			value.Service = strings.TrimSpace(value.Service)
+			value.Path = strings.TrimSpace(value.Path)
+			if value.Direction != "provide" {
+				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: direction must be provide", application, request.Requirement.Name)
+			}
+			if value.Format != "openmetrics" {
+				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: unsupported format %q", application, request.Requirement.Name, value.Format)
+			}
+			if value.Service == "" || value.Port < 1 || value.Port > 65535 || !strings.HasPrefix(value.Path, "/") {
+				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s is incomplete", application, request.Requirement.Name)
+			}
+			binding.Metrics = &value
 		}
 		if request.Security != nil {
 			value := *request.Security

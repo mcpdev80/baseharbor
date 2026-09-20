@@ -109,6 +109,9 @@ func declaredCapabilityIntents(manifest *application.Manifest) []CapabilityInten
 	if application.HasOTLPTelemetry(*manifest) {
 		intents = append(intents, CapabilityIntent{Capability: "telemetry.otlp", Name: "default", Direction: DirectionExport})
 	}
+	for _, source := range manifest.Metrics.Sources {
+		intents = append(intents, CapabilityIntent{Capability: "metrics", Name: source.Name, Direction: DirectionProvide})
+	}
 	return intents
 }
 
@@ -131,7 +134,7 @@ func normalizedDirection(finding Finding) Direction {
 		return finding.Direction
 	}
 	switch finding.Capability {
-	case "metrics.openmetrics", "exposure.http":
+	case "metrics", "exposure.http":
 		return DirectionProvide
 	case "telemetry.otlp":
 		return DirectionExport

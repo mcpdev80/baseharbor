@@ -1,6 +1,7 @@
 package application
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/url"
@@ -66,6 +67,11 @@ func RuntimeAuthorizedServices(m Manifest) []string {
 	}
 	sort.Strings(services)
 	return services
+}
+
+func runtimeServiceIdentitySecretName(service string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(service)))
+	return fmt.Sprintf("baseharbor-runtime-token-%x", sum[:6])
 }
 
 func HasRequiredFileSecrets(m Manifest) bool {
@@ -171,14 +177,16 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 	}
 
 	var runtimeSecretFiles map[string]string
+	serviceTokenNames := map[string]string{}
+	runtimeTokenSecretFiles := map[string]string{}
 	if len(runtimeServices) > 0 {
-		tokenPath, err := EnsureRuntimeIdentity(m, files)
+		serviceIdentities, err := EnsureRuntimeServiceIdentities(m, files)
 		if err != nil {
 			return "", false, err
 		}
+		legacyTokenPath := ""
 		identityDir := RuntimeMTLSHostDir(files)
 		sources := map[string]string{
-			"baseharbor-runtime-token":       tokenPath,
 			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
 			"baseharbor-runtime-client-cert": filepath.Join(identityDir, "client-cert.pem"),
 			"baseharbor-runtime-client-key":  filepath.Join(identityDir, "client-key.pem"),
@@ -190,6 +198,31 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 				return "", false, err
 			}
 			runtimeSecretFiles[name] = projected
+		}
+		for service := range runtimeServices {
+			hostPath, explicitlyAuthorized := serviceIdentities[service]
+			name := runtimeServiceIdentitySecretName(service)
+			if !explicitlyAuthorized {
+				if legacyTokenPath == "" {
+					legacyTokenPath, err = EnsureRuntimeIdentity(m, files)
+					if err != nil {
+						return "", false, err
+					}
+					if strings.TrimSpace(legacyTokenPath) == "" {
+						return "", false, errors.New("legacy runtime identity token is unavailable")
+					}
+				}
+				hostPath = legacyTokenPath
+				name = "baseharbor-runtime-token"
+			}
+			if _, exists := runtimeTokenSecretFiles[name]; !exists {
+				projected, err := projectRuntimeIdentityWorkloadFile(files, hostPath, name)
+				if err != nil {
+					return "", false, err
+				}
+				runtimeTokenSecretFiles[name] = projected
+			}
+			serviceTokenNames[service] = name
 		}
 	}
 
@@ -220,7 +253,9 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_CERT_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientCertPath))
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_KEY_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientKeyPath))
 			b.WriteString("    secrets:\n")
-			for _, name := range []string{"baseharbor-runtime-token", "baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"} {
+			fmt.Fprintf(&b, "      - source: %s\n", serviceTokenNames[service])
+			b.WriteString("        target: baseharbor-runtime-token\n")
+			for _, name := range []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"} {
 				fmt.Fprintf(&b, "      - %s\n", name)
 			}
 		}
@@ -250,9 +285,21 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 	}
 	if len(runtimeServices) > 0 {
 		b.WriteString("\nsecrets:\n")
-		ordered := []string{"baseharbor-runtime-token", "baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"}
+		ordered := []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"}
 		for _, name := range ordered {
 			absolute, err := filepath.Abs(runtimeSecretFiles[name])
+			if err != nil {
+				return "", false, fmt.Errorf("resolve runtime identity binding %s: %w", name, err)
+			}
+			fmt.Fprintf(&b, "  %s:\n    file: %s\n", name, strconv.Quote(absolute))
+		}
+		tokenNames := make([]string, 0, len(runtimeTokenSecretFiles))
+		for name := range runtimeTokenSecretFiles {
+			tokenNames = append(tokenNames, name)
+		}
+		sort.Strings(tokenNames)
+		for _, name := range tokenNames {
+			absolute, err := filepath.Abs(runtimeTokenSecretFiles[name])
 			if err != nil {
 				return "", false, fmt.Errorf("resolve runtime identity binding %s: %w", name, err)
 			}

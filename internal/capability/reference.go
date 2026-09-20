@@ -14,40 +14,54 @@ var (
 	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
 	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
 	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
+	Prometheus    = Provider{Kind: ProviderPrometheus, Capabilities: []Kind{Metrics}}
 )
 
 var (
 	PostgreSQLIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: PostgreSQL,
-		Capabilities: []SpecificationID{SQLV1.ID},
+		Capabilities:    []SpecificationID{SQLV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	ValkeyIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Valkey,
-		Capabilities: []SpecificationID{KeyValueV1.ID},
+		Capabilities:    []SpecificationID{KeyValueV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	OpenBaoIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: OpenBao,
-		Capabilities: []SpecificationID{SecretsV1.ID},
-		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
+		Capabilities:    []SpecificationID{SecretsV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 	}
 	CaddyIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Caddy,
-		Capabilities: []SpecificationID{ExposureHTTPV1.ID},
-		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Capabilities:    []SpecificationID{ExposureHTTPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	SeaweedFSIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: SeaweedFS,
-		Capabilities: []SpecificationID{ObjectStorageS3V1.ID},
-		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Capabilities:    []SpecificationID{ObjectStorageS3V1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	OTelCollectorIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: OTelCollector,
-		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
-		Optional:     OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+	}
+	PrometheusIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: Prometheus,
+		Capabilities:    []SpecificationID{MetricsV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
-		Capabilities: []SpecificationID{TelemetryOTLPV1.ID},
+		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
+		SupportedScopes: []ProviderScope{ScopeExternal},
 	}
 )
 
@@ -67,6 +81,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return OTelCollectorIntegration, nil
 	case ProviderExternalOTLP:
 		return ExternalOTLPIntegration, nil
+	case ProviderPrometheus:
+		return PrometheusIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}

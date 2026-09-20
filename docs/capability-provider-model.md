@@ -18,7 +18,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 
 ## Component matrix
 
-| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.7 | Replacement paths / alternatives | Architecture note |
+| Capability | Portable interface / intent | BaseHarbor default | Status in v0.4.8 | Replacement paths / alternatives | Architecture note |
 | --- | --- | --- | --- | --- | --- |
 | Relational SQL database | Manifest v1 PostgreSQL compatibility input normalized to `database.sql` in `PortableContract` | PostgreSQL | Implemented | external PostgreSQL, managed PostgreSQL/RDS-style services, compatible enterprise PostgreSQL platforms; other SQL engines only where the declared capability permits their semantics | PostgreSQL is the current reference provider, not the permanent conceptual capability name |
 | Cache / key-value | Manifest v1 Redis/Valkey compatibility input normalized to `cache.key-value` in `PortableContract` | Valkey | Implemented | Redis, Dragonfly, managed Redis/Valkey; other KV systems only through a capability with matching semantics | Protocol/feature requirements must be explicit enough to avoid false interchangeability |
@@ -28,7 +28,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 | TLS certificate lifecycle | future `tls.certificate` / X.509 identity | provider-specific | Deployment-specific existing/BYOC lifecycle implemented; portable capability planned | existing/BYOC certificates, OpenBao PKI, ACME provider, cert-manager, OpenShift Service CA, cloud-native certificate services | v0.4 validates/imports/updates existing certificates for repository Compose deployment state; ACME/PKI/provider-neutral intent remain future work |
 | External secret projection | provider integration, not a portable app product | none required globally; ESO may be an adapter | Planned/optional | External Secrets Operator, Secrets Store CSI, Vault/OpenBao native workload identity, platform-native secret projection | ESO must never become part of the application contract |
 | Identity / SSO | future `identity.oidc` / OIDC/OAuth2 | no hard-wired product; Keycloak is a possible self-hosted reference | Planned | Authentik, Zitadel, Entra ID, Google Workspace, GitHub or other compliant OIDC providers | BaseHarbor should consume identity claims; it should not require applications to depend on Keycloak-specific APIs |
-| Metrics | future `metrics.openmetrics` / OpenMetrics-compatible scrape/export | Prometheus as reference/default candidate | Planned | VictoriaMetrics, Mimir and compatible backends | Keep collection/query/storage backend replaceable |
+| Metrics | `metrics/v1` / OpenMetrics-compatible HTTP exposition | Prometheus 3.14.0 Compose reference provider; shared default, named shared boundaries and application-scoped placement | v0.4.8: source contract, generic placement resolution, policy-controlled collection, automatic target registration and real scrape/ingestion verification | VictoriaMetrics, Mimir and compatible backends | The application declares only its metrics source; provider placement, collection policy, retention, query and storage remain replaceable deployment/platform/provider state |
 | OTLP telemetry transport | `telemetry.otlp/v1` / OTLP HTTP-protobuf export | OpenTelemetry Collector 0.161.0 shared Compose reference provider | Implemented in v0.4.7; external OTLP endpoints are supported without lifecycle ownership | any conforming OTLP HTTP/protobuf endpoint, managed or external | OpenTelemetry is the ecosystem; OTLP is the portable protocol boundary; the collector is a provider implementation, not application identity |
 | Logs | structured application/runtime logs with provider-defined transport | Loki as reference/default candidate | Trusted-local Compose log access implemented; backend abstraction planned | OpenSearch, Elasticsearch, VictoriaLogs and compatible stacks | `baha app logs` is a local operator workflow, not a commitment to one log storage backend |
 
@@ -125,11 +125,11 @@ A future provider interface must describe more than a product name. Providers ne
 
 If the selected provider cannot satisfy a requested guarantee, BaseHarbor must reject the plan rather than silently reduce the guarantee.
 
-## v0.4.7 boundary
+## v0.4.8 boundary
 
-v0.4.7 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, `object-storage.s3/v1`, and provider-neutral `telemetry.otlp/v1` export binding with a lazy shared OpenTelemetry Collector reference provider or external OTLP endpoint.
+v0.4.8 remains Compose-only at runtime. The v0.4 line now includes the shared capability/provider/resource/binding core, protected provider placement/ownership, the Provider Integration Contract v1, deterministic repository inspection, managed traffic through `exposure.http/v1`, the shared `secure-binding/v1` security boundary, `object-storage.s3/v1`, provider-neutral `telemetry.otlp/v1` export binding, and `metrics/v1` with Prometheus as the first Compose reference provider. It also adds explicit directional cross-application connectivity as a separate deny-by-default platform policy.
 
-Manifest v1 remains the supported compatibility surface. Managed exposure is additive and explicit; application-owned publishers remain application-owned observation/readiness state.
+Manifest v1 remains the supported compatibility surface. Managed exposure and metrics sources are additive and explicit; application-owned publishers remain application-owned observation/readiness state. Provider sharing never implies cross-application connectivity.
 
 These seams must not be misread as Kubernetes/OpenShift support. Additional S3/object-storage providers and public provider-selection policy, HA profiles, managed ACME/OpenBao-PKI certificate issuance and Kubernetes/OpenShift runtime providers remain future work.
 
@@ -183,3 +183,123 @@ Current reference claims are versioned:
 Additional S3, telemetry, observability, messaging, AI/MCP and vector providers must define/implement versioned capability specifications rather than introduce product-specific application contracts.
 
 The future external transport is gRPC/Protocol Buffers and distribution direction is OCI. Those are open-standard transport/package mechanisms; BaseHarbor capability semantics and conformance remain authoritative.
+
+## Provider placement, sharing boundaries and runtime realization
+
+Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
+
+```text
+Application intent
+        |
+        v
+Capability
+        |
+        v
+Provider resolution
+        |
+        v
+Provider placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optional sharing boundary
+        |
+        v
+Runtime realization of the selected placement
+```
+
+The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
+
+Placement has strict provider-instance semantics:
+
+- `application`: one BaseHarbor-managed provider instance dedicated to exactly one application/environment. In the Compose runtime this means a dedicated provider container/project and dedicated provider state; it is never reused by another application.
+- `shared`: one BaseHarbor Platform/Core Runtime provider instance, created lazily when first required and reusable by one or more explicitly authorized applications. A provider remains `shared` even while it currently has only one consumer.
+- `external`: a provider instance operated outside BaseHarbor. BaseHarbor may bind to it, but does not own or provision its lifecycle.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one platform provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary. Sharing the provider process never implies sharing logical application resources, credentials, data or network access.
+
+Shared providers are on-demand platform infrastructure rather than unconditional bootstrap dependencies. If a compatible shared instance already exists in the BaseHarbor Platform/Core Runtime, BaseHarbor reuses it instead of starting another provider instance.
+
+Provider implementations declare the placements they currently support. If policy resolves to a placement that the selected provider adapter cannot truthfully realize, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+The placement semantics are runtime-independent even though realization differs. Compose realizes an `application` provider as a dedicated container/project and a `shared` provider as BaseHarbor Platform/Core Runtime infrastructure. Future Kubernetes/OpenShift runtimes may realize the same semantics with dedicated/shared platform-native resources, namespaces/projects, Operators or other isolation mechanisms without changing application intent.
+
+A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
+
+Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
+
+Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.
+
+## Progressive disclosure and explicit operator control
+
+BaseHarbor must be simple by default without becoming restrictive.
+
+The normal developer path should require only application intent and should use safe, explainable defaults:
+
+```text
+developer declares capability
+        |
+        v
+BaseHarbor detects/resolves sensible defaults
+        |
+        v
+plan -> preflight -> apply -> verify
+```
+
+Advanced users and operators must still be able to override deployment decisions explicitly where the platform supports them, including provider selection, provider placement, optional sharing boundary, lifecycle ownership where applicable, external provider references, isolation/deployment policy and supported provider/runtime options.
+
+The control model is therefore progressive disclosure:
+
+```text
+simple path
+  -> automatic safe defaults
+
+advanced path
+  -> explicit deployment/operator policy
+
+expert path
+  -> fully specified supported provider/runtime realization
+```
+
+Explicit control must not require polluting the portable application contract with infrastructure details. Portable application intent remains product-neutral; concrete infrastructure choices belong to deployment/operator configuration and control surfaces.
+
+BaseHarbor must show the resolved plan before mutation so users can see what defaults were selected and can override supported decisions deliberately. Explicit user/operator configuration wins over defaults, but never bypasses capability conformance, security boundaries, validation or fail-closed behavior.
+
+The goal is: easy when the user does not care about infrastructure details, precise when the user does.
+
+## Convention by default, configuration by choice
+
+BaseHarbor follows one UX and architecture principle across all capabilities and runtimes:
+
+> **Convention by default, configuration by choice.**
+
+The default path minimizes decisions. BaseHarbor detects what it can, chooses safe and explainable defaults, shows the resolved plan and proceeds through the normal validation lifecycle.
+
+Users who want more control may progressively override supported deployment decisions without changing portable application intent.
+
+```text
+default
+  -> capabilities only
+  -> safe automatic provider/placement/runtime defaults
+
+advanced
+  -> explicit provider / placement / sharing / external references
+
+expert
+  -> supported naming, topology, runtime and provider realization hints
+```
+
+Examples of optional expert control may include stable resource prefixes, logical hostnames, Compose project/network/volume names, DNS aliases and later Kubernetes/OpenShift namespace/project naming. Ephemeral runtime-generated identities such as replica or Pod instance names remain runtime-owned unless the runtime explicitly supports a safe stable override.
+
+Every configurable field must have explicit semantics:
+
+- stable and safely overridable;
+- hint/template only;
+- generated/runtime-owned and not overridable.
+
+Overrides are accepted only when the active runtime/provider can honor them safely and deterministically. They must never bypass security, ownership, reconciliation, conformance or fail-closed validation.
+
+The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.

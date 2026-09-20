@@ -159,3 +159,36 @@ func materializeRuntimeMTLSTestFiles(t *testing.T, files RuntimeFiles) {
 		}
 	}
 }
+
+func TestRuntimeIdentityWorkloadOverrideUsesServiceScopedTokenForExplicitPermission(t *testing.T) {
+	m := New("demo", "dev", false, false, true)
+	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
+	files := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
+	files.Bindings = filepath.Join(files.Dir, "bindings")
+	materializeRuntimeMTLSTestFiles(t, files)
+	workload := WorkloadFiles{Services: []string{"api"}}
+	plan := WorkloadBindingPlan{RuntimeIdentityServices: []string{"api"}}
+
+	path, enabled, err := MaterializeRuntimeIdentityWorkloadOverride(m, workload, files, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enabled {
+		t.Fatal("runtime identity override was not enabled")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	serviceSecret := runtimeServiceIdentitySecretName("api")
+	if !strings.Contains(text, "source: "+serviceSecret) {
+		t.Fatalf("explicit runtime permission did not use service-scoped token %q:\n%s", serviceSecret, text)
+	}
+	if strings.Contains(text, "source: baseharbor-runtime-token\n") {
+		t.Fatalf("explicit runtime permission unexpectedly fell back to legacy app token:\n%s", text)
+	}
+	if !strings.Contains(text, serviceSecret+":") {
+		t.Fatalf("service-scoped token secret definition missing:\n%s", text)
+	}
+}

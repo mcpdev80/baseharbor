@@ -26,6 +26,9 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			if err := printResolvedMetricsPlacement(out, m); err != nil {
+				return err
+			}
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -39,6 +42,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var managedExposure *managedExposureExecution
 			var managedObjectStorage *managedObjectStorageExecution
 			var managedTelemetry *managedTelemetryExecution
+			var managedMetrics *managedMetricsExecution
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -60,6 +64,10 @@ func appUpCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "connectivity policy", Run: func(context.Context) error {
+					_, err := application.LoadConnectivityRules()
+					return err
+				}},
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
@@ -71,6 +79,11 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "managed telemetry provider", Run: func(ctx context.Context) error {
 					var err error
 					managedTelemetry, err = prepareManagedTelemetry(ctx, compose, resolved)
+					return err
+				}},
+				{Name: "managed metrics provider", Run: func(ctx context.Context) error {
+					var err error
+					managedMetrics, err = prepareManagedMetrics(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
@@ -174,8 +187,17 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {
 				return fmt.Errorf("converge managed telemetry: %w", err)
 			}
+			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
+				return fmt.Errorf("converge managed metrics provider: %w", err)
+			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
+			}
+			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
+			}
+			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
+				return fmt.Errorf("verify managed metrics ingestion: %w", err)
 			}
 			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
 				return fmt.Errorf("converge managed HTTP exposure: %w", err)

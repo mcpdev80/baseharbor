@@ -118,3 +118,128 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 		t.Fatalf("exposure provider binding missing: %#v", registry.Bindings)
 	}
 }
+
+func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
+	m := New("demo", "production", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	t.Setenv(MetricsEnabledEnv, "false")
+	disabled := capability.NewRegistry()
+	if err := registerReferenceProviders(&disabled, m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := disabled.Resolve(capability.ProviderPrometheus, capability.ScopeShared, m.Name, ""); err == nil {
+		t.Fatal("Prometheus registered while metrics collection policy is disabled")
+	}
+
+	t.Setenv(MetricsEnabledEnv, "true")
+	enabled := capability.NewRegistry()
+	if err := registerReferenceProviders(&enabled, m); err != nil {
+		t.Fatal(err)
+	}
+	instance, err := enabled.Resolve(capability.ProviderPrometheus, capability.ScopeShared, m.Name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.ID != "prometheus/shared" {
+		t.Fatalf("Prometheus instance = %#v", instance)
+	}
+}
+
+func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "true")
+	m := New("runtime-metrics", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithRuntimePermission(m, string(capability.MetricsV1.ID), []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+
+	registry := capability.NewRegistry()
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(registry.Instances) != 1 {
+		t.Fatalf("instances=%#v", registry.Instances)
+	}
+	if len(registry.Bindings) != 1 {
+		t.Fatalf("bindings=%#v", registry.Bindings)
+	}
+	binding := registry.Bindings[0]
+	if binding.Resource.Kind != capability.Metrics ||
+		binding.Resource.Name != runtimeMetricsRegistryResource ||
+		binding.ProviderInstanceID != "prometheus/shared" {
+		t.Fatalf("runtime metrics binding=%#v", binding)
+	}
+}
+
+func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	t.Setenv(MetricsEnabledEnv, "true")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	if err := ReconcileReferenceProviderRegistry(m); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(ProviderScopeEnv(capability.ProviderPrometheus), "application")
+	desired, err := ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desired.Scope != capability.ScopeApplication {
+		t.Fatalf("desired placement=%#v", desired)
+	}
+
+	registered, found, err := RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("registered Prometheus placement not found")
+	}
+	if registered.Scope != capability.ScopeShared {
+		t.Fatalf("registered placement changed with desired override: %#v", registered)
+	}
+}
+
+func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "definitely-not-a-bool")
+	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
+
+	m := New("database-only", "production", true, false, false)
+	registry := capability.NewRegistry()
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		t.Fatalf("unrelated metrics policy broke database-only provider registration: %v", err)
+	}
+	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, m.Name, ""); err != nil {
+		t.Fatalf("PostgreSQL provider not registered: %v", err)
+	}
+}
+
+func TestReferenceProviderInstancePreservesExternalReference(t *testing.T) {
+	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "otel-prod")
+
+	m := Manifest{Name: "demo", Environment: "production"}
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.TelemetryOTLP,
+		Name:        "default",
+		Provider:    capability.ProviderExternalOTLP,
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.Scope != capability.ScopeExternal ||
+		instance.Ownership != capability.OwnershipExternal ||
+		instance.Reference != "otel-prod" {
+		t.Fatalf("external provider instance=%#v", instance)
+	}
+}

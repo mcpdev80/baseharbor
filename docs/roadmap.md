@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.7 portable application foundation
+## Current v0.4.8 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -29,6 +29,8 @@ Implemented foundations include:
 - a provider-neutral `PortableContract` adapter for application intent;
 - a shared capability/provider/resource/binding domain core with fail-closed provider negotiation and machine-readable lifecycle results;
 - a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
+- `metrics/v1` with Prometheus 3.14.0 as the first Compose reference provider, shared/application placement, isolated metrics networks and real scrape/ingestion verification;
+- explicit directional cross-application connectivity through `baha connect`, separate from provider sharing and realized in Compose through a hardened BaseHarbor relay;
 - Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
 - one or multiple named logical Valkey/Redis-protocol resources;\n- one or multiple logical S3 buckets through `object-storage.s3/v1`;\n- SeaweedFS as the current lazy shared Compose S3 reference provider with bucket-scoped credentials and authenticated Put/Get readiness;
@@ -126,24 +128,28 @@ v0.4.3 makes repository inspection a shared, read-only core capability.
 - current PostgreSQL/Valkey detection and guided `app init` reuse the same engine;
 - inspection never mutates repository/runtime state and never emits environment secret values.
 
-## Continuous application evolution foundation before v0.4.8
+## v0.4.8 metrics / Prometheus track
 
-Before the v0.4.8 metrics/Prometheus implementation, BaseHarbor standardizes how application intent changes over time.
+The continuous application-evolution and runtime-resource prerequisites are complete. v0.4.8 adds the first metrics collection/storage provider while preserving the application/provider split.
 
-- manifest output is sparse: disabled optional capabilities are omitted;
-- repository inspection is repeatable throughout development rather than limited to initial setup;
-- inspection reconciles repository evidence with explicit contract state as satisfied/new/ambiguous/stale;
-- newly discovered requirements are additive suggestions;
-- missing evidence never causes automatic capability removal;
-- capability evidence carries application direction such as consume/provide/export and runtime-operation hints;
-- S3 runtime creation patterns, OpenMetrics `/metrics` and OTLP export become first concrete examples;
-- runtime-operation evidence never grants authorization;
-- application-time resource provisioning reuses the existing capability/provider boundary;
-- the Runtime Resource API is executable for explicitly authorized `object-storage.s3/v1` create/get/delete requests;
-- a shared mTLS Runtime Provider Executor keeps provider-global credentials outside applications and per-app brokers;
-- asynchronous operation state is persistent and unfinished operations are reconciled after broker restart.
+Implemented in the v0.4.8 development track:
 
-This completes the runtime-resource execution prerequisite before v0.4.8. It is still not the Prometheus implementation; OpenMetrics evidence remains input for the next capability track.
+- versioned `metrics/v1` Capability Specification;
+- provider-neutral application metrics source declarations using logical source name, workload service, target port and path;
+- OpenMetrics-compatible HTTP exposition as the v1 signal format;
+- repository inspection maps conventional `/metrics` evidence to the canonical `metrics` capability;
+- deployment-owned collection policy instead of a portable `prometheus: true` requirement;
+- development collection enabled by default, with test/staging/production requiring explicit operator opt-in;
+- Prometheus 3.14.0 as the first lazy shared Compose reference provider;
+- file-based automatic target discovery generated from BaseHarbor state, without manual Prometheus target editing;
+- per-application isolated metrics networks with explicit Prometheus attachment only to registered application trust boundaries;
+- deterministic collision-resistant target DNS aliases so identical service names across applications remain isolated;
+- BaseHarbor application/environment/service/source attribution on scraped series;
+- readiness based on a real successful scrape visible as `up=1`, not only process health;
+- manual-only Docker acceptance with two isolated application targets sharing one Prometheus provider;
+- no implicit Grafana, Loki or Tempo provisioning.
+
+OTLP metrics export remains a separate `telemetry.otlp/v1` transport concern. v0.4.8 does not redefine OTLP or make Prometheus part of application identity.
 
 ## Next architecture tracks
 
@@ -217,3 +223,44 @@ and later reach:
 without a second operational rewrite of the application.
 
 The infrastructure may change substantially; the logical application requirements and standard application-facing interfaces should change as little as possible.
+
+## Provider placement, sharing boundaries and runtime realization
+
+Provider placement is a BaseHarbor-wide deployment/operator concern. It is independent from application intent, runtime topology and product choice.
+
+```text
+Application intent
+        |
+        v
+Capability
+        |
+        v
+Provider resolution
+        |
+        v
+Provider placement
+   +----+------------------+
+   |                       |
+application             shared ---------------- external
+                           |
+                           +-- optional sharing boundary
+        |
+        v
+Runtime realization of the selected placement
+```
+
+The canonical placement scopes remain exactly `application`, `shared` and `external`. A sharing boundary is an optional property of `shared`; it is not a fourth scope.
+
+A shared provider is never automatically reachable by every application. Access is explicit, least-privilege and deny-by-default. A sharing boundary allows an operator to intentionally reuse one provider instance for a selected set of applications while keeping unrelated applications outside that trust boundary.
+
+Provider implementations declare the placements they support. If policy resolves to a placement that the selected provider cannot satisfy, BaseHarbor fails closed before mutation instead of silently changing placement.
+
+The portable application contract never contains provider placement, sharing-boundary, lifecycle-ownership or runtime-realization mechanics. The developer continues to state only application capabilities. BaseHarbor and deployment policy resolve the infrastructure details.
+
+Placement semantics are fixed before runtime realization. The runtime may choose platform-native mechanisms to implement those semantics, but it may not reinterpret them: `application` remains one dedicated provider instance for exactly one application/environment, `shared` remains BaseHarbor Platform/Core Runtime infrastructure, and `external` remains externally lifecycle-owned. Compose currently realizes these guarantees through dedicated/shared projects, networks and volumes. Future Kubernetes/OpenShift runtimes may use namespaces/projects, Operators, NetworkPolicies or other platform-native mechanisms without changing the placement meaning or application intent.
+
+A future Operator's installation scope is not the same thing as provider placement or resource scope. A cluster-scoped Operator may legitimately manage application-scoped or sharing-boundary-scoped resources.
+
+Multiple BaseHarbor installations are therefore not required merely to isolate groups of applications that share selected providers. Separate BaseHarbor control planes are reserved for genuine administrative, trust-domain, infrastructure or compliance boundaries.
+
+Current implementation scope remains Docker/Podman Compose. Kubernetes/OpenShift mappings described here are architectural compatibility requirements only, not implemented runtime behavior.

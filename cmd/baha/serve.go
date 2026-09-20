@@ -8,6 +8,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/controlplaneruntime"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
@@ -21,6 +22,13 @@ func serveCommand(store application.Store) *cli.Command {
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 0 {
 				return usageError("baha serve does not accept arguments", "Run 'baha serve --help' for usage.")
+			}
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTIVITY_RELAY_MODE")), "true") {
+				return connectivityrelay.Run(ctx, connectivityrelay.Config{
+					ListenAddr: os.Getenv("BASEHARBOR_RELAY_LISTEN_ADDR"),
+					TargetAddr: os.Getenv("BASEHARBOR_RELAY_TARGET_ADDR"),
+					HealthAddr: os.Getenv("BASEHARBOR_RELAY_HEALTH_ADDR"),
+				})
 			}
 			if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_MODE")), "true") {
 				return runtimeexecutor.Run(ctx, runtimeExecutorConfigFromEnv())
@@ -49,26 +57,28 @@ func runtimeExecutorConfigFromEnv() runtimeexecutor.Config {
 func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 	audiences := splitNonEmpty(os.Getenv("BASEHARBOR_API_OIDC_AUDIENCES"))
 	return controlplaneruntime.Config{
-		ListenAddr:              os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
-		DatabaseURL:             os.Getenv("BASEHARBOR_API_DATABASE_URL"),
-		OIDCIssuer:              os.Getenv("BASEHARBOR_API_OIDC_ISSUER"),
-		OIDCAudiences:           audiences,
-		TLSCertFile:             os.Getenv("BASEHARBOR_API_TLS_CERT_FILE"),
-		TLSKeyFile:              os.Getenv("BASEHARBOR_API_TLS_KEY_FILE"),
-		TLSClientCAFile:         os.Getenv("BASEHARBOR_API_TLS_CLIENT_CA_FILE"),
-		RuntimeAppName:          os.Getenv("BASEHARBOR_RUNTIME_APP_NAME"),
-		RuntimeEnvironment:      os.Getenv("BASEHARBOR_RUNTIME_ENVIRONMENT"),
-		RuntimeSecretsEnabled:   strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_SECRETS_ENABLED")), "true"),
-		RuntimeOpenBaoURL:       os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_URL"),
-		RuntimeCredentialsFile:  os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE"),
-		RuntimeTokenFile:        os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE"),
-		RuntimePermissionsFile:  os.Getenv("BASEHARBOR_RUNTIME_PERMISSIONS_FILE"),
-		RuntimeExecutorURL:      os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_URL"),
-		RuntimeExecutorCAFile:   os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CA_FILE"),
-		RuntimeExecutorCertFile: os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CERT_FILE"),
-		RuntimeExecutorKeyFile:  os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_KEY_FILE"),
-		RuntimeOperationsDir:    os.Getenv("BASEHARBOR_RUNTIME_OPERATIONS_DIR"),
-		RuntimeDocsListenAddr:   os.Getenv("BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR"),
+		ListenAddr:               os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
+		DatabaseURL:              os.Getenv("BASEHARBOR_API_DATABASE_URL"),
+		OIDCIssuer:               os.Getenv("BASEHARBOR_API_OIDC_ISSUER"),
+		OIDCAudiences:            audiences,
+		TLSCertFile:              os.Getenv("BASEHARBOR_API_TLS_CERT_FILE"),
+		TLSKeyFile:               os.Getenv("BASEHARBOR_API_TLS_KEY_FILE"),
+		TLSClientCAFile:          os.Getenv("BASEHARBOR_API_TLS_CLIENT_CA_FILE"),
+		RuntimeAppName:           os.Getenv("BASEHARBOR_RUNTIME_APP_NAME"),
+		RuntimeEnvironment:       os.Getenv("BASEHARBOR_RUNTIME_ENVIRONMENT"),
+		RuntimeSecretsEnabled:    strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_SECRETS_ENABLED")), "true"),
+		RuntimeOpenBaoURL:        os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_URL"),
+		RuntimeCredentialsFile:   os.Getenv("BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE"),
+		RuntimeTokenFile:         os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE"),
+		RuntimePermissionsFile:   os.Getenv("BASEHARBOR_RUNTIME_PERMISSIONS_FILE"),
+		RuntimeServiceTokensFile: os.Getenv("BASEHARBOR_RUNTIME_SERVICE_TOKENS_FILE"),
+		RuntimeExecutorURL:       os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_URL"),
+		RuntimeExecutorCAFile:    os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CA_FILE"),
+		RuntimeExecutorCertFile:  os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_CERT_FILE"),
+		RuntimeExecutorKeyFile:   os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_KEY_FILE"),
+		RuntimeOperationsDir:     os.Getenv("BASEHARBOR_RUNTIME_OPERATIONS_DIR"),
+		RuntimeMetricsTargetsDir: os.Getenv("BASEHARBOR_RUNTIME_METRICS_TARGETS_DIR"),
+		RuntimeDocsListenAddr:    os.Getenv("BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR"),
 	}, nil
 }
 
