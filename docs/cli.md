@@ -21,6 +21,7 @@ baha
 ├── init
 ├── up
 ├── down
+├── plan
 ├── status
 ├── doctor
 ├── serve
@@ -82,6 +83,33 @@ baha update --help
 baha openbao --help
 ```
 
+## Repository-aware shortcuts and structured output
+
+Inside a repository containing `baseharbor.yaml`, the root shortcuts use the same application lifecycle core:
+
+```bash
+baha plan
+baha status
+baha doctor
+```
+
+Read-only structured output uses `-o json` or `--output json`:
+
+```bash
+baha app inspect . -o json
+baha plan -o json
+baha status -o json
+baha doctor -o json
+```
+
+The compatibility alias `baha app inspect --json` remains supported. Structured output contains no ANSI rendering and no secret values. `doctor --fix` is intentionally human-only.
+
+Repository-aware startup accepts `-e ENV` / `--environment ENV` as a deployment-context override without rewriting `baseharbor.yaml`.
+
+Remote inspection accepts normal HTTPS/SSH Git URLs and delegates authentication to Git. URLs with embedded credentials are rejected.
+
+`baha app init --agents` can create or idempotently maintain only BaseHarbor's bounded section in `AGENTS.md`; unrelated instructions are preserved and malformed markers fail closed.
+
 ## Control-plane startup
 
 Interactive first run:
@@ -110,7 +138,7 @@ Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/r
 
 ```bash
 baha app inspect .
-baha app inspect . --json
+baha app inspect . -o json
 ```
 
 `app inspect` is strictly read-only. The shared repository-inspection core collects deterministic evidence from Compose files, Dockerfiles, dependency manifests, example/env variable names, source imports, configuration files, published ports and health checks.
