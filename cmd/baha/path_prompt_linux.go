@@ -28,6 +28,9 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	if !ok || !readerIsTerminal(input) {
 		return promptLine(reader, out, label, "")
 	}
+	if err := writePathPromptContext(out); err != nil {
+		return "", err
+	}
 
 	fd := int(inputFile.Fd())
 	oldState, err := unix.IoctlGetTermios(fd, unix.TCGETS)
