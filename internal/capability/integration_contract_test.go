@@ -22,6 +22,7 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 		OpenBaoIntegration,
 		CaddyIntegration,
 		PrometheusIntegration,
+		LokiIntegration,
 	} {
 		report := CheckIntegrationContract(descriptor)
 		if report.Status != ConformancePass {
@@ -83,7 +84,7 @@ func TestDriverAdapterRejectsDifferentProvider(t *testing.T) {
 }
 
 func TestSpecificationIDsAreCanonical(t *testing.T) {
-	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1} {
+	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1, LogsV1} {
 		parsed, err := ParseSpecificationID(spec.ID)
 		if err != nil {
 			t.Fatal(err)
