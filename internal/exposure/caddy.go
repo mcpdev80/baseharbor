@@ -464,14 +464,14 @@ func composeYAML(state State, files Files) string {
 		fmt.Fprintf(&b, "  %s:\n", serviceName)
 		fmt.Fprintf(&b, "    image: %s\n", caddyImage)
 		b.WriteString("    restart: unless-stopped\n")
-		b.WriteString("    user: \"caddy\"\n")
+		b.WriteString("    user: \"65532:65532\"\n")
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 		b.WriteString("    tmpfs:\n")
 		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
-		b.WriteString("      - /config:rw,noexec,nosuid,nodev\n")
-		b.WriteString("      - /data:rw,noexec,nosuid,nodev\n")
+		b.WriteString("      - /config:rw,noexec,nosuid,nodev,mode=1777\n")
+		b.WriteString("      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 		if route.Visibility == "internal" {
 			fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", route.PublishedPort, containerPort)
 		} else {
