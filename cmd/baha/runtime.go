@@ -145,7 +145,7 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
 
-	interactive := !opts.Yes && readerIsTerminal(in)
+	interactive := !opts.Yes && !noInput(parent) && readerIsTerminal(in)
 	if interactive {
 		reader := bufio.NewReader(in)
 		fmt.Fprintln(out, "BaseHarbor control-plane setup")
