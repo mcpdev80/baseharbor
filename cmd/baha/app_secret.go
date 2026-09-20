@@ -44,7 +44,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err := service.Set(ctx, resolved.Manifest.Name, key, value); err != nil {
 					return err
 				}
-				term := cli.NewTerminal(ctx, out, errOut)\n				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)\n				term.Section("Secrets")\n				term.Result("UPDATED", "secret", key)
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
+				term.Section("Secrets")
+				term.Result("UPDATED", "secret", key)
 				return nil
 			},
 		},
