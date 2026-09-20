@@ -21,6 +21,10 @@ import (
 )
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
+	statusCtx, cancelStatus := context.WithTimeout(ctx, 4*time.Second)
+	defer cancelStatus()
+	ctx = statusCtx
+
 	resolved, err := resolveApplication(store, args, "status")
 	if err != nil {
 		return application.StatusResult{}, err
