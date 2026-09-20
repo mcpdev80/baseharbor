@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -82,5 +83,21 @@ func TestTerminalActivityPlainFallbackIsLineOriented(t *testing.T) {
 		if !strings.Contains(got, wanted) {
 			t.Fatalf("plain activity missing %q: %q", wanted, got)
 		}
+	}
+}
+
+func TestTerminalQuietPreservesFailureDiagnostics(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{Quiet: true})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	err := term.Activity(context.Background(), "Failing operation", func(w io.Writer) error {
+		_, _ = io.WriteString(w, "useful failure detail\n")
+		return errors.New("boom")
+	})
+	if err == nil {
+		t.Fatal("expected activity failure")
+	}
+	if !strings.Contains(out.String(), "useful failure detail") {
+		t.Fatalf("quiet mode hid failure diagnostics: %q", out.String())
 	}
 }
