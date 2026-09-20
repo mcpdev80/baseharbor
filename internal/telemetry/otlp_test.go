@@ -124,7 +124,6 @@ func TestManagedCollectorRunsUnprivileged(t *testing.T) {
 	}
 }
 
-
 func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T) {
 	config := collectorConfigWithTraceBackend("http://tempo:4318")
 	for _, want := range []string{
