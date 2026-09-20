@@ -111,7 +111,6 @@ func TestStatusTLSRendersBeforeFinalState(t *testing.T) {
 	}
 }
 
-
 func TestStatusNotAppliedRendersExpectedLifecycleState(t *testing.T) {
 	result := application.StatusResult{
 		Application: "mailflow",
