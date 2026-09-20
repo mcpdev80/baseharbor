@@ -24,13 +24,13 @@ const (
 )
 
 type Placement struct {
-	Scope           capability.ProviderScope
-	Project         string
-	Network         string
-	Dir             string
-	LokiVolume      string
-	AlloyVolume     string
-	SharingBoundary string
+	Scope            capability.ProviderScope
+	Project          string
+	Network          string
+	Dir              string
+	LokiVolume       string
+	AlloyVolume      string
+	SharingBoundary  string
 	OwnerApplication string
 }
 
