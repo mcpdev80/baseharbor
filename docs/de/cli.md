@@ -340,6 +340,8 @@ baha app destroy --yes --full-reset
 
 Der normale `app destroy` behaelt Repository-Deployment-State (`.baseharbor/init.env`) und normalisierte lokale TLS-Dateien fuer eine spaetere Neuerstellung. Der Destroy-Plan zeigt diesen erhaltenen State explizit. `--full-reset` entfernt zusaetzlich nur diese BaseHarbor-eigenen Repository-Deployment-Dateien; `baseharbor.yaml`, app-eigene Compose-Daten/Volumes und externe Zertifikatsquellen bleiben erhalten.
 
+Destroy bleibt ownership-sicher, ist aber auch fuer Recovery-Situationen nutzbar. Drift in der generierten Managed-Runtime-Definition blockiert die Loeschung nicht, solange die tatsaechlich vorhandenen Runtime-Ressourcen der Anwendung weiterhin eindeutig zugeordnet werden koennen. Ist die aktuelle OpenBao-Control-Plane eindeutig uninitialisiert, kann dort kein Application-Secret-Scope existieren; BaseHarbor ueberspringt dann dessen Loeschung und bereinigt weiter den lokalen Runtime-/Provider-Registry-State. Ein versiegeltes, nicht erreichbares oder anderweitig uneindeutiges initialisiertes OpenBao bleibt fail-closed.
+
 ## Backup und Restore
 
 Interaktiv:
