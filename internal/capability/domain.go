@@ -18,6 +18,7 @@ const (
 	TelemetryOTLP   Kind = "telemetry.otlp"
 	Metrics         Kind = "metrics"
 	Logs            Kind = "logs"
+	Traces          Kind = "traces"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -40,6 +41,7 @@ const (
 	ProviderExternalOTLP  ProviderKind = "external-otlp"
 	ProviderPrometheus    ProviderKind = "prometheus"
 	ProviderLoki          ProviderKind = "loki"
+	ProviderTempo         ProviderKind = "tempo"
 )
 
 // Provider describes the capability surface of one provider implementation.

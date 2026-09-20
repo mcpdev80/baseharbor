@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -322,6 +324,64 @@ func DesiredTargetFiles(m application.Manifest) map[string]struct{} {
 	return result
 }
 
+func providerTargetFileName(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return fmt.Sprintf("provider--%x.json", sum[:10])
+}
+
+func syncProviderTargets(dir string, sources []observability.MetricsSource) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "provider--") && strings.HasSuffix(entry.Name(), ".json") {
+			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	for _, source := range sources {
+		target := targetGroup{
+			Targets: []string{source.Target},
+			Labels: map[string]string{
+				"job":                     "baseharbor-providers",
+				"baseharbor_provider":     string(source.Provider),
+				"baseharbor_source":       source.ID,
+				"baseharbor_source_class": string(source.Class),
+				"baseharbor_metrics_path": source.Path,
+			},
+		}
+		data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if err := os.WriteFile(filepath.Join(dir, providerTargetFileName(source.ID)), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func providerMetricNetworks(sources []observability.MetricsSource) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, source := range sources {
+		network := strings.TrimSpace(source.Network)
+		if network == "" {
+			continue
+		}
+		if _, exists := seen[network]; exists {
+			continue
+		}
+		seen[network] = struct{}{}
+		result = append(result, network)
+	}
+	sort.Strings(result)
+	return result
+}
+
 func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	placement, err := PlacementFor(m)
 	if err != nil {
@@ -347,6 +407,35 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 			return ProviderFiles{}, err
 		}
 	}
+
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	providerPlacement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	allowedApplications := []string{m.Name}
+	if placement.Scope == capability.ScopeShared {
+		allowedApplications = allowedApplications[:0]
+		for _, registration := range registrations {
+			allowedApplications = append(allowedApplications, registration.Application)
+		}
+	}
+	providerSources, err := observability.ListMetrics(
+		providerPlacement,
+		allowedApplications,
+		policy.Collect[application.MetricsSourceApplicationProvider],
+		policy.Collect[application.MetricsSourcePlatformProvider],
+	)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
+		return ProviderFiles{}, err
+	}
+	providerNetworks := providerMetricNetworks(providerSources)
 
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
@@ -374,7 +463,7 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement, registrations)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, providerNetworks)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -626,6 +715,18 @@ func registrationFor(m application.Manifest) sourceRegistration {
 	return registration
 }
 
+func readRegistrations(path string) ([]sourceRegistration, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var registrations []sourceRegistration
+	if err := json.Unmarshal(data, &registrations); err != nil {
+		return nil, errors.New("Prometheus shared registration state is invalid")
+	}
+	return registrations, nil
+}
+
 func reconcileSharedRegistration(path string, m application.Manifest, present bool) ([]sourceRegistration, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
@@ -716,6 +817,10 @@ func targetFileName(m application.Manifest, source string) string {
 }
 
 func providerComposeYAML(placement Placement, registrations []sourceRegistration) string {
+	return providerComposeYAMLWithProviderNetworks(placement, registrations, nil)
+}
+
+func providerComposeYAMLWithProviderNetworks(placement Placement, registrations []sourceRegistration, providerNetworks []string) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -747,14 +852,20 @@ func providerComposeYAML(placement Placement, registrations []sourceRegistration
 	b.WriteString("    tmpfs:\n      - /tmp\n")
 	b.WriteString("    cap_drop:\n      - ALL\n")
 	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
-	if len(registrations) > 0 {
+	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		b.WriteString("    networks:\n")
 		for i := range registrations {
 			fmt.Fprintf(&b, "      - metrics-%d\n", i)
 		}
+		for i := range providerNetworks {
+			fmt.Fprintf(&b, "      - provider-%d\n", i)
+		}
 		b.WriteString("\nnetworks:\n")
 		for i, registration := range registrations {
 			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
+		}
+		for i, network := range providerNetworks {
+			fmt.Fprintf(&b, "  provider-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(network))
 		}
 	}
 	b.WriteString("\nvolumes:\n")
@@ -862,6 +973,75 @@ func prometheusTargetDiagnostic(ctx context.Context, client *http.Client, endpoi
 		return fmt.Sprintf("target health=%s but no up=1 sample was observed", active.Health)
 	}
 	return "Prometheus has no active target matching the application metrics binding"
+}
+
+func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return err
+	}
+	allowedApplications := []string{m.Name}
+	if placement.Scope == capability.ScopeShared {
+		if files, fileErr := ExistingProviderFiles(m); fileErr == nil {
+			if registrations, regErr := readRegistrations(files.Registrations); regErr == nil {
+				allowedApplications = allowedApplications[:0]
+				for _, registration := range registrations {
+					allowedApplications = append(allowedApplications, registration.Application)
+				}
+			}
+		}
+	}
+	sources, err := observability.ListMetrics(
+		placement,
+		allowedApplications,
+		policy.Collect[application.MetricsSourceApplicationProvider],
+		policy.Collect[application.MetricsSourcePlatformProvider],
+	)
+	if err != nil || len(sources) == 0 {
+		return err
+	}
+	files, err := ExistingProviderFiles(m)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	for _, source := range sources {
+		query := fmt.Sprintf(
+			`up{job="baseharbor-providers",baseharbor_provider=%q,baseharbor_source=%q}`,
+			string(source.Provider), source.ID,
+		)
+		ticker := time.NewTicker(time.Second)
+		var last error
+		for {
+			ok, err := queryUp(deadline, client, endpoint, query)
+			if err == nil && ok {
+				ticker.Stop()
+				break
+			}
+			if err != nil {
+				last = err
+			} else {
+				last = errors.New("provider target has not produced an up=1 sample yet")
+			}
+			select {
+			case <-deadline.Done():
+				ticker.Stop()
+				return fmt.Errorf("verify provider metrics %s: %w", source.ID, last)
+			case <-ticker.C:
+			}
+		}
+	}
+	return nil
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {

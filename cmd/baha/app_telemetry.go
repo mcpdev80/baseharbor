@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
+	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 type managedTelemetryExecution struct {
@@ -17,13 +18,22 @@ type managedTelemetryExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedTelemetryExecution, error) {
+func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution) (*managedTelemetryExecution, error) {
 	m := resolved.Manifest
 	if !application.HasOTLPTelemetry(m) {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
 	driver := telemetry.NewDriver(compose, m, files)
+	if traces != nil && traces.enabled {
+		driver.SetTraceBackend("http://tempo:4318", traces.placement.Network)
+	} else if enabled, policyErr := application.TracesCollectionEnabled(m); policyErr != nil {
+		return nil, policyErr
+	} else if enabled {
+		if _, placement, stateErr := tracesprovider.ExistingProviderFiles(m); stateErr == nil {
+			driver.SetTraceBackend("http://tempo:4318", placement.Network)
+		}
+	}
 	request := capability.Request{
 		Requirement: capability.Requirement{Kind: capability.TelemetryOTLP, Name: "default"},
 		Workload:    "application/" + m.Name,

@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-09-20
+
+### Added
+
+- Generic provider observability declarations in Provider Integration Contract v1 for provider-owned metrics/log/trace signals without product-specific collector branches.
+- Protected provider metrics source registry with placement, sharing-boundary and application-authorization filtering.
+- Versioned `traces/v1` platform contract and Tempo 3.0.2 as the first managed shared Compose trace-storage reference provider.
+- Managed OpenTelemetry Collector to Tempo routing with real end-to-end verification: the BaseHarbor verification trace must be queryable from Tempo before trace storage is READY.
+- Provider metrics auto-registration for the managed OpenTelemetry Collector, Loki and Tempo when metrics collection policy allows provider signal classes.
+- Real Prometheus `up=1` verification for registered provider metrics.
+
+### Changed
+
+- Metrics collection defaults include safe metrics advertised by managed application/platform providers when the metrics facility is enabled.
+- Prometheus provider state now reconciles generic provider targets and attaches only the provider networks required by authorized registrations.
+- Loki's internal provider network has a stable BaseHarbor-owned name so an authorized metrics collector can join it without broadening application connectivity.
+- OTLP transport and trace retention remain separate: requesting `telemetry.otlp/v1` alone still does not start Tempo.
+- Tempo is deliberately limited to the default shared Compose placement in v0.4.10; unsupported application/external/named-boundary placement fails before mutation.
+
+### Security
+
+- Shared Prometheus filters application-scoped provider signals by the exact applications registered in that Prometheus sharing boundary.
+- Provider observability reachability is a dedicated BaseHarbor-managed collector path and does not grant applications access to shared provider networks.
+- Tempo runs non-root with a read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, explicit writable storage/tmpfs and a loopback-only host API.
+- Provider observability state contains endpoint identity/labels only and no credentials or secret-bearing URLs.
+
+
 ## [0.4.9] - 2026-09-20
 
 ### Added
@@ -429,7 +456,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...HEAD
+[0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
 [0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7

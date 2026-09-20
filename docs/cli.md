@@ -154,7 +154,9 @@ Compose collection policy is deployment-owned:
 - test/staging/production: disabled by default;
 - `BASEHARBOR_METRICS_ENABLED=true|false`: explicit operator override.
 
-When collection is enabled, `baha app apply` and `baha app up` resolve Prometheus through the generic provider-placement layer, print the resolved placement before mutation, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. The safe default is shared Prometheus with an isolated metrics network per application. Advanced operators may select application-scoped Prometheus or a named shared boundary through the generic provider policy: `BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=shared|application` and, for grouped shared placement, `BASEHARBOR_PROVIDER_PROMETHEUS_SHARING_BOUNDARY=<name>`. Unsupported placement fails closed before mutation. An external Prometheus adapter is intentionally not implemented in v0.4.8. Grafana, Loki and Tempo are not started.
+When collection is enabled, `baha app apply` and `baha app up` resolve Prometheus through the generic provider-placement layer, print the resolved placement before mutation, register targets automatically, start the workload and then require a real successful scrape before reporting the metrics path ready. The safe default is shared Prometheus with an isolated metrics network per application. Advanced operators may select application-scoped Prometheus or a named shared boundary through the generic provider policy: `BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=shared|application` and, for grouped shared placement, `BASEHARBOR_PROVIDER_PROMETHEUS_SHARING_BOUNDARY=<name>`. Unsupported placement fails closed before mutation. An external Prometheus adapter is intentionally not implemented in v0.4.10. Grafana, Loki and Tempo are not started merely because application metrics are declared.
+
+v0.4.10 also collects safe OpenMetrics endpoints advertised by running BaseHarbor-managed providers when the metrics policy allows the `application-provider` / `platform-provider` source classes. Provider targets are generated from the generic observability registry, filtered by placement/sharing boundary, and verified with a real Prometheus `up=1` sample. Prometheus has no Loki/Tempo/Collector-specific scrape branches.
 
 ## Cross-application connectivity
 
@@ -493,6 +495,19 @@ export BASEHARBOR_OTLP_ENDPOINT=https://otel.example.com
 Optional authorization headers use `BASEHARBOR_OTLP_HEADERS`. They are runtime/deployment secrets and must not be committed to `baseharbor.yaml`.
 
 No Prometheus, Loki, Tempo or Grafana service is started merely because OTLP transport is requested.
+
+## v0.4.10 managed trace storage
+
+Trace transport and trace storage remain separate. An application that exports the `traces` OTLP signal can use managed trace retention only when deployment policy enables it:
+
+```bash
+export BASEHARBOR_TRACES_ENABLED=true
+baha app up
+```
+
+BaseHarbor then provisions/reuses the shared Tempo reference provider, connects the managed OpenTelemetry Collector to it over a BaseHarbor-managed provider network, exports the normal verification trace through the Collector and requires that same trace to be queryable from Tempo before the trace path is READY.
+
+The Compose reference adapter currently supports only the default shared Tempo placement. Application-scoped, external and named-sharing-boundary Tempo placement are rejected before mutation because v0.4.10 does not yet provide the isolation/adapter semantics needed to implement them safely. Tempo is provider state; no Tempo field is added to `baseharbor.yaml`, and Grafana remains optional/post-v0.5.
 
 ## v0.4.9 log collection and workload-security policy
 

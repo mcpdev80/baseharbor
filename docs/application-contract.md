@@ -466,6 +466,13 @@ An external destination can be supplied by deployment environment using `BASEHAR
 
 Requesting OTLP transport alone never provisions Prometheus, Loki, Tempo or Grafana.
 
+
+### Trace storage remains deployment policy in v0.4.10
+
+An application may export the OTLP `traces` signal, but it still does not request Tempo or another trace database. When deployment policy enables managed trace storage, BaseHarbor resolves the provider-neutral `traces/v1` platform facility and wires the existing OTLP transport to the selected provider.
+
+The current Compose reference uses shared Tempo 3.0.2. Tempo placement, retention, local provider storage and query topology remain deployment/provider state. No Tempo-specific field is added to Manifest v1.
+
 ## Application-provided metrics in v0.4.8
 
 Applications may declare a metrics signal source without naming a collection/storage product:

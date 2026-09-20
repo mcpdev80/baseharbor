@@ -98,6 +98,11 @@ jobs:
           BASEHARBOR_LOGS_INTEGRATION: "1"
         run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
 
+      - name: Verify real OpenTelemetry to Tempo trace ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:

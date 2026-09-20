@@ -21,8 +21,12 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 		ValkeyIntegration,
 		OpenBaoIntegration,
 		CaddyIntegration,
+		SeaweedFSIntegration,
+		OTelCollectorIntegration,
+		ExternalOTLPIntegration,
 		PrometheusIntegration,
 		LokiIntegration,
+		TempoIntegration,
 	} {
 		report := CheckIntegrationContract(descriptor)
 		if report.Status != ConformancePass {
@@ -84,7 +88,7 @@ func TestDriverAdapterRejectsDifferentProvider(t *testing.T) {
 }
 
 func TestSpecificationIDsAreCanonical(t *testing.T) {
-	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1, LogsV1} {
+	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1, LogsV1, TracesV1} {
 		parsed, err := ParseSpecificationID(spec.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -118,5 +122,14 @@ func TestIntegrationDescriptorRejectsDuplicatePlacementScope(t *testing.T) {
 	descriptor.SupportedScopes = []ProviderScope{ScopeApplication, ScopeApplication}
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("duplicate provider placement scope accepted")
+	}
+}
+
+func TestIntegrationDescriptorValidatesObservabilitySignals(t *testing.T) {
+	descriptor := TempoIntegration
+	descriptor.Observability.Signals = append([]ProviderObservabilitySignal(nil), TempoIntegration.Observability.Signals...)
+	descriptor.Observability.Signals[0].Path = "metrics"
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("relative provider metrics path accepted")
 	}
 }

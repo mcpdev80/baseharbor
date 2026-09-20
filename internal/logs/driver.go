@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
 const (
@@ -86,7 +87,24 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
-	return waitLokiReady(ctx, d.client, endpoint)
+	if err := waitLokiReady(ctx, d.client, endpoint); err != nil {
+		return err
+	}
+	class := observability.SourcePlatformProvider
+	if placement.Scope == capability.ScopeApplication {
+		class = observability.SourceApplicationProvider
+	}
+	return observability.Update(observability.MetricsSource{
+		ID:               "loki:" + placement.Project,
+		Provider:         capability.ProviderLoki,
+		Class:            class,
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		OwnerApplication: placement.OwnerApplication,
+		Network:          placement.Network,
+		Target:           "loki:3100",
+		Path:             "/metrics",
+	})
 }
 
 func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding capability.Binding) error {

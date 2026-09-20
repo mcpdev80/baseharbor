@@ -18,13 +18,13 @@ exposure.http/v1
 object-storage.s3/v1
 telemetry.otlp/v1
 metrics/v1
+logs/v1
+traces/v1
 ```
 
 Future examples include:
 
 ```text
-logs/v1
-traces/v1
 messaging.queue/v1
 messaging.pubsub/v1
 messaging.stream/v1
@@ -61,3 +61,5 @@ A future provider can therefore implement a newer capability specification witho
 - [object-storage.s3/v1](object-storage.s3/v1.md)
 - [telemetry.otlp/v1](telemetry.otlp/v1.md)
 - [metrics/v1](metrics/v1.md)
+- [logs/v1](logs/v1.md)
+- [traces/v1](traces/v1.md)

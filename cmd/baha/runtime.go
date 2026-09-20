@@ -23,6 +23,7 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
+	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 var runtimeInput io.Reader = os.Stdin
@@ -632,6 +633,9 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	if err := telemetry.DestroySharedProvider(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared telemetry provider: %w", err)
+	}
+	if err := tracesprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+		return fmt.Errorf("destroy shared traces providers: %w", err)
 	}
 	if err := metricsprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared metrics providers: %w", err)

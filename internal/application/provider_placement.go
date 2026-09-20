@@ -34,7 +34,7 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			Scope:     capability.ScopeApplication,
 			Ownership: capability.OwnershipBaseHarbor,
 		}, nil
-	case capability.ProviderOpenBao, capability.ProviderSeaweedFS, capability.ProviderOTelCollector, capability.ProviderPrometheus, capability.ProviderLoki:
+	case capability.ProviderOpenBao, capability.ProviderSeaweedFS, capability.ProviderOTelCollector, capability.ProviderPrometheus, capability.ProviderLoki, capability.ProviderTempo:
 		return capability.ProviderPlacement{
 			Scope:     capability.ScopeShared,
 			Ownership: capability.OwnershipBaseHarbor,
