@@ -280,10 +280,14 @@ func appDoctorCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
-		Usage:   "baha app doctor [NAME]",
+		Usage:   "baha app doctor [NAME] [-o json|--output json]",
 		Long:    "Checks desired state, local runtime files, Compose configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health, per-application mTLS broker readiness and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "doctor")
+			filtered, format, err := parseReadOutputArgs(args, "app doctor")
+			if err != nil {
+				return err
+			}
+			resolved, err := resolveApplication(store, filtered, "doctor")
 			if err != nil {
 				return err
 			}
@@ -473,26 +477,60 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				}
 			}
 			results, ok := preflight.Run(checkCtx, checks)
-			preflight.Format(out, results)
-			printWorkloadSecurityFindings(out, workloadSecurity)
-			printRequiredSecretStatus(out, requiredStatuses)
-			if workloadStatus.Found {
-				fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
-				for _, service := range workloadStatus.Services {
-					marker := "OK"
-					if !service.Ready {
-						marker = "FAIL"
-					}
-					fmt.Fprintf(out, "[%s] %-20s %s\n", marker, service.Service, formatWorkloadServiceStatus(service))
+			if format == outputJSON {
+				type workloadResult struct {
+					Service string `json:"service"`
+					Ready   bool   `json:"ready"`
+					Detail  string `json:"detail,omitempty"`
 				}
-			}
-			if workloadStatusErr != nil {
-				fmt.Fprintf(out, "Workload diagnosis: %v\n", workloadStatusErr)
+				workloads := make([]workloadResult, 0, len(workloadStatus.Services))
+				for _, service := range workloadStatus.Services {
+					workloads = append(workloads, workloadResult{Service: service.Service, Ready: service.Ready, Detail: formatWorkloadServiceStatus(service)})
+				}
+				secretStatus := make([]map[string]any, 0, len(requiredStatuses))
+				for _, status := range requiredStatuses {
+					secretStatus = append(secretStatus, map[string]any{
+						"name": status.Name, "present": status.Present, "usable": status.Usable, "generated": status.Generated,
+					})
+				}
+				payload := struct {
+					Application     string             `json:"application"`
+					Environment     string             `json:"environment"`
+					Healthy         bool               `json:"healthy"`
+					Checks          []preflight.Result `json:"checks"`
+					Workload        []workloadResult   `json:"workload,omitempty"`
+					RequiredSecrets []map[string]any   `json:"required_secrets,omitempty"`
+				}{
+					Application: m.Name, Environment: m.Environment, Healthy: ok,
+					Checks: results, Workload: workloads, RequiredSecrets: secretStatus,
+				}
+				if err := writeJSON(out, payload); err != nil {
+					return err
+				}
+			} else {
+				preflight.Format(out, results)
+				printWorkloadSecurityFindings(out, workloadSecurity)
+				printRequiredSecretStatus(out, requiredStatuses)
+				if workloadStatus.Found {
+					fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
+					for _, service := range workloadStatus.Services {
+						marker := "OK"
+						if !service.Ready {
+							marker = "FAIL"
+						}
+						fmt.Fprintf(out, "[%s] %-20s %s\n", marker, service.Service, formatWorkloadServiceStatus(service))
+					}
+				}
+				if workloadStatusErr != nil {
+					fmt.Fprintf(out, "Workload diagnosis: %v\n", workloadStatusErr)
+				}
 			}
 			if !ok {
 				return errors.New("application doctor found one or more failures")
 			}
-			fmt.Fprintln(out, "Application runtime is healthy.")
+			if format != outputJSON {
+				fmt.Fprintln(out, "Application runtime is healthy.")
+			}
 			return nil
 		},
 	}
