@@ -442,7 +442,6 @@ func parseDestroyArgs(args []string) (string, bool, bool, error) {
 	return name, confirmed, fullReset, nil
 }
 
-
 func openBaoDestroyScopeRequired(state openbao.State) (bool, error) {
 	if !state.Initialized {
 		return false, nil
