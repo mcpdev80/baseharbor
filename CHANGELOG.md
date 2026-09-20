@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Broken-pipe/EPIPE termination is silent for normal Unix pipelines.
 - Application status is now a bounded fast snapshot rather than a readiness wait loop; broker and subsystem checks no longer make `baha status` appear hung.
 - Normal status hides low-level Compose/curl/OpenBao diagnostics behind `--verbose`, and repository TLS renders inside the same status hierarchy before the final READY/DEGRADED state.
+- Application doctor now follows the same concise human-output policy: raw Compose/OpenBao/curl diagnostics stay behind `--verbose`, duplicate workload problems and empty workload-service sections are suppressed, TLS is integrated before the final health state, and repair guidance is presented through the normal Next actions.
 
 ### Security
 
