@@ -12,6 +12,7 @@ import (
 
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
@@ -49,6 +50,13 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	var out bytes.Buffer
 	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}); err != nil {
 		t.Fatalf("initial control-plane start: %v\n%s", err, out.String())
+	}
+	for _, service := range []string{"postgres", "openbao"} {
+		if err := containersecurity.VerifyComposeService(ctx, "baseharbor", service, containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s runtime security: %v", service, err)
+		}
 	}
 
 	compose, err := bhruntime.DetectCompose(ctx)
