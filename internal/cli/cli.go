@@ -31,6 +31,39 @@ type UsageError struct {
 
 func (e *UsageError) Error() string { return e.Message }
 
+// PresentedError marks a failure that was already rendered as a complete human
+// result by the command. The process must still fail, but main must not append a
+// second generic error block.
+type PresentedError struct {
+	Err error
+}
+
+func (e *PresentedError) Error() string {
+	if e == nil || e.Err == nil {
+		return "command failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *PresentedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func Presented(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &PresentedError{Err: err}
+}
+
+func IsPresented(err error) bool {
+	var presented *PresentedError
+	return errors.As(err, &presented)
+}
+
 // ExitCode maps command errors to stable process exit codes: 0 success, 1 runtime failure, 2 usage error.
 func ExitCode(err error) int {
 	if err == nil {
