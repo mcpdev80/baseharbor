@@ -200,6 +200,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 }
 
 func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result application.StatusResult) {
+	renderApplicationStatusWithExtra(ctx, out, errOut, result, nil)
+}
+
+func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer, result application.StatusResult, extra func(*cli.Terminal)) {
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(result.Application, result.Environment)
 	term.Section("Application")
@@ -243,6 +247,9 @@ func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result 
 			}
 			term.Result(state, check.Name, statusHumanDetail(term, check))
 		}
+	}
+	if extra != nil {
+		extra(term)
 	}
 
 	if result.Ready {
