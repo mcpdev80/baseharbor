@@ -518,31 +518,126 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				preflight.Format(out, results)
-				printWorkloadSecurityFindings(out, workloadSecurity)
-				printRequiredSecretStatus(out, requiredStatuses)
-				if workloadStatus.Found {
-					fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
-					for _, service := range workloadStatus.Services {
-						marker := "OK"
-						if !service.Ready {
-							marker = "FAIL"
-						}
-						fmt.Fprintf(out, "[%s] %-20s %s\n", marker, service.Service, formatWorkloadServiceStatus(service))
-					}
-				}
-				if workloadStatusErr != nil {
-					fmt.Fprintf(out, "Workload diagnosis: %v\n", workloadStatusErr)
-				}
+				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, workloadStatusErr, requiredStatuses, workloadSecurity, ok)
 			}
 			if !ok {
 				return cli.Presented(errors.New("application doctor found one or more failures"))
 			}
-			if format != outputJSON {
-				fmt.Fprintln(out, "Application runtime is healthy.")
-			}
 			return nil
 		},
+	}
+}
+
+
+func renderApplicationDoctor(
+	ctx context.Context,
+	out io.Writer,
+	errOut io.Writer,
+	m application.Manifest,
+	results []preflight.Result,
+	workload repositoryWorkloadStatus,
+	workloadErr error,
+	requiredSecrets []openbao.RequiredSecretStatus,
+	workloadSecurity application.WorkloadSecurityReport,
+	healthy bool,
+) {
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(m.Name, m.Environment)
+
+	sections := map[string][]preflight.Result{}
+	order := []string{"Core", "Services", "Workload", "Observability", "Exposure"}
+	for _, result := range results {
+		section := applicationDoctorSection(result.Name)
+		sections[section] = append(sections[section], result)
+	}
+	for _, section := range order {
+		items := sections[section]
+		if len(items) == 0 {
+			continue
+		}
+		term.Section(section)
+		for _, result := range items {
+			state := "OK"
+			if !result.OK {
+				state = "FAILED"
+			}
+			detail := ""
+			if !result.OK || term.Verbose() {
+				detail = result.Detail
+			}
+			term.Result(state, result.Name, detail)
+		}
+	}
+
+	if workload.Found {
+		term.Section("Workload services")
+		for _, service := range workload.Services {
+			state := "READY"
+			if !service.Ready {
+				state = "FAILED"
+			}
+			term.Result(state, service.Service, formatWorkloadServiceStatus(service))
+		}
+	}
+
+	if len(requiredSecrets) > 0 {
+		term.Section("Required secrets")
+		for _, status := range requiredSecrets {
+			state := "READY"
+			detail := "present and usable"
+			if !status.Present || !status.Usable {
+				state = "MISSING"
+				detail = "missing or unusable"
+			} else if status.Generated {
+				detail = "present and usable · managed generation enabled"
+			}
+			term.Result(state, status.Name, detail)
+		}
+	}
+
+	if term.Verbose() {
+		printWorkloadSecurityFindings(out, workloadSecurity)
+	}
+	if workloadErr != nil {
+		term.Section("Problems")
+		term.Result("FAILED", "workload", workloadErr.Error())
+	}
+
+	if healthy {
+		fmt.Fprintln(out, "\nREADY")
+		return
+	}
+	fmt.Fprintln(out, "\nNext:")
+	fmt.Fprintln(out, "  baha status --verbose")
+	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintln(out, "\nDEGRADED · one or more checks require attention")
+}
+
+func applicationDoctorSection(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "postgres"),
+		strings.Contains(lower, "valkey"),
+		strings.Contains(lower, "openbao"),
+		strings.Contains(lower, "secret"),
+		strings.Contains(lower, "broker"),
+		strings.Contains(lower, "object-storage"),
+		strings.Contains(lower, "running services"):
+		return "Services"
+	case strings.Contains(lower, "workload"):
+		return "Workload"
+	case strings.Contains(lower, "log"),
+		strings.Contains(lower, "telemetry"),
+		strings.Contains(lower, "otlp"),
+		strings.Contains(lower, "metric"),
+		strings.Contains(lower, "trace"):
+		return "Observability"
+	case strings.Contains(lower, "exposure"),
+		strings.Contains(lower, "http"),
+		strings.Contains(lower, "tls"):
+		return "Exposure"
+	default:
+		return "Core"
 	}
 }
 
