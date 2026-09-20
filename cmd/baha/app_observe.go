@@ -197,26 +197,59 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	return result, nil
 }
 
-func renderApplicationStatus(out io.Writer, result application.StatusResult) {
-	fmt.Fprintf(out, "Application %s (%s)\n", result.Application, result.Environment)
-	if result.Manifest != "" {
-		fmt.Fprintf(out, "Manifest: %s\n", result.Manifest)
-	}
-	fmt.Fprintf(out, "Project: %s\n", result.Project)
+func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result application.StatusResult) {
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(result.Application, result.Environment)
+	term.Section("Application")
 	if result.State == "stopped" {
-		fmt.Fprintln(out, "State: STOPPED (persistent application state is preserved)")
+		term.Result("STOPPED", "application", "persistent application state preserved")
+		fmt.Fprintln(out, "\nSTOPPED")
 		return
 	}
+
+	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "all requested components verified", false: "one or more components need attention"}[result.Ready])
+
+	sections := map[string][]application.StatusCheck{}
+	order := []string{"Services", "Workload", "Observability", "Exposure", "Other"}
 	for _, check := range result.Checks {
-		status := "OK"
-		if !check.OK {
-			status = "FAIL"
+		section := "Other"
+		switch {
+		case strings.HasPrefix(check.Name, "postgres"), strings.HasPrefix(check.Name, "valkey"), strings.HasPrefix(check.Name, "secrets"), strings.HasPrefix(check.Name, "runtime-broker"), strings.HasPrefix(check.Name, "object-storage"):
+			section = "Services"
+		case strings.HasPrefix(check.Name, "workload"):
+			section = "Workload"
+		case strings.HasPrefix(check.Name, "logs"), strings.HasPrefix(check.Name, "telemetry"), strings.HasPrefix(check.Name, "traces"), strings.HasPrefix(check.Name, "metrics"):
+			section = "Observability"
+		case strings.Contains(check.Name, "exposure"):
+			section = "Exposure"
 		}
-		if check.Detail == "" {
-			fmt.Fprintf(out, "[%s] %s\n", status, check.Name)
-		} else {
-			fmt.Fprintf(out, "[%s] %-20s %s\n", status, check.Name, check.Detail)
+		sections[section] = append(sections[section], check)
+	}
+	for _, section := range order {
+		checks := sections[section]
+		if len(checks) == 0 {
+			continue
 		}
+		term.Section(section)
+		for _, check := range checks {
+			state := "READY"
+			if section == "Observability" {
+				state = "VERIFIED"
+			}
+			if !check.OK {
+				state = "FAILED"
+			}
+			term.Result(state, check.Name, check.Detail)
+		}
+	}
+
+	if result.Ready {
+		fmt.Fprintln(out, "\nREADY")
+	} else {
+		fmt.Fprintln(out, "\nDEGRADED")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha doctor")
+		fmt.Fprintln(out, "  baha status --verbose")
 	}
 }
 
@@ -240,7 +273,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				renderApplicationStatus(out, result)
+				renderApplicationStatus(ctx, out, errOut, result)
 			}
 			if result.State == "stopped" {
 				return nil
