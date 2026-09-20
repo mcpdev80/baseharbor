@@ -203,10 +203,48 @@ func filterCandidates(candidates []completionCandidate, partial string) []comple
 func bashCompletionScript() string {
 	return `_baha_completion() {
     local value
+    local -a words
     COMPREPLY=()
-    while IFS=$'\t' read -r value _; do
+
+    words=()
+    if (( COMP_CWORD > 1 )); then
+        words+=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+    fi
+    words+=("${COMP_WORDS[COMP_CWORD]-}")
+
+    while IFS=
+
+func zshCompletionScript() string {
+	return `#compdef baha
+_baha_completion() {
+    local -a lines values descriptions
+    local line value description
+    lines=("${(@f)$(command baha __complete "${words[@]:2}")}")
+    for line in "${lines[@]}"; do
+        value="${line%%$'\t'*}"
+        description="${line#*$'\t'}"
+        values+=("$value")
+        descriptions+=("$description")
+    done
+    compadd -d descriptions -- "${values[@]}"
+}
+compdef _baha_completion baha
+`
+}
+
+func fishCompletionScript() string {
+	return `function __baha_complete
+    set -l tokens (commandline -opc)
+    set -e tokens[1]
+    set -a tokens (commandline -ct)
+    command baha __complete $tokens
+end
+complete -c baha -f -a '(__baha_complete)'
+`
+}
+\t' read -r value _; do
         COMPREPLY+=("$value")
-    done < <(command baha __complete "${COMP_WORDS[@]:1}")
+    done < <(command baha __complete "${words[@]}")
 }
 complete -o default -F _baha_completion baha
 `
