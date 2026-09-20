@@ -43,6 +43,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var managedObjectStorage *managedObjectStorageExecution
 			var managedTelemetry *managedTelemetryExecution
 			var managedMetrics *managedMetricsExecution
+			var workloadSecurity application.WorkloadSecurityReport
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -62,6 +63,11 @@ func appUpCommand(store application.Store) *cli.Command {
 					}
 					var err error
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
+					return err
+				}},
+				{Name: "workload security", Run: func(ctx context.Context) error {
+					var err error
+					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "connectivity policy", Run: func(context.Context) error {
@@ -140,6 +146,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
+			printWorkloadSecurityFindings(out, workloadSecurity)
 			if !ok {
 				return errors.New("application up preflight failed")
 			}
