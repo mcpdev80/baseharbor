@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -104,5 +105,29 @@ func TestClassifyStructuredAppDoctorExternalSecretStillNeedsInput(t *testing.T) 
 	findings := classifyStructuredAppDoctor(result)
 	if len(findings) != 1 || findings[0].Class != doctorNeedsInput {
 		t.Fatalf("expected external secret to require input: %#v", findings)
+	}
+}
+
+
+func TestFindingsNeedControlPlaneRepair(t *testing.T) {
+	findings := []appDoctorFinding{
+		{Name: "managed runtime definition", Class: doctorAutoFixable},
+		{Name: "OpenBao application scope", Class: doctorAutoFixable},
+	}
+	if !findingsNeedControlPlaneRepair(findings) {
+		t.Fatal("expected OpenBao application scope failure to require control-plane recovery")
+	}
+	if !findingsContain(findings, "managed runtime definition") {
+		t.Fatal("expected managed runtime definition finding")
+	}
+}
+
+func TestAppApplyRepairContextIsOptIn(t *testing.T) {
+	if got := appApplyRepairContextFrom(context.Background()); got.DeferWorkloadSecurity {
+		t.Fatal("normal apply must not defer workload security")
+	}
+	ctx := withAppApplyRepairContext(context.Background(), appApplyRepairContext{DeferWorkloadSecurity: true})
+	if got := appApplyRepairContextFrom(ctx); !got.DeferWorkloadSecurity {
+		t.Fatal("repair context did not preserve deferred workload-security mode")
 	}
 }
