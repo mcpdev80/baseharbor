@@ -6,32 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.4.10] - 2026-09-20
-
-### Fixed
-
-- Corrected Loki/Alloy managed-provider startup and host-loopback publishing under rootless Docker/Compose without adding a privileged volume-initialization helper.
-- Separated Loki/Alloy provider-internal traffic from host publishing so the provider keeps an internal-only network while loopback API/syslog bindings use a dedicated provider-owned bridge.
-- Corrected OpenBao startup with a read-only root filesystem by providing only the required ephemeral writable `/openbao/config` tmpfs and using the image-supported `SKIP_CHOWN` mode.
-- Fresh control-plane startup now waits until OpenBao is actually exec-ready before reporting successful startup.
-- Stage-12 broker/executor/object-storage security acceptance is isolated from the independently tested logs acceptance path.
-
-### Security
-
-- BaseHarbor-managed Compose services now have explicit non-root runtime identities across PostgreSQL, Valkey, OpenBao, Caddy, SeaweedFS, OpenTelemetry Collector, Prometheus, Loki, Alloy, Runtime Broker, Runtime Executor and Connectivity Relay.
-- Managed containers use read-only roots where supported, drop all Linux capabilities, enable `no-new-privileges` and retain only explicitly required writable volumes/tmpfs.
-- The release security fixture verifies both configured non-root users and effective process UIDs; UID 0 is not accepted as a normal managed runtime identity.
-- BaseHarbor-owned runtime images prepare writable state paths for arbitrary platform-assigned non-root UIDs so future Kubernetes/OpenShift adapters do not depend on fixed Compose UIDs.
-- Caddy uses unprivileged container ports rather than bind-service capabilities.
-- OpenBao remains fully non-root without a root init container or `CAP_CHOWN` exception.
-- Loki and Alloy remain socketless and loopback-only on host-facing listeners.
-
-### Compatibility
-
-- Manifest v1 and existing application intent remain unchanged.
-- The release is a backward-compatible security/runtime hardening patch for the v0.4 line.
-- The existing immutable `v0.4.9` tag is not moved or rewritten.
-
 ## [0.4.9] - 2026-09-20
 
 ### Added
@@ -455,8 +429,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...HEAD
-[0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...HEAD
 [0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
