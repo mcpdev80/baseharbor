@@ -91,6 +91,9 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, err
 }
 
 func formatCLIError(w io.Writer, err error) {
+	if cli.IsPresented(err) {
+		return
+	}
 	fmt.Fprintf(w, "Error: %v\n", err)
 	var usage *cli.UsageError
 	if errors.As(err, &usage) {
