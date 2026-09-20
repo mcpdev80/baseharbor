@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Capability-intent audit completed: metrics, telemetry, traces, exposure, object storage, secrets and runtime broker already gate provider lifecycle behind explicit application intent. Logs now also participate in the central PortableContract/capability-binding model, and regression tests enforce that deployment/environment policy cannot invent undeclared provider capabilities.
+
 - Application log collection is now explicit Manifest v1 intent via `logs.collect`; `environment: dev` no longer silently provisions Loki/Alloy. Without declared logs intent, BaseHarbor removes stale workload log overrides/registrations and skips log-ingestion verification.
 - `BASEHARBOR_LOGS_ENABLED` may disable declared logging but can no longer create undeclared application capability intent.
 

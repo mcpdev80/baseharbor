@@ -80,6 +80,14 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 				}
 			}
 		}
+		if resource.Kind == capability.Logs {
+			binding.Workload = "service/" + resource.Name
+			binding.Logs = &capability.LogsBinding{
+				Direction: "collect",
+				Format:    "syslog-rfc5424",
+				Service:   resource.Name,
+			}
+		}
 		if resource.Kind == capability.Secrets {
 			security := ManagedSecretsSecureBinding(m)
 			if err := security.Validate(); err != nil {

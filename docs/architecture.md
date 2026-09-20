@@ -144,6 +144,20 @@ These values are operational realization, not portable application requirements.
 15. CLI, HTTP API, Web UI and Operator are adapters over shared domain/lifecycle services; business logic must not be duplicated in presentation layers.
 16. Every capability provider implements a versioned BaseHarbor Capability Specification and shared provider lifecycle; product-specific one-off lifecycle paths are not allowed.
 
+## Capability intent and deployment policy
+
+Application capability intent must be explicit. Environment names and deployment policy may configure placement, retention, collection scope, security posture, or disable a declared capability, but they must not invent application capability intent.
+
+Examples:
+
+- `metrics.sources` or a runtime metrics permission is required before Prometheus collection can be prepared;
+- `logs.collect` is required before Loki/Alloy application log collection can be prepared;
+- `telemetry.otlp` is required before OTLP transport can be prepared;
+- an OTLP `traces` signal is required before deployment policy may enable trace retention/Tempo;
+- `exposure.http`, object-storage requirements, secrets, and runtime permissions likewise gate their provider lifecycles.
+
+This rule applies independently of provider placement. Shared, application-scoped, and external placement choices never create portable application requirements.
+
 ## Application lifecycle model
 
 BaseHarbor follows an explicit convergence flow:
