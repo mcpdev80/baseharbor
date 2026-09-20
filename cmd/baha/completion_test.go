@@ -45,18 +45,18 @@ func TestCompletionCommandGeneratesSupportedShells(t *testing.T) {
 }
 
 func TestGlobalOutputOptions(t *testing.T) {
-	filtered, opts, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
+	filtered, opts, showVersion, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Quiet || !opts.NoColor || opts.Verbose {
+	if !opts.Quiet || !opts.NoColor || opts.Verbose || showVersion {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
 	if strings.Join(filtered, " ") != "status" {
 		t.Fatalf("unexpected forwarded args: %v", filtered)
 	}
 
-	if _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
+	if _, _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
 		t.Fatal("quiet + verbose must fail")
 	}
 }
