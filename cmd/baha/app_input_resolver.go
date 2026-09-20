@@ -319,7 +319,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if _, err := application.FindRepositoryManifest(cwd); err != nil {
-		if !strings.Contains(err.Error(), application.RepositoryManifestName+" not found") {
+		if !errors.Is(err, application.ErrRepositoryManifestNotFound) {
 			return err
 		}
 		initialized, err := initializeRepositoryManifestForUp(ctx, runtimeInput, out, errOut, opts)
