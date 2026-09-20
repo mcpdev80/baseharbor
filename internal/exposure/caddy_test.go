@@ -97,6 +97,8 @@ func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 		"/tmp:rw,noexec,nosuid,nodev",
 		"/config:rw,noexec,nosuid,nodev,mode=1777",
 		"/data:rw,noexec,nosuid,nodev,mode=1777",
+		"cp /usr/bin/caddy /tmp/baseharbor-caddy",
+		"exec /tmp/baseharbor-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 		"127.0.0.1:18080:8080",
 	} {
 		if !strings.Contains(got, want) {
