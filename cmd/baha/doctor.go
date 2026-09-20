@@ -64,16 +64,34 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 
 	after := health.Doctor()
-	afterFormatted, afterOK := health.Format(after)
-	fmt.Fprintln(out, "After repair:")
-	fmt.Fprint(out, afterFormatted)
+	term.Section("After repair")
+	afterOK := renderControlPlaneDoctor(term, after)
 	if afterOK {
+		fmt.Fprintln(out, "\nREADY")
 		return nil
 	}
 
 	remaining := classifyDoctorFindings(after)
 	printDoctorFindings(out, remaining)
 	return errors.New("one or more checks still require action")
+}
+
+func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
+	ok := true
+	term.Section("Core")
+	for _, check := range checks {
+		state := "OK"
+		if !check.OK {
+			state = "FAILED"
+			ok = false
+		}
+		detail := ""
+		if !check.OK || term.Verbose() {
+			detail = check.Message
+		}
+		term.Result(state, check.Name, detail)
+	}
+	return ok
 }
 
 func classifyDoctorFindings(checks []health.Check) []doctorFinding {
