@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,10 +15,19 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
+
+type tuiDoctorResult struct {
+	Application string             `json:"application"`
+	Environment string             `json:"environment"`
+	Healthy     bool               `json:"healthy"`
+	Checks      []preflight.Result `json:"checks"`
+}
 
 type tuiStatusMsg struct {
 	result application.StatusResult
+	doctor tuiDoctorResult
 	err    error
 }
 
@@ -23,6 +35,7 @@ type tuiModel struct {
 	ctx           context.Context
 	store         application.Store
 	result        application.StatusResult
+	doctor        tuiDoctorResult
 	err           error
 	loading       bool
 	tab           int
@@ -83,7 +96,11 @@ func (m tuiModel) Init() tea.Cmd {
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
 		result, err := collectApplicationStatus(m.ctx, m.store, nil)
-		return tuiStatusMsg{result: result, err: err}
+		if err != nil {
+			return tuiStatusMsg{result: result, err: err}
+		}
+		doctor, doctorErr := collectTUIDoctor(m.ctx, m.store)
+		return tuiStatusMsg{result: result, doctor: doctor, err: doctorErr}
 	}
 }
 
@@ -94,9 +111,9 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "tab", "right", "l":
-			m.tab = (m.tab + 1) % 2
+			m.tab = (m.tab + 1) % 3
 		case "shift+tab", "left", "h":
-			m.tab = (m.tab + 1) % 2
+			m.tab = (m.tab + 2) % 3
 		case "r":
 			m.loading = true
 			m.err = nil
@@ -108,6 +125,7 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiStatusMsg:
 		m.loading = false
 		m.result = msg.result
+		m.doctor = msg.doctor
 		m.err = msg.err
 	}
 	return m, nil
@@ -146,7 +164,7 @@ func (m tuiModel) View() tea.View {
 	b.WriteString(titleStyle.Render(title))
 	b.WriteString("\n\n")
 
-	tabs := []string{"Overview", "Checks"}
+	tabs := []string{"Overview", "Status", "Doctor"}
 	for i, tab := range tabs {
 		if i > 0 {
 			b.WriteString("   ")
@@ -174,9 +192,11 @@ func (m tuiModel) View() tea.View {
 		b.WriteString(wrapTUIText(m.err.Error(), contentWidth-8))
 		b.WriteString("\n\nNext:\n  baha doctor --verbose\n")
 	case m.tab == 0:
+		b.WriteString(renderTUISummary(m.result, contentWidth, success, failure))
+	case m.tab == 1:
 		b.WriteString(renderTUIOverview(m.result, contentWidth, success, failure))
 	default:
-		b.WriteString(renderTUIChecks(m.result, contentWidth, success, failure))
+		b.WriteString(renderTUIDoctor(m.doctor, contentWidth, success, failure))
 	}
 
 	b.WriteString("\n")
@@ -186,6 +206,50 @@ func (m tuiModel) View() tea.View {
 	view := tea.NewView(b.String())
 	view.AltScreen = true
 	return view
+}
+
+func collectTUIDoctor(ctx context.Context, store application.Store) (tuiDoctorResult, error) {
+	var out bytes.Buffer
+	err := appDoctorCommand(store).Run(ctx, []string{"-o", "json"}, &out, io.Discard)
+	var result tuiDoctorResult
+	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
+		if err != nil {
+			return tuiDoctorResult{}, errors.Join(err, decodeErr)
+		}
+		return tuiDoctorResult{}, decodeErr
+	}
+	return result, nil
+}
+
+func renderTUISummary(result application.StatusResult, width int, success, failure lipgloss.Style) string {
+	state := "READY"
+	style := success
+	if result.State == "stopped" {
+		state = "STOPPED"
+		style = failure
+	} else if !result.Ready {
+		state = "DEGRADED"
+		style = failure
+	}
+	passed, failed := 0, 0
+	for _, check := range result.Checks {
+		if check.OK {
+			passed++
+		} else {
+			failed++
+		}
+	}
+	var b strings.Builder
+	b.WriteString(style.Render(state))
+	b.WriteString("\n\n")
+	fmt.Fprintf(&b, "Application   %s\n", result.Application)
+	fmt.Fprintf(&b, "Environment   %s\n", result.Environment)
+	fmt.Fprintf(&b, "Project       %s\n", result.Project)
+	fmt.Fprintf(&b, "Checks        %d passed · %d failed\n", passed, failed)
+	if !result.Ready && result.State != "stopped" {
+		b.WriteString("\nNext\n  baha doctor\n  baha status --verbose\n")
+	}
+	return wrapTUIText(b.String(), width)
 }
 
 func renderTUIOverview(result application.StatusResult, width int, success, failure lipgloss.Style) string {
@@ -259,27 +323,36 @@ func renderTUIOverview(result application.StatusResult, width int, success, fail
 	return b.String()
 }
 
-func renderTUIChecks(result application.StatusResult, width int, success, failure lipgloss.Style) string {
+func renderTUIDoctor(result tuiDoctorResult, width int, success, failure lipgloss.Style) string {
 	var b strings.Builder
+	state := "READY"
+	style := success
+	if !result.Healthy {
+		state = "DEGRADED"
+		style = failure
+	}
+	b.WriteString(style.Render(state))
+	b.WriteString("\n\n")
 	if len(result.Checks) == 0 {
-		if result.State == "stopped" {
-			return "Application is stopped. Persistent state is preserved.\n"
-		}
-		return "No component checks are currently available.\n"
+		b.WriteString("No doctor checks are currently available.\n")
+		return b.String()
 	}
 	for _, check := range result.Checks {
-		state := "OK"
-		style := success
+		checkState := "OK"
+		checkStyle := success
 		if !check.OK {
-			state = "FAILED"
-			style = failure
+			checkState = "FAILED"
+			checkStyle = failure
 		}
-		line := fmt.Sprintf("%-8s %-22s", state, check.Name)
+		line := fmt.Sprintf("%-8s %-24s", checkState, check.Name)
 		if strings.TrimSpace(check.Detail) != "" {
 			line += " " + check.Detail
 		}
-		b.WriteString(style.Render(wrapTUIText(line, width)))
+		b.WriteString(checkStyle.Render(wrapTUIText(line, width)))
 		b.WriteString("\n")
+	}
+	if !result.Healthy {
+		b.WriteString("\nNext\n  baha doctor --verbose\n  baha status --verbose\n")
 	}
 	return b.String()
 }
