@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
