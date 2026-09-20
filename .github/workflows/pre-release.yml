@@ -131,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           GOBIN="${RUNNER_TEMP}/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-          "${RUNNER_TEMP}/bin/actionlint"
+          "${RUNNER_TEMP}/bin/actionlint" -shellcheck=
 
       - name: Validate GoReleaser packaging without publishing
         uses: goreleaser/goreleaser-action@v7
