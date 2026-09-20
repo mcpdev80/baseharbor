@@ -290,6 +290,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
 			}
+			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
+				return fmt.Errorf("record successfully applied repository desired state: %w", err)
+			}
 			term.Section("Application")
 			term.Success("READY", "application and requested infrastructure verified")
 			if !term.Quiet() {
