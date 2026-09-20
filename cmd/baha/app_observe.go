@@ -34,6 +34,20 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		return application.StatusResult{}, err
 	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if errors.Is(err, application.ErrRuntimeNotApplied) {
+		result := application.StatusResult{
+			Application: m.Name,
+			Environment: m.Environment,
+			Project:     application.RuntimeProjectName(m),
+			State:       "not_applied",
+			Ready:       false,
+			Checks:      []application.StatusCheck{},
+		}
+		if resolved.FromRepository {
+			result.Manifest = resolved.ManifestPath
+		}
+		return result, nil
+	}
 	if err != nil {
 		return application.StatusResult{}, err
 	}
@@ -211,6 +225,14 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(result.Application, result.Environment)
 	term.Section("Application")
+	if result.State == "not_applied" {
+		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+		fmt.Fprintln(out, "\nNOT APPLIED")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha up")
+		fmt.Fprintln(out, "  baha app apply")
+		return
+	}
 	if result.State == "stopped" {
 		term.Result("STOPPED", "application", "persistent application state preserved")
 		fmt.Fprintln(out, "\nSTOPPED")
@@ -331,7 +353,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 			} else {
 				renderApplicationStatus(ctx, out, errOut, result)
 			}
-			if result.State == "stopped" {
+			if result.State == "stopped" || result.State == "not_applied" {
 				return nil
 			}
 			if !result.Ready {
@@ -359,6 +381,27 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			}
 			m := resolved.Manifest
 			files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
+			if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
+				if format == outputJSON {
+					payload := struct {
+						Application string `json:"application"`
+						Environment string `json:"environment"`
+						State       string `json:"state"`
+						Healthy     bool   `json:"healthy"`
+						Checks      []preflight.Result `json:"checks"`
+					}{Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
+					return writeJSON(out, payload)
+				}
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(m.Name, m.Environment)
+				term.Section("Application")
+				term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+				fmt.Fprintln(out, "\nNext:")
+				fmt.Fprintln(out, "  baha up")
+				fmt.Fprintln(out, "  baha app apply")
+				fmt.Fprintln(out, "\nNOT APPLIED")
+				return nil
+			}
 			var compose bhruntime.Compose
 			var running []string
 			var platformFiles bhruntime.Files
