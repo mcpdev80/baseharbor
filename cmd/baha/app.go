@@ -190,9 +190,9 @@ func appCommand(store application.Store) *cli.Command {
 					if requiredKnown {
 						printRequiredSecretStatus(out, requiredStatuses)
 					} else {
-						fmt.Fprintln(out, "REQUIRED SECRET\tSTATUS\tACTION")
+						fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
 						for _, name := range application.RequiredSecretNames(m) {
-							fmt.Fprintf(out, "%s\tunknown - secret scope not materialized yet\tbaha app secret set %s --stdin\n", name, name)
+							fmt.Fprintf(out, "  %-24s %-38s %s\n", name, "unknown - secret scope not materialized yet", "baha app secret set "+name+" --stdin")
 						}
 						fmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
 					}
