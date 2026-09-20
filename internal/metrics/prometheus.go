@@ -362,7 +362,7 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_PROMETHEUS_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(prometheusConfig()), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.Config, 0o644); err != nil {
@@ -755,8 +755,9 @@ func providerComposeYAML(placement Placement, registrations []sourceRegistration
 	return b.String()
 }
 
-func prometheusConfig() string {
-	return `global:
+func prometheusConfig(registrations []sourceRegistration) string {
+	var b strings.Builder
+	b.WriteString(`global:
   scrape_interval: 5s
   scrape_timeout: 4s
 
@@ -765,14 +766,21 @@ scrape_configs:
     file_sd_configs:
       - files:
           - /etc/prometheus/targets/*.json
-          - /etc/prometheus/runtime-targets/*/*.json
-        refresh_interval: 2s
+`)
+	for i, registration := range registrations {
+		if registration.RuntimeVolume == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "          - /etc/prometheus/runtime-targets/%d/*.json\n", i)
+	}
+	b.WriteString(`        refresh_interval: 2s
     relabel_configs:
       - source_labels: [baseharbor_metrics_path]
         target_label: __metrics_path__
       - action: labeldrop
         regex: baseharbor_metrics_path
-`
+`)
+	return b.String()
 }
 
 func waitReady(ctx context.Context, client *http.Client, endpoint string) error {
