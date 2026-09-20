@@ -65,7 +65,6 @@ func TestCompleteDirectoryPathIgnoresFiles(t *testing.T) {
 	}
 }
 
-
 func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *testing.T) {
 	original, err := os.Getwd()
 	if err != nil {
@@ -93,7 +92,6 @@ func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *tes
 		t.Fatalf("shell-like path prompt missing: %q", text)
 	}
 }
-
 
 func TestDrawPathPromptKeepsStaticCWDForRelativeInput(t *testing.T) {
 	original, err := os.Getwd()
@@ -131,7 +129,6 @@ func TestDrawPathPromptKeepsStaticCWDForAbsoluteInput(t *testing.T) {
 		t.Fatalf("prompt = %q, want %q", got, want)
 	}
 }
-
 
 func TestShellDisplayPathUsesHomeShorthand(t *testing.T) {
 	home, err := os.UserHomeDir()
