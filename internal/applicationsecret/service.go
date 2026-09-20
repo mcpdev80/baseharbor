@@ -97,6 +97,21 @@ func (s *Service) Get(ctx context.Context, name, key string) ([]byte, error) {
 	return openbao.GetApplicationSecret(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
 }
 
+func (s *Service) GetMany(ctx context.Context, name string, keys []string) (map[string][]byte, error) {
+	for _, key := range keys {
+		if strings.HasPrefix(key, dynamicKeyPrefix) {
+			return nil, errors.New("dynamic application secrets must be resolved through a secret reference")
+		}
+	}
+	resolved, err := s.resolve(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	return openbao.GetApplicationSecrets(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, keys)
+}
+
 func (s *Service) Set(ctx context.Context, name, key string, value []byte) error {
 	if strings.HasPrefix(key, dynamicKeyPrefix) {
 		return errors.New("dynamic application secrets must be managed through a secret reference")
