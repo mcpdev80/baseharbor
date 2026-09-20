@@ -62,7 +62,6 @@ func TestTUISummaryAndDoctorRemainReadableWithoutColor(t *testing.T) {
 	}
 }
 
-
 func TestTUIDoctorUsesConciseHumanDetails(t *testing.T) {
 	success := lipgloss.NewStyle()
 	failure := lipgloss.NewStyle()
