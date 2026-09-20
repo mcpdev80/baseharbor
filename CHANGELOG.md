@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Interactive Linux path prompts now use a shell-like current-directory prefix (`~/.../` or `/.../`) directly on the input line, replacing the separate path-base/browsing blocks.
+
 - Interactive Linux path prompts now show a live `Browsing` directory that follows the currently typed relative, absolute or `~/...` path while preserving the original process working directory.
 
 - Interactive path prompts now always show their current path base even when the input reader cannot provide a raw terminal file descriptor; tab completion remains optional while path orientation is guaranteed.
