@@ -232,7 +232,7 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, m application.M
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
 		return DestroyProvider(ctx, runtime, m)
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o600); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(p, registrations)), 0o600); err != nil {
