@@ -89,7 +89,7 @@ func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *tes
 		t.Fatalf("path = %q, want recovery.json", got)
 	}
 	text := out.String()
-	if !strings.Contains(text, shellDisplayPath(dir)+"/ New recovery output file:") {
+	if !strings.Contains(text, "New recovery output file:"+shellDisplayPath(dir)+"$ ") {
 		t.Fatalf("shell-like path prompt missing: %q", text)
 	}
 }
@@ -146,7 +146,7 @@ func TestDrawPathPromptShowsBrowsingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-if !strings.Contains(got, shellDisplayPath(root)+"/ New recovery output file: ") {
+if !strings.Contains(got, "New recovery output file:"+shellDisplayPath(root)+"$ ") {
 		t.Fatalf("missing shell-like path prompt: %q", got)
 	}
 }
