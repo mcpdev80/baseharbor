@@ -16,9 +16,12 @@ command -v go >/dev/null
 command -v docker >/dev/null
 docker compose version >/dev/null
 
+docs_venv="/tmp/baseharbor-v048-docs-${short_sha}"
+
 cleanup() {
   docker image rm "$runtime_image" >/dev/null 2>&1 || true
   rm -f "$binary"
+  rm -rf "$docs_venv"
 }
 trap cleanup EXIT
 
@@ -60,12 +63,10 @@ printf '[9/9] real control-plane restart/unseal acceptance\n'
 BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
   go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
-if command -v mkdocs >/dev/null 2>&1; then
-  printf '[extra] strict EN/DE documentation build\n'
-  mkdocs build --strict --config-file mkdocs.yml
-  mkdocs build --strict --config-file mkdocs.de.yml
-else
-  printf '[extra] mkdocs not installed; strict documentation build left for final release gate\n'
-fi
+printf '[extra] strict EN/DE documentation build with pinned toolchain\n'
+python3 -m venv "$docs_venv"
+"$docs_venv/bin/python" -m pip install --disable-pip-version-check --quiet --requirement requirements-docs.txt
+"$docs_venv/bin/mkdocs" build --strict --config-file mkdocs.yml
+"$docs_venv/bin/mkdocs" build --strict --config-file mkdocs.de.yml
 
 printf '\nPASS: BaseHarbor v0.4.8 live validation succeeded on %s\n' "$head_sha"
