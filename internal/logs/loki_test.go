@@ -121,9 +121,26 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
 	}
-	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
+	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:", "user: \"10001:10001\"", "user: \"473:473\""} {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("provider runtime missing hardening %q:\n%s", required, compose)
+		}
+	}
+
+	for path, want := range map[string]os.FileMode{
+		files.Dir:           0o700,
+		files.Env:           0o600,
+		files.Compose:       0o600,
+		files.Registrations: 0o600,
+		files.LokiConfig:    0o644,
+		files.AlloyConfig:   0o644,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("mode %s = %04o, want %04o", path, got, want)
 		}
 	}
 }
