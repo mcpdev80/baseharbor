@@ -123,3 +123,19 @@ func TestManagedCollectorRunsUnprivileged(t *testing.T) {
 		}
 	}
 }
+
+func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T) {
+	config := collectorConfigWithTraceBackend("http://tempo:4318")
+	for _, want := range []string{
+		"otlp_http/tempo:",
+		"endpoint: http://tempo:4318",
+		"exporters: [debug, otlp_http/tempo]",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("trace backend config missing %q:\n%s", want, config)
+		}
+	}
+	if strings.Contains(config, "otlphttp/tempo") {
+		t.Fatalf("deprecated otlphttp exporter alias rendered:\n%s", config)
+	}
+}
