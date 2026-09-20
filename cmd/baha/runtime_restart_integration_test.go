@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +21,15 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+
+	if output, err := exec.CommandContext(
+		ctx,
+		"docker", "ps", "-a",
+		"--filter", "label=com.docker.compose.project=baseharbor",
+		"--format", "{{.ID}}",
+	).Output(); err == nil && strings.TrimSpace(string(output)) != "" {
+		t.Skip("existing global BaseHarbor Compose project detected; restart acceptance requires an isolated host")
+	}
 
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
