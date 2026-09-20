@@ -47,6 +47,45 @@ type Terminal struct {
 	mu     sync.Mutex
 }
 
+type activityBuffer struct {
+	bytes.Buffer
+	details chan string
+}
+
+func newActivityBuffer() *activityBuffer {
+	return &activityBuffer{details: make(chan string, 16)}
+}
+
+func (b *activityBuffer) ActivityDetail(detail string) {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return
+	}
+	select {
+	case b.details <- detail:
+	default:
+		select {
+		case <-b.details:
+		default:
+		}
+		select {
+		case b.details <- detail:
+		default:
+		}
+	}
+}
+
+// ReportActivityDetail updates the human-facing detail of an in-flight Activity
+// when w is the activity progress writer. Other writers intentionally ignore it.
+func ReportActivityDetail(w io.Writer, detail string) {
+	type reporter interface {
+		ActivityDetail(string)
+	}
+	if r, ok := w.(reporter); ok {
+		r.ActivityDetail(detail)
+	}
+}
+
 func NewTerminal(ctx context.Context, out, errOut io.Writer) *Terminal {
 	opts := OutputOptionsFromContext(ctx)
 	tty := writerIsTerminal(errOut)
@@ -201,15 +240,17 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 		return err
 	}
 
-	var buffer bytes.Buffer
+	progress := newActivityBuffer()
 	done := make(chan error, 1)
 	startedAt := time.Now()
-	go func() { done <- fn(&buffer) }()
+	go func() { done <- fn(progress) }()
 
 	delay := time.NewTimer(350 * time.Millisecond)
 	defer delay.Stop()
 
 	started := false
+	latestDetail := ""
+	lastPrintedDetail := ""
 	var ticker *time.Ticker
 	var ticks <-chan time.Time
 	frames := []string{"◐", "◓", "◑", "◒"}
@@ -235,7 +276,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			}
 		}
 		if err != nil || t.opts.Verbose {
-			_, _ = io.Copy(t.errOut, &buffer)
+			_, _ = io.WriteString(t.errOut, progress.String())
 		}
 		return err
 	}
@@ -246,10 +287,21 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			return finish(err)
 		case <-ctx.Done():
 			return finish(ctx.Err())
+		case detail := <-progress.details:
+			latestDetail = detail
+			if started {
+				if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
+					fmt.Fprintf(t.errOut, "\r\x1b[2K%s %s%s (%s)", frames[frame%len(frames)], label, formatActivityDetail(latestDetail), formatActivityDuration(time.Since(startedAt)))
+					frame++
+				} else if latestDetail != lastPrintedDetail {
+					t.activityLine("INFO", label+" - "+latestDetail)
+					lastPrintedDetail = latestDetail
+				}
+			}
 		case <-delay.C:
 			started = true
 			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
-				fmt.Fprintf(t.errOut, "\r%s %s (%s)", frames[0], label, formatActivityDuration(time.Since(startedAt)))
+				fmt.Fprintf(t.errOut, "\r%s %s%s (%s)", frames[0], label, formatActivityDetail(latestDetail), formatActivityDuration(time.Since(startedAt)))
 				ticker = time.NewTicker(800 * time.Millisecond)
 				ticks = ticker.C
 				frame = 1
@@ -260,7 +312,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 			}
 		case <-ticks:
 			if t.tty && !t.opts.ReducedMotion && !t.opts.Plain {
-				fmt.Fprintf(t.errOut, "\r%s %s (%s)", frames[frame%len(frames)], label, formatActivityDuration(time.Since(startedAt)))
+				fmt.Fprintf(t.errOut, "\r%s %s%s (%s)", frames[frame%len(frames)], label, formatActivityDetail(latestDetail), formatActivityDuration(time.Since(startedAt)))
 				frame++
 			} else {
 				t.activityLine("WAIT", label+" - still working ("+formatActivityDuration(time.Since(startedAt))+")")
@@ -293,4 +345,13 @@ func formatActivityDuration(d time.Duration) string {
 	minutes := int(d / time.Minute)
 	seconds := int((d % time.Minute) / time.Second)
 	return fmt.Sprintf("%dm%02ds", minutes, seconds)
+}
+
+
+func formatActivityDetail(detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return ""
+	}
+	return " · " + detail
 }
