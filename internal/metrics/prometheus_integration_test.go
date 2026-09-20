@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
@@ -80,6 +81,11 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 		t.Logf("%s: provision Prometheus", m.Name)
 		if err := driver.Provision(ctx, resource, binding); err != nil {
 			t.Fatalf("%s provision: %v", m.Name, err)
+		}
+		if err := containersecurity.VerifyComposeService(ctx, "baseharbor-metrics", "prometheus", containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s Prometheus runtime security: %v", m.Name, err)
 		}
 
 		containerName := "baseharbor-" + name
