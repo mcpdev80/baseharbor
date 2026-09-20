@@ -420,6 +420,12 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m applica
 	if err != nil {
 		return err
 	}
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations)), 0o644); err != nil {
+		return err
+	}
+	if err := os.Chmod(files.Config, 0o644); err != nil {
+		return err
+	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement, registrations)), 0o600); err != nil {
 		return err
 	}
