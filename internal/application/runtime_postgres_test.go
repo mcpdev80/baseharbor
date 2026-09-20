@@ -354,7 +354,6 @@ func TestRuntimeProjectNameIncludesApplicationAndEnvironment(t *testing.T) {
 	}
 }
 
-
 func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
 	got, err := RuntimeComposeYAML(m)
