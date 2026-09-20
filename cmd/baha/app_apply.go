@@ -33,7 +33,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			term.Section("Plan")
-			term.Info("changes", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
+			term.Info("desired actions", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
 			}
@@ -289,6 +289,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			registryResources = append(registryResources, managedTracesRegistryResources(managedTraces)...)
 			if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
+			}
+			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
+				return fmt.Errorf("record successfully applied repository desired state: %w", err)
 			}
 			term.Section("Application")
 			term.Success("READY", "application and requested infrastructure verified")

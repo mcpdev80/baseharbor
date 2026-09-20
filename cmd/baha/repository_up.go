@@ -38,6 +38,20 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 		return err
 	}
 	fmt.Fprintf(out, "Application repository detected: %s (%s)\n", resolved.Manifest.Name, resolved.Manifest.Environment)
+
+	decision, _, err := repositoryUpCurrentDecision(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	switch decision {
+	case repositoryUpNoop:
+		fmt.Fprintln(out, "Application is already READY. No changes.")
+		return nil
+	case repositoryUpStart:
+		fmt.Fprintln(out, "Application runtime exists but is stopped; starting existing runtime...")
+		return appUpCommand(store).Run(ctx, nil, out, errOut)
+	}
+
 	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
 
 	if resolved.Manifest.Services.Secrets {

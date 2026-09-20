@@ -287,6 +287,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
+			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
+				return fmt.Errorf("record successfully started repository desired state: %w", err)
+			}
 			term.Section("Application")
 			term.Result("READY", "application", "runtime and requested infrastructure verified")
 			fmt.Fprintln(out, "\nREADY")

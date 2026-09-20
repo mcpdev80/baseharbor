@@ -29,13 +29,13 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	}
 	inputFile, ok := input.(*os.File)
 	if !ok {
-		return promptLine(reader, out, label, "")
+		return promptShellPathLine(reader, out, label)
 	}
 
 	fd := int(inputFile.Fd())
 	oldState, err := unix.IoctlGetTermios(fd, unix.TCGETS)
 	if err != nil {
-		return promptLine(reader, out, label, "")
+		return promptShellPathLine(reader, out, label)
 	}
 	raw := *oldState
 	raw.Lflag &^= unix.ICANON | unix.ECHO
@@ -43,7 +43,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &raw); err != nil {
-		return promptLine(reader, out, label, "")
+		return promptShellPathLine(reader, out, label)
 	}
 	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, oldState) }()
 
@@ -102,6 +102,21 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 			redrawPathPrompt(out, prompt, promptPath, string(value))
 		}
 	}
+}
+
+func promptShellPathLine(reader *bufio.Reader, out io.Writer, label string) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if _, err := fmt.Fprintf(out, "%s:%s$ ", label, shellDisplayPath(cwd)); err != nil {
+		return "", err
+	}
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func drawPathPrompt(out io.Writer, prompt, promptPath, value string, fresh bool) error {
