@@ -105,6 +105,9 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, boo
 }
 
 func formatCLIError(w io.Writer, err error) {
+	if errors.Is(err, syscall.EPIPE) {
+		return
+	}
 	if cli.IsPresented(err) {
 		return
 	}
