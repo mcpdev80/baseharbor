@@ -114,9 +114,9 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 			return err
 		}
 		if len(prepared.manifest.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(prepared.manifest) {
-			fmt.Fprintf(out, "[SKIP] metrics            application-source collection disabled by deployment policy for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[SKIPPED] metrics          application-source collection disabled by deployment policy for %s\n", prepared.manifest.Name)
 		} else if prepared.registered {
-			fmt.Fprintf(out, "[OK] metrics            removed obsolete registered metrics provider state for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[REMOVED] metrics         obsolete registered metrics provider state for %s\n", prepared.manifest.Name)
 		}
 		return nil
 	}
@@ -125,7 +125,7 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 			if err := prepared.driver.Provision(ctx, capability.Resource{}, capability.Binding{}); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "[OK] metrics-provider    runtime source collection ready for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[READY] metrics-provider runtime source collection for %s\n", prepared.manifest.Name)
 		}
 		return nil
 	}
@@ -135,7 +135,7 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 	if err := metricsprovider.PruneApplicationTargets(prepared.manifest, metricsprovider.DesiredTargetFiles(prepared.manifest)); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] metrics-provider    Prometheus target state converged for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[UPDATED] metrics-provider Prometheus target state for %s\n", prepared.manifest.Name)
 	return nil
 }
 
@@ -147,7 +147,7 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		if _, err := prepared.execution.Verify(ctx); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "[OK] metrics            %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
+		fmt.Fprintf(out, "[VERIFIED] metrics       %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	}
 	if err := metricsprovider.VerifyProviderSources(ctx, prepared.manifest); err != nil {
 		return err
@@ -156,7 +156,7 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		if err := cleanupRegisteredMetricsPlacement(ctx, prepared); err != nil {
 			return fmt.Errorf("remove previous metrics placement after successful convergence: %w", err)
 		}
-		fmt.Fprintf(out, "[OK] metrics-placement  migrated %s from %s to %s\n", prepared.manifest.Name, prepared.registeredPlacement.Scope, prepared.desiredPlacement.Scope)
+		fmt.Fprintf(out, "[UPDATED] metrics-placement migrated %s from %s to %s\n", prepared.manifest.Name, prepared.registeredPlacement.Scope, prepared.desiredPlacement.Scope)
 	}
 	return nil
 }
