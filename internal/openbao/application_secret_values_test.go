@@ -105,7 +105,7 @@ func (f *batchSecretExecutor) ExecProjectInput(_ context.Context, _, _, _ string
 	f.calls++
 	f.args = append([]string(nil), args...)
 	f.input = append([]byte(nil), input...)
-	return "{"data":{"data":{"value":"alpha-value"}}}\x1e{"data":{"data":{"value":"beta-value"}}}\x1e", nil
+	return "{\"data\":{\"data\":{\"value\":\"alpha-value\"}}}\x1e{\"data\":{\"data\":{\"value\":\"beta-value\"}}}\x1e", nil
 }
 
 func TestReadApplicationSecretValuesUsesSingleExec(t *testing.T) {
