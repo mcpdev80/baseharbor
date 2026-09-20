@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Application log collection is now explicit Manifest v1 intent via `logs.collect`; `environment: dev` no longer silently provisions Loki/Alloy. Without declared logs intent, BaseHarbor removes stale workload log overrides/registrations and skips log-ingestion verification.
+- `BASEHARBOR_LOGS_ENABLED` may disable declared logging but can no longer create undeclared application capability intent.
+
 - Repeated `baha up` is now a true bounded no-op when both the existing control plane and repository application are already READY and the successfully applied desired-state fingerprint still matches; STOPPED applications use the existing start path, while drift/degraded state falls back to full reconciliation.
 - Repository convergence records a protected desired-state SHA-256 fingerprint only after successful verification. The fingerprint covers repository source inputs plus deployment realization state, so READY alone can never suppress a real source/Compose/manifest/deployment change.
 - Apply output now labels static plan entries as `desired actions` rather than incorrectly calling them detected `changes`.
