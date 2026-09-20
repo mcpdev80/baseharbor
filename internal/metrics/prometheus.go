@@ -416,9 +416,16 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err != nil {
 		return ProviderFiles{}, err
 	}
+	allowedApplications := []string{m.Name}
+	if placement.Scope == capability.ScopeShared {
+		allowedApplications = allowedApplications[:0]
+		for _, registration := range registrations {
+			allowedApplications = append(allowedApplications, registration.Application)
+		}
+	}
 	providerSources, err := observability.ListMetrics(
 		providerPlacement,
-		m.Name,
+		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
 	)
@@ -708,6 +715,18 @@ func registrationFor(m application.Manifest) sourceRegistration {
 	return registration
 }
 
+func readRegistrations(path string) ([]sourceRegistration, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var registrations []sourceRegistration
+	if err := json.Unmarshal(data, &registrations); err != nil {
+		return nil, errors.New("Prometheus shared registration state is invalid")
+	}
+	return registrations, nil
+}
+
 func reconcileSharedRegistration(path string, m application.Manifest, present bool) ([]sourceRegistration, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
@@ -965,9 +984,20 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	if err != nil {
 		return err
 	}
+	allowedApplications := []string{m.Name}
+	if placement.Scope == capability.ScopeShared {
+		if files, fileErr := ExistingProviderFiles(m); fileErr == nil {
+			if registrations, regErr := readRegistrations(files.Registrations); regErr == nil {
+				allowedApplications = allowedApplications[:0]
+				for _, registration := range registrations {
+					allowedApplications = append(allowedApplications, registration.Application)
+				}
+			}
+		}
+	}
 	sources, err := observability.ListMetrics(
 		placement,
-		m.Name,
+		allowedApplications,
 		policy.Collect[application.MetricsSourceApplicationProvider],
 		policy.Collect[application.MetricsSourcePlatformProvider],
 	)
