@@ -62,7 +62,7 @@ var (
 	LokiIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Loki,
 		Capabilities:    []SpecificationID{LogsV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
