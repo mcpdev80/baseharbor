@@ -21,6 +21,9 @@ func appGuidedRestoreCommandWithRecoveryMetadata(store application.Store) *cli.C
 		if hasOption(args, "--password-file") {
 			return baseRun(ctx, args, out, errOut)
 		}
+		if noInput(ctx) {
+			return usageError("restore requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
+		}
 		if !appInitReaderIsTerminal(guidedBackupInput) {
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
