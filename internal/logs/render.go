@@ -57,7 +57,8 @@ loki.write "local" {
 		b.WriteString("    syslog_format = \"rfc5424\"\n")
 		fmt.Fprintf(&b, "    labels = { baseharbor_application = %s, baseharbor_environment = %s, baseharbor_source_class = \"application\" }\n", strconv.Quote(registration.Application), strconv.Quote(registration.Environment))
 		b.WriteString("  }\n")
-		b.WriteString("  forward_to = [loki.relabel.syslog.receiver]\n")
+		b.WriteString("  relabel_rules = loki.relabel.syslog.rules\n")
+		b.WriteString("  forward_to    = [loki.write.local.receiver]\n")
 		b.WriteString("}\n")
 	}
 	return b.String()
