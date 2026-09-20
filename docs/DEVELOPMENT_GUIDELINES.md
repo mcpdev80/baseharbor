@@ -449,6 +449,25 @@ OpenAPI is the canonical contract for application-facing Runtime Resource API en
 
 See ADR 0010.
 
+## 27. Managed containers are unprivileged and runtime-portable
+
+BaseHarbor-managed containers must follow least privilege by default.
+
+For the current Compose runtime:
+
+- managed containers must never require UID 0 for normal operation;
+- the Compose realization must select an explicit non-root user when the provider image exposes a stable service account, or an explicit non-zero numeric UID/GID for minimal images without account metadata;
+- privileged mode, host PID/IPC/network namespaces, runtime sockets and unnecessary Linux capabilities are forbidden;
+- drop all Linux capabilities unless a narrowly documented capability is technically required;
+- enable `no-new-privileges`;
+- prefer a read-only root filesystem and declare only the minimal writable volume/tmpfs paths required by the service;
+- do not use privileged container ports when a high unprivileged port can provide the same application-facing behavior;
+- host publishers remain loopback-only unless the capability explicitly requires external exposure.
+
+Runtime portability must not turn a Compose-specific UID into portable application intent. Kubernetes/OpenShift adapters must not assume the Compose UID. They must support platform-assigned arbitrary non-zero UIDs where the target platform requires them. BaseHarbor-owned images must prepare writable directories for arbitrary-UID execution using platform-compatible group permissions. A third-party provider image that cannot satisfy the active runtime's non-root/arbitrary-UID policy is unsupported on that runtime and must fail closed rather than request a privileged SCC/security context.
+
+Security claims require both static rendering tests and real runtime acceptance on a container-capable host. At minimum the acceptance must verify that the effective runtime UID is not zero and that the provider still passes its application-facing readiness/verification probe.
+
 ## GitHub Actions execution policy
 
 GitHub Actions are intentionally **manual by default** to avoid unnecessary CI consumption during active development.
