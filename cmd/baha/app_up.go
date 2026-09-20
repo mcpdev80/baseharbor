@@ -47,12 +47,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
-			var managedExposure *managedExposureExecution
-			var managedObjectStorage *managedObjectStorageExecution
-			var managedTraces *managedTracesExecution
-			var managedTelemetry *managedTelemetryExecution
-			var managedMetrics *managedMetricsExecution
-			var managedLogs *managedLogsExecution
+			providers := &managedProviderPreflightState{}
 			var workloadSecurity application.WorkloadSecurityReport
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
@@ -87,36 +82,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
-				{Name: "managed object storage provider", Run: func(ctx context.Context) error {
-					var err error
-					managedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "managed traces provider", Run: func(ctx context.Context) error {
-					var err error
-					managedTraces, err = prepareManagedTraces(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "managed telemetry provider", Run: func(ctx context.Context) error {
-					var err error
-					managedTelemetry, err = prepareManagedTelemetry(ctx, compose, resolved, managedTraces)
-					return err
-				}},
-				{Name: "managed metrics provider", Run: func(ctx context.Context) error {
-					var err error
-					managedMetrics, err = prepareManagedMetrics(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "managed logs provider", Run: func(ctx context.Context) error {
-					var err error
-					managedLogs, err = prepareManagedLogs(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
-					var err error
-					managedExposure, err = prepareManagedExposure(ctx, compose, resolved)
-					return err
-				}},
+
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
 					if !application.HasManagedRuntimeServices(m) {
 						return nil
@@ -137,6 +103,7 @@ func appUpCommand(store application.Store) *cli.Command {
 					return nil
 				}},
 			}
+			checks = appendManagedProviderPreflights(checks, &compose, resolved, providers)
 			if application.RequiresRuntimeBroker(m) {
 				checks = append(checks,
 					preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
@@ -179,6 +146,9 @@ func appUpCommand(store application.Store) *cli.Command {
 			if !ok {
 				return errors.New("application up preflight failed")
 			}
+			if err := prepareUndeclaredProviderCleanup(ctx, compose, resolved, providers); err != nil {
+				return fmt.Errorf("prepare obsolete provider cleanup: %w", err)
+			}
 
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
@@ -191,7 +161,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				}
 			}
 			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
-				return convergeManagedObjectStorage(ctx, progress, managedObjectStorage)
+				return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
 			}); err != nil {
 				return err
 			}
@@ -236,27 +206,27 @@ func appUpCommand(store application.Store) *cli.Command {
 			}
 			renderRuntimeReady(term, m)
 			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
-				return convergeManagedTracesBeforeTelemetry(ctx, progress, managedTraces)
+				return convergeManagedTracesBeforeTelemetry(ctx, progress, providers.traces)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Reconciling telemetry transport", func(progress io.Writer) error {
-				return convergeManagedTelemetry(ctx, progress, managedTelemetry)
+				return convergeManagedTelemetry(ctx, progress, providers.telemetry)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
-				return verifyManagedTracesAfterTelemetry(ctx, progress, managedTraces)
+				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
-				return convergeManagedLogsBeforeWorkload(ctx, progress, files, managedLogs)
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
-				return convergeManagedMetricsBeforeWorkload(ctx, progress, managedMetrics)
+				return convergeManagedMetricsBeforeWorkload(ctx, progress, providers.metrics)
 			}); err != nil {
 				return err
 			}
@@ -270,21 +240,21 @@ func appUpCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 			}
 			if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
-				return verifyManagedMetricsAfterWorkload(ctx, progress, managedMetrics)
+				return verifyManagedMetricsAfterWorkload(ctx, progress, providers.metrics)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Verifying log ingestion", func(progress io.Writer) error {
-				return verifyManagedLogsAfterWorkload(ctx, progress, managedLogs)
+				return verifyManagedLogsAfterWorkload(ctx, progress, providers.logs)
 			}); err != nil {
 				return err
 			}
 			if err := activity(ctx, term, "Verifying application exposure", func(progress io.Writer) error {
-				return convergeManagedExposure(ctx, progress, managedExposure)
+				return convergeManagedExposure(ctx, progress, providers.exposure)
 			}); err != nil {
 				return err
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
+			if err := application.ReconcileReferenceProviderRegistry(m, providers.logsRegistryResources(providers.logs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
 			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
