@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- `baha app doctor --fix` now fails closed when the existing OpenBao control plane is uninitialized or sealed instead of continuing into application reconciliation.
+
 ## [0.4.11] - 2026-09-20
 
 ### Added
