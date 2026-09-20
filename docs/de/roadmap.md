@@ -22,7 +22,7 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.8
+## Aktueller Stand v0.4.9
 
 Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
 
@@ -38,6 +38,8 @@ Umgesetzt sind unter anderem:
 - OpenTelemetry Collector als aktueller lazy shared Compose-OTLP-Referenzprovider plus externe OTLP-Endpunkt-Bindings;
 - echte OTLP-HTTP/Protobuf-Export-Verifikation ohne implizites Prometheus/Loki/Tempo/Grafana-Provisioning;
 - `metrics/v1` mit Prometheus 3.14.0 als erstem Compose-Referenzprovider, shared/application Placement, isolierten Metrics-Netzen und echter Scrape/Ingestion-Verifikation;
+- `logs/v1` Platform-Log-Source-Lifecycle mit Loki 3.7.8 + Alloy 1.19.2, shared/application Placement und echter Query-Verifikation;
+- Rendered-Compose Workload-Security-Preflight sowie ausfuehrbare Provider-Contract-Conformance/Fault-Injection;
 - explizite gerichtete Cross-Application-Connectivity ueber `baha connect`, getrennt von Provider-Sharing und in Compose ueber einen gehaerteten BaseHarbor-Relay realisiert;
 - Managed Required/Generated Secrets ohne Secret-Werte im Contract;
 - providerneutrale `secure-binding/v1`-Semantik fuer Workload Identity, Credential-/Trust-/Secret-Referenzen, Least-Privilege-Authorization und Security-Lifecycle-Deklarationen;
@@ -127,6 +129,19 @@ Im v0.4.8-Development-Track umgesetzt:
 - kein implizites Provisioning von Grafana, Loki oder Tempo.
 
 OTLP-Metrics-Export bleibt ein getrenntes `telemetry.otlp/v1`-Transportthema. v0.4.8 definiert OTLP nicht neu und macht Prometheus nicht zur Application Identity.
+
+## v0.4.9 Logs-/Loki- und Hardening-Track
+
+In v0.4.9 umgesetzt:
+
+- zentrale Application-Workload-Log-Collection bleibt Deployment-/Plattform-Policy statt Loki-Application-Intent;
+- ausgewaehlte Repository-Workload-Services sind logische `logs/v1`-Ressourcen mit Application-Ownership in der geschuetzten Provider-Registry;
+- Loki 3.7.8 und Alloy 1.19.2 bilden den Compose-Referenzprovider/-Collector mit shared oder application Placement und optionalen benannten Shared Boundaries;
+- Loki/Alloy verwenden keinen Docker-/Podman-Socket und Host-Listener bleiben loopback-only;
+- Readiness prueft echte Loki-Queries fuer Application/Environment/Service-Streams;
+- gerendertes Repository-Compose wird vor Mutation auf Isolation-Bypaesse geprueft;
+- Provider Integration Contract v1 besitzt ausfuehrbare Lifecycle-Conformance, Fake Provider und Fault Injection;
+- Kubernetes/OpenShift bleiben spaetere Runtime-Tracks.
 
 ## Geplante Phasen
 
