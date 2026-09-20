@@ -259,9 +259,6 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					return err
 				}},
 				{Name: "workload security", Run: func(ctx context.Context) error {
-					if compose == (bhruntime.Compose{}) {
-						return errors.New("container runtime unavailable")
-					}
 					var err error
 					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
