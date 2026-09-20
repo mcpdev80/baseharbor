@@ -51,15 +51,19 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	findings := classifyDoctorFindings(checks)
 	renderDoctorFindings(term, findings)
 	if !fix {
-		fmt.Fprintln(out, "next: run 'baha doctor --fix' to repair supported safe findings")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha doctor --fix")
+		fmt.Fprintln(out, "  baha doctor --verbose")
+		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
 		return errors.New("one or more checks failed")
 	}
 
 	if hasAutoFixableDoctorFinding(findings) {
+		term.Section("Repair")
 		if err := repairExistingControlPlaneRuntime(ctx, out); err != nil {
-			fmt.Fprintf(out, "[FAIL] repair             %v\n", err)
+			term.Result("FAILED", "repair", err.Error())
 		} else {
-			fmt.Fprintln(out, "[OK] repair             reconverged existing control-plane runtime")
+			term.Result("UPDATED", "repair", "reconverged existing control-plane runtime")
 		}
 	}
 
@@ -73,6 +77,10 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 
 	remaining := classifyDoctorFindings(after)
 	renderDoctorFindings(term, remaining)
+	fmt.Fprintln(out, "\nNext:")
+	fmt.Fprintln(out, "  Resolve the remaining problems above.")
+	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
 	return errors.New("one or more checks still require action")
 }
 
