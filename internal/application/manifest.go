@@ -2,6 +2,7 @@ package application
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,7 @@ type Manifest struct {
 	Exposures   []HTTPExposureRequirement
 	Telemetry   TelemetryRequirements
 	Metrics     MetricsRequirements
+	Logs        LogsRequirements
 	Runtime     RuntimeRequirements
 }
 
@@ -49,6 +51,10 @@ type OTLPRequirement struct {
 
 type MetricsRequirements struct {
 	Sources []MetricsSourceRequirement
+}
+
+type LogsRequirements struct {
+	Collect []string
 }
 
 type MetricsSourceRequirement struct {
@@ -193,6 +199,13 @@ func WithMetricsSource(m Manifest, name, service string, port int, path string) 
 
 func HasMetricsSources(m Manifest) bool { return len(m.Metrics.Sources) > 0 }
 
+func WithLogsCollection(m Manifest, sources ...string) Manifest {
+	m.Logs.Collect = append([]string(nil), sources...)
+	return m
+}
+
+func HasLogsCollection(m Manifest) bool { return len(m.Logs.Collect) > 0 }
+
 func WithRuntimePermission(m Manifest, capabilityID string, services []string, operations ...string) Manifest {
 	m.Runtime.Permissions = append(m.Runtime.Permissions, RuntimePermission{
 		Capability: strings.TrimSpace(capabilityID),
@@ -315,7 +328,7 @@ func (m Manifest) Validate() error {
 	postgres := PostgresInstanceNames(m)
 	redis := RedisInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) {
+	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range postgres {
@@ -359,6 +372,9 @@ func (m Manifest) Validate() error {
 		return err
 	}
 	if err := validateMetricsSources(m.Workload, m.Metrics.Sources); err != nil {
+		return err
+	}
+	if err := validateLogsRequirements(m.Workload, m.Logs); err != nil {
 		return err
 	}
 	if err := validateRuntimePermissions(m.Workload, m.Runtime.Permissions); err != nil {
@@ -418,7 +434,28 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 			seenOperations[operation] = struct{}{}
 		}
 	}
+	retufunc validateLogsRequirements(workload WorkloadConfig, logs LogsRequirements) error {
+	if len(logs.Collect) == 0 {
+		return nil
+	}
+	if len(workload.Services) == 0 {
+		return errors.New("logs collection requires explicit workload.services")
+	}
+	seen := map[string]struct{}{}
+	for _, raw := range logs.Collect {
+		source := strings.TrimSpace(strings.ToLower(raw))
+		if source != "application" {
+			return fmt.Errorf("unsupported logs collect source %q", raw)
+		}
+		if _, exists := seen[source]; exists {
+			return fmt.Errorf("duplicate logs collect source %q", source)
+		}
+		seen[source] = struct{}{}
+	}
 	return nil
+}
+
+rn nil
 }
 
 func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequirement) error {
@@ -710,6 +747,14 @@ func (m Manifest) YAML() string {
 			fmt.Fprintf(&b, "      path: %s\n", source.Path)
 		}
 	}
+	if len(m.Logs.Collect) > 0 {
+		sources := append([]string(nil), m.Logs.Collect...)
+		sort.Strings(sources)
+		b.WriteString("logs:\n  collect:\n")
+		for _, source := range sources {
+			fmt.Fprintf(&b, "    - %s\n", source)
+		}
+	}
 	if m.Telemetry.OTLP != nil {
 		b.WriteString("telemetry:\n  otlp:\n    signals:\n")
 		signals := append([]string(nil), m.Telemetry.OTLP.Signals...)
@@ -777,6 +822,7 @@ func ParseYAML(input string) (Manifest, error) {
 	telemetryField := ""
 	metricsField := ""
 	metricsIndex := -1
+	logsField := ""
 	runtimeField := ""
 	runtimePermissionIndex := -1
 	runtimePermissionList := ""
@@ -803,6 +849,7 @@ func ParseYAML(input string) (Manifest, error) {
 			telemetryField = ""
 			metricsField = ""
 			metricsIndex = -1
+			logsField = ""
 			runtimeField = ""
 			runtimePermissionIndex = -1
 			runtimePermissionList = ""
@@ -828,6 +875,8 @@ func ParseYAML(input string) (Manifest, error) {
 				section = "telemetry"
 			case trim == "metrics:":
 				section = "metrics"
+			case trim == "logs:":
+				section = "logs"
 			case trim == "runtime:":
 				section = "runtime"
 			default:
@@ -874,6 +923,10 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "metrics" && trim == "sources:" {
 				metricsField = "sources"
+				continue
+			}
+			if section == "logs" && trim == "collect:" {
+				logsField = "collect"
 				continue
 			}
 			if section == "runtime" && trim == "permissions:" {
@@ -943,6 +996,14 @@ func ParseYAML(input string) (Manifest, error) {
 			}
 			if section == "telemetry" && telemetryField == "otlp" && trim == "signals:" {
 				telemetryField = "otlp-signals"
+				continue
+			}
+			if section == "logs" && logsField == "collect" && strings.HasPrefix(trim, "- ") {
+				source := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+				if source == "" {
+					return Manifest{}, fmt.Errorf("line %d: logs collect source is empty", lineNo)
+				}
+				m.Logs.Collect = append(m.Logs.Collect, source)
 				continue
 			}
 			if section == "metrics" && metricsField == "sources" && strings.HasPrefix(trim, "- ") {
