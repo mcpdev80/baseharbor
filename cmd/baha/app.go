@@ -87,16 +87,23 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "plan",
 			Summary: "Show desired resources without changing anything",
-			Usage:   "baha app plan [NAME]",
+			Usage:   "baha app plan [NAME] [-o json|--output json]",
 			Long:    "Builds a deterministic desired-state plan, including required secret readiness gates. Without NAME it resolves the nearest baseharbor.yaml from the current repository.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "plan")
+				filtered, format, err := parseReadOutputArgs(args, "app plan")
+				if err != nil {
+					return err
+				}
+				resolved, err := resolveApplication(store, filtered, "plan")
 				if err != nil {
 					return err
 				}
 				plan, err := application.BuildPlan(resolved.Manifest)
 				if err != nil {
 					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, plan)
 				}
 				fmt.Fprintf(out, "Plan for %s (%s)\n", plan.Application, plan.Environment)
 				for i, action := range plan.Actions {
