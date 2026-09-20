@@ -274,6 +274,8 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	if err != nil {
 		return err
 	}
+	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
+	defer restoreEnvironment()
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
