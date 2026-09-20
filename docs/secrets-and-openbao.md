@@ -14,6 +14,12 @@ Bootstrap initializes and unseals OpenBao, enables the `baseharbor/` KV v2 mount
 
 The persistent manager bootstrap state is owner-only under `.baseharbor/runtime/` and contains no root token or unseal key.
 
+### Managed provider runtime hardening
+
+The bundled OpenBao Compose service runs directly as the image's non-root `openbao` user. Its root filesystem is read-only, all Linux capabilities are dropped and `no-new-privileges` is enabled. BaseHarbor does not rely on a root init container or a temporary `CAP_CHOWN` grant.
+
+The image-generated local configuration is written only to an ephemeral writable `/openbao/config` tmpfs. Durable OpenBao data remains on the dedicated `/openbao/file` volume. BaseHarbor enables the image-supported `SKIP_CHOWN` behavior because ownership repair by a privileged entrypoint is neither needed nor permitted by the BaseHarbor security model.
+
 ## Application secret scope
 
 An application opts into managed secrets declaratively:
