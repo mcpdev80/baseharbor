@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Interactive path prompts now always show their current path base even when the input reader cannot provide a raw terminal file descriptor; tab completion remains optional while path orientation is guaranteed.
+
 - Repository-aware first `baha up` once again resolves configurable Compose host ports before the first workload start, persists BaseHarbor-selected values in protected deployment state and reuses the existing post-start bind-conflict retry only as a race-condition fallback.
 
 - Compose-backed lifecycle activities now stream secret-safe live detail such as image pulls, builds, container creation/start and readiness phases into the current CLI activity instead of hiding runtime progress until completion.
