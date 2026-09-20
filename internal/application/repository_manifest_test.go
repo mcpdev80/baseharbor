@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,5 +68,13 @@ func TestStoreSyncPreservesRuntimeState(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("internal synchronized manifest permissions = %o", info.Mode().Perm())
+	}
+}
+
+
+func TestFindRepositoryManifestReturnsSentinelWhenMissing(t *testing.T) {
+	_, err := FindRepositoryManifest(t.TempDir())
+	if !errors.Is(err, ErrRepositoryManifestNotFound) {
+		t.Fatalf("expected ErrRepositoryManifestNotFound, got %v", err)
 	}
 }
