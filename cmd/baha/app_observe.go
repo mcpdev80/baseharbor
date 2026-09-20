@@ -214,7 +214,7 @@ func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result 
 	for _, check := range result.Checks {
 		section := "Other"
 		switch {
-		case strings.HasPrefix(check.Name, "postgres"), strings.HasPrefix(check.Name, "valkey"), strings.HasPrefix(check.Name, "secrets"), strings.HasPrefix(check.Name, "runtime-broker"), strings.HasPrefix(check.Name, "object-storage"):
+		case strings.HasPrefix(check.Name, "postgres"), strings.HasPrefix(check.Name, "valkey"), strings.HasPrefix(check.Name, "secrets"), strings.HasPrefix(check.Name, "runtime-broker"), strings.HasPrefix(check.Name, "object-storage"), strings.HasPrefix(check.Name, "required-secret"):
 			section = "Services"
 		case strings.HasPrefix(check.Name, "workload"):
 			section = "Workload"
