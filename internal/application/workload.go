@@ -123,6 +123,22 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 	}, true, nil
 }
 
+func SelectedWorkloadServices(repositoryRoot string, m Manifest) ([]string, string, bool, error) {
+	composePath, found, err := ResolveWorkloadCompose(repositoryRoot, m)
+	if err != nil || !found {
+		return nil, composePath, found, err
+	}
+	services, err := composeServiceNames(composePath)
+	if err != nil {
+		return nil, composePath, true, err
+	}
+	selected, err := selectWorkloadServices(m, services, m.Workload.Services)
+	if err != nil {
+		return nil, composePath, true, err
+	}
+	return selected, composePath, true, nil
+}
+
 func composeServiceNames(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
