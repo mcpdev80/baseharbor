@@ -474,3 +474,11 @@ Every configurable field must have explicit semantics:
 Overrides are accepted only when the active runtime/provider can honor them safely and deterministically. They must never bypass security, ownership, reconciliation, conformance or fail-closed validation.
 
 The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.
+
+## Executable conformance since v0.4.9
+
+The static descriptor checks remain the first gate, but Provider Integration Contract v1 now also has a reusable executable lifecycle conformance harness.
+
+Reference providers can be exercised against side-effect-free preflight, unsupported-placement fail-closed behavior, deterministic provisioning, idempotent repeated convergence, binding, real verification, retry semantics, secret-safe diagnostics and ownership-safe destroy. The in-process fake provider supplies deterministic CREATE/NOOP/DRIFT/REPAIR/failure scenarios without introducing a new runtime or plugin system.
+
+Loki is the first v0.4.9 reference provider required to consume this executable conformance machinery.

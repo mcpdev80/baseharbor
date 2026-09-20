@@ -44,3 +44,9 @@ Vor jedem Tag gibt es einen Release-Preparation-PR.
 9. Erst nach Verifikation von GitHub Release, Binaries, Checksums, Provenance und passendem Runtime-Image gilt der Release als abgeschlossen. Ein gepushter Tag allein reicht nicht.
 
 Veroeffentlichte Tags werden niemals verschoben. Fehlerhafte Releases werden durch einen neuen Patch-Release korrigiert.
+
+## v0.4.9-Kompatibilitaet
+
+Manifest v1 bleibt unveraendert. v0.4.9 fuegt zentrale Workload-Logs als Deployment-/Plattform-Policy hinzu, nicht als Loki-Feld im Application Contract. Loki/Alloy, Provider Placement und Collector-State bleiben Provider-/Operator-State.
+
+Der Release erweitert ausserdem den gerenderten Compose-Security-Preflight und macht Provider Integration Contract v1 Lifecycle-Conformance ausfuehrbar. Kubernetes/OpenShift werden dadurch nicht implementiert.

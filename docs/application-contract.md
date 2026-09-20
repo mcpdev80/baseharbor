@@ -525,3 +525,10 @@ Inspection can also describe capability direction and runtime-operation hints. E
 
 The inspection model may therefore be richer than `baseharbor.yaml`. Evidence paths, confidence and inferred runtime operations belong to the inspection result unless they become true required application intent.
 
+## Logs are platform policy in v0.4.9
+
+Centralized log collection does not add a Loki product field to Manifest v1. Repository workloads already produce stdout/stderr; BaseHarbor treats selected workload services as logical `logs/v1` sources when deployment policy enables collection.
+
+Provider choice, placement, sharing boundary, collector ports, Loki/Alloy configuration, retention/storage topology and provider lifecycle state remain protected deployment/provider state. The application contract therefore remains portable and unchanged.
+
+The local `baha app logs` developer command remains independent from centralized storage: it is trusted-local runtime access, not an application capability declaration.

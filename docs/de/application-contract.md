@@ -293,3 +293,10 @@ Wenn Collection aktiv ist, haengt BaseHarbor nur den deklarierten Source-Service
 
 OTLP-Transport mit dem Signal `metrics` bleibt davon getrennt. `telemetry.otlp/v1` beschreibt den Export-Transport; `metrics/v1` beschreibt eine von der Anwendung bereitgestellte Metrics-Source. Keiner der Contracts nennt Prometheus.
 
+## Logs sind in v0.4.9 Plattform-Policy
+
+Zentrale Log-Collection fuegt Manifest v1 kein Loki-Produktfeld hinzu. Repository-Workloads erzeugen bereits stdout/stderr; BaseHarbor behandelt ausgewaehlte Workload-Services als logische `logs/v1`-Sources, wenn die Deployment-Policy Collection aktiviert.
+
+Provider-Auswahl, Placement, Sharing Boundary, Collector-Ports, Loki/Alloy-Konfiguration, Retention-/Storage-Topologie und Provider-Lifecycle-State bleiben geschuetzter Deployment-/Provider-State. Der Application Contract bleibt damit portabel und unveraendert.
+
+Der lokale Developer-Befehl `baha app logs` bleibt von zentralem Storage unabhaengig: Er ist Trusted-local Runtime Access und keine Application-Capability-Deklaration.

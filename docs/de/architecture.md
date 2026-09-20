@@ -459,3 +459,13 @@ Jedes konfigurierbare Feld muss klare Semantik besitzen:
 Overrides werden nur akzeptiert, wenn aktive Runtime und Provider sie sicher und deterministisch umsetzen koennen. Security, Ownership, Reconciliation, Conformance und Fail-Closed-Validierung duerfen dadurch niemals umgangen werden.
 
 Einfacher und Experten-Pfad verwenden denselben Core. Erweiterte Flexibilitaet darf weder einen zweiten Application Contract noch einen parallelen Lifecycle erzeugen.
+
+## Zentrale Logs und Workload-Security in v0.4.9
+
+Log-Collection ist Plattform-/Deployment-Policy. Anwendungen nennen Loki nicht im portablen Intent. BaseHarbor leitet logische `logs/v1`-Sources aus den ausgewaehlten Repository-Workload-Services ab, loest Provider-Placement ueber das bestehende Modell `shared | application | external` auf und speichert Application-owned Log-Ressourcen in der geschuetzten Provider-Registry.
+
+Die aktuelle Compose-Referenz verwendet Loki 3.7.8 plus Alloy 1.19.2. Shared Placement ist der sichere Default und kann eine benannte Sharing Boundary verwenden; Application Placement erzeugt einen dedizierten Provider. Der aktuelle Adapter bewirbt External Placement nicht. Loki/Alloy erhalten keinen Docker-/Podman-Socket. Generierte Workload-Logging-Overrides verwenden Loopback-Syslog/RFC5424; Loki-Readiness und echte Queries beweisen die End-to-End-Ingestion.
+
+Vor dem Start eines Repository-Workloads analysiert BaseHarbor die vollstaendig gerenderte Compose-Konfiguration auf Privileged Mode, Runtime-Sockets, Host-Network/PID/IPC, gefaehrliche Linux-Capabilities, Devices und kritische Host-Bind-Mounts. Managed Environments brechen fail-closed ab, wenn diese Einstellungen die dokumentierte Isolation umgehen. Development kann erlaubte Ausnahmen explizit bestaetigen; Diagnosen bleiben maschinenlesbar.
+
+Provider Integration Contract v1 besitzt jetzt ausfuehrbare Conformance-Tests. Ein wiederverwendbarer Harness und ein deterministischer Fake Provider pruefen side-effect-freien Preflight, Idempotenz, CREATE/NOOP, Drift/Repair, Lifecycle-Fehler, Verify, Retry-Convergence, secret-sichere Diagnosen und ownership-sicheres Destroy.

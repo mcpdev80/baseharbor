@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-09-20
+
+### Added
+
+- Versioned `logs/v1` lifecycle semantics and Loki 3.7.8 as the first Compose log platform provider.
+- Grafana Alloy 1.19.2 forwarding from selected repository workload services into Loki without a Docker/Podman socket.
+- Shared/default, named shared-boundary and application-scoped Loki placement through the existing provider-placement model.
+- Real Loki readiness and query-based ingestion verification before the logs path is READY.
+- Repository Compose workload security preflight with machine-readable allow/warn/deny findings.
+- Reusable executable Provider Integration Contract conformance harness and deterministic fake provider.
+- Fault-injection coverage for CREATE/NOOP, drift/repair, provider outages, malformed bindings, verify failure, retry convergence and ownership-safe destroy.
+
+### Changed
+
+- Logical log resources and Loki placement are reconciled through the protected provider registry.
+- The application provider registry now consumes the canonical Provider Integration Contract descriptor mapping instead of maintaining a duplicate provider switch.
+- Development log collection defaults on; test/staging/production remain opt-in platform policy.
+- `app apply`, `app up`, `status`, `doctor`, `down` and `destroy` now reconcile the managed log lifecycle where enabled.
+
+### Security
+
+- Repository workloads that request privileged mode, host network/PID/IPC, runtime sockets, dangerous capabilities or critical host mounts fail closed in managed environments before workload mutation.
+- Development-only exceptions require explicit acknowledgement; host devices are warnings by default in development and denies in managed environments.
+- Loki and Alloy run read-only, drop all Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
+- Log registration state and provider files are owner-only and contain no credentials.
+
+
 ## [0.4.8] - 2026-09-20
 
 ### Added
@@ -402,7 +429,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...HEAD
+[0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mcpdev80/baseharbor/compare/v0.4.5...v0.4.6

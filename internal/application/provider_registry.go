@@ -39,15 +39,56 @@ func CheckReferenceProviderRegistry(m Manifest) error {
 	return registry.Validate()
 }
 
-func ReconcileReferenceProviderRegistry(m Manifest) error {
+func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Resource) error {
 	store, err := referenceProviderRegistryStore()
 	if err != nil {
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
 		registry.ReleaseManagedApplication(m.Name)
-		return registerReferenceProviders(registry, m)
+		if err := registerReferenceProviders(registry, m); err != nil {
+			return err
+		}
+		return registerAdditionalProviderResources(registry, m, additional)
 	})
+}
+
+func CheckAdditionalProviderResources(m Manifest, additional []capability.Resource) error {
+	store, err := referenceProviderRegistryStore()
+	if err != nil {
+		return err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	registry.ReleaseManagedApplication(m.Name)
+	if err := registerReferenceProviders(&registry, m); err != nil {
+		return err
+	}
+	if err := registerAdditionalProviderResources(&registry, m, additional); err != nil {
+		return err
+	}
+	return registry.Validate()
+}
+
+func registerAdditionalProviderResources(registry *capability.Registry, m Manifest, resources []capability.Resource) error {
+	for _, resource := range resources {
+		if resource.Application != m.Name {
+			return fmt.Errorf("additional provider resource belongs to application %q, expected %q", resource.Application, m.Name)
+		}
+		instance, err := referenceProviderInstance(m, resource)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(instance); err != nil {
+			return err
+		}
+		if err := registry.Bind(resource, instance.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func CheckControlPlaneDestroySafe() error {
@@ -241,26 +282,11 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 }
 
 func providerDescriptor(provider capability.ProviderKind) capability.Provider {
-	switch provider {
-	case capability.ProviderPostgreSQL:
-		return capability.PostgreSQL
-	case capability.ProviderValkey:
-		return capability.Valkey
-	case capability.ProviderOpenBao:
-		return capability.OpenBao
-	case capability.ProviderCaddy:
-		return capability.Caddy
-	case capability.ProviderSeaweedFS:
-		return capability.SeaweedFS
-	case capability.ProviderOTelCollector:
-		return capability.OTelCollector
-	case capability.ProviderExternalOTLP:
-		return capability.ExternalOTLP
-	case capability.ProviderPrometheus:
-		return capability.Prometheus
-	default:
+	descriptor, err := capability.ReferenceIntegration(provider)
+	if err != nil {
 		return capability.Provider{}
 	}
+	return descriptor.Provider
 }
 
 func sharedProviderInstanceID(provider capability.ProviderKind, boundary string) string {

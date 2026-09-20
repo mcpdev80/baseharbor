@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -28,6 +29,48 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	repositoryRoot := filepath.Dir(resolved.ManifestPath)
 	_, _, err := application.ResolveWorkloadCompose(repositoryRoot, resolved.Manifest)
 	return err
+}
+
+func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
+	if !resolved.FromRepository {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
+	if err != nil || !found {
+		return application.WorkloadSecurityReport{}, err
+	}
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, application.WorkloadProjectName(resolved.Manifest), repositoryRoot, nil, composePath)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, fmt.Errorf("render repository Compose for security preflight: %w", err)
+	}
+	report, err := application.AnalyzeRenderedComposeSecurity(resolved.Manifest, []byte(rendered))
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	selectedSet := make(map[string]struct{}, len(selected))
+	for _, service := range selected {
+		selectedSet[service] = struct{}{}
+	}
+	filtered := report.Findings[:0]
+	for _, finding := range report.Findings {
+		if _, ok := selectedSet[finding.Service]; ok {
+			filtered = append(filtered, finding)
+		}
+	}
+	report.Findings = filtered
+	return report, report.Error()
+}
+
+func printWorkloadSecurityFindings(out io.Writer, report application.WorkloadSecurityReport) {
+	for _, finding := range report.Findings {
+		switch finding.Decision {
+		case application.WorkloadSecurityWarn:
+			fmt.Fprintf(out, "[WARN] workload-security  %s/%s: %s\n", finding.Service, finding.Code, finding.Message)
+		case application.WorkloadSecurityAllow:
+			fmt.Fprintf(out, "[ALLOW] workload-security %s/%s explicitly acknowledged for development\n", finding.Service, finding.Code)
+		}
+	}
 }
 
 func materializeRepositoryWorkload(resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, bool, error) {
@@ -100,6 +143,13 @@ func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compo
 	}
 	if enabled {
 		composeFiles = append(composeFiles, runtimeIdentityOverride)
+	}
+	loggingOverride, enabled, err := logsprovider.ExistingWorkloadOverride(files)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		composeFiles = append(composeFiles, loggingOverride)
 	}
 	return composeFiles, nil
 }

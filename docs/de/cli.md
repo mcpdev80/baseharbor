@@ -344,3 +344,18 @@ export BASEHARBOR_OTLP_ENDPOINT=https://otel.example.com
 Optionale Authorization-Header verwenden `BASEHARBOR_OTLP_HEADERS`. Sie sind Runtime-/Deployment-Secrets und duerfen nicht in `baseharbor.yaml` committed werden.
 
 Nur OTLP anzufordern startet weder Prometheus noch Loki, Tempo oder Grafana.
+
+## v0.4.9 Log-Collection und Workload-Security-Policy
+
+Zentrale Workload-Logs sind Deployment-Policy und kein Loki-Feld in `baseharbor.yaml`.
+
+- Development: Application-Log-Collection standardmaessig aktiv;
+- Test/Staging/Produktion: standardmaessig deaktiviert;
+- `BASEHARBOR_LOGS_ENABLED=true|false`: expliziter Operator-Override;
+- `BASEHARBOR_LOGS_COLLECT=application,application-provider,platform-provider`: Auswahl der Source-Klassen.
+
+Der aktuelle Compose-Adapter sammelt die ausgewaehlten Repository-Workload-Services. Provider Placement verwendet die generischen Controls `BASEHARBOR_PROVIDER_LOKI_SCOPE=shared|application` und optional `BASEHARBOR_PROVIDER_LOKI_SHARING_BOUNDARY=<name>`. External Loki Placement wird bewusst abgelehnt, weil der v0.4.9-Compose-Adapter es nicht implementiert.
+
+`app apply` und `app up` provisionieren bzw. verwenden den ausgewaehlten Loki/Alloy-Provider vor dem Workload-Start, erzeugen einen BaseHarbor-eigenen Logging-Override, starten den Workload und verlangen vor READY eine erfolgreiche Loki-Query. `status` und `doctor` pruefen Loki erneut.
+
+Repository-Workload-Mutationen durchlaufen ausserdem den v0.4.9-Security-Preflight. `privileged: true`, Container-Runtime-Sockets, Host-Network/PID/IPC, gefaehrliche Capabilities und kritische Host-Mounts werden in Managed Environments abgelehnt. Explizite Development-Ausnahmen verwenden `BASEHARBOR_WORKLOAD_SECURITY_ALLOW=<comma-separated-codes>`; `BASEHARBOR_WORKLOAD_SECURITY_MODE=development|managed` ist ein Operator-Policy-Override. Managed Mode akzeptiert keine Development-Acknowledgement-Bypaesse.

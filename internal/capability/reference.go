@@ -15,6 +15,7 @@ var (
 	OTelCollector = Provider{Kind: ProviderOTelCollector, Capabilities: []Kind{TelemetryOTLP}}
 	ExternalOTLP  = Provider{Kind: ProviderExternalOTLP, Capabilities: []Kind{TelemetryOTLP}}
 	Prometheus    = Provider{Kind: ProviderPrometheus, Capabilities: []Kind{Metrics}}
+	Loki          = Provider{Kind: ProviderLoki, Capabilities: []Kind{Logs}}
 )
 
 var (
@@ -58,6 +59,12 @@ var (
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
+	LokiIntegration = IntegrationDescriptor{
+		Protocol: ProviderProtocolV1, Provider: Loki,
+		Capabilities:    []SpecificationID{LogsV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
 		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
@@ -83,6 +90,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return ExternalOTLPIntegration, nil
 	case ProviderPrometheus:
 		return PrometheusIntegration, nil
+	case ProviderLoki:
+		return LokiIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}

@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.8 portable application foundation
+## Current v0.4.9 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -30,6 +30,8 @@ Implemented foundations include:
 - a shared capability/provider/resource/binding domain core with fail-closed provider negotiation and machine-readable lifecycle results;
 - a provider registry with shared, application-scoped and external/BYO placement plus explicit lifecycle ownership;
 - `metrics/v1` with Prometheus 3.14.0 as the first Compose reference provider, shared/application placement, isolated metrics networks and real scrape/ingestion verification;
+- `logs/v1` platform log-source lifecycle with Loki 3.7.8 + Alloy 1.19.2, shared/application placement and real query verification;
+- rendered-Compose workload security preflight plus executable Provider Integration Contract conformance/fault injection;
 - explicit directional cross-application connectivity through `baha connect`, separate from provider sharing and realized in Compose through a hardened BaseHarbor relay;
 - Provider Integration Contract v1 as the mandatory boundary for subsequent providers, with versioned Capability Specifications and future gRPC/Protobuf + OCI external-provider direction;
 - one or multiple named logical PostgreSQL resources;
@@ -150,6 +152,19 @@ Implemented in the v0.4.8 development track:
 - no implicit Grafana, Loki or Tempo provisioning.
 
 OTLP metrics export remains a separate `telemetry.otlp/v1` transport concern. v0.4.8 does not redefine OTLP or make Prometheus part of application identity.
+
+## v0.4.9 logs / Loki and hardening track
+
+Implemented in v0.4.9:
+
+- centralized application workload log collection remains deployment/platform policy rather than Loki application intent;
+- selected repository workload services are logical `logs/v1` resources owned by the application and recorded in the protected provider registry;
+- Loki 3.7.8 and Alloy 1.19.2 are the Compose reference provider/collector, with shared or application placement and optional named shared boundaries;
+- Loki/Alloy use no Docker/Podman socket and host-facing listeners remain loopback-only;
+- readiness includes a real Loki query for application/environment/service streams;
+- rendered repository Compose is checked before mutation for isolation-breaking privileges;
+- Provider Integration Contract v1 now has executable lifecycle conformance plus a deterministic fake provider and fault injection;
+- Kubernetes/OpenShift remain later runtime tracks.
 
 ## Next architecture tracks
 

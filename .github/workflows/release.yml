@@ -91,6 +91,11 @@ jobs:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
+      - name: Verify real Loki and Alloy workload log ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:

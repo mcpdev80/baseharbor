@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -193,6 +194,24 @@ func appStatusCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "[FAIL] workload          repository Compose integration could not be resolved: %v\n", workloadErr)
 				ready = false
 			}
+			if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
+				fmt.Fprintf(out, "[FAIL] logs               %v\n", policyErr)
+				ready = false
+			} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] && workloadStatus.Found {
+				logServices := make([]string, 0, len(workloadStatus.Services))
+				for _, service := range workloadStatus.Services {
+					logServices = append(logServices, service.Service)
+				}
+				checkCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
+				err := logsprovider.VerifyApplication(checkCtx, m, logServices)
+				cancel()
+				if err != nil {
+					fmt.Fprintf(out, "[FAIL] logs               %v\n", err)
+					ready = false
+				} else {
+					fmt.Fprintf(out, "[OK] logs               %d workload log stream(s) queryable in Loki\n", len(logServices))
+				}
+			}
 			if len(m.Exposures) > 0 {
 				lines, exposureErr := inspectManagedExposure(ctx, compose, m, files)
 				for _, line := range lines {
@@ -230,6 +249,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			var requiredStatuses []openbao.RequiredSecretStatus
 			var workloadStatus repositoryWorkloadStatus
 			var workloadStatusErr error
+			var workloadSecurity application.WorkloadSecurityReport
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			checks := []preflight.Check{
@@ -255,6 +275,11 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
+					return err
+				}},
+				{Name: "workload security", Run: func(ctx context.Context) error {
+					var err error
+					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "compose configuration", Run: func(ctx context.Context) error {
@@ -284,6 +309,27 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					}
 					return nil
 				}},
+			}
+			if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
+				checks = append(checks, preflight.Check{Name: "logs deployment policy", Run: func(context.Context) error { return policyErr }})
+			} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
+				checks = append(checks, preflight.Check{Name: "Loki log ingestion", Run: func(ctx context.Context) error {
+					if runtimeErr != nil {
+						return runtimeErr
+					}
+					status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+					if err != nil {
+						return err
+					}
+					if !status.Found {
+						return nil
+					}
+					services := make([]string, 0, len(status.Services))
+					for _, service := range status.Services {
+						services = append(services, service.Service)
+					}
+					return logsprovider.VerifyApplication(ctx, m, services)
+				}})
 			}
 			if len(m.Exposures) > 0 {
 				checks = append(checks, preflight.Check{Name: "managed HTTP exposure", Run: func(ctx context.Context) error {
@@ -382,6 +428,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
+			printWorkloadSecurityFindings(out, workloadSecurity)
 			printRequiredSecretStatus(out, requiredStatuses)
 			if workloadStatus.Found {
 				fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")

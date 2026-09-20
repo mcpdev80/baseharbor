@@ -37,6 +37,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := printResolvedMetricsPlacement(out, m); err != nil {
 				return err
 			}
+			if err := printResolvedLogsPlacement(out, resolved); err != nil {
+				return err
+			}
 
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -46,6 +49,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			var managedObjectStorage *managedObjectStorageExecution
 			var managedTelemetry *managedTelemetryExecution
 			var managedMetrics *managedMetricsExecution
+			var managedLogs *managedLogsExecution
+			var workloadSecurity application.WorkloadSecurityReport
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
@@ -62,6 +67,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 					}
 					var err error
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
+					return err
+				}},
+				{Name: "workload security", Run: func(ctx context.Context) error {
+					var err error
+					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "connectivity policy", Run: func(context.Context) error {
@@ -84,6 +94,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "managed metrics provider", Run: func(ctx context.Context) error {
 					var err error
 					managedMetrics, err = prepareManagedMetrics(ctx, compose, resolved)
+					return err
+				}},
+				{Name: "managed logs provider", Run: func(ctx context.Context) error {
+					var err error
+					managedLogs, err = prepareManagedLogs(ctx, compose, resolved)
 					return err
 				}},
 				{Name: "managed exposure provider", Run: func(ctx context.Context) error {
@@ -110,6 +125,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			results, ok := preflight.Run(checkCtx, checks)
 			preflight.Format(out, results)
+			printWorkloadSecurityFindings(out, workloadSecurity)
 			if !ok {
 				return errors.New("application preflight failed")
 			}
@@ -188,6 +204,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
 				return fmt.Errorf("converge managed metrics provider: %w", err)
 			}
+			if err := convergeManagedLogsBeforeWorkload(ctx, out, files, managedLogs); err != nil {
+				return fmt.Errorf("converge managed logs provider: %w", err)
+			}
 			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 				return err
 			}
@@ -197,10 +216,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
 				return fmt.Errorf("verify managed metrics ingestion: %w", err)
 			}
+			if err := verifyManagedLogsAfterWorkload(ctx, out, managedLogs); err != nil {
+				return fmt.Errorf("verify managed log ingestion: %w", err)
+			}
 			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
 				return fmt.Errorf("converge managed HTTP exposure: %w", err)
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
 			}
 			fmt.Fprintf(out, "Application %s is ready.\n", m.Name)

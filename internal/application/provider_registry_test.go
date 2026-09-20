@@ -243,3 +243,32 @@ func TestReferenceProviderInstancePreservesExternalReference(t *testing.T) {
 		t.Fatalf("external provider instance=%#v", instance)
 	}
 }
+
+func TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderLoki), string(capability.ScopeApplication))
+
+	m := New("logs-demo", "dev", false, false, false)
+	resources := []capability.Resource{
+		{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki},
+		{Application: m.Name, Kind: capability.Logs, Name: "worker", Provider: capability.ProviderLoki},
+	}
+	registry := capability.NewRegistry()
+	if err := registerAdditionalProviderResources(&registry, m, resources); err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Instances) != 1 {
+		t.Fatalf("application-scoped Loki should be one provider instance, got %#v", registry.Instances)
+	}
+	instance := registry.Instances[0]
+	if instance.ID != "loki/logs-demo/dev" || instance.OwnerApplication != m.Name {
+		t.Fatalf("unexpected Loki provider instance %#v", instance)
+	}
+	if len(registry.Bindings) != 2 {
+		t.Fatalf("expected two logical log-resource bindings, got %#v", registry.Bindings)
+	}
+	for _, binding := range registry.Bindings {
+		if binding.ProviderInstanceID != instance.ID || binding.Resource.Application != m.Name || binding.Resource.Kind != capability.Logs {
+			t.Fatalf("unexpected Loki binding %#v", binding)
+		}
+	}
+}
