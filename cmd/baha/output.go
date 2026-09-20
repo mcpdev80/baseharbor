@@ -56,3 +56,19 @@ func writeJSON(w io.Writer, value any) error {
 	}
 	return nil
 }
+
+func requestsJSONOutput(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--json":
+			return true
+		case args[i] == "-o" || args[i] == "--output":
+			if i+1 < len(args) && strings.EqualFold(strings.TrimSpace(args[i+1]), "json") {
+				return true
+			}
+		case strings.HasPrefix(args[i], "--output="):
+			return strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(args[i], "--output=")), "json")
+		}
+	}
+	return false
+}
