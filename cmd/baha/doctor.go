@@ -49,7 +49,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 
 	findings := classifyDoctorFindings(checks)
-	printDoctorFindings(out, findings)
+	renderDoctorFindings(term, findings)
 	if !fix {
 		fmt.Fprintln(out, "next: run 'baha doctor --fix' to repair supported safe findings")
 		return errors.New("one or more checks failed")
@@ -72,7 +72,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 
 	remaining := classifyDoctorFindings(after)
-	printDoctorFindings(out, remaining)
+	renderDoctorFindings(term, remaining)
 	return errors.New("one or more checks still require action")
 }
 
