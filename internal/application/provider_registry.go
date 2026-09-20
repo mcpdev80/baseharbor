@@ -241,26 +241,11 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 }
 
 func providerDescriptor(provider capability.ProviderKind) capability.Provider {
-	switch provider {
-	case capability.ProviderPostgreSQL:
-		return capability.PostgreSQL
-	case capability.ProviderValkey:
-		return capability.Valkey
-	case capability.ProviderOpenBao:
-		return capability.OpenBao
-	case capability.ProviderCaddy:
-		return capability.Caddy
-	case capability.ProviderSeaweedFS:
-		return capability.SeaweedFS
-	case capability.ProviderOTelCollector:
-		return capability.OTelCollector
-	case capability.ProviderExternalOTLP:
-		return capability.ExternalOTLP
-	case capability.ProviderPrometheus:
-		return capability.Prometheus
-	default:
+	descriptor, err := capability.ReferenceIntegration(provider)
+	if err != nil {
 		return capability.Provider{}
 	}
+	return descriptor.Provider
 }
 
 func sharedProviderInstanceID(provider capability.ProviderKind, boundary string) string {
