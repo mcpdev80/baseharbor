@@ -86,7 +86,6 @@ func TestCaddyReferenceImageIsPinned(t *testing.T) {
 	}
 }
 
-
 func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 	state := State{Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "internal", PublishedPort: 18080}}}
 	got := composeYAML(state, Files{Dir: "/tmp/provider"})
