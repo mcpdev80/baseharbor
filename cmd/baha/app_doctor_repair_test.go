@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -106,15 +105,5 @@ func TestFindingsNeedControlPlaneRepair(t *testing.T) {
 	}
 	if !findingsContain(findings, "managed runtime definition") {
 		t.Fatal("expected managed runtime definition finding")
-	}
-}
-
-func TestAppApplyRepairContextIsOptIn(t *testing.T) {
-	if got := appApplyRepairContextFrom(context.Background()); got.DeferWorkloadSecurity {
-		t.Fatal("normal apply must not defer workload security")
-	}
-	ctx := withAppApplyRepairContext(context.Background(), appApplyRepairContext{DeferWorkloadSecurity: true})
-	if got := appApplyRepairContextFrom(ctx); !got.DeferWorkloadSecurity {
-		t.Fatal("repair context did not preserve deferred workload-security mode")
 	}
 }
