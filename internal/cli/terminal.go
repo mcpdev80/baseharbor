@@ -103,15 +103,17 @@ func (t *Terminal) Result(state, subject, detail string) {
 	if state == "" {
 		state = "INFO"
 	}
-	marker := state
+	const stateWidth = 10
+	const subjectWidth = 20
+	paddedState := fmt.Sprintf("%-*s", stateWidth, state)
 	if t.color {
-		marker = stateColor(state) + marker + "\x1b[0m"
+		paddedState = stateColor(state) + paddedState + "\x1b[0m"
 	}
 	if strings.TrimSpace(detail) == "" {
-		fmt.Fprintf(t.out, "  %-9s %-20s\n", marker, subject)
+		fmt.Fprintf(t.out, "  %s %-*s\n", paddedState, subjectWidth, subject)
 		return
 	}
-	fmt.Fprintf(t.out, "  %-9s %-20s %s\n", marker, subject, detail)
+	fmt.Fprintf(t.out, "  %s %-*s %s\n", paddedState, subjectWidth, subject, detail)
 }
 
 func stateColor(state string) string {
