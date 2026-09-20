@@ -110,6 +110,12 @@ func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFil
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
+func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
+	args := []string{"logs", "--no-color", "--tail", "120"}
+	args = append(args, services...)
+	return c.outputProject(ctx, project, composeFile, envFile, args...)
+}
+
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }
