@@ -84,7 +84,27 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 
 		containerName := "baseharbor-" + name
 		containers = append(containers, containerName)
-		script := "mkdir -p /srv; printf '# TYPE baseharbor_acceptance_metric gauge\\nbaseharbor_acceptance_metric 1\\n' > /srv/metrics; exec python -m http.server 8080 --directory /srv"
+		script := `from http.server import BaseHTTPRequestHandler, HTTPServer
+
+payload = b"# TYPE baseharbor_acceptance_metric gauge\\nbaseharbor_acceptance_metric 1\\n# EOF\\n"
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/metrics":
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/openmetrics-text; version=1.0.0; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format, *args):
+        pass
+
+HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+`
 		cmd := exec.CommandContext(
 			ctx,
 			"docker", "run", "-d", "--rm",
@@ -92,7 +112,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 			"--network", application.MetricsProviderNetworkName(m),
 			"--network-alias", application.MetricsTargetAlias(m, "api"),
 			"python:3.13-alpine",
-			"sh", "-c", script,
+			"python", "-c", script,
 		)
 		t.Logf("%s: start metrics endpoint", m.Name)
 		if output, err := cmd.CombinedOutput(); err != nil {
