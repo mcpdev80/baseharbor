@@ -360,7 +360,6 @@ jobs:
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
- -count=1 -v
       - name: Vet
         run: go vet ./...
       - name: Validate compose
