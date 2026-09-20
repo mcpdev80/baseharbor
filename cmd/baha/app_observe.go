@@ -96,10 +96,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 
 	if application.HasObjectStorage(m) {
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
-		cancel()
-		if err != nil {
+			cancel()
+			if err != nil {
 			result.AddCheck("object-storage", false, err.Error())
 		} else {
 			result.AddCheck("object-storage", true, fmt.Sprintf("%d bucket(s) passed authenticated S3 Put/Get", len(application.ObjectStorageBucketNames(m))))
@@ -108,8 +108,8 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if application.HasOTLPTelemetry(m) {
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err := telemetry.VerifyApplication(checkCtx, m, files)
-		cancel()
-		if err != nil {
+			cancel()
+			if err != nil {
 			result.AddCheck("telemetry/otlp", false, err.Error())
 		} else {
 			result.AddCheck("telemetry/otlp", true, "real OTLP HTTP/protobuf export accepted")
@@ -181,7 +181,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 
 	if workloadStatus.Found {
-		for _, service := range workloadStatus.Services {
+			for _, service := range workloadStatus.Services {
 			result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
 		}
 		if workloadErr != nil {
@@ -197,18 +197,18 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
 			result.AddCheck("logs", false, policyErr.Error())
 		} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] && workloadStatus.Found {
-		logServices := make([]string, 0, len(workloadStatus.Services))
-		for _, service := range workloadStatus.Services {
-			logServices = append(logServices, service.Service)
-		}
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := logsprovider.VerifyApplication(checkCtx, m, logServices)
-		cancel()
-		if err != nil {
-			result.AddCheck("logs", false, err.Error())
-		} else {
-			result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
-		}
+			logServices := make([]string, 0, len(workloadStatus.Services))
+			for _, service := range workloadStatus.Services {
+				logServices = append(logServices, service.Service)
+			}
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			err := logsprovider.VerifyApplication(checkCtx, m, logServices)
+			cancel()
+			if err != nil {
+				result.AddCheck("logs", false, err.Error())
+			} else {
+				result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
+			}
 		}
 	}
 	if len(m.Exposures) > 0 {
