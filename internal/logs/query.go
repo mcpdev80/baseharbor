@@ -43,6 +43,24 @@ func waitLokiReady(ctx context.Context, client *http.Client, endpoint string) er
 	}
 }
 
+func VerifyApplication(ctx context.Context, m application.Manifest, services []string) error {
+	files, err := ExistingProviderFiles(m)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	for _, service := range services {
+		if err := waitForStream(ctx, client, endpoint, m, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func waitForStream(ctx context.Context, client *http.Client, endpoint string, m application.Manifest, service string) error {
 	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
