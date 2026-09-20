@@ -130,7 +130,7 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 }
 
 func printResolvedLogsPlacement(out io.Writer, resolved resolvedApplication) error {
-	if !resolved.FromRepository {
+	if !resolved.FromRepository || !application.HasLogsCollection(resolved.Manifest) {
 		return nil
 	}
 	repositoryRoot := filepath.Dir(resolved.ManifestPath)
