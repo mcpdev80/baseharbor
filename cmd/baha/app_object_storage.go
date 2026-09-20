@@ -75,10 +75,10 @@ func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *
 		}
 	}
 	if prepared.runtimeEnabled {
-		fmt.Fprintln(out, "[OK] runtime-resource   object-storage.s3/v1 provider and IAM ready")
+		fmt.Fprintln(out, "[READY] object-storage    provider and IAM ready")
 	}
 	for _, bucket := range application.ObjectStorageBucketNames(prepared.manifest) {
-		fmt.Fprintf(out, "[OK] object-storage    %s authenticated S3 Put/Get succeeded\n", bucket)
+		fmt.Fprintf(out, "[VERIFIED] object-storage %s authenticated S3 Put/Get\n", bucket)
 	}
 	return nil
 }
