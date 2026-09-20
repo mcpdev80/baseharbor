@@ -91,7 +91,7 @@ func queryStream(ctx context.Context, client *http.Client, endpoint, query strin
 	values := url.Values{
 		"query": {query},
 		"start": {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
-		"end": {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+		"end":   {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
 		"limit": {"1"},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)
@@ -109,7 +109,7 @@ func queryStream(ctx context.Context, client *http.Client, endpoint, query strin
 	}
 	var payload struct {
 		Status string `json:"status"`
-		Data struct {
+		Data   struct {
 			Result []json.RawMessage `json:"result"`
 		} `json:"data"`
 	}
