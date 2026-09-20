@@ -55,12 +55,12 @@ func (r WorkloadSecurityReport) Error() error {
 
 type renderedSecurityCompose struct {
 	Services map[string]struct {
-		Privileged  bool                 `json:"privileged"`
-		NetworkMode string               `json:"network_mode"`
-		PID         string               `json:"pid"`
-		IPC         string               `json:"ipc"`
-		CapAdd      []string             `json:"cap_add"`
-		Devices     []any                `json:"devices"`
+		Privileged  bool                   `json:"privileged"`
+		NetworkMode string                 `json:"network_mode"`
+		PID         string                 `json:"pid"`
+		IPC         string                 `json:"ipc"`
+		CapAdd      []string               `json:"cap_add"`
+		Devices     []any                  `json:"devices"`
 		Volumes     []renderedComposeMount `json:"volumes"`
 	} `json:"services"`
 }
