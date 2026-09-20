@@ -160,7 +160,6 @@ func (c *Command) find(name string) *Command {
 	return nil
 }
 
-
 func (c *Command) decorateUsageError(args []string, err error) error {
 	if err == nil {
 		return nil
