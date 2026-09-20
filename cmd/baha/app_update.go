@@ -16,6 +16,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
+type gitDirtyEntry struct {
+	Status          string
+	Path            string
+	BaseHarborLocal bool
+}
+
 type gitUpdateState struct {
 	RepositoryRoot string
 	Branch         string
@@ -24,6 +30,7 @@ type gitUpdateState struct {
 	Current        string
 	Target         string
 	Dirty          bool
+	DirtyEntries   []gitDirtyEntry
 	Relation       string
 }
 
@@ -237,6 +244,7 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 	if err != nil {
 		return gitUpdateState{}, fmt.Errorf("inspect Git working tree: %w", err)
 	}
+	dirtyEntries := parseGitDirtyEntries(status)
 
 	current = strings.TrimSpace(current)
 	target = strings.TrimSpace(target)
@@ -252,7 +260,68 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 		}
 	}
 
-	return gitUpdateState{RepositoryRoot: root, Branch: branch, Upstream: upstream, Remote: remote, Current: current, Target: target, Dirty: strings.TrimSpace(status) != "", Relation: relation}, nil
+	return gitUpdateState{RepositoryRoot: root, Branch: branch, Upstream: upstream, Remote: remote, Current: current, Target: target, Dirty: len(dirtyEntries) != 0, DirtyEntries: dirtyEntries, Relation: relation}, nil
+}
+
+func parseGitDirtyEntries(status string) []gitDirtyEntry {
+	lines := strings.Split(strings.TrimSpace(status), "
+")
+	entries := make([]gitDirtyEntry, 0, len(lines))
+	for _, line := range lines {
+		if len(line) < 3 {
+			continue
+		}
+		code := line[:2]
+		path := strings.TrimSpace(line[3:])
+		if path == "" {
+			continue
+		}
+		baseHarborLocal := path == ".baseharbor" || strings.HasPrefix(path, ".baseharbor/")
+		entries = append(entries, gitDirtyEntry{Status: describeGitDirtyStatus(code), Path: path, BaseHarborLocal: baseHarborLocal})
+	}
+	return entries
+}
+
+func describeGitDirtyStatus(code string) string {
+	switch code {
+	case "??":
+		return "untracked"
+	case "!!":
+		return "ignored"
+	}
+	var parts []string
+	if len(code) > 0 {
+		switch code[0] {
+		case 'M':
+			parts = append(parts, "staged modified")
+		case 'A':
+			parts = append(parts, "staged added")
+		case 'D':
+			parts = append(parts, "staged deleted")
+		case 'R':
+			parts = append(parts, "staged renamed")
+		case 'C':
+			parts = append(parts, "staged copied")
+		}
+	}
+	if len(code) > 1 {
+		switch code[1] {
+		case 'M':
+			parts = append(parts, "modified")
+		case 'D':
+			parts = append(parts, "deleted")
+		case 'A':
+			parts = append(parts, "added")
+		case 'R':
+			parts = append(parts, "renamed")
+		case 'C':
+			parts = append(parts, "copied")
+		}
+	}
+	if len(parts) == 0 {
+		return "changed (" + code + ")"
+	}
+	return strings.Join(parts, ", ")
 }
 
 func fastForwardGitApplicationUpdate(ctx context.Context, state gitUpdateState) error {
@@ -311,7 +380,17 @@ func formatGitApplicationUpdateCheck(out io.Writer, name, environment string, st
 	fmt.Fprintf(out, "Current revision: %s\n", state.Current)
 	fmt.Fprintf(out, "Target revision: %s\n", state.Target)
 	if state.Dirty {
-		fmt.Fprintln(out, "Working tree: DIRTY - automatic update blocked; commit or otherwise resolve local changes yourself")
+		fmt.Fprintln(out, "Working tree: DIRTY - automatic update blocked")
+		fmt.Fprintln(out, "Blocking changes:")
+		for _, entry := range state.DirtyEntries {
+			detail := entry.Status
+			if entry.BaseHarborLocal {
+				detail += " · BaseHarbor local state"
+			}
+			fmt.Fprintf(out, "  %-20s %s
+", detail, entry.Path)
+		}
+		fmt.Fprintln(out, "Resolve or commit these changes yourself; BaseHarbor will not reset, stash, discard or overwrite them.")
 	} else {
 		fmt.Fprintln(out, "Working tree: CLEAN")
 	}
