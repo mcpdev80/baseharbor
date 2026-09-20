@@ -26,6 +26,14 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 		Usage:   "baha app doctor [NAME] [--fix]",
 		Long:    "Runs the existing application doctor, including required-secret presence/usability checks, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			if requestsJSONOutput(args) {
+				for _, arg := range args {
+					if arg == "--fix" {
+						return usageError("--fix cannot be combined with structured output", "Run doctor in human mode for guarded repair, or remove --fix for read-only JSON.")
+					}
+				}
+				return appDoctorCommand(store).Run(ctx, args, out, errOut)
+			}
 			nameArgs, fix, err := parseAppDoctorRepairArgs(args)
 			if err != nil {
 				return err
