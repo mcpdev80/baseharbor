@@ -30,12 +30,33 @@ type OptionalLifecycleSupport struct {
 	Destroy bool `json:"destroy"`
 }
 
+type ObservabilitySignalKind string
+
+const (
+	ObservabilityMetrics ObservabilitySignalKind = "metrics"
+	ObservabilityLogs    ObservabilitySignalKind = "logs"
+	ObservabilityTraces  ObservabilitySignalKind = "traces"
+)
+
+type ProviderObservabilitySignal struct {
+	Name     string                  `json:"name"`
+	Kind     ObservabilitySignalKind `json:"kind"`
+	Protocol string                  `json:"protocol"`
+	Port     int                     `json:"port,omitempty"`
+	Path     string                  `json:"path,omitempty"`
+}
+
+type ProviderObservability struct {
+	Signals []ProviderObservabilitySignal `json:"signals,omitempty"`
+}
+
 type IntegrationDescriptor struct {
 	Protocol        string                   `json:"protocol"`
 	Provider        Provider                 `json:"provider"`
 	Capabilities    []SpecificationID        `json:"capabilities"`
 	SupportedScopes []ProviderScope          `json:"supported_scopes"`
 	Optional        OptionalLifecycleSupport `json:"optional_lifecycle"`
+	Observability   ProviderObservability    `json:"observability,omitempty"`
 }
 
 func (d IntegrationDescriptor) Validate() error {
@@ -85,6 +106,33 @@ func (d IntegrationDescriptor) Validate() error {
 	for _, kind := range d.Provider.Capabilities {
 		if _, exists := declared[kind]; !exists {
 			return fmt.Errorf("provider %q capability %q has no versioned capability specification", d.Provider.Kind, kind)
+		}
+	}
+	seenSignals := map[string]struct{}{}
+	for _, signal := range d.Observability.Signals {
+		signal.Name = strings.TrimSpace(signal.Name)
+		signal.Protocol = strings.TrimSpace(strings.ToLower(signal.Protocol))
+		if signal.Name == "" {
+			return fmt.Errorf("provider %q observability signal name is required", d.Provider.Kind)
+		}
+		if _, exists := seenSignals[signal.Name]; exists {
+			return fmt.Errorf("provider %q observability signal %q is declared more than once", d.Provider.Kind, signal.Name)
+		}
+		seenSignals[signal.Name] = struct{}{}
+		switch signal.Kind {
+		case ObservabilityMetrics:
+			if signal.Protocol != "openmetrics" {
+				return fmt.Errorf("provider %q metrics signal %q must use openmetrics", d.Provider.Kind, signal.Name)
+			}
+			if signal.Port < 1 || signal.Port > 65535 || !strings.HasPrefix(signal.Path, "/") {
+				return fmt.Errorf("provider %q metrics signal %q requires port and absolute path", d.Provider.Kind, signal.Name)
+			}
+		case ObservabilityLogs, ObservabilityTraces:
+			if signal.Protocol == "" {
+				return fmt.Errorf("provider %q observability signal %q requires protocol", d.Provider.Kind, signal.Name)
+			}
+		default:
+			return fmt.Errorf("provider %q observability signal %q has unsupported kind %q", d.Provider.Kind, signal.Name, signal.Kind)
 		}
 	}
 	return nil
