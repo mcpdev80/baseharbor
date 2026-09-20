@@ -956,6 +956,64 @@ func prometheusTargetDiagnostic(ctx context.Context, client *http.Client, endpoi
 	return "Prometheus has no active target matching the application metrics binding"
 }
 
+func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
+	placement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
+	if err != nil {
+		return err
+	}
+	sources, err := observability.ListMetrics(
+		placement,
+		m.Name,
+		policy.Collect[application.MetricsSourceApplicationProvider],
+		policy.Collect[application.MetricsSourcePlatformProvider],
+	)
+	if err != nil || len(sources) == 0 {
+		return err
+	}
+	files, err := ExistingProviderFiles(m)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	for _, source := range sources {
+		query := fmt.Sprintf(
+			`up{job="baseharbor-providers",baseharbor_provider=%q,baseharbor_source=%q}`,
+			string(source.Provider), source.ID,
+		)
+		ticker := time.NewTicker(time.Second)
+		var last error
+		for {
+			ok, err := queryUp(deadline, client, endpoint, query)
+			if err == nil && ok {
+				ticker.Stop()
+				break
+			}
+			if err != nil {
+				last = err
+			} else {
+				last = errors.New("provider target has not produced an up=1 sample yet")
+			}
+			select {
+			case <-deadline.Done():
+				ticker.Stop()
+				return fmt.Errorf("verify provider metrics %s: %w", source.ID, last)
+			case <-ticker.C:
+			}
+		}
+	}
+	return nil
+}
+
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {
 	values := url.Values{"query": []string{query}}
 	target := strings.TrimRight(endpoint, "/") + "/api/v1/query?" + values.Encode()
