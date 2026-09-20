@@ -190,3 +190,31 @@ func TestTerminalActivityRendersLiveDetailInPlainMode(t *testing.T) {
 		}
 	}
 }
+
+
+func TestActivityReturnsPromptlyWhenContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+
+	started := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- term.Activity(ctx, "Long operation", func(io.Writer) error {
+			close(started)
+			select {}
+		})
+	}()
+
+	<-started
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Activity error = %v, want context.Canceled", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Activity did not return promptly after context cancellation")
+	}
+}

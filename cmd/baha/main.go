@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
@@ -21,7 +23,7 @@ var (
 
 func main() {
 	signal.Ignore(syscall.SIGPIPE)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := interruptibleProcessContext()
 	defer stop()
 
 	if os.Getenv("BASEHARBOR_RUNTIME_IMAGE") == "" {
@@ -32,8 +34,56 @@ func main() {
 	if err == nil {
 		return
 	}
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, "Interrupted.")
+		os.Exit(130)
+	}
 	formatCLIError(os.Stderr, err)
 	os.Exit(cli.ExitCode(err))
+}
+
+func interruptibleProcessContext() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 2)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		seen := false
+		for sig := range signals {
+			exitCode := 130
+			if sig == syscall.SIGTERM {
+				exitCode = 143
+			}
+			if !seen {
+				seen = true
+				cancel()
+				go func(code int) {
+					timer := time.NewTimer(2 * time.Second)
+					defer timer.Stop()
+					select {
+					case <-done:
+						return
+					case <-timer.C:
+						os.Exit(code)
+					}
+				}(exitCode)
+				continue
+			}
+			signal.Stop(signals)
+			os.Exit(exitCode)
+		}
+	}()
+
+	stop := func() {
+		stopOnce.Do(func() {
+			signal.Stop(signals)
+			cancel()
+			close(done)
+		})
+	}
+	return ctx, stop
 }
 
 func defaultRuntimeImage(buildVersion string) string {

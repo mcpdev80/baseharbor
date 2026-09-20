@@ -334,7 +334,10 @@ func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte
 	}
 	original := *termios
 	hidden := *termios
-	hidden.Lflag &^= unix.ECHO
+	hidden.Lflag &^= unix.ECHO | unix.ICANON | unix.ISIG
+	hidden.Iflag &^= unix.ICRNL | unix.IXON
+	hidden.Cc[unix.VMIN] = 1
+	hidden.Cc[unix.VTIME] = 0
 	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &hidden); err != nil {
 		return nil, fmt.Errorf("disable terminal echo for secure password entry: %w", err)
 	}
@@ -342,18 +345,42 @@ func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte
 
 	fmt.Fprint(out, prompt)
 	reader := bufio.NewReader(file)
-	line, readErr := reader.ReadBytes('\n')
-	fmt.Fprintln(out)
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		zeroBytes(line)
-		return nil, readErr
+	line := make([]byte, 0, 64)
+	for {
+		b, readErr := reader.ReadByte()
+		if readErr != nil {
+			fmt.Fprintln(out)
+			zeroBytes(line)
+			if errors.Is(readErr, io.EOF) {
+				return nil, io.EOF
+			}
+			return nil, readErr
+		}
+		switch b {
+		case 3:
+			fmt.Fprintln(out)
+			zeroBytes(line)
+			return nil, context.Canceled
+		case '\r', '\n':
+			fmt.Fprintln(out)
+			if len(line) > maxBackupPasswordFileBytes {
+				zeroBytes(line)
+				return nil, errors.New("backup password is too large")
+			}
+			return line, nil
+		case 8, 127:
+			if len(line) > 0 {
+				line = line[:len(line)-1]
+			}
+		default:
+			line = append(line, b)
+			if len(line) > maxBackupPasswordFileBytes {
+				fmt.Fprintln(out)
+				zeroBytes(line)
+				return nil, errors.New("backup password is too large")
+			}
+		}
 	}
-	line = bytes.TrimRight(line, "\r\n")
-	if len(line) > maxBackupPasswordFileBytes {
-		zeroBytes(line)
-		return nil, errors.New("backup password is too large")
-	}
-	return line, nil
 }
 
 func withInMemoryPasswordFile(password []byte, fn func(string) error) error {

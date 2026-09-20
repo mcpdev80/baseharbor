@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 		return promptShellPathLine(reader, out, label)
 	}
 	raw := *oldState
-	raw.Lflag &^= unix.ICANON | unix.ECHO
+	raw.Lflag &^= unix.ICANON | unix.ECHO | unix.ISIG
 	raw.Iflag &^= unix.ICRNL | unix.IXON
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
@@ -68,7 +69,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 			return strings.TrimSpace(string(value)), nil
 		case 3: // Ctrl-C
 			_, _ = fmt.Fprintln(out)
-			return "", errors.New("interrupted")
+			return "", context.Canceled
 		case 4: // Ctrl-D
 			if len(value) == 0 {
 				_, _ = fmt.Fprintln(out)
