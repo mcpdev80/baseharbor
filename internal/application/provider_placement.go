@@ -34,7 +34,7 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			Scope:     capability.ScopeApplication,
 			Ownership: capability.OwnershipBaseHarbor,
 		}, nil
-	case capability.ProviderOpenBao, capability.ProviderSeaweedFS, capability.ProviderOTelCollector, capability.ProviderPrometheus:
+	case capability.ProviderOpenBao, capability.ProviderSeaweedFS, capability.ProviderOTelCollector, capability.ProviderPrometheus, capability.ProviderLoki:
 		return capability.ProviderPlacement{
 			Scope:     capability.ScopeShared,
 			Ownership: capability.OwnershipBaseHarbor,
@@ -76,8 +76,8 @@ func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (cap
 	if raw := strings.TrimSpace(os.Getenv(ProviderSharingBoundaryEnv(provider))); raw != "" {
 		placement.SharingBoundary = raw
 	}
-	if placement.SharingBoundary != "" && provider != capability.ProviderPrometheus {
-		return capability.ProviderPlacement{}, fmt.Errorf("%s is not supported by the current %s adapter; named shared boundaries are implemented for Prometheus only", ProviderSharingBoundaryEnv(provider), provider)
+	if placement.SharingBoundary != "" && provider != capability.ProviderPrometheus && provider != capability.ProviderLoki {
+		return capability.ProviderPlacement{}, fmt.Errorf("%s is not supported by the current %s adapter; named shared boundaries are implemented for Prometheus and Loki only", ProviderSharingBoundaryEnv(provider), provider)
 	}
 	if raw := strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(provider))); raw != "" {
 		placement.ExternalReference = raw
