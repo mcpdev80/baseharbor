@@ -71,7 +71,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		if err := runRepositoryRuntimeInitResolved(resolved, filepath.Dir(manifestPath), opts, out); err != nil {
+		if err := runRepositoryRuntimeInitResolved(ctx, resolved, filepath.Dir(manifestPath), opts, out); err != nil {
 			return err
 		}
 		if agents {
@@ -160,7 +160,7 @@ func repositoryDeploymentInputDefinitions(needsTLS bool) []applicationinput.Defi
 	return definitions
 }
 
-func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
+func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
 	current, err := loadRepositoryInitState(repoRoot)
 	if err != nil {
 		return err
@@ -169,7 +169,7 @@ func runRepositoryRuntimeInitResolved(resolved resolvedApplication, repoRoot str
 	if err != nil {
 		return err
 	}
-	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes
+	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
 	supplied := map[string]string{
 		inputHostname: firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname),
 		inputTLSMode:  firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode),
