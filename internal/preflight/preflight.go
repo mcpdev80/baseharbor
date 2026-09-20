@@ -12,9 +12,9 @@ type Check struct {
 }
 
 type Result struct {
-	Name   string
-	OK     bool
-	Detail string
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
 }
 
 func Run(ctx context.Context, checks []Check) ([]Result, bool) {
