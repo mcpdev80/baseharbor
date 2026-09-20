@@ -89,3 +89,47 @@ func TestExecWithTokenInputKeepsTokenAndSecretOutOfArguments(t *testing.T) {
 		t.Fatal("sensitive stdin payload was changed before reaching the runtime boundary")
 	}
 }
+
+
+type batchSecretExecutor struct {
+	calls int
+	args  []string
+	input []byte
+}
+
+func (f *batchSecretExecutor) ExecProject(context.Context, string, string, string, string, ...string) (string, error) {
+	return "", nil
+}
+
+func (f *batchSecretExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, _ string, args ...string) (string, error) {
+	f.calls++
+	f.args = append([]string(nil), args...)
+	f.input = append([]byte(nil), input...)
+	return "{"data":{"data":{"value":"alpha-value"}}}\x1e{"data":{"data":{"value":"beta-value"}}}\x1e", nil
+}
+
+func TestReadApplicationSecretValuesUsesSingleExec(t *testing.T) {
+	executor := &batchSecretExecutor{}
+	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	identity := ApplicationIdentity{Name: "mailflow", Environment: "dev"}
+
+	values, err := readApplicationSecretValues(context.Background(), executor, files, "application-token", identity, []string{"ALPHA", "BETA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("exec calls = %d, want 1", executor.calls)
+	}
+	if string(values["ALPHA"]) != "alpha-value" || string(values["BETA"]) != "beta-value" {
+		t.Fatalf("unexpected batch values: %#v", values)
+	}
+	joined := strings.Join(executor.args, " ")
+	for _, sensitive := range []string{"application-token", "alpha-value", "beta-value"} {
+		if strings.Contains(joined, sensitive) {
+			t.Fatalf("sensitive value %q leaked into command arguments %q", sensitive, joined)
+		}
+	}
+	if !bytes.HasPrefix(executor.input, []byte("application-token\n")) {
+		t.Fatal("application token was not delivered through stdin")
+	}
+}

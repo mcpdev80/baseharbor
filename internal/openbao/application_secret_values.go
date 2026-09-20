@@ -144,6 +144,41 @@ func readApplicationSecretValue(ctx context.Context, executor Executor, files bh
 	if err != nil {
 		return nil, err
 	}
+	return decodeApplicationSecretValue(out)
+}
+
+func readApplicationSecretValues(ctx context.Context, executor Executor, files bhruntime.Files, token string, identity ApplicationIdentity, keys []string) (map[string][]byte, error) {
+	values := make(map[string][]byte, len(keys))
+	if len(keys) == 0 {
+		return values, nil
+	}
+	var script strings.Builder
+	for _, key := range keys {
+		if err := validateApplicationSecretKey(key); err != nil {
+			return nil, err
+		}
+		path := applicationSecretKeyPath(identity, key)
+		fmt.Fprintf(&script, "bao kv get -format=json -mount=baseharbor %s\nprintf '\\036'\n", path)
+	}
+	out, err := execWithToken(ctx, executor, files, token, script.String())
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(out, "\x1e")
+	if len(parts) < len(keys) {
+		return nil, errors.New("application secret batch read returned an incomplete response")
+	}
+	for i, key := range keys {
+		value, err := decodeApplicationSecretValue(parts[i])
+		if err != nil {
+			return nil, err
+		}
+		values[key] = value
+	}
+	return values, nil
+}
+
+func decodeApplicationSecretValue(out string) ([]byte, error) {
 	var reply struct {
 		Data struct {
 			Data struct {
@@ -151,7 +186,7 @@ func readApplicationSecretValue(ctx context.Context, executor Executor, files bh
 			} `json:"data"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(out), &reply); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &reply); err != nil {
 		return nil, errors.New("application secret read returned an invalid response")
 	}
 	return []byte(reply.Data.Data.Value), nil

@@ -257,13 +257,18 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 		return environment, nil
 	}
 	service := applicationsecret.New(resolved.Store)
+	requiredNames := application.RequiredSecretNames(resolved.Manifest)
+	values, err := service.GetMany(ctx, resolved.Manifest.Name, requiredNames)
+	if err != nil {
+		return nil, fmt.Errorf("resolve required workload secrets: %w", err)
+	}
 	for _, requirement := range resolved.Manifest.Secrets.Required {
 		if !validWorkloadEnvironmentName(requirement.Name) {
 			return nil, fmt.Errorf("required secret %q cannot be projected as a workload environment variable; use an environment-compatible secret name", requirement.Name)
 		}
-		value, err := service.Get(ctx, resolved.Manifest.Name, requirement.Name)
-		if err != nil {
-			return nil, fmt.Errorf("resolve required workload secret %s: %w", requirement.Name, err)
+		value, ok := values[requirement.Name]
+		if !ok {
+			return nil, fmt.Errorf("resolve required workload secret %s: missing from batch result", requirement.Name)
 		}
 		if application.RequiredSecretUsesFileBinding(requirement.Name) {
 			path := application.SecretFileHostPath(files, requirement.Name)
