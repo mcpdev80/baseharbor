@@ -243,4 +243,3 @@ func waitForSourceProbe(t *testing.T, ctx context.Context, compose bhruntime.Com
 	}
 	t.Fatalf("source could not reach directed target %s:%d: %v", host, port, last)
 }
-

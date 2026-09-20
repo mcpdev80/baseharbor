@@ -160,7 +160,6 @@ func materializeRuntimeMTLSTestFiles(t *testing.T, files RuntimeFiles) {
 	}
 }
 
-
 func TestRuntimeIdentityWorkloadOverrideUsesServiceScopedTokenForExplicitPermission(t *testing.T) {
 	m := New("demo", "dev", false, false, true)
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
