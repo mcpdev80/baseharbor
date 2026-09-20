@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- `baha app destroy` now recovers safely from incomplete generated runtime state instead of refusing managed-secret applications. It derives canonical runtime paths, verifies exact Compose ownership, removes only ownership-verified expected runtime resources when generated Compose files are missing, and verifies OpenBao policy/AppRole ownership directly without depending on the application credential file.
+- Repository workload/log-registration cleanup and full-reset state removal remain available during partial-runtime recovery; ambiguous resource ownership still fails closed.
+
 - Ctrl-C handling is now reliable across long-running lifecycle operations and raw terminal prompts: the first interrupt cancels work immediately, a second interrupt exits immediately, and a single interrupt is force-bounded to two seconds if a child/cleanup path ignores cancellation.
 - Linux path completion and hidden backup-password prompts now handle Ctrl-C locally while restoring terminal settings, and user cancellation exits with code 130 instead of being presented as a normal runtime failure.
 - Best-effort workload cleanup after cancellation is capped at two seconds instead of waiting up to thirty seconds.

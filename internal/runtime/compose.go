@@ -218,6 +218,59 @@ func (c Compose) InspectProjectResource(ctx context.Context, project string, res
 	return true, nil
 }
 
+func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
+	if c.command == "" {
+		return ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return errors.New("project is required")
+	}
+	var existing []ProjectResource
+	for _, resource := range resources {
+		found, err := c.InspectProjectResource(ctx, project, resource)
+		if err != nil {
+			return err
+		}
+		if found {
+			existing = append(existing, resource)
+		}
+	}
+	removeKind := func(kind string) error {
+		for _, resource := range existing {
+			if resource.Kind != kind {
+				continue
+			}
+			var args []string
+			switch resource.Kind {
+			case "container":
+				args = []string{"container", "rm", "-f", resource.Name}
+			case "network":
+				args = []string{"network", "rm", resource.Name}
+			case "volume":
+				args = []string{"volume", "rm", resource.Name}
+			default:
+				return fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
+			}
+			if _, err := c.directOutput(ctx, args...); err != nil {
+				return fmt.Errorf("remove owned %s %s: %w", resource.Kind, resource.Name, err)
+			}
+		}
+		return nil
+	}
+	if err := removeKind("container"); err != nil {
+		return err
+	}
+	if err := removeKind("network"); err != nil {
+		return err
+	}
+	if err := removeKind("volume"); err != nil {
+		return err
+	}
+	return nil
+}
+
+
 func resourceCommands(resource ProjectResource) ([]string, []string, error) {
 	switch resource.Kind {
 	case "container":
