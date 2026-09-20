@@ -45,6 +45,23 @@ BaseHarbor inspects existing applications, turns infrastructure requirements int
 
 Compose is the complete runtime implementation today. Kubernetes and OpenShift are future runtime providers that must preserve the same application contract.
 
+## Five-minute adoption path
+
+For an existing repository, the normal v0.4.11 developer path is:
+
+```bash
+baha app inspect .
+baha app init
+baha plan
+baha up -e dev
+baha status
+baha doctor
+```
+
+Use `-o json` on inspect/plan/status/doctor for secret-safe structured read-only results. `baha app init --agents` can add or update only BaseHarbor's bounded section in `AGENTS.md`.
+
+See [Five-minute onboarding](docs/five-minute-onboarding.md).
+
 ## 30-second demo
 
 Start with an existing application:

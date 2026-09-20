@@ -87,16 +87,23 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "plan",
 			Summary: "Show desired resources without changing anything",
-			Usage:   "baha app plan [NAME]",
+			Usage:   "baha app plan [NAME] [-o json|--output json]",
 			Long:    "Builds a deterministic desired-state plan, including required secret readiness gates. Without NAME it resolves the nearest baseharbor.yaml from the current repository.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "plan")
+				filtered, format, err := parseReadOutputArgs(args, "app plan")
+				if err != nil {
+					return err
+				}
+				resolved, err := resolveApplication(store, filtered, "plan")
 				if err != nil {
 					return err
 				}
 				plan, err := application.BuildPlan(resolved.Manifest)
 				if err != nil {
 					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, plan)
 				}
 				fmt.Fprintf(out, "Plan for %s (%s)\n", plan.Application, plan.Environment)
 				for i, action := range plan.Actions {
@@ -200,7 +207,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -248,7 +255,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
@@ -350,7 +357,7 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 		case strings.HasPrefix(arg, "--require-secret="):
 			required = append(required, strings.TrimPrefix(arg, "--require-secret="))
 			secrets = true
-		case arg == "--environment":
+		case arg == "--environment" || arg == "-e":
 			if i+1 >= len(args) {
 				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
 			}

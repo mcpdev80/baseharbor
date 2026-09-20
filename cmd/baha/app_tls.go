@@ -172,6 +172,9 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 	baseRun := cmd.Run
 	cmd.Long += " Repository deployment TLS mode, certificate expiry and available existing-certificate updates are reported when runtime initialization state is present."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		if requestsJSONOutput(args) {
+			return baseRun(ctx, args, out, errOut)
+		}
 		var base bytes.Buffer
 		baseErr := baseRun(ctx, args, &base, errOut)
 		_, _ = io.Copy(out, &base)
@@ -198,6 +201,9 @@ func appDoctorRepairCommandWithTLS(store application.Store) *cli.Command {
 	baseRun := cmd.Run
 	cmd.Long += " Repository TLS state is also checked for certificate/key validity, FQDN coverage, remaining validity and an available newer certificate in the configured source directory."
 	cmd.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		if requestsJSONOutput(args) {
+			return baseRun(ctx, args, out, errOut)
+		}
 		var base bytes.Buffer
 		baseErr := baseRun(ctx, args, &base, errOut)
 		_, _ = io.Copy(out, &base)

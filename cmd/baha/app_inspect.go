@@ -14,18 +14,18 @@ func appInspectCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "inspect",
 		Summary: "Inspect a repository without changing it",
-		Usage:   "baha app inspect [PATH] [--json]",
-		Long:    "Analyzes repository evidence read-only and reports deterministic capability findings as detected, suggested or possible. --json emits the shared machine-readable result used by future API/Web UI/Operator adapters.",
+		Usage:   "baha app inspect [PATH] [-o json|--output json|--json]",
+		Long:    "Analyzes a local repository/path or remote Git URL read-only and reports deterministic capability findings as detected, suggested or possible. -o json, --output json and the compatibility alias --json emit the shared machine-readable result used by future API/Web UI/Operator adapters.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			root, jsonOutput, err := parseAppInspectArgs(args)
+			root, format, err := parseAppInspectArgs(args)
 			if err != nil {
 				return err
 			}
-			result, err := repositoryinspect.Inspect(ctx, root)
+			result, err := inspectRepositorySource(ctx, root)
 			if err != nil {
 				return err
 			}
-			if jsonOutput {
+			if format == outputJSON {
 				data, err := repositoryinspect.MarshalJSONResult(result)
 				if err != nil {
 					return err
@@ -39,27 +39,23 @@ func appInspectCommand() *cli.Command {
 	}
 }
 
-func parseAppInspectArgs(args []string) (string, bool, error) {
-	root := "."
-	jsonOutput := false
-	pathSet := false
-	for _, arg := range args {
-		switch {
-		case arg == "--json":
-			jsonOutput = true
-		case strings.HasPrefix(arg, "-"):
-			return "", false, usageError("unknown option "+arg, "Run 'baha app inspect --help' for usage.")
-		default:
-			if pathSet {
-				return "", false, usageError("baha app inspect accepts at most one PATH", "Example: baha app inspect . --json")
-			}
-			root = arg
-			pathSet = true
-		}
+func parseAppInspectArgs(args []string) (string, cliOutputFormat, error) {
+	filtered, format, err := parseReadOutputArgs(args, "app inspect")
+	if err != nil {
+		return "", "", err
 	}
-	return root, jsonOutput, nil
+	root := "."
+	if len(filtered) > 1 {
+		return "", "", usageError("baha app inspect accepts at most one PATH", "Example: baha app inspect . -o json")
+	}
+	if len(filtered) == 1 {
+		if strings.HasPrefix(filtered[0], "-") {
+			return "", "", usageError("unknown option "+filtered[0], "Run 'baha app inspect --help' for usage.")
+		}
+		root = filtered[0]
+	}
+	return root, format, nil
 }
-
 func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 	fmt.Fprintf(out, "Repository inspection: %s\n", result.Root)
 	fmt.Fprintf(out, "Application: %s\n", result.Application)

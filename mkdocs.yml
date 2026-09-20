@@ -51,7 +51,8 @@ extra:
 
 nav:
   - Home: index.md
-  - Getting Started: repository-application-workflow.md
+  - Getting Started: five-minute-onboarding.md
+  - Repository Workflow: repository-application-workflow.md
   - Application Contract: application-contract.md
   - CLI: cli.md
   - Input Resolution: input-resolution.md

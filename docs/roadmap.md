@@ -166,6 +166,22 @@ Implemented in v0.4.9:
 - Provider Integration Contract v1 now has executable lifecycle conformance plus a deterministic fake provider and fault injection;
 - Kubernetes/OpenShift remain later runtime tracks.
 
+## v0.4.11 developer experience and repository adoption
+
+v0.4.11 makes the existing provider-neutral runtime foundation easier to adopt without moving the agent-native machine interface forward from v0.4.12.
+
+Implemented:
+
+- local and remote Git repository inspection using the shared deterministic evidence engine;
+- `baha up -e/--environment` deployment-context selection without rewriting portable intent;
+- repository-aware `baha plan`, `baha status` and `baha doctor` shortcuts;
+- shared secret-safe structured output for inspect/plan/status/doctor;
+- optional bounded/idempotent `AGENTS.md` guidance;
+- first-class local Compose Playground documentation;
+- five-minute onboarding.
+
+The structured result work is deliberately a foundation only. Versioned agent contracts, semantic agent commands and MCP remain v0.4.12 work.
+
 ## Next architecture tracks
 
 ### v0.5 – Compose platform capabilities

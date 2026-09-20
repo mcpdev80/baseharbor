@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -16,7 +18,7 @@ func rootCommand() *cli.Command {
 		switch child.Name {
 		case "init":
 			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]..."
+			initCmd.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]..."
 			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
 			appCmd.Children[i] = initCmd
 		case "show":
@@ -47,6 +49,14 @@ func rootCommand() *cli.Command {
 	)
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 
+	var appPlan *cli.Command
+	for _, child := range appCmd.Children {
+		if child.Name == "plan" {
+			appPlan = child
+			break
+		}
+	}
+
 	root := &cli.Command{
 		Name:    "baha",
 		Summary: "BaseHarbor command-line interface",
@@ -64,8 +74,8 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Start BaseHarbor and, inside an application repository, converge the application",
-			Usage:   "baha up [--yes] [--control-plane-only] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
-			Long:    "Starts or reuses the local BaseHarbor control plane. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup requires an operator-selected recovery-file path outside .baseharbor; interactive terminals ask for it, while non-interactive use supplies --recovery-file PATH. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
+			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--control-plane-only] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Long:    "Starts or reuses the local BaseHarbor control plane. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup requires an operator-selected recovery-file path outside .baseharbor; interactive terminals ask for it, while non-interactive use supplies --recovery-file PATH. The repository manifest remains unchanged when -e/--environment selects a deployment context; the override is applied only to resolved runtime state. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},
 		{
@@ -84,17 +94,45 @@ func rootCommand() *cli.Command {
 			},
 		},
 		{
+			Name:    "plan",
+			Summary: "Show the application plan in the current repository",
+			Usage:   "baha plan [NAME] [-o json|--output json]",
+			Long:    "Repository-aware shorthand for 'baha app plan'. It is read-only and uses the same application planning core.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if appPlan == nil {
+					return errors.New("application plan command is unavailable")
+				}
+				return appPlan.Run(ctx, args, out, errOut)
+			},
+		},
+		{
 			Name:    "status",
-			Summary: "Show control-plane container and readiness status",
-			Usage:   "baha status",
-			Run:     noArgsCtx("baha status", runtimeStatus),
+			Summary: "Show application status in a repository, otherwise control-plane status",
+			Usage:   "baha status [-o json|--output json]",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appStatusCommandWithTLS(store).Run(ctx, args, out, errOut)
+				}
+				if len(args) != 0 {
+					return usageError("structured application status requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app status NAME -o json'.")
+				}
+				return runtimeStatus(ctx, out)
+			},
 		},
 		{
 			Name:    "doctor",
-			Summary: "Verify prerequisites and safely repair supported runtime findings",
-			Usage:   "baha doctor [--fix]",
-			Long:    "Classifies failed checks as auto-fixable, fixable with confirmation, requiring developer input, or requiring manual/admin action. --fix only applies safe reversible repairs to existing runtime state and never invents credentials, unseals OpenBao without recovery material, discards data, or silently overwrites application files.",
-			Run:     doctorCommand,
+			Summary: "Diagnose the current application repository, otherwise the control plane",
+			Usage:   "baha doctor [--fix] [-o json|--output json]",
+			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appDoctorRepairCommandWithTLS(store).Run(ctx, args, out, errOut)
+				}
+				if requestsJSONOutput(args) {
+					return usageError("structured application doctor requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app doctor NAME -o json'.")
+				}
+				return doctorCommand(ctx, args, out, errOut)
+			},
 		},
 		serveCommand(store),
 		appCmd,
@@ -144,4 +182,13 @@ func noArgsCtx(name string, fn noArgsCtxHandler) cli.RunFunc {
 		}
 		return fn(ctx, out)
 	}
+}
+
+func inApplicationRepository() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	_, err = application.FindRepositoryManifest(cwd)
+	return err == nil
 }

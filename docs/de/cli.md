@@ -6,7 +6,7 @@
 
 ```text
 baha
-├── up / down / status / doctor
+├── up / down / plan / status / doctor
 ├── serve
 ├── connect SOURCE TARGET
 ├── disconnect SOURCE TARGET
@@ -38,11 +38,38 @@ baha update --help
 baha openbao --help
 ```
 
+## Repository-Shortcuts und strukturierte Ausgabe
+
+In einem Repository mit `baseharbor.yaml` verwenden die kurzen Befehle denselben Application-Core:
+
+```bash
+baha plan
+baha status
+baha doctor
+```
+
+Strukturierte read-only Ausgabe:
+
+```bash
+baha app inspect . -o json
+baha plan -o json
+baha status -o json
+baha doctor -o json
+```
+
+`--output json` ist gleichwertig. JSON enthaelt keine Secret-Werte. `doctor --fix` bleibt bewusst Human-only.
+
+`baha up -e dev` bzw. `baha up --environment dev` waehlt den Deployment-Kontext, ohne `baseharbor.yaml` umzuschreiben.
+
+Remote Inspection akzeptiert normale HTTPS-/SSH-Git-URLs und verwendet die vorhandene Git-Authentifizierung. Eingebettete Credentials in URLs werden abgelehnt.
+
+Mit `baha app init --agents` kann BaseHarbor nur seine klar markierte Sektion in `AGENTS.md` idempotent pflegen; andere Anweisungen bleiben unangetastet.
+
 ## Read-only Repository Inspection und Reconciliation
 
 ```bash
 baha app inspect .
-baha app inspect . --json
+baha app inspect . -o json
 ```
 
 `app inspect` bleibt strikt read-only. Bei vorhandenem `baseharbor.yaml` vergleicht der gemeinsame Inspection-Core Repository-Evidenz mit dem deklarierten Contract und unterscheidet `satisfied`, `new`, `ambiguous` und `stale`.

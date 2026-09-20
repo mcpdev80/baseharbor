@@ -143,6 +143,22 @@ In v0.4.9 umgesetzt:
 - Provider Integration Contract v1 besitzt ausfuehrbare Lifecycle-Conformance, Fake Provider und Fault Injection;
 - Kubernetes/OpenShift bleiben spaetere Runtime-Tracks.
 
+## v0.4.11 Developer Experience und Repository Adoption
+
+v0.4.11 macht die vorhandene providerneutrale Runtime fuer bestehende Repositories leichter nutzbar, ohne die fuer v0.4.12 geplante Agent-/MCP-Schicht vorwegzunehmen.
+
+Umgesetzt:
+
+- lokale und Remote-Git-Inspection ueber denselben deterministischen Evidence-Core;
+- `baha up -e/--environment` als Deployment-Kontext ohne Umschreiben des portablen Intents;
+- repository-aware `baha plan`, `baha status` und `baha doctor`;
+- secret-safe strukturierte Ausgabe fuer inspect/plan/status/doctor;
+- optionale begrenzte/idempotente `AGENTS.md`-Integration;
+- lokale Compose-Runtime als first-class BaseHarbor Playground;
+- Five-Minute-Onboarding.
+
+Versionierte Agent Contracts und MCP bleiben bewusst v0.4.12.
+
 ## Geplante Phasen
 
 ### v0.5 - Capability Provider
