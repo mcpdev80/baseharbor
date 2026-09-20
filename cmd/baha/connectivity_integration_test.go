@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -245,11 +244,3 @@ func waitForSourceProbe(t *testing.T, ctx context.Context, compose bhruntime.Com
 	t.Fatalf("source could not reach directed target %s:%d: %v", host, port, last)
 }
 
-func containsString(values []string, wanted string) bool {
-	for _, value := range values {
-		if strings.TrimSpace(value) == wanted {
-			return true
-		}
-	}
-	return false
-}
