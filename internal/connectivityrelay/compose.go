@@ -180,6 +180,7 @@ func composeYAML(spec RuntimeSpec, image string) string {
 	b.WriteString("  relay:\n")
 	fmt.Fprintf(&b, "    image: %s\n", strconv.Quote(image))
 	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    command: [\"serve\"]\n")
 	b.WriteString("    environment:\n")
 	b.WriteString("      BASEHARBOR_CONNECTIVITY_RELAY_MODE: \"true\"\n")

@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Repository workloads that request privileged mode, host network/PID/IPC, runtime sockets, dangerous capabilities or critical host mounts fail closed in managed environments before workload mutation.
 - Development-only exceptions require explicit acknowledgement; host devices are warnings by default in development and denies in managed environments.
-- Loki and Alloy run read-only, drop all Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
+- Loki and Alloy run read-only, drop Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
 - Log registration state and provider files are owner-only and contain no credentials.
 
 

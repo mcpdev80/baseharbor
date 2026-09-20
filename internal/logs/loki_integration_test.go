@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
@@ -52,13 +53,20 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 		if placementErr == nil && filesErr == nil {
 			diagCtx, cancelDiag := context.WithTimeout(context.Background(), 10*time.Second)
 			status, statusErr := compose.StatusProject(diagCtx, placement.Project, files.Compose, files.Env)
-			providerLogs, logsErr := compose.LogsProject(diagCtx, placement.Project, files.Compose, files.Env, "provider-volume-init", "loki", "alloy")
+			providerLogs, logsErr := compose.LogsProject(diagCtx, placement.Project, files.Compose, files.Env, "loki", "alloy")
 			cancelDiag()
 			diagnostics = fmt.Sprintf("\ncompose ps (err=%v):\n%s\nprovider logs (err=%v):\n%s", statusErr, status, logsErr, providerLogs)
 		} else {
 			diagnostics = fmt.Sprintf("\nprovider diagnostics unavailable: placement=%v files=%v", placementErr, filesErr)
 		}
 		t.Fatalf("provision Loki provider: %v%s", err, diagnostics)
+	}
+	for _, service := range []string{"loki", "alloy"} {
+		if err := containersecurity.VerifyComposeService(ctx, "baseharbor-logs", service, containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s runtime security: %v", service, err)
+		}
 	}
 	defer func() { _ = logs.DestroyProvider(context.Background(), compose, m) }()
 	if err := driver.Bind(ctx, resource, binding); err != nil {

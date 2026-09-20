@@ -262,3 +262,21 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 		t.Fatalf("data dir = %q, want override %q", dataDir, override)
 	}
 }
+
+func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
+	text := string(composeYAML)
+	for _, want := range []string{
+		"user: \"postgres\"",
+		"user: \"openbao\"",
+		"SKIP_CHOWN: \"1\"",
+		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
+		"read_only: true",
+		"cap_drop: [\"ALL\"]",
+		"no-new-privileges:true",
+		"/var/run/postgresql:rw,noexec,nosuid,nodev",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("embedded runtime compose missing %q:\n%s", want, text)
+		}
+	}
+}

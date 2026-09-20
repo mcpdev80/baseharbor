@@ -2,6 +2,10 @@
 
 Die aktuelle BaseHarbor-Control-Plane ist bewusst single-node und local-first. `baha up` startet PostgreSQL 18 und OpenBao 2.6.x, standardmäßig nur auf Loopback.
 
+Die verwalteten Control-Plane-Container laufen als gehaertete Runtime-Komponenten und nicht als privilegierte Bootstrap-Helfer. PostgreSQL und OpenBao verwenden explizite Non-Root-Identitaeten, ein read-only Root-Filesystem, droppen alle Linux-Capabilities und setzen `no-new-privileges`. Schreibbar bleiben nur explizit benoetigte Volumes bzw. tmpfs-Pfade.
+
+OpenBao schreibt seine generierte lokale Konfiguration in ein fluechtiges, schreibbares `/openbao/config`-tmpfs; persistente Provider-Daten bleiben auf dem dedizierten `/openbao/file`-Volume. BaseHarbor setzt den vom Image vorgesehenen `SKIP_CHOWN`-Modus, weil der Container bereits direkt als Non-Root-User `openbao` startet. Ein Root-Start oder eine `CAP_CHOWN`-Ausnahme ist nicht erforderlich.
+
 ## Port-Auswahl beim ersten Start
 
 Standardports sind PostgreSQL `5432` und OpenBao `8200`. Vor der Initialisierung werden sie geprüft.

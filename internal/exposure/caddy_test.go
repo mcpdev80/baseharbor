@@ -69,13 +69,13 @@ func TestComposePublicAndInternalBindings(t *testing.T) {
 	files := Files{Dir: "/tmp/provider"}
 	publicState := State{Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "public", PublishedPort: 18080}}}
 	publicCompose := composeYAML(publicState, files)
-	if !strings.Contains(publicCompose, "\"18080:80\"") || strings.Contains(publicCompose, "127.0.0.1:18080:80") {
+	if !strings.Contains(publicCompose, "\"18080:8080\"") || strings.Contains(publicCompose, "127.0.0.1:18080:8080") {
 		t.Fatalf("public exposure must bind host interfaces:\n%s", publicCompose)
 	}
 
 	internalState := State{Routes: []Route{{Name: "internal", Service: "admin", TargetPort: 9090, Protocol: "http", Visibility: "internal", PublishedPort: 19090}}}
 	internalCompose := composeYAML(internalState, files)
-	if !strings.Contains(internalCompose, "\"127.0.0.1:19090:80\"") {
+	if !strings.Contains(internalCompose, "\"127.0.0.1:19090:8080\"") {
 		t.Fatalf("internal exposure must bind loopback only:\n%s", internalCompose)
 	}
 }
@@ -83,5 +83,31 @@ func TestComposePublicAndInternalBindings(t *testing.T) {
 func TestCaddyReferenceImageIsPinned(t *testing.T) {
 	if caddyImage != "caddy:2.11.4-alpine" {
 		t.Fatalf("unexpected Caddy reference image %q", caddyImage)
+	}
+}
+
+func TestComposeRunsCaddyUnprivileged(t *testing.T) {
+	state := State{Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "internal", PublishedPort: 18080}}}
+	got := composeYAML(state, Files{Dir: "/tmp/provider"})
+	for _, want := range []string{
+		"user: \"65532:65532\"",
+		"read_only: true",
+		"cap_drop: [\"ALL\"]",
+		"no-new-privileges:true",
+		"/tmp:rw,noexec,nosuid,nodev",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=0700,uid=65532,gid=65532",
+		"/config:rw,noexec,nosuid,nodev,mode=1777",
+		"/data:rw,noexec,nosuid,nodev,mode=1777",
+		"cat /usr/bin/caddy > /run/baseharbor/caddy",
+		"chmod 0755 /run/baseharbor/caddy",
+		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"127.0.0.1:18080:8080",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Caddy compose missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, ":80\"") || strings.Contains(got, ":443\"") {
+		t.Fatalf("Caddy must not require privileged container ports:\n%s", got)
 	}
 }

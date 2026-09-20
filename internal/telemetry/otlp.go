@@ -281,6 +281,12 @@ func providerComposeYAML() string {
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
     restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     ports:
       - "127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318"

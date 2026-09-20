@@ -124,7 +124,13 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.WriteFile(files.LokiConfig, []byte(lokiConfig()), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
+	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
+		return ProviderFiles{}, err
+	}
 	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o644); err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(p, registrations)), 0o600); err != nil {
@@ -233,6 +239,9 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, m application.M
 		return DestroyProvider(ctx, runtime, m)
 	}
 	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o644); err != nil {
+		return err
+	}
+	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(p, registrations)), 0o600); err != nil {

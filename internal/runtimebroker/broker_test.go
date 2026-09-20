@@ -249,6 +249,9 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 	if !strings.Contains(got, "runtime-operations:/var/lib/baseharbor/runtime-operations") {
 		t.Fatalf("runtime broker compose missing persistent operations volume:\n%s", got)
 	}
+	if !strings.Contains(got, "user: \"65532:65532\"") {
+		t.Fatalf("runtime broker compose missing explicit non-root identity:\n%s", got)
+	}
 }
 
 func TestEnsureRuntimePermissionsFileIsReadOnlyContainerProjection(t *testing.T) {

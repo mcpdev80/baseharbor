@@ -12,6 +12,12 @@ baha openbao status
 
 Der Bootstrap aktiviert KV v2 und AppRole, erstellt eine eingeschränkte Manager-Identität, verifiziert sie und widerruft anschließend den initialen Root-Token. Recovery-Material wird nicht ausgegeben und nicht in normalen Runtime-Dateien gespeichert.
 
+### Haertung des verwalteten Provider-Runtimes
+
+Der gebuendelte OpenBao-Compose-Service startet direkt als Non-Root-User `openbao`. Das Root-Filesystem ist read-only, alle Linux-Capabilities werden gedroppt und `no-new-privileges` ist aktiv. BaseHarbor verwendet weder einen Root-Init-Container noch eine temporaere `CAP_CHOWN`-Freigabe.
+
+Die vom Image erzeugte lokale Konfiguration wird ausschliesslich in ein fluechtiges, schreibbares `/openbao/config`-tmpfs geschrieben. Persistente OpenBao-Daten bleiben auf dem dedizierten `/openbao/file`-Volume. BaseHarbor aktiviert den vom Image vorgesehenen `SKIP_CHOWN`-Modus, weil ein privilegiertes Ownership-Repair weder benoetigt noch mit dem BaseHarbor-Sicherheitsmodell vereinbar ist.
+
 ## Anwendungsscope
 
 Eine Anwendung aktiviert Managed Secrets deklarativ. Jede Kombination aus Anwendung und Umgebung erhält einen eigenen OpenBao-Scope, eine Policy und eine AppRole. Zugriff auf andere Anwendungen oder Umgebungen schlägt fail-closed fehl.

@@ -564,7 +564,9 @@ The simple path and expert path must use the same core model. Advanced flexibili
 
 Log collection is platform/deployment policy. Applications do not name Loki in portable intent. BaseHarbor derives logical `logs/v1` sources from selected repository workload services, resolves provider placement through the existing `shared | application | external` model and records application-owned log resources in the protected provider registry.
 
-The current Compose reference uses Loki 3.7.8 plus Alloy 1.19.2. Shared placement is the safe default and may use a named sharing boundary; application placement creates a dedicated provider. The current adapter does not advertise external placement. Loki/Alloy receive no Docker/Podman socket. Generated workload logging overrides use loopback syslog/RFC5424 forwarding, while Loki readiness and LogQL query results prove end-to-end ingestion.
+The current Compose reference uses Loki 3.7.8 plus Alloy 1.19.2. Shared placement is the safe default and may use a named sharing boundary; application placement creates a dedicated provider. The current adapter does not advertise external placement. Loki/Alloy receive no Docker/Podman socket.
+
+The provider topology separates isolation from host publishing. Loki and Alloy share an internal-only provider network for provider traffic. A second provider-owned bridge is used only where Docker/Podman needs a non-internal network to realize host port publishing. Those published API/syslog ports remain bound to `127.0.0.1`; no wildcard host exposure is introduced. Generated workload logging overrides use loopback syslog/RFC5424 forwarding, while Loki readiness and LogQL query results prove end-to-end ingestion.
 
 Before repository workloads are started, BaseHarbor inspects the fully rendered Compose configuration for privileged mode, runtime sockets, host network/PID/IPC namespaces, dangerous Linux capabilities, devices and critical host bind mounts. Managed environments fail closed when those settings defeat the documented isolation boundary. Development may use explicit acknowledgements where permitted; diagnostics remain machine-readable.
 

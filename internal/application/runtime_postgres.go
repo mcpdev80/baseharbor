@@ -151,6 +151,13 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	fmt.Fprintf(b, `  %s:
     image: postgres:18-alpine
     restart: unless-stopped
+    user: "postgres"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
     environment:
       POSTGRES_DB: ${%s}
       POSTGRES_USER: ${%s}
@@ -176,6 +183,12 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
 	fmt.Fprintf(b, `  %s:
     image: valkey/valkey:9.1.2-alpine
     restart: unless-stopped
+    user: "valkey"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
     environment:
       VALKEY_PASSWORD: ${%s}
     command:

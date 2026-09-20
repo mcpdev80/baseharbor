@@ -116,6 +116,32 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 	return c.outputProject(ctx, project, composeFile, envFile, args...)
 }
 
+// DiagnosticsProject captures stopped/restarting containers and recent logs
+// before a fail-closed lifecycle rollback removes provider resources.
+func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
+	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
+	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
+
+	var b strings.Builder
+	if statusErr != nil {
+		fmt.Fprintf(&b, "compose ps -a failed: %v\n", statusErr)
+	} else {
+		fmt.Fprintf(&b, "compose ps -a:\n%s", status)
+		if status != "" && !strings.HasSuffix(status, "\n") {
+			b.WriteByte('\n')
+		}
+	}
+	if logsErr != nil {
+		fmt.Fprintf(&b, "compose logs failed: %v\n", logsErr)
+	} else {
+		fmt.Fprintf(&b, "compose logs:\n%s", logs)
+		if logs != "" && !strings.HasSuffix(logs, "\n") {
+			b.WriteByte('\n')
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }

@@ -25,6 +25,7 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 	}
 	for _, want := range []string{
 		"runtime-resource-state:/var/lib/baseharbor/runtime-resources",
+		"user: \"65532:65532\"",
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",

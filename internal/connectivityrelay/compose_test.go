@@ -28,6 +28,7 @@ func TestEnsureFilesCreatesHardenedDirectedRelay(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"BASEHARBOR_CONNECTIVITY_RELAY_MODE",
+		"user: \"65532:65532\"",
 		"BASEHARBOR_RELAY_LISTEN_ADDR",
 		"BASEHARBOR_RELAY_TARGET_ADDR",
 		"app-b-sql",

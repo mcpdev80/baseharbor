@@ -380,6 +380,16 @@ Overrides werden nur akzeptiert, wenn aktive Runtime und Provider sie sicher und
 
 Einfacher und Experten-Pfad verwenden denselben Core. Erweiterte Flexibilitaet darf weder einen zweiten Application Contract noch einen parallelen Lifecycle erzeugen.
 
+## Managed-Container-Security und Arbitrary-UID-Portabilitaet
+
+Ein containerisierter, von BaseHarbor verwalteter Provider muss ohne UID 0 betrieben werden koennen.
+
+Der aktuelle Compose-Adapter darf dafuer den stabilen Non-Root-Service-Account eines Provider-Images oder eine bekannte numerische Non-Root-UID/GID verwenden. Diese Identitaet ist reine Deployment-Realisierung und wird weder Teil des portablen Application Intent noch der Capability-Semantik.
+
+Kubernetes- und OpenShift-Runtimes muessen dagegen die von der Plattform zugewiesene Runtime-Identitaet als autoritativ behandeln. Insbesondere muss ein OpenShift-kompatibler Provider mit einer beliebigen von der Plattform zugewiesenen Non-Root-UID funktionieren, statt die Compose-UID vorauszusetzen. BaseHarbor-eigene Images bereiten beschreibbare State-Pfade fuer dieses Modell vor. Drittanbieter-Images muessen entweder die Security-/Arbitrary-UID-Policy der aktiven Runtime erfuellen, durch ein provider-eigenes kompatibles Image gekapselt werden ohne die Application-Semantik zu veraendern, oder fuer diese Runtime vor jeder Mutation fail-closed abgelehnt werden.
+
+Runtime-uebergreifend sollen Managed Container ein read-only Root-Filesystem verwenden, alle Linux-Capabilities droppen, Privilege Escalation deaktivieren, nur minimalen beschreibbaren State exponieren, Runtime-Sockets vermeiden und Host-Ports nicht weiter binden als die Capability es benoetigt.
+
 ## Ausfuehrbare Conformance seit v0.4.9
 
 Die statischen Descriptor-Checks bleiben das erste Gate; Provider Integration Contract v1 besitzt jetzt zusaetzlich einen wiederverwendbaren ausfuehrbaren Lifecycle-Conformance-Harness.

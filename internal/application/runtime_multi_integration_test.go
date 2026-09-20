@@ -9,11 +9,12 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real multi-instance runtime verification runs in CI")
+	if os.Getenv("CI") == "" && os.Getenv("BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE") != "1" {
+		t.Skip("real multi-instance runtime verification requires CI or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -86,6 +87,11 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	for i := range want {
 		if running[i] != want[i] {
 			t.Fatalf("unexpected running services: got %#v want %#v", running, want)
+		}
+		if err := containersecurity.VerifyComposeService(ctx, project, want[i], containersecurity.Requirements{
+			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+		}); err != nil {
+			t.Fatalf("%s runtime security: %v", want[i], err)
 		}
 	}
 }

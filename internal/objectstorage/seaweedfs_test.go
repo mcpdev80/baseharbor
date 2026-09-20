@@ -117,3 +117,18 @@ func TestSignedS3RequestUsesSigV4AndPathStyle(t *testing.T) {
 		t.Fatalf("SigV4 headers missing: hash=%q date=%q", gotHash, gotDate)
 	}
 }
+
+func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
+	text := providerComposeYAML()
+	for _, want := range []string{
+		"user: \"seaweed\"",
+		"read_only: true",
+		"cap_drop: [\"ALL\"]",
+		"no-new-privileges:true",
+		"/tmp:rw,noexec,nosuid,nodev",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("SeaweedFS provider missing %q:\n%s", want, text)
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 func lokiConfig() string {
 	return `auth_enabled: false
 server:
+  http_listen_address: 0.0.0.0
   http_listen_port: 3100
 common:
   path_prefix: /loki
@@ -71,17 +72,6 @@ loki.write "local" {
 func providerComposeYAML(placement Placement, registrations []Registration) string {
 	var b strings.Builder
 	b.WriteString("services:\n")
-	b.WriteString("  provider-volume-init:\n")
-	fmt.Fprintf(&b, "    image: %s\n", VolumeInitImage)
-	b.WriteString("    user: \"0:0\"\n")
-	b.WriteString("    command: [\"sh\", \"-c\", \"chown -R 10001:10001 /loki && chown -R 473:473 /var/lib/alloy/data\"]\n")
-	b.WriteString("    read_only: true\n")
-	b.WriteString("    cap_drop: [\"ALL\"]\n")
-	b.WriteString("    cap_add: [\"CHOWN\"]\n")
-	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    volumes:\n")
-	b.WriteString("      - loki-data:/loki\n")
-	b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
 	b.WriteString("  loki:\n")
 	fmt.Fprintf(&b, "    image: %s\n", LokiImage)
 	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
@@ -93,12 +83,9 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
 	b.WriteString("      - loki-data:/loki\n")
-	b.WriteString("    depends_on:\n")
-	b.WriteString("      provider-volume-init:\n")
-	b.WriteString("        condition: service_completed_successfully\n")
 	b.WriteString("    ports:\n")
 	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100\"\n")
-	b.WriteString("    networks: [logs-internal]\n")
+	b.WriteString("    networks: [logs-internal, logs-publish]\n")
 	b.WriteString("  alloy:\n")
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
 	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", AlloyRuntimeUID, AlloyRuntimeGID)))
@@ -116,15 +103,13 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", registration.SyslogPort, registration.SyslogPort)))
 		}
 	}
-	b.WriteString("    depends_on:\n")
-	b.WriteString("      provider-volume-init:\n")
-	b.WriteString("        condition: service_completed_successfully\n")
-	b.WriteString("      loki:\n")
-	b.WriteString("        condition: service_started\n")
-	b.WriteString("    networks: [logs-internal]\n")
+	b.WriteString("    depends_on: [loki]\n")
+	b.WriteString("    networks: [logs-internal, logs-publish]\n")
 	b.WriteString("networks:\n")
 	b.WriteString("  logs-internal:\n")
 	b.WriteString("    internal: true\n")
+	b.WriteString("  logs-publish:\n")
+	b.WriteString("    driver: bridge\n")
 	b.WriteString("volumes:\n")
 	fmt.Fprintf(&b, "  loki-data:\n    name: %s\n", strconv.Quote(placement.LokiVolume))
 	fmt.Fprintf(&b, "  alloy-data:\n    name: %s\n", strconv.Quote(placement.AlloyVolume))

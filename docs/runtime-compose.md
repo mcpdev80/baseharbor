@@ -11,6 +11,10 @@ BaseHarbor's current operational control plane is intentionally single-node and 
 
 Both services bind to loopback by default.
 
+The managed control-plane containers are hardened runtime components rather than privileged bootstrap helpers. PostgreSQL and OpenBao run with explicit non-root identities, read-only root filesystems, all Linux capabilities dropped and `no-new-privileges`. Only the paths that must remain writable are exposed as dedicated volumes or tmpfs mounts.
+
+OpenBao writes its generated local configuration into an ephemeral writable `/openbao/config` tmpfs while durable provider data remains on the dedicated `/openbao/file` volume. BaseHarbor sets the image-supported `SKIP_CHOWN` mode because the container already starts as the non-root `openbao` user; no root startup phase or `CAP_CHOWN` exception is required.
+
 ## First-run port selection
 
 The default host ports are PostgreSQL `5432` and OpenBao `8200`, but BaseHarbor checks them before first initialization.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
@@ -40,12 +42,26 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	}
 	if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
 		status, _ := compose.StatusProjectFiles(ctx, workload.Project, workload.RepositoryRoot, workload.Compose, workload.Override)
-		t.Fatalf("converge managed exposure: %v\nfixture workload status:\n%s", err, status)
+		providerProject := exposure.ProjectName(resolved.Manifest)
+		providerStatus, _ := exec.CommandContext(ctx, "docker", "ps", "-a",
+			"--filter", "label=com.docker.compose.project="+providerProject,
+			"--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}",
+		).CombinedOutput()
+		providerLogs, _ := exec.CommandContext(ctx, "sh", "-ec",
+			"for id in $(docker ps -aq --filter label=com.docker.compose.project="+providerProject+"); do docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' $id; docker logs $id 2>&1; done",
+		).CombinedOutput()
+		t.Fatalf("converge managed exposure: %v\nfixture workload status:\n%s\nprovider status:\n%s\nprovider logs:\n%s",
+			err, status, providerStatus, providerLogs)
 	}
 
 	firstState, providerFiles, err := exposure.Load(files)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, firstState.Project, "route-public", containersecurity.Requirements{
+		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+	}); err != nil {
+		t.Fatalf("Caddy runtime security: %v", err)
 	}
 	if len(firstState.Routes) != 1 || firstState.Routes[0].Visibility != "internal" {
 		t.Fatalf("unexpected managed routes: %#v", firstState.Routes)

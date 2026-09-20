@@ -108,3 +108,18 @@ func TestEnsureProviderFilesKeepsRuntimeStatePrivateButCollectorConfigReadable(t
 		t.Fatalf("provider env mode = %o, want 600", got)
 	}
 }
+
+func TestManagedCollectorRunsUnprivileged(t *testing.T) {
+	text := providerComposeYAML()
+	for _, want := range []string{
+		"user: \"10001:10001\"",
+		"read_only: true",
+		"cap_drop: [\"ALL\"]",
+		"no-new-privileges:true",
+		"/tmp:rw,noexec,nosuid,nodev",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("managed OTLP provider missing %q:\n%s", want, text)
+		}
+	}
+}

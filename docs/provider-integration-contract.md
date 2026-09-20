@@ -475,6 +475,16 @@ Overrides are accepted only when the active runtime/provider can honor them safe
 
 The simple path and expert path must use the same core model. Advanced flexibility must not create a second application contract or parallel lifecycle implementation.
 
+## Managed container security and arbitrary-UID portability
+
+A containerized BaseHarbor-managed provider is required to operate without UID 0.
+
+The current Compose adapter may select a provider image's stable non-root service account or a known non-zero UID/GID. That is deployment realization only; it is never part of portable application intent or capability semantics.
+
+Kubernetes and OpenShift runtimes must treat the runtime-assigned identity as authoritative. In particular, an OpenShift-compatible provider must tolerate an arbitrary platform-assigned non-zero UID instead of requiring the Compose UID. BaseHarbor-owned images prepare writable state paths for this model. Third-party images must either satisfy the active runtime's arbitrary-UID/security policy, be wrapped by a provider-owned compatible image without changing application semantics, or be rejected for that runtime before mutation.
+
+Across runtimes, managed containers should use a read-only root filesystem, drop all Linux capabilities, disable privilege escalation, expose only the minimum writable state, avoid runtime sockets and privileged host access, and bind host ports no wider than the capability requires.
+
 ## Executable conformance since v0.4.9
 
 The static descriptor checks remain the first gate, but Provider Integration Contract v1 now also has a reusable executable lifecycle conformance harness.

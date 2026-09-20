@@ -116,15 +116,61 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := string(data)
-	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host"} {
+	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user: \"0:0\"", "cap_add:", "provider-volume-init:"} {
 		if strings.Contains(compose, forbidden) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
 	}
-	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:"} {
+	for _, required := range []string{"read_only: true", "cap_drop:", "no-new-privileges:true", "127.0.0.1:", "user: \"10001:10001\"", "user: \"473:473\""} {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("provider runtime missing hardening %q:\n%s", required, compose)
 		}
+	}
+
+	for path, want := range map[string]os.FileMode{
+		files.Dir:           0o700,
+		files.Env:           0o600,
+		files.Compose:       0o600,
+		files.Registrations: 0o600,
+		files.LokiConfig:    0o644,
+		files.AlloyConfig:   0o644,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("mode %s = %04o, want %04o", path, got, want)
+		}
+	}
+}
+
+func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := string(data)
+	for _, required := range []string{
+		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100",
+		"networks: [logs-internal, logs-publish]",
+		"logs-internal:",
+		"internal: true",
+		"logs-publish:",
+		"driver: bridge",
+	} {
+		if !strings.Contains(compose, required) {
+			t.Fatalf("provider Compose missing publishing topology %q:\n%s", required, compose)
+		}
+	}
+	if strings.Count(compose, "\n  logs-publish:\n") != 1 {
+		t.Fatalf("provider Compose must define logs-publish exactly once:\n%s", compose)
 	}
 }
 
@@ -152,7 +198,6 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 	}
 }
 
-
 func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
@@ -165,12 +210,7 @@ func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := string(data)
-	for _, required := range []string{
-		"ingester:",
-		"wal:",
-		"enabled: true",
-		"dir: /loki/wal",
-	} {
+	for _, required := range []string{"ingester:", "wal:", "enabled: true", "dir: /loki/wal"} {
 		if !strings.Contains(config, required) {
 			t.Fatalf("Loki config missing writable WAL setting %q:\n%s", required, config)
 		}
@@ -180,59 +220,19 @@ func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 	}
 }
 
-
-func TestManagedProviderFilesSupportNonRootContainerReaders(t *testing.T) {
+func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
 	files, err := logs.EnsureProviderFiles(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{files.LokiConfig, files.AlloyConfig} {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := info.Mode().Perm(); got != 0o644 {
-			t.Fatalf("%s mode=%#o want 0644 for non-root container bind-mount reads", path, got)
-		}
-	}
-	for _, path := range []string{files.Env, files.Registrations, files.Compose} {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := info.Mode().Perm(); got != 0o600 {
-			t.Fatalf("%s mode=%#o want 0600 for host-only provider state", path, got)
-		}
-	}
-}
-
-func TestLokiProviderInitializesNamedVolumesForRuntimeUIDs(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	data, err := os.ReadFile(files.LokiConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(files.Compose)
-	if err != nil {
-		t.Fatal(err)
-	}
-	compose := string(data)
-	for _, required := range []string{
-		"provider-volume-init:",
-		"image: busybox:1.37",
-		"user: \"0:0\"",
-		"cap_add: [\"CHOWN\"]",
-		"chown -R 10001:10001 /loki",
-		"chown -R 473:473 /var/lib/alloy/data",
-		"user: \"10001:10001\"",
-		"user: \"473:473\"",
-		"condition: service_completed_successfully",
-	} {
-		if !strings.Contains(compose, required) {
-			t.Fatalf("provider Compose missing non-root volume initialization %q:\n%s", required, compose)
-		}
+	cfg := string(data)
+	if !strings.Contains(cfg, "http_listen_address: 0.0.0.0") {
+		t.Fatalf("Loki config must bind IPv4 for host loopback publishing:\n%s", cfg)
 	}
 }
