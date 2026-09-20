@@ -108,7 +108,6 @@ func TestClassifyStructuredAppDoctorExternalSecretStillNeedsInput(t *testing.T) 
 	}
 }
 
-
 func TestFindingsNeedControlPlaneRepair(t *testing.T) {
 	findings := []appDoctorFinding{
 		{Name: "managed runtime definition", Class: doctorAutoFixable},
