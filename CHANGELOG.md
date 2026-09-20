@@ -35,6 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Human result details and help text wrap to terminal width; long help may use `$PAGER` only on a real TTY.
 - `-v` is reserved consistently for `--verbose`; version remains available through `baha version` and `baha --version`.
 - Broken-pipe/EPIPE termination is silent for normal Unix pipelines.
+- Application status is now a bounded fast snapshot rather than a readiness wait loop; broker and subsystem checks no longer make `baha status` appear hung.
+- Normal status hides low-level Compose/curl/OpenBao diagnostics behind `--verbose`, and repository TLS renders inside the same status hierarchy before the final READY/DEGRADED state.
 
 ### Security
 
