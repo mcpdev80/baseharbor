@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Interactive Linux path prompts now show a live `Browsing` directory that follows the currently typed relative, absolute or `~/...` path while preserving the original process working directory.
+
 - Interactive path prompts now always show their current path base even when the input reader cannot provide a raw terminal file descriptor; tab completion remains optional while path orientation is guaranteed.
 
 - Repository-aware first `baha up` once again resolves configurable Compose host ports before the first workload start, persists BaseHarbor-selected values in protected deployment state and reuses the existing post-start bind-conflict retry only as a race-condition fallback.
