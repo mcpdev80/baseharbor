@@ -82,6 +82,17 @@ These values are deployment realization, not portable application identity or ca
 
 v0.4.2 additionally records provider placement and lifecycle ownership in the protected provider registry. The repository contract still describes what the application needs; shared, dedicated or external provider placement remains operator state.
 
+## Repeated `baha up` and desired-state drift
+
+Repository-aware `baha up` is state-aware:
+
+- an unapplied repository performs normal convergence;
+- an existing stopped application starts its existing runtime and workload;
+- an already READY application returns without mutation when the managed runtime definition and the last successfully applied repository desired-state fingerprint still match;
+- changed or degraded state falls back to normal plan/preflight/apply/verify reconciliation.
+
+The fingerprint is stored in protected BaseHarbor runtime state only after successful verification. It includes repository source/build inputs and repository deployment realization state; runtime health by itself is never sufficient for a no-op decision.
+
 ## Work from anywhere inside the repository
 
 BaseHarbor searches the current directory and then parent directories for the nearest `baseharbor.yaml`.
