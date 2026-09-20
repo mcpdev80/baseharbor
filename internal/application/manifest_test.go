@@ -339,3 +339,44 @@ func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 		t.Fatalf("expected duplicate metrics source rejection, got %v", err)
 	}
 }
+
+
+func TestManifestLogsRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithLogsCollection(m, "application")
+
+	got, err := ParseYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Logs.Collect, []string{"application"}) {
+		t.Fatalf("logs collect = %#v", got.Logs.Collect)
+	}
+	for _, want := range []string{"logs:\n", "  collect:\n", "    - application\n"} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("logs YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml")
+	m = WithLogsCollection(m, "application")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.services") {
+		t.Fatalf("expected logs/workload validation failure, got %v", err)
+	}
+}
+
+func TestManifestLogsRejectUnknownSource(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.Postgres = false
+	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithLogsCollection(m, "everything")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {
+		t.Fatalf("expected unsupported logs source failure, got %v", err)
+	}
+}

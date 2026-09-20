@@ -30,7 +30,17 @@ func LogsPolicy(m Manifest) (LogsDeploymentPolicy, error) {
 	if err != nil {
 		return LogsDeploymentPolicy{}, err
 	}
-	collect := map[LogsSourceClass]bool{LogsSourceApplication: true}
+	collect := map[LogsSourceClass]bool{}
+	for _, raw := range m.Logs.Collect {
+		class := LogsSourceClass(strings.TrimSpace(strings.ToLower(raw)))
+		switch class {
+		case LogsSourceApplication:
+			collect[class] = true
+		case "":
+		default:
+			return LogsDeploymentPolicy{}, fmt.Errorf("manifest logs.collect contains unsupported source class %q", raw)
+		}
+	}
 	if raw := strings.TrimSpace(os.Getenv(LogsCollectSourcesEnv)); raw != "" {
 		collect = map[LogsSourceClass]bool{}
 		for _, item := range strings.Split(raw, ",") {
@@ -51,17 +61,16 @@ func LogsPolicy(m Manifest) (LogsDeploymentPolicy, error) {
 }
 
 func LogsCollectionEnabled(m Manifest) (bool, error) {
+	requested := HasLogsCollection(m)
 	if raw := strings.TrimSpace(os.Getenv(LogsEnabledEnv)); raw != "" {
 		enabled, err := strconv.ParseBool(raw)
 		if err != nil {
 			return false, fmt.Errorf("%s must be true or false", LogsEnabledEnv)
 		}
-		return enabled, nil
+		if !requested && enabled {
+			return false, fmt.Errorf("%s cannot enable logs without explicit logs.collect intent in baseharbor.yaml", LogsEnabledEnv)
+		}
+		return requested && enabled, nil
 	}
-	switch strings.ToLower(strings.TrimSpace(m.Environment)) {
-	case "dev", "development":
-		return true, nil
-	default:
-		return false, nil
-	}
+	return requested, nil
 }
