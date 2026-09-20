@@ -28,7 +28,7 @@ const (
 	ProviderNetwork    = "baseharbor-telemetry"
 	ProviderImage      = "otel/opentelemetry-collector-contrib:0.161.0"
 	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
-	ProbeTraceIDHex     = "42617365486172626f72303430370001"
+	ProbeTraceIDHex    = "42617365486172626f72303430370001"
 )
 
 type Runtime interface {
@@ -124,13 +124,13 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	}
 	if resource.Provider == capability.ProviderOTelCollector {
 		if err := observability.Update(observability.MetricsSource{
-			ID: "opentelemetry-collector:" + ProviderProject,
+			ID:       "opentelemetry-collector:" + ProviderProject,
 			Provider: capability.ProviderOTelCollector,
-			Class: observability.SourcePlatformProvider,
-			Scope: capability.ScopeShared,
-			Network: ProviderNetwork,
-			Target: ProviderService + ":8888",
-			Path: "/metrics",
+			Class:    observability.SourcePlatformProvider,
+			Scope:    capability.ScopeShared,
+			Network:  ProviderNetwork,
+			Target:   ProviderService + ":8888",
+			Path:     "/metrics",
 		}); err != nil {
 			return err
 		}
@@ -383,109 +383,4 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 		if ok && key == "BASEHARBOR_OTLP_PORT" {
 			port, err := strconv.Atoi(strings.TrimSpace(value))
 			if err != nil || port < 1 || port > 65535 {
-				return "", errors.New("invalid OpenTelemetry Collector port")
-			}
-			return "http://127.0.0.1:" + strconv.Itoa(port), nil
-		}
-	}
-	return "", errors.New("OpenTelemetry Collector port is not materialized")
-}
-
-func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	var last error
-	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
-		req.Header.Set("Content-Type", "application/x-protobuf")
-		resp, err := client.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
-			}
-			last = fmt.Errorf("HTTP %d", resp.StatusCode)
-		} else {
-			last = err
-		}
-		select {
-		case <-ctx.Done():
-			if last == nil {
-				last = ctx.Err()
-			}
-			return last
-		case <-ticker.C:
-		}
-	}
-}
-
-func allocatePort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port, nil
-}
-
-func externalHeaders() map[string]string {
-	result := map[string]string{}
-	for _, item := range strings.Split(os.Getenv(ExternalHeadersEnv), ",") {
-		key, value, ok := strings.Cut(strings.TrimSpace(item), "=")
-		if ok && strings.TrimSpace(key) != "" {
-			result[strings.TrimSpace(key)] = strings.TrimSpace(value)
-		}
-	}
-	return result
-}
-
-func VerificationTracePayload(m application.Manifest) []byte {
-	return probeTracePayload(m)
-}
-
-func probeTracePayload(m application.Manifest) []byte {
-	now := uint64(time.Now().UnixNano())
-	traceID := []byte{0x42, 0x61, 0x73, 0x65, 0x48, 0x61, 0x72, 0x62, 0x6f, 0x72, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
-	spanID := []byte{0x42, 0x48, 0x30, 0x34, 0x30, 0x37, 0x00, 0x01}
-	span := appendBytes(nil, 1, traceID)
-	span = appendBytes(span, 2, spanID)
-	span = appendString(span, 5, "baseharbor.otlp.verify")
-	span = appendFixed64(span, 7, now)
-	span = appendFixed64(span, 8, now+1)
-	scopeSpans := appendMessage(nil, 2, span)
-	resource := []byte{}
-	resource = appendMessage(resource, 1, keyValue("service.name", m.Name))
-	resource = appendMessage(resource, 1, keyValue("service.namespace", m.Name))
-	resource = appendMessage(resource, 1, keyValue("deployment.environment.name", m.Environment))
-	resource = appendMessage(resource, 1, keyValue("baseharbor.application", m.Name))
-	resourceSpans := appendMessage(nil, 1, resource)
-	resourceSpans = appendMessage(resourceSpans, 2, scopeSpans)
-	return appendMessage(nil, 1, resourceSpans)
-}
-
-func keyValue(key, value string) []byte {
-	any := appendString(nil, 1, value)
-	msg := appendString(nil, 1, key)
-	return appendMessage(msg, 2, any)
-}
-
-func appendTag(dst []byte, field int, wire byte) []byte {
-	return binary.AppendUvarint(dst, uint64(field<<3)|uint64(wire))
-}
-func appendMessage(dst []byte, field int, msg []byte) []byte {
-	dst = appendTag(dst, field, 2)
-	dst = binary.AppendUvarint(dst, uint64(len(msg)))
-	return append(dst, msg...)
-}
-func appendBytes(dst []byte, field int, value []byte) []byte {
-	return appendMessage(dst, field, value)
-}
-func appendString(dst []byte, field int, value string) []byte {
-	return appendMessage(dst, field, []byte(value))
-}
-func appendFixed64(dst []byte, field int, value uint64) []byte {
-	dst = appendTag(dst, field, 1)
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], value)
-	return append(dst, buf[:]...)
-}
+				return "", errors.New("invalid OpenTelemetry Collect
