@@ -110,3 +110,26 @@ func TestStatusTLSRendersBeforeFinalState(t *testing.T) {
 		t.Fatalf("TLS must render before final state:\n%s", got)
 	}
 }
+
+
+func TestStatusNotAppliedRendersExpectedLifecycleState(t *testing.T) {
+	result := application.StatusResult{
+		Application: "mailflow",
+		Environment: "production",
+		State:       "not_applied",
+		Ready:       false,
+	}
+
+	var out bytes.Buffer
+	renderApplicationStatus(context.Background(), &out, &out, result)
+	got := out.String()
+
+	for _, wanted := range []string{"NOT APPLIED", "no BaseHarbor-managed runtime state exists", "baha up", "baha app apply"} {
+		if !strings.Contains(got, wanted) {
+			t.Fatalf("not-applied status missing %q:\n%s", wanted, got)
+		}
+	}
+	if strings.Contains(got, "DEGRADED") {
+		t.Fatalf("not-applied status must not render DEGRADED:\n%s", got)
+	}
+}
