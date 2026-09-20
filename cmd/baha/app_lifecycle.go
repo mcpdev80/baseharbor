@@ -16,10 +16,10 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
-	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 func appDownCommand(store application.Store) *cli.Command {
@@ -259,139 +259,4 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				repoRoot := filepath.Dir(resolved.ManifestPath)
 				if fullReset {
 					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
-				} else {
-					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
-				}
-			}
-			if !confirmed {
-				fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
-				return nil
-			}
-
-			if runtimeErr == nil {
-				if err := destroyManagedExposure(ctx, compose, m, files); err != nil {
-					return err
-				}
-				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
-					return err
-				}
-				if application.RequiresRuntimeBroker(m) {
-					if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
-						return err
-					}
-				}
-				if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
-					return err
-				}
-				remaining, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
-				if err != nil {
-					return fmt.Errorf("verify application runtime destruction: %w", err)
-				}
-				if len(remaining) != 0 {
-					return fmt.Errorf("verify application runtime destruction: %d managed resources remain", len(remaining))
-				}
-			}
-			if application.HasObjectStorage(m) {
-				driver := objectstorage.NewDriver(compose, m, files)
-				for _, bucket := range application.ObjectStorageBucketNames(m) {
-					if err := driver.DestroyBucket(ctx, bucket); err != nil {
-						return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
-					}
-				}
-			}
-			if m.Services.Secrets {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				if err := openbao.DestroyVerifiedApplicationScope(ctx, compose, platformFiles, identity); err != nil {
-					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
-				}
-			}
-			if runtimeErr == nil && resolved.FromRepository {
-				if err := logsprovider.UnregisterApplication(ctx, compose, m); err != nil {
-					return fmt.Errorf("remove application log collector registration: %w", err)
-				}
-				if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
-					return fmt.Errorf("remove workload logging override: %w", err)
-				}
-			}
-			tracePlacement, traceFound, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo)
-			if err != nil {
-				return err
-			}
-			if traceFound && tracePlacement.Scope == capability.ScopeApplication {
-				if err := tracesprovider.DestroyProvider(ctx, compose, m); err != nil {
-					return fmt.Errorf("destroy application-scoped traces provider: %w", err)
-				}
-			}
-			metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
-			if err != nil {
-				return err
-			}
-			if found {
-				switch metricsPlacement.Scope {
-				case capability.ScopeShared:
-					if err := metricsprovider.PruneRegisteredApplicationTargets(m, nil); err != nil {
-						return fmt.Errorf("remove application metrics targets: %w", err)
-					}
-					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
-						return fmt.Errorf("remove application metrics trust edges: %w", err)
-					}
-				case capability.ScopeApplication:
-					if err := metricsprovider.DestroyProvider(ctx, compose, m); err != nil {
-						return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
-					}
-				case capability.ScopeExternal:
-				}
-			}
-			if err := resolved.Store.Delete(m.Name); err != nil {
-				return err
-			}
-			if fullReset && resolved.FromRepository {
-				repoRoot := filepath.Dir(resolved.ManifestPath)
-				if err := os.Remove(repositoryInitEnvPath(repoRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("remove repository deployment state: %w", err)
-				}
-				if err := os.RemoveAll(filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)); err != nil {
-					return fmt.Errorf("remove normalized repository TLS state: %w", err)
-				}
-			}
-			if err := application.ReleaseApplicationProviderRegistry(m); err != nil {
-				return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
-			}
-			if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
-				if err == nil {
-					return errors.New("verify application destruction: application state still exists")
-				}
-				return fmt.Errorf("verify application destruction: %w", err)
-			}
-			fmt.Fprintf(out, "Application %s was permanently destroyed.\n", m.Name)
-			if resolved.FromRepository {
-				fmt.Fprintln(out, "Repository baseharbor.yaml and application-owned Compose data were preserved; run 'baha app apply' to recreate the backend.")
-			}
-			return nil
-		},
-	}
-}
-
-func parseDestroyArgs(args []string) (string, bool, bool, error) {
-	var name string
-	confirmed := false
-	fullReset := false
-	for _, arg := range args {
-		switch {
-		case arg == "--yes":
-			confirmed = true
-		case arg == "--full-reset":
-			fullReset = true
-		case strings.HasPrefix(arg, "-"):
-			return "", false, false, usageError("unknown option "+arg, "Run 'baha app destroy --help' for available options.")
-		default:
-			if name != "" {
-				return "", false, false, usageError("baha app destroy accepts at most one NAME", "Inside an application repository omit NAME.")
-			}
-			name = arg
-		}
-	}
-	return name, confirmed, fullReset, nil
-}
+					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(repoRoot,
