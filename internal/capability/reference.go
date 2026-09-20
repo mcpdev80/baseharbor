@@ -75,7 +75,7 @@ var (
 	TempoIntegration = IntegrationDescriptor{
 		Protocol: ProviderProtocolV1, Provider: Tempo,
 		Capabilities:    []SpecificationID{TracesV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "tempo", Kind: ObservabilityMetrics, Protocol: "openmetrics", Port: 3200, Path: "/metrics"},
