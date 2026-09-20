@@ -121,7 +121,8 @@ func (c *Command) Execute(ctx context.Context, args []string, out, errOut io.Wri
 			return nil
 		}
 	}
-	return c.Run(ctx, args, out, errOut)
+	err := c.Run(ctx, args, out, errOut)
+	return c.decorateUsageError(args, err)
 }
 
 func (c *Command) helpPath(path []string, out io.Writer) error {
@@ -156,6 +157,81 @@ func (c *Command) find(name string) *Command {
 		}
 	}
 	return nil
+}
+
+
+func (c *Command) decorateUsageError(args []string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var usage *UsageError
+	if !errors.As(err, &usage) || !strings.Contains(strings.ToLower(usage.Message), "unknown") {
+		return err
+	}
+	known := c.knownFlags()
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		flag := arg
+		if before, _, ok := strings.Cut(flag, "="); ok {
+			flag = before
+		}
+		if containsString(known, flag) {
+			continue
+		}
+		if suggestion := nearest(flag, known, 3); suggestion != "" {
+			copy := *usage
+			base := strings.TrimSpace(copy.Hint)
+			if base != "" {
+				base += "\n  "
+			}
+			copy.Hint = base + "Did you mean '" + suggestion + "'?"
+			return &copy
+		}
+	}
+	return err
+}
+
+func (c *Command) knownFlags() []string {
+	flags := []string{"-h", "--help", "-q", "--quiet", "--silent", "-v", "--verbose", "--plain", "--no-color", "--no-input", "--non-interactive", "--version"}
+	for _, field := range strings.Fields(c.Usage) {
+		field = strings.Trim(field, "[](){}|,")
+		if strings.HasPrefix(field, "-") {
+			if before, _, ok := strings.Cut(field, "="); ok {
+				field = before
+			}
+			if field != "" && !containsString(flags, field) {
+				flags = append(flags, field)
+			}
+		}
+	}
+	return flags
+}
+
+func nearest(input string, candidates []string, maxDistance int) string {
+	best := ""
+	bestDistance := maxDistance + 1
+	for _, candidate := range candidates {
+		distance := levenshtein(strings.ToLower(input), strings.ToLower(candidate))
+		if distance < bestDistance {
+			bestDistance = distance
+			best = candidate
+		}
+	}
+	if bestDistance <= maxDistance {
+		return best
+	}
+	return ""
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func isHelp(arg string) bool { return arg == "-h" || arg == "--help" }
