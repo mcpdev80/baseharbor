@@ -279,15 +279,21 @@ func (c *Command) renderHelp(w io.Writer) {
 		}
 	}
 	fmt.Fprintln(w, "\nGlobal options:")
-	fmt.Fprintln(w, "  -q, --quiet           Suppress progress and non-essential human output")
-	fmt.Fprintln(w, "      --silent          Alias for --quiet")
-	fmt.Fprintln(w, "  -v, --verbose         Show diagnostic runtime details")
-	fmt.Fprintln(w, "      --plain           Stable styling-free line-oriented human output")
-	fmt.Fprintln(w, "      --no-color        Disable ANSI color")
-	fmt.Fprintln(w, "      --no-input        Never prompt; fail with an actionable error instead")
-	fmt.Fprintln(w, "      --version         Print the BaseHarbor version")
+	writeHelpOption(w, width, "-q, --quiet", "Suppress progress and non-essential human output")
+	writeHelpOption(w, width, "--silent", "Alias for --quiet")
+	writeHelpOption(w, width, "-v, --verbose", "Show diagnostic runtime details")
+	writeHelpOption(w, width, "--plain", "Stable styling-free line-oriented human output")
+	writeHelpOption(w, width, "--no-color", "Disable ANSI color")
+	writeHelpOption(w, width, "--no-input", "Never prompt; fail with an actionable error instead")
+	writeHelpOption(w, width, "--version", "Print the BaseHarbor version")
 	fmt.Fprintln(w, "\nHelp:")
 	fmt.Fprintln(w, "  Use '<command> --help' for command-specific help.")
+}
+
+func writeHelpOption(w io.Writer, width int, option, description string) {
+	const optionWidth = 18
+	prefix := fmt.Sprintf("  %-*s  ", optionWidth, option)
+	writeWrapped(w, description, width, prefix)
 }
 
 func terminalTextWidth() int {
