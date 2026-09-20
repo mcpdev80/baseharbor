@@ -367,6 +367,12 @@ func providerComposeYAML() string {
   seaweedfs:
     image: chrislusf/seaweedfs:4.47
     restart: unless-stopped
+    user: "seaweed"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
     command: server -s3 -iam=true -s3.iam.readOnly=false
     ports:
       - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8333"
