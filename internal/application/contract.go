@@ -14,6 +14,7 @@ const (
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
 	CapabilityMetrics         CapabilityKind = capability.Metrics
+	CapabilityLogs            CapabilityKind = capability.Logs
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -38,6 +39,7 @@ type PortableContract struct {
 	Secrets      SecretContract
 	Exposures    []HTTPExposureRequirement
 	Metrics      []MetricsSourceRequirement
+	Logs         []string
 }
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
@@ -55,6 +57,7 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		},
 		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
 		Metrics:   append([]MetricsSourceRequirement(nil), m.Metrics.Sources...),
+		Logs:      append([]string(nil), m.Logs.Collect...),
 	}
 	for _, name := range PostgresInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
@@ -73,6 +76,11 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	for _, source := range m.Metrics.Sources {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMetrics, Name: source.Name})
+	}
+	if HasLogsCollection(m) {
+		for _, service := range m.Workload.Services {
+			contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityLogs, Name: service})
+		}
 	}
 	return contract, nil
 }
