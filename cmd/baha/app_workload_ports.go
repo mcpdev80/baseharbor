@@ -34,6 +34,12 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	if !resolved.FromRepository {
 		return nil
 	}
+	if _, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); err == nil {
+		return nil
+	} else if !errors.Is(err, application.ErrRuntimeNotApplied) {
+		return err
+	}
+
 	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
 	if err != nil || !found {
 		return err
@@ -51,22 +57,43 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	} else if err != nil {
 		return err
 	}
+
 	for _, variable := range variables {
 		if value, explicit := os.LookupEnv(variable.Name); explicit && strings.TrimSpace(value) != "" {
-			continue
-		}
-		if value := strings.TrimSpace(persisted[variable.Name]); value != "" {
-			continue
-		}
-		port := variable.DefaultPort
-		if portAvailable(port) {
-			if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(port)}); err != nil {
-				return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, port, err)
+			port, parseErr := parsePort(value)
+			if parseErr != nil {
+				return fmt.Errorf("invalid explicit workload port %s=%s: %w", variable.Name, value, parseErr)
 			}
-			persisted[variable.Name] = strconv.Itoa(port)
-			fmt.Fprintf(out, "[OK] workload-port      %s=%d available and reserved for this deployment\n", variable.Name, port)
+			if !portAvailable(port) {
+				return usageError(
+					fmt.Sprintf("explicit workload host port %s=%d is already in use", variable.Name, port),
+					"Choose a free explicit port or unset the variable so BaseHarbor can select and persist a fallback.",
+				)
+			}
+			fmt.Fprintf(out, "[OK] workload-port      %s=%d explicit and available\n", variable.Name, port)
 			continue
 		}
+
+		port := variable.DefaultPort
+		if value := strings.TrimSpace(persisted[variable.Name]); value != "" {
+			parsed, parseErr := parsePort(value)
+			if parseErr != nil {
+				return fmt.Errorf("invalid persisted workload port %s=%s: %w", variable.Name, value, parseErr)
+			}
+			port = parsed
+		}
+
+		if portAvailable(port) {
+			if strings.TrimSpace(persisted[variable.Name]) == "" {
+				if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(port)}); err != nil {
+					return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, port, err)
+				}
+				persisted[variable.Name] = strconv.Itoa(port)
+			}
+			fmt.Fprintf(out, "[OK] workload-port      %s=%d available for this deployment\n", variable.Name, port)
+			continue
+		}
+
 		fallback := proposedWorkloadPort(port)
 		if fallback == 0 {
 			return fmt.Errorf("no free fallback port found for %s", variable.Name)
