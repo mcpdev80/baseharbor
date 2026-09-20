@@ -43,7 +43,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
-		if err := DestroySharedProvider(cleanupCtx, compose); err != nil {
+		if err := DestroyAllSharedProviders(cleanupCtx, compose); err != nil {
 			t.Errorf("destroy shared Prometheus provider: %v", err)
 		}
 	}()
