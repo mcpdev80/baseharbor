@@ -40,7 +40,7 @@ BaseHarbor inspects existing applications, turns infrastructure requirements int
                   |
                   v
         PostgreSQL · Valkey · S3 · Secrets
-          HTTP · OTLP · Metrics · Logs
+          HTTP · OTLP · Metrics · Logs · Traces
 ```
 
 Compose is the complete runtime implementation today. Kubernetes and OpenShift are future runtime providers that must preserve the same application contract.
@@ -211,6 +211,7 @@ Weak evidence remains a suggestion. Existing contract state is not deleted simpl
 | Telemetry export | `telemetry.otlp/v1` | OpenTelemetry Collector or external OTLP |
 | Metrics | `metrics/v1` | Prometheus 3.14.0 |
 | Centralized logs | `logs/v1` | Loki 3.7.8 + Grafana Alloy 1.19.2 |
+| Trace storage | `traces/v1` platform facility over `telemetry.otlp/v1` | Tempo 3.0.2 |
 | Runtime-created resources | Runtime Resource API | Application Runtime Broker + Provider Executor |
 | Cross-app access | explicit directed policy | hardened Compose relay |
 
@@ -330,7 +331,7 @@ The current reference implementation provides:
 - automatic target registration;
 - real scrape/ingestion verification.
 
-Prometheus is a provider implementation, not part of the portable application identity.
+Prometheus is a provider implementation, not part of the portable application identity. In v0.4.10, BaseHarbor-managed providers may also advertise safe OpenMetrics endpoints through the generic provider contract; when metrics collection is enabled, the selected Prometheus instance registers only policy-authorized provider signals for its placement/sharing boundary.
 
 ## Centralized logs without Loki in application intent
 
@@ -349,6 +350,10 @@ v0.4.9 adds:
 Loki/Alloy do not get the Docker/Podman socket.
 
 `baha app logs` remains an independent trusted-local developer workflow; it does not couple the application to Loki.
+
+## Traces without Tempo in application intent
+
+Applications export traces through `telemetry.otlp/v1`. Trace retention is deployment policy, not a Tempo field in `baseharbor.yaml`. v0.4.10 adds `traces/v1` as the provider-neutral trace-platform contract and Tempo 3.0.2 as the first shared Compose reference provider. When `BASEHARBOR_TRACES_ENABLED=true`, BaseHarbor routes the managed OpenTelemetry Collector to Tempo and verifies a real trace by querying it back. Grafana is not started implicitly.
 
 ## Runtime Resource API
 
