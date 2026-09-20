@@ -15,13 +15,13 @@ func appInspectCommand() *cli.Command {
 		Name:    "inspect",
 		Summary: "Inspect a repository without changing it",
 		Usage:   "baha app inspect [PATH] [-o json|--output json|--json]",
-		Long:    "Analyzes repository evidence read-only and reports deterministic capability findings as detected, suggested or possible. -o json, --output json and the compatibility alias --json emit the shared machine-readable result used by future API/Web UI/Operator adapters.",
+		Long:    "Analyzes a local repository/path or remote Git URL read-only and reports deterministic capability findings as detected, suggested or possible. -o json, --output json and the compatibility alias --json emit the shared machine-readable result used by future API/Web UI/Operator adapters.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			root, format, err := parseAppInspectArgs(args)
 			if err != nil {
 				return err
 			}
-			result, err := repositoryinspect.Inspect(ctx, root)
+			result, err := inspectRepositorySource(ctx, root)
 			if err != nil {
 				return err
 			}
