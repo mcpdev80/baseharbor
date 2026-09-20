@@ -222,7 +222,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
 				return fmt.Errorf("converge managed HTTP exposure: %w", err)
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful convergence: %w", err)
 			}
 			fmt.Fprintf(out, "Application %s is ready.\n", m.Name)
