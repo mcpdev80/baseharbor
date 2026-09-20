@@ -263,7 +263,6 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 	}
 }
 
-
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
