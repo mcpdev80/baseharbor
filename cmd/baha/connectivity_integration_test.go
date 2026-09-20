@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
@@ -144,6 +145,11 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	}
 	if len(relayRunning) != 1 || relayRunning[0] != "relay" {
 		t.Fatalf("relay is not running: %#v", relayRunning)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, relayFiles.Project, "relay", containersecurity.Requirements{
+		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+	}); err != nil {
+		t.Fatalf("relay runtime security: %v", err)
 	}
 
 	probe := application.ConnectivityTargetAlias(rule)
