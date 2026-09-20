@@ -1,0 +1,168 @@
+name: pre-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to validate (for example v0.4.10)
+        required: true
+        type: string
+      ref:
+        description: Source ref to validate before tagging
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: pre-release-validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve inputs
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${INPUT_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be valid SemVer with a v prefix." >&2
+            exit 1
+          fi
+          test -n "${INPUT_REF}" || {
+            echo "Source ref is required." >&2
+            exit 1
+          }
+          echo "tag=${INPUT_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${INPUT_REF}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Validate candidate source
+        shell: bash
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "Pre-release candidate must be contained in main." >&2
+            exit 1
+          }
+          version="${TAG#v}"
+          grep -Fq "## [${version}]" CHANGELOG.md || {
+            echo "CHANGELOG.md must contain ## [${version}]." >&2
+            exit 1
+          }
+          test -s "docs/releases/${TAG}.md" || {
+            echo "Missing human-readable release notes: docs/releases/${TAG}.md" >&2
+            exit 1
+          }
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l cmd internal spec)"
+          test -z "${files}" || {
+            echo "gofmt required:" >&2
+            echo "${files}" >&2
+            exit 1
+          }
+
+      - name: Run full Go test suite in GitHub CI environment
+        run: go test ./...
+
+      - name: Run release-source tests exactly as release workflow
+        run: |
+          go test ./internal/... ./spec/...
+          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Build CLI
+        run: go build ./cmd/baha
+
+      - name: Verify control-plane restart and operator-held unseal recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real Loki and Alloy workload log ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real OpenTelemetry to Tempo trace ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Validate documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+
+      - name: Validate GitHub workflow syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="${RUNNER_TEMP}/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "${RUNNER_TEMP}/bin/actionlint"
+
+      - name: Validate GoReleaser packaging without publishing
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --snapshot --clean
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime image without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/control-plane/Dockerfile
+          platforms: linux/amd64
+          push: false
+          tags: baseharbor-runtime:pre-release
+          build-args: |
+            VERSION=${{ steps.release.outputs.tag }}
+            COMMIT=${{ github.sha }}
+
+      - name: Pre-release summary
+        shell: bash
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "Pre-release gate passed."
+          echo "tag=${TAG}"
+          echo "sha=$(git rev-parse HEAD)"
