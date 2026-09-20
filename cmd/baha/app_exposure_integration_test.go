@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
 func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
@@ -46,6 +47,11 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	firstState, providerFiles, err := exposure.Load(files)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, firstState.Project, "route-public", containersecurity.Requirements{
+		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
+	}); err != nil {
+		t.Fatalf("Caddy runtime security: %v", err)
 	}
 	if len(firstState.Routes) != 1 || firstState.Routes[0].Visibility != "internal" {
 		t.Fatalf("unexpected managed routes: %#v", firstState.Routes)
