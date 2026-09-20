@@ -285,7 +285,7 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 		return err
 	}
 	if len(result.Unresolved) == 0 {
-		return nil
+		return ensureRepositoryWorkloadPortsForUp(ctx, in, out, resolved, repoRoot)
 	}
 	if opts.Yes || !readerIsTerminal(in) {
 		initOpts := repositoryInitOptions{Yes: true}
@@ -293,13 +293,19 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 			initOpts.Hostname = current.Hostname
 			initOpts.TLSMode = "acme"
 		}
-		return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, initOpts, out)
+		if err := runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, initOpts, out); err != nil {
+			return err
+		}
+		return ensureRepositoryWorkloadPortsForUp(ctx, in, out, resolved, repoRoot)
 	}
 	fmt.Fprintln(out, "Application deployment inputs are incomplete; resolving only the missing values...")
 	previous := appInitInput
 	appInitInput = in
 	defer func() { appInitInput = previous }()
-	return runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, repositoryInitOptions{}, out)
+	if err := runRepositoryRuntimeInitResolved(ctx, resolved, repoRoot, repositoryInitOptions{}, out); err != nil {
+		return err
+	}
+	return ensureRepositoryWorkloadPortsForUp(ctx, in, out, resolved, repoRoot)
 }
 
 func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
