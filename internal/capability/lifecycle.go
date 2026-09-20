@@ -79,6 +79,12 @@ type MetricsBinding struct {
 	Path      string `json:"path"`
 }
 
+type LogsBinding struct {
+	Direction string `json:"direction"`
+	Format    string `json:"format"`
+	Service   string `json:"service"`
+}
+
 type Binding struct {
 	Resource        Resource                `json:"resource"`
 	Workload        string                  `json:"workload"`
@@ -86,6 +92,7 @@ type Binding struct {
 	ObjectStorageS3 *ObjectStorageS3Binding `json:"object_storage_s3,omitempty"`
 	TelemetryOTLP   *OTLPTelemetryBinding   `json:"telemetry_otlp,omitempty"`
 	Metrics         *MetricsBinding         `json:"metrics,omitempty"`
+	Logs            *LogsBinding            `json:"logs,omitempty"`
 	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
@@ -129,6 +136,7 @@ type Request struct {
 	ObjectStorageS3 *ObjectStorageS3Binding
 	TelemetryOTLP   *OTLPTelemetryBinding
 	Metrics         *MetricsBinding
+	Logs            *LogsBinding
 	Security        *SecureBinding
 	Driver          Driver
 	Observer        ProviderOperationObserver
@@ -216,6 +224,25 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s is incomplete", application, request.Requirement.Name)
 			}
 			binding.Metrics = &value
+		}
+		if request.Requirement.Kind == Logs && request.Logs == nil {
+			return Plan{}, fmt.Errorf("capability logs binding for %s/%s is required", application, request.Requirement.Name)
+		}
+		if request.Logs != nil {
+			value := *request.Logs
+			value.Direction = strings.TrimSpace(value.Direction)
+			value.Format = strings.TrimSpace(value.Format)
+			value.Service = strings.TrimSpace(value.Service)
+			if value.Direction != "collect" {
+				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: direction must be collect", application, request.Requirement.Name)
+			}
+			if value.Format != "syslog-rfc5424" {
+				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: unsupported format %q", application, request.Requirement.Name, value.Format)
+			}
+			if value.Service == "" {
+				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: service is required", application, request.Requirement.Name)
+			}
+			binding.Logs = &value
 		}
 		if request.Security != nil {
 			value := *request.Security
