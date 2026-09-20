@@ -105,7 +105,7 @@ func TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt(t *te
 		Manifest{Name: "demo", Environment: "dev"},
 		capability.ProviderOpenBao,
 	)
-	if err == nil || !strings.Contains(err.Error(), "named shared boundaries are implemented for Prometheus only") {
+	if err == nil || !strings.Contains(err.Error(), "is not supported by the current openbao adapter") {
 		t.Fatalf("expected unsupported adapter boundary rejection, got %v", err)
 	}
 }
