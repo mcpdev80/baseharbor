@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+)
 
 func TestParseDestroyArgsRequiresExplicitConfirmationOnlyForMutation(t *testing.T) {
 	name, confirmed, fullReset, err := parseDestroyArgs([]string{"demo"})
@@ -23,5 +28,36 @@ func TestParseDestroyArgsRequiresExplicitConfirmationOnlyForMutation(t *testing.
 func TestParseDestroyArgsRejectsUnknownOption(t *testing.T) {
 	if _, _, _, err := parseDestroyArgs([]string{"demo", "--force"}); err == nil {
 		t.Fatal("expected unknown destroy option to fail")
+	}
+}
+
+
+func TestOpenBaoDestroyScopeRequiredAllowsUninitializedCleanup(t *testing.T) {
+	required, err := openBaoDestroyScopeRequired(openbao.State{Initialized: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if required {
+		t.Fatal("uninitialized OpenBao cannot contain a managed application scope")
+	}
+}
+
+func TestOpenBaoDestroyScopeRequiredRejectsSealedState(t *testing.T) {
+	required, err := openBaoDestroyScopeRequired(openbao.State{Initialized: true, Sealed: true})
+	if required {
+		t.Fatal("sealed OpenBao scope must not be destroyed without verification")
+	}
+	if !errors.Is(err, openbao.ErrSealed) {
+		t.Fatalf("expected ErrSealed, got %v", err)
+	}
+}
+
+func TestOpenBaoDestroyScopeRequiredUsesVerifiedInitializedState(t *testing.T) {
+	required, err := openBaoDestroyScopeRequired(openbao.State{Initialized: true, Sealed: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !required {
+		t.Fatal("initialized unsealed OpenBao requires verified application-scope destruction")
 	}
 }
