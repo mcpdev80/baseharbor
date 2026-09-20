@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Interactive file and directory prompts now show the current path base and explain where relative paths resolve, so recovery, TLS/certificate and future path selection remain orienting and predictable.
+
 - Interactive `baha up` now reprompts in-place when a fresh OpenBao recovery output path already exists or an unseal recovery path is invalid, instead of aborting the guided setup; explicit/non-interactive paths remain deterministic and fail closed.
 
 - Repository applications that were intentionally destroyed or have never been applied now report `NOT APPLIED` in status/doctor instead of synthetic downstream service failures and `DEGRADED`; the next action is normal `baha up` / `baha app apply`.
