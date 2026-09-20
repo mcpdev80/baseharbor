@@ -219,6 +219,9 @@ func appRestoreCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
 				}
 			}
+			if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
+				return fmt.Errorf("restore preflight workload security: %w", err)
+			}
 			preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
 			if err != nil {
 				return fmt.Errorf("restore preflight managed exposure: %w", err)
