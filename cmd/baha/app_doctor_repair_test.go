@@ -65,7 +65,6 @@ func TestClassifyAppDoctorOutputPermissionFailureManual(t *testing.T) {
 	}
 }
 
-
 func TestClassifyStructuredAppDoctorMailFlowRecoveryIsAutoFixable(t *testing.T) {
 	result := appDoctorStructuredResult{
 		Healthy: false,
