@@ -182,6 +182,46 @@ func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifes
 	return os.RemoveAll(p.Dir)
 }
 
+func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(dataDir, "providers", "tempo", "shared")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	destroyAt := func(dir, project string) error {
+		files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Config: filepath.Join(dir, "tempo.yaml")}
+		if _, err := os.Stat(files.Compose); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if err := runtime.DestroyProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
+		_ = observability.Remove("tempo:" + project)
+		return nil
+	}
+	if err := destroyAt(root, "baseharbor-traces"); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-traces-"+entry.Name()); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(root)
+}
+
 func NetworkEndpoint(p Placement) string { return "http://tempo:4318" }
 
 func ProviderEndpoint(files ProviderFiles) (string,error) {
