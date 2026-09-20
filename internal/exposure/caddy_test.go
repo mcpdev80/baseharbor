@@ -69,13 +69,13 @@ func TestComposePublicAndInternalBindings(t *testing.T) {
 	files := Files{Dir: "/tmp/provider"}
 	publicState := State{Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", Visibility: "public", PublishedPort: 18080}}}
 	publicCompose := composeYAML(publicState, files)
-	if !strings.Contains(publicCompose, "\"18080:80\"") || strings.Contains(publicCompose, "127.0.0.1:18080:8080") {
+	if !strings.Contains(publicCompose, "\"18080:8080\"") || strings.Contains(publicCompose, "127.0.0.1:18080:8080") {
 		t.Fatalf("public exposure must bind host interfaces:\n%s", publicCompose)
 	}
 
 	internalState := State{Routes: []Route{{Name: "internal", Service: "admin", TargetPort: 9090, Protocol: "http", Visibility: "internal", PublishedPort: 19090}}}
 	internalCompose := composeYAML(internalState, files)
-	if !strings.Contains(internalCompose, "\"127.0.0.1:19090:80\"") {
+	if !strings.Contains(internalCompose, "\"127.0.0.1:19090:8080\"") {
 		t.Fatalf("internal exposure must bind loopback only:\n%s", internalCompose)
 	}
 }
