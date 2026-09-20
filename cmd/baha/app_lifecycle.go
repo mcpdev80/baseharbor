@@ -158,12 +158,14 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 
 			files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
-			if runtimeErr != nil && !errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
+			partialRuntime := false
+			if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
+				files = application.RuntimeFilesFor(resolved.Store, m)
+				partialRuntime = true
+			} else if runtimeErr != nil {
 				return runtimeErr
 			}
-			if m.Services.Secrets && runtimeErr != nil {
-				return errors.New("managed OpenBao secrets are enabled but the application runtime state is incomplete; refusing destroy")
-			}
+			composeRequired := runtimeErr == nil || resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m)
 
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -181,23 +183,27 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 			}
+			if composeRequired {
+				checks = append(checks, preflight.Check{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+					var err error
+					compose, err = bhruntime.DetectCompose(ctx)
+					return err
+				}})
+			}
 			if runtimeErr == nil {
 				checks = append(checks,
 					preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-					preflight.Check{Name: "container runtime + compose", Run: func(ctx context.Context) error {
-						var err error
-						compose, err = bhruntime.DetectCompose(ctx)
-						return err
-					}},
 					preflight.Check{Name: "compose configuration", Run: func(ctx context.Context) error {
 						return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
 					}},
-					preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
-						var err error
-						existing, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
-						return err
-					}},
 				)
+			}
+			if application.HasManagedRuntimeServices(m) {
+				checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
+					var err error
+					existing, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+					return err
+				}})
 			}
 			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -224,7 +230,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 						if !destroyOpenBaoScope {
 							return nil
 						}
-						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+						return openbao.CheckApplicationScopeOwnership(ctx, compose, platformFiles, identity)
 					}},
 				)
 			}
@@ -235,6 +241,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 
 			term.Section("Delete plan")
+			if partialRuntime {
+				fmt.Fprintln(out, "  recovery:   generated runtime definition is incomplete; using ownership-verified cleanup")
+			}
 			if len(existing) == 0 {
 				fmt.Fprintln(out, "  runtime resources: none currently present")
 			} else {
@@ -296,17 +305,27 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if err := destroyManagedExposure(ctx, compose, m, files); err != nil {
 					return err
 				}
+			}
+			if resolved.FromRepository {
 				if _, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 					return err
 				}
-				if application.RequiresRuntimeBroker(m) {
-					if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
-						return err
-					}
+			}
+			if runtimeErr == nil && application.RequiresRuntimeBroker(m) {
+				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+					return err
 				}
+			}
+			if runtimeErr == nil {
 				if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
 					return err
 				}
+			} else if partialRuntime && len(existing) != 0 {
+				if err := compose.DestroyOwnedProjectResources(ctx, application.RuntimeProjectName(m), application.ExpectedRuntimeResources(m)); err != nil {
+					return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
+				}
+			}
+			if application.HasManagedRuntimeServices(m) {
 				remaining, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
 				if err != nil {
 					return fmt.Errorf("verify application runtime destruction: %w", err)
@@ -329,7 +348,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 				}
 			}
-			if runtimeErr == nil && resolved.FromRepository {
+			if resolved.FromRepository {
 				if err := logsprovider.UnregisterApplication(ctx, compose, m); err != nil {
 					return fmt.Errorf("remove application log collector registration: %w", err)
 				}
