@@ -55,7 +55,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		fmt.Fprintln(out, "  baha doctor --fix")
 		fmt.Fprintln(out, "  baha doctor --verbose")
 		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
-		return errors.New("one or more checks failed")
+		return cli.Presented(errors.New("one or more checks failed"))
 	}
 
 	if hasAutoFixableDoctorFinding(findings) {
@@ -81,7 +81,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	fmt.Fprintln(out, "  Resolve the remaining problems above.")
 	fmt.Fprintln(out, "  baha doctor --verbose")
 	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
-	return errors.New("one or more checks still require action")
+	return cli.Presented(errors.New("one or more checks still require action"))
 }
 
 func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
