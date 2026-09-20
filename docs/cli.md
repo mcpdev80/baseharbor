@@ -29,6 +29,7 @@ baha
 ├── disconnect SOURCE TARGET
 ├── connections
 ├── update
+├── completion bash|zsh|fish
 ├── app
 │   ├── init
 │   ├── inspect
@@ -82,6 +83,33 @@ baha app tls update --help
 baha update --help
 baha openbao --help
 ```
+
+## Human output, progress and global UX controls
+
+Human output uses a shared semantic layout. Mutations describe their resulting state (`CREATED`, `UPDATED`, `DELETED`, `STARTED`, `STOPPED`), readiness uses `READY`, protocol/data-path verification uses `VERIFIED`, and `OK` is reserved for checks that have no more precise state verb.
+
+Potentially slow lifecycle work emits delayed contextual activity so fast commands do not flash a spinner and slow commands never appear hung. Non-TTY output is stable and line-oriented.
+
+Global controls:
+
+```bash
+-q, --quiet
+    --silent
+-v, --verbose
+    --no-color
+```
+
+`NO_COLOR` and `TERM=dumb` also disable color. Set `BASEHARBOR_REDUCED_MOTION=1` for static activity output even on an interactive terminal.
+
+Shell completion:
+
+```bash
+baha completion bash
+baha completion zsh
+baha completion fish
+```
+
+Generated completion is read-only and includes commands, options and useful fixed values such as `dev|test|prod`.
 
 ## Repository-aware shortcuts and structured output
 

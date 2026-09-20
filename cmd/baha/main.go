@@ -31,11 +31,7 @@ func main() {
 	if err == nil {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "error:", err)
-	var usage *cli.UsageError
-	if errors.As(err, &usage) && usage.Hint != "" {
-		fmt.Fprintln(os.Stderr, "hint:", usage.Hint)
-	}
+	formatCLIError(os.Stderr, err)
 	os.Exit(cli.ExitCode(err))
 }
 
@@ -52,5 +48,62 @@ func run(args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
-	return rootCommand().Execute(ctx, args, out, errOut)
+	filtered, opts, err := extractGlobalOutputOptions(args)
+	if err != nil {
+		return err
+	}
+	ctx = cli.WithOutputOptions(ctx, opts)
+	return rootCommand().Execute(ctx, filtered, out, errOut)
+}
+
+func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, error) {
+	opts := cli.OutputOptions{}
+	filtered := make([]string, 0, len(args))
+	passthrough := false
+	for _, arg := range args {
+		if passthrough {
+			filtered = append(filtered, arg)
+			continue
+		}
+		if arg == "--" {
+			passthrough = true
+			filtered = append(filtered, arg)
+			continue
+		}
+		switch arg {
+		case "-q", "--quiet", "--silent":
+			opts.Quiet = true
+		case "-v", "--verbose":
+			opts.Verbose = true
+		case "--no-color":
+			opts.NoColor = true
+		default:
+			filtered = append(filtered, arg)
+		}
+	}
+	if opts.Quiet && opts.Verbose {
+		return nil, opts, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
+	}
+	if value := strings.TrimSpace(os.Getenv("BASEHARBOR_REDUCED_MOTION")); value != "" && value != "0" && !strings.EqualFold(value, "false") {
+		opts.ReducedMotion = true
+	}
+	return filtered, opts, nil
+}
+
+func formatCLIError(w io.Writer, err error) {
+	if cli.IsPresented(err) {
+		return
+	}
+	fmt.Fprintf(w, "Error: %v\n", err)
+	var usage *cli.UsageError
+	if errors.As(err, &usage) {
+		if strings.TrimSpace(usage.Hint) != "" {
+			fmt.Fprintln(w, "\nNext:")
+			fmt.Fprintf(w, "  %s\n", usage.Hint)
+		}
+		return
+	}
+	fmt.Fprintln(w, "\nNext:")
+	fmt.Fprintln(w, "  baha doctor")
+	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
 }

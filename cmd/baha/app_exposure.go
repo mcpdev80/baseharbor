@@ -75,7 +75,7 @@ func verifyManagedExposure(ctx context.Context, out io.Writer, prepared *managed
 	}
 	state := prepared.driver.State()
 	for _, route := range state.Routes {
-		fmt.Fprintf(out, "[OK] managed-exposure  %s %s://%s:%d -> %s:%d\n",
+		fmt.Fprintf(out, "[READY] managed-exposure %s %s://%s:%d -> %s:%d\n",
 			route.Name, route.Protocol, state.Host, route.PublishedPort, route.Service, route.TargetPort)
 	}
 	return nil

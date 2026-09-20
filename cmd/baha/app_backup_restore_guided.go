@@ -317,42 +317,9 @@ func readBackupPasswordFromTerminal(out io.Writer, confirm bool) ([]byte, error)
 }
 
 func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func(io.Writer) error) error {
-	var buffered bytes.Buffer
-	done := make(chan error, 1)
-	go func() { done <- fn(&buffered) }()
-
-	frames := []string{
-		"[#...................]",
-		"[..#.................]",
-		"[....#...............]",
-		"[......#.............]",
-		"[........#...........]",
-		"[..........#.........]",
-		"[............#.......]",
-		"[..............#.....]",
-		"[................#...]",
-		"[..................#.]",
-	}
-	fmt.Fprintf(out, "\r%s %s", frames[0], label)
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	frame := 1
-	for {
-		select {
-		case err := <-done:
-			fmt.Fprintf(out, "\r[####################] %s - done\n", label)
-			_, _ = io.Copy(out, &buffered)
-			return err
-		case <-ctx.Done():
-			fmt.Fprintf(out, "\r[--------------------] %s - cancelled\n", label)
-			return ctx.Err()
-		case <-ticker.C:
-			fmt.Fprintf(out, "\r%s %s", frames[frame%len(frames)], label)
-			frame++
-		}
-	}
+	term := cli.NewTerminal(ctx, out, out)
+	return term.Activity(ctx, label, fn)
 }
-
 func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte, error) {
 	fd := int(file.Fd())
 	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)

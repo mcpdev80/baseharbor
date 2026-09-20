@@ -71,7 +71,7 @@ func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretS
 	if !configured {
 		fmt.Fprintln(out, "No application secrets have been configured yet.")
 	}
-	fmt.Fprintln(out, "REQUIRED SECRET\tSTATUS\tACTION")
+	fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
 	for _, status := range statuses {
 		state := "present"
 		action := "-"
@@ -86,7 +86,7 @@ func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretS
 			state = "present but unusable"
 			action = "baha app secret set " + status.Name + " --stdin"
 		}
-		fmt.Fprintf(out, "%s\t%s\t%s\n", status.Name, state, action)
+		fmt.Fprintf(out, "  %-24s %-38s %s\n", status.Name, state, action)
 	}
 }
 

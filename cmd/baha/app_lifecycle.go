@@ -34,6 +34,8 @@ func appDownCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			term := cli.NewTerminal(ctx, out, errOut)
+			term.Header(m.Name, m.Environment)
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -67,7 +69,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				}},
 			}
 			results, ok := preflight.Run(checkCtx, checks)
-			preflight.Format(out, results)
+			renderPreflightUX(term, results)
 			if !ok {
 				return errors.New("application down preflight failed")
 			}
@@ -79,7 +81,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
 					return err
 				}
-				fmt.Fprintln(out, "[OK] managed-exposure  Caddy exposure provider stopped")
+				term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
 			}
 			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
 				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
@@ -94,7 +96,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
 			} else if stopped {
-				fmt.Fprintln(out, "[OK] workload          repository Compose workload stopped; application-owned volumes preserved")
+				term.Result("STOPPED", "workload", "repository workload stopped; application-owned volumes preserved")
 			}
 			if err := logsprovider.StopProvider(ctx, compose, m); err != nil {
 				return fmt.Errorf("stop application-scoped logs provider: %w", err)
@@ -103,7 +105,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 					return err
 				}
-				fmt.Fprintln(out, "[OK] runtime-broker    per-application Application Runtime Broker stopped")
+				term.Result("STOPPED", "runtime-broker", "application runtime broker stopped")
 			}
 
 			project := application.RuntimeProjectName(m)
@@ -122,7 +124,8 @@ func appDownCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
 				}
 			}
-			fmt.Fprintf(out, "Application %s is stopped. Persistent data is preserved.\n", m.Name)
+			term.Section("Application")
+			term.Result("STOPPED", "application", "persistent data preserved")
 			return nil
 		},
 	}
@@ -148,6 +151,8 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			term := cli.NewTerminal(ctx, out, errOut)
+			term.Header(m.Name, m.Environment)
 			if err := application.CheckSupportedRuntimeServices(m); err != nil {
 				return err
 			}
@@ -211,12 +216,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				)
 			}
 			results, ok := preflight.Run(checkCtx, checks)
-			preflight.Format(out, results)
+			renderPreflightUX(term, results)
 			if !ok {
 				return errors.New("application destroy preflight failed; nothing was deleted")
 			}
 
-			fmt.Fprintf(out, "Destroy plan for %s (%s)\n", m.Name, m.Environment)
+			term.Section("Delete plan")
 			if len(existing) == 0 {
 				fmt.Fprintln(out, "  runtime resources: none currently present")
 			} else {
@@ -365,9 +370,10 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 				return fmt.Errorf("verify application destruction: %w", err)
 			}
-			fmt.Fprintf(out, "Application %s was permanently destroyed.\n", m.Name)
+			term.Section("Application")
+			term.Result("DELETED", "application", m.Name+" permanently deleted")
 			if resolved.FromRepository {
-				fmt.Fprintln(out, "Repository baseharbor.yaml and application-owned Compose data were preserved; run 'baha app apply' to recreate the backend.")
+				term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
 			}
 			return nil
 		},

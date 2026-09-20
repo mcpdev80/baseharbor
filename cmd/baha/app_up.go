@@ -26,6 +26,8 @@ func appUpCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			term := cli.NewTerminal(ctx, out, errOut)
+			term.Header(m.Name, m.Environment)
 			if err := printResolvedTracesPlacement(out, m); err != nil {
 				return err
 			}
@@ -162,87 +164,128 @@ func appUpCommand(store application.Store) *cli.Command {
 					)
 				}
 			}
-			results, ok := preflight.Run(checkCtx, checks)
-			preflight.Format(out, results)
-			printWorkloadSecurityFindings(out, workloadSecurity)
+			var results []preflight.Result
+			var ok bool
+			if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
+				results, ok = preflight.Run(checkCtx, checks)
+				return nil
+			}); err != nil {
+				return err
+			}
+			renderPreflightUX(term, results)
+			if term.Verbose() {
+				printWorkloadSecurityFindings(out, workloadSecurity)
+			}
 			if !ok {
 				return errors.New("application up preflight failed")
 			}
 
 			if application.HasManagedRuntimeServices(m) {
 				project := application.RuntimeProjectName(m)
-				if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
+				if err := activity(ctx, term, "Starting managed application services", func(io.Writer) error {
+					return compose.UpProject(ctx, project, files.Compose, files.Env)
+				}); err != nil {
 					return err
 				}
 			}
-			if err := convergeManagedObjectStorage(ctx, out, managedObjectStorage); err != nil {
-				return fmt.Errorf("converge managed object storage: %w", err)
+			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
+				return convergeManagedObjectStorage(ctx, progress, managedObjectStorage)
+			}); err != nil {
+				return err
 			}
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
 			defer verifyCancel()
-			var verifyErr error
-			for verifyCtx.Err() == nil {
-				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
-				if verifyErr == nil && m.Services.Secrets {
-					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+			if err := activity(ctx, term, "Waiting for backend readiness", func(io.Writer) error {
+				var verifyErr error
+				for verifyCtx.Err() == nil {
+					verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
+					if verifyErr == nil && m.Services.Secrets {
+						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+						verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+						if verifyErr == nil {
+							verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+						}
+					}
 					if verifyErr == nil {
-						verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+						return nil
+					}
+					select {
+					case <-verifyCtx.Done():
+						return fmt.Errorf("application verification failed: %w", verifyErr)
+					case <-time.After(time.Second):
 					}
 				}
-				if verifyErr == nil {
-					break
-				}
-				select {
-				case <-verifyCtx.Done():
-				case <-time.After(time.Second):
-				}
-			}
-			if verifyErr != nil {
-				return fmt.Errorf("application verification failed: %w", verifyErr)
+				return fmt.Errorf("application verification timed out: %w", verifyCtx.Err())
+			}); err != nil {
+				return err
 			}
 			if application.RequiresRuntimeBroker(m) {
-				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
+				if err := activity(ctx, term, "Starting secure runtime broker", func(io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files)
+				}); err != nil {
 					return err
 				}
-				printRuntimeBrokerDocs(out, files)
+				if term.Verbose() {
+					printRuntimeBrokerDocs(out, files)
+				}
 			}
-			printRuntimeReady(out, m)
-			if err := convergeManagedTracesBeforeTelemetry(ctx, out, managedTraces); err != nil {
-				return fmt.Errorf("converge managed traces provider: %w", err)
+			renderRuntimeReady(term, m)
+			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
+				return convergeManagedTracesBeforeTelemetry(ctx, progress, managedTraces)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedTelemetry(ctx, out, managedTelemetry); err != nil {
-				return fmt.Errorf("converge managed telemetry: %w", err)
+			if err := activity(ctx, term, "Reconciling telemetry transport", func(progress io.Writer) error {
+				return convergeManagedTelemetry(ctx, progress, managedTelemetry)
+			}); err != nil {
+				return err
 			}
-			if err := verifyManagedTracesAfterTelemetry(ctx, out, managedTraces); err != nil {
-				return fmt.Errorf("verify managed trace ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
+				return verifyManagedTracesAfterTelemetry(ctx, progress, managedTraces)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedLogsBeforeWorkload(ctx, out, files, managedLogs); err != nil {
-				return fmt.Errorf("converge managed logs provider: %w", err)
+			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, managedLogs)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedMetricsBeforeWorkload(ctx, out, managedMetrics); err != nil {
-				return fmt.Errorf("converge managed metrics provider: %w", err)
+			if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
+				return convergeManagedMetricsBeforeWorkload(ctx, progress, managedMetrics)
+			}); err != nil {
+				return err
 			}
-			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+			if err := activity(ctx, term, "Starting repository workload", func(progress io.Writer) error {
+				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
+				return err
+			}); err != nil {
 				return err
 			}
 			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 			}
-			if err := verifyManagedMetricsAfterWorkload(ctx, out, managedMetrics); err != nil {
-				return fmt.Errorf("verify managed metrics ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
+				return verifyManagedMetricsAfterWorkload(ctx, progress, managedMetrics)
+			}); err != nil {
+				return err
 			}
-			if err := verifyManagedLogsAfterWorkload(ctx, out, managedLogs); err != nil {
-				return fmt.Errorf("verify managed log ingestion: %w", err)
+			if err := activity(ctx, term, "Verifying log ingestion", func(progress io.Writer) error {
+				return verifyManagedLogsAfterWorkload(ctx, progress, managedLogs)
+			}); err != nil {
+				return err
 			}
-			if err := convergeManagedExposure(ctx, out, managedExposure); err != nil {
-				return fmt.Errorf("converge managed HTTP exposure: %w", err)
+			if err := activity(ctx, term, "Verifying application exposure", func(progress io.Writer) error {
+				return convergeManagedExposure(ctx, progress, managedExposure)
+			}); err != nil {
+				return err
 			}
 			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(managedLogs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
-			fmt.Fprintf(out, "Application %s is running and ready.\n", m.Name)
+			term.Section("Application")
+			term.Result("READY", "application", "runtime and requested infrastructure verified")
+			fmt.Fprintln(out, "\nREADY")
 			return nil
 		},
 	}

@@ -197,26 +197,59 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	return result, nil
 }
 
-func renderApplicationStatus(out io.Writer, result application.StatusResult) {
-	fmt.Fprintf(out, "Application %s (%s)\n", result.Application, result.Environment)
-	if result.Manifest != "" {
-		fmt.Fprintf(out, "Manifest: %s\n", result.Manifest)
-	}
-	fmt.Fprintf(out, "Project: %s\n", result.Project)
+func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result application.StatusResult) {
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(result.Application, result.Environment)
+	term.Section("Application")
 	if result.State == "stopped" {
-		fmt.Fprintln(out, "State: STOPPED (persistent application state is preserved)")
+		term.Result("STOPPED", "application", "persistent application state preserved")
+		fmt.Fprintln(out, "\nSTOPPED")
 		return
 	}
+
+	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "all requested components verified", false: "one or more components need attention"}[result.Ready])
+
+	sections := map[string][]application.StatusCheck{}
+	order := []string{"Services", "Workload", "Observability", "Exposure", "Other"}
 	for _, check := range result.Checks {
-		status := "OK"
-		if !check.OK {
-			status = "FAIL"
+		section := "Other"
+		switch {
+		case strings.HasPrefix(check.Name, "postgres"), strings.HasPrefix(check.Name, "valkey"), strings.HasPrefix(check.Name, "secrets"), strings.HasPrefix(check.Name, "runtime-broker"), strings.HasPrefix(check.Name, "object-storage"), strings.HasPrefix(check.Name, "required-secret"):
+			section = "Services"
+		case strings.HasPrefix(check.Name, "workload"):
+			section = "Workload"
+		case strings.HasPrefix(check.Name, "logs"), strings.HasPrefix(check.Name, "telemetry"), strings.HasPrefix(check.Name, "traces"), strings.HasPrefix(check.Name, "metrics"):
+			section = "Observability"
+		case strings.Contains(check.Name, "exposure"):
+			section = "Exposure"
 		}
-		if check.Detail == "" {
-			fmt.Fprintf(out, "[%s] %s\n", status, check.Name)
-		} else {
-			fmt.Fprintf(out, "[%s] %-20s %s\n", status, check.Name, check.Detail)
+		sections[section] = append(sections[section], check)
+	}
+	for _, section := range order {
+		checks := sections[section]
+		if len(checks) == 0 {
+			continue
 		}
+		term.Section(section)
+		for _, check := range checks {
+			state := "READY"
+			if section == "Observability" {
+				state = "VERIFIED"
+			}
+			if !check.OK {
+				state = "FAILED"
+			}
+			term.Result(state, check.Name, check.Detail)
+		}
+	}
+
+	if result.Ready {
+		fmt.Fprintln(out, "\nREADY")
+	} else {
+		fmt.Fprintln(out, "\nDEGRADED")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha doctor")
+		fmt.Fprintln(out, "  baha status --verbose")
 	}
 }
 
@@ -240,13 +273,13 @@ func appStatusCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				renderApplicationStatus(out, result)
+				renderApplicationStatus(ctx, out, errOut, result)
 			}
 			if result.State == "stopped" {
 				return nil
 			}
 			if !result.Ready {
-				return errors.New("application is not ready")
+				return cli.Presented(errors.New("application is not ready"))
 			}
 			return nil
 		},
@@ -485,31 +518,125 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				preflight.Format(out, results)
-				printWorkloadSecurityFindings(out, workloadSecurity)
-				printRequiredSecretStatus(out, requiredStatuses)
-				if workloadStatus.Found {
-					fmt.Fprintln(out, "WORKLOAD SERVICE      STATE")
-					for _, service := range workloadStatus.Services {
-						marker := "OK"
-						if !service.Ready {
-							marker = "FAIL"
-						}
-						fmt.Fprintf(out, "[%s] %-20s %s\n", marker, service.Service, formatWorkloadServiceStatus(service))
-					}
-				}
-				if workloadStatusErr != nil {
-					fmt.Fprintf(out, "Workload diagnosis: %v\n", workloadStatusErr)
-				}
+				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, workloadStatusErr, requiredStatuses, workloadSecurity, ok)
 			}
 			if !ok {
-				return errors.New("application doctor found one or more failures")
-			}
-			if format != outputJSON {
-				fmt.Fprintln(out, "Application runtime is healthy.")
+				return cli.Presented(errors.New("application doctor found one or more failures"))
 			}
 			return nil
 		},
+	}
+}
+
+func renderApplicationDoctor(
+	ctx context.Context,
+	out io.Writer,
+	errOut io.Writer,
+	m application.Manifest,
+	results []preflight.Result,
+	workload repositoryWorkloadStatus,
+	workloadErr error,
+	requiredSecrets []openbao.RequiredSecretStatus,
+	workloadSecurity application.WorkloadSecurityReport,
+	healthy bool,
+) {
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(m.Name, m.Environment)
+
+	sections := map[string][]preflight.Result{}
+	order := []string{"Core", "Services", "Workload", "Observability", "Exposure"}
+	for _, result := range results {
+		section := applicationDoctorSection(result.Name)
+		sections[section] = append(sections[section], result)
+	}
+	for _, section := range order {
+		items := sections[section]
+		if len(items) == 0 {
+			continue
+		}
+		term.Section(section)
+		for _, result := range items {
+			state := "OK"
+			if !result.OK {
+				state = "FAILED"
+			}
+			detail := ""
+			if !result.OK || term.Verbose() {
+				detail = result.Detail
+			}
+			term.Result(state, result.Name, detail)
+		}
+	}
+
+	if workload.Found {
+		term.Section("Workload services")
+		for _, service := range workload.Services {
+			state := "READY"
+			if !service.Ready {
+				state = "FAILED"
+			}
+			term.Result(state, service.Service, formatWorkloadServiceStatus(service))
+		}
+	}
+
+	if len(requiredSecrets) > 0 {
+		term.Section("Required secrets")
+		for _, status := range requiredSecrets {
+			state := "READY"
+			detail := "present and usable"
+			if !status.Present || !status.Usable {
+				state = "MISSING"
+				detail = "missing or unusable"
+			} else if status.Generated {
+				detail = "present and usable · managed generation enabled"
+			}
+			term.Result(state, status.Name, detail)
+		}
+	}
+
+	if term.Verbose() {
+		printWorkloadSecurityFindings(out, workloadSecurity)
+	}
+	if workloadErr != nil {
+		term.Section("Problems")
+		term.Result("FAILED", "workload", workloadErr.Error())
+	}
+
+	if healthy {
+		fmt.Fprintln(out, "\nREADY")
+		return
+	}
+	fmt.Fprintln(out, "\nNext:")
+	fmt.Fprintln(out, "  baha status --verbose")
+	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintln(out, "\nDEGRADED · one or more checks require attention")
+}
+
+func applicationDoctorSection(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "postgres"),
+		strings.Contains(lower, "valkey"),
+		strings.Contains(lower, "openbao"),
+		strings.Contains(lower, "secret"),
+		strings.Contains(lower, "broker"),
+		strings.Contains(lower, "object-storage"),
+		strings.Contains(lower, "running services"):
+		return "Services"
+	case strings.Contains(lower, "workload"):
+		return "Workload"
+	case strings.Contains(lower, "log"),
+		strings.Contains(lower, "telemetry"),
+		strings.Contains(lower, "otlp"),
+		strings.Contains(lower, "metric"),
+		strings.Contains(lower, "trace"):
+		return "Observability"
+	case strings.Contains(lower, "exposure"),
+		strings.Contains(lower, "http"),
+		strings.Contains(lower, "tls"):
+		return "Exposure"
+	default:
+		return "Core"
 	}
 }
 

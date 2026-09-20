@@ -319,9 +319,9 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	for verifyCtx.Err() == nil {
 		lastStatus, lastErr = inspectRepositoryWorkloadStatus(verifyCtx, compose, resolved, files)
 		if lastErr == nil && lastStatus.Found && lastStatus.Ready() {
-			fmt.Fprintf(out, "[OK] workload          %d Compose service(s) ready on BaseHarbor backend network\n", len(expectedServices))
+			fmt.Fprintf(out, "[READY] workload         %d Compose service(s) ready\n", len(expectedServices))
 			if len(lastStatus.Exposures) > 0 {
-				fmt.Fprintf(out, "[OK] exposure          %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+				fmt.Fprintf(out, "[READY] exposure         %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
 			}
 			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
 			return true, nil

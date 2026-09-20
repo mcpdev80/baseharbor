@@ -69,7 +69,7 @@ func convergeManagedTracesBeforeTelemetry(ctx context.Context, out io.Writer, pr
 		return nil
 	}
 	if !prepared.enabled {
-		fmt.Fprintf(out, "[SKIP] traces             trace storage disabled by deployment policy for %s\n", prepared.manifest.Name)
+		fmt.Fprintf(out, "[SKIPPED] traces           trace storage disabled by deployment policy for %s\n", prepared.manifest.Name)
 		return nil
 	}
 	if prepared.execution == nil {
@@ -78,7 +78,7 @@ func convergeManagedTracesBeforeTelemetry(ctx context.Context, out io.Writer, pr
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] traces-provider     Tempo state converged for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[READY] traces-provider  Tempo state converged for %s\n", prepared.manifest.Name)
 	return nil
 }
 
@@ -89,7 +89,7 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] traces              verification trace ingested and queryable for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[VERIFIED] traces         verification trace ingested and queryable for %s\n", prepared.manifest.Name)
 	return nil
 }
 

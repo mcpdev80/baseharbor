@@ -137,7 +137,9 @@ func disconnectCommand() *cli.Command {
 			if err := connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule)); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "[OK] connectivity       removed %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
+			term := cli.NewTerminal(ctx, out, errOut)
+			term.Section("Connectivity")
+			term.Result("REMOVED", "connectivity", formatConnectivityEndpoint(rule.Source)+" -> "+formatConnectivityEndpoint(rule.Target))
 			return nil
 		},
 	}

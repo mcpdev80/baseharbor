@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -38,39 +39,67 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 	}
 
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header("Doctor", "")
 	checks := health.Doctor()
-	formatted, ok := health.Format(checks)
-	fmt.Fprint(out, formatted)
+	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
+		fmt.Fprintln(out, "\nREADY")
 		return nil
 	}
 
 	findings := classifyDoctorFindings(checks)
-	printDoctorFindings(out, findings)
+	renderDoctorFindings(term, findings)
 	if !fix {
-		fmt.Fprintln(out, "next: run 'baha doctor --fix' to repair supported safe findings")
-		return errors.New("one or more checks failed")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha doctor --fix")
+		fmt.Fprintln(out, "  baha doctor --verbose")
+		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
+		return cli.Presented(errors.New("one or more checks failed"))
 	}
 
 	if hasAutoFixableDoctorFinding(findings) {
+		term.Section("Repair")
 		if err := repairExistingControlPlaneRuntime(ctx, out); err != nil {
-			fmt.Fprintf(out, "[FAIL] repair             %v\n", err)
+			term.Result("FAILED", "repair", err.Error())
 		} else {
-			fmt.Fprintln(out, "[OK] repair             reconverged existing control-plane runtime")
+			term.Result("UPDATED", "repair", "reconverged existing control-plane runtime")
 		}
 	}
 
 	after := health.Doctor()
-	afterFormatted, afterOK := health.Format(after)
-	fmt.Fprintln(out, "After repair:")
-	fmt.Fprint(out, afterFormatted)
+	term.Section("After repair")
+	afterOK := renderControlPlaneDoctor(term, after)
 	if afterOK {
+		fmt.Fprintln(out, "\nREADY")
 		return nil
 	}
 
 	remaining := classifyDoctorFindings(after)
-	printDoctorFindings(out, remaining)
-	return errors.New("one or more checks still require action")
+	renderDoctorFindings(term, remaining)
+	fmt.Fprintln(out, "\nNext:")
+	fmt.Fprintln(out, "  Resolve the remaining problems above.")
+	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
+	return cli.Presented(errors.New("one or more checks still require action"))
+}
+
+func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
+	ok := true
+	term.Section("Core")
+	for _, check := range checks {
+		state := "OK"
+		if !check.OK {
+			state = "FAILED"
+			ok = false
+		}
+		detail := ""
+		if !check.OK || term.Verbose() {
+			detail = check.Message
+		}
+		term.Result(state, check.Name, detail)
+	}
+	return ok
 }
 
 func classifyDoctorFindings(checks []health.Check) []doctorFinding {
@@ -110,13 +139,17 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 	return findings
 }
 
-func printDoctorFindings(out io.Writer, findings []doctorFinding) {
+func renderDoctorFindings(term *cli.Terminal, findings []doctorFinding) {
 	if len(findings) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "%d problem(s) found:\n", len(findings))
+	term.Section("Problems")
 	for _, finding := range findings {
-		fmt.Fprintf(out, "- %s: %s -> %s\n", finding.Class, finding.Check.Name, finding.Action)
+		state := "FAILED"
+		if finding.Class == doctorAutoFixable {
+			state = "REPAIRABLE"
+		}
+		term.Result(state, finding.Check.Name, finding.Action)
 	}
 }
 

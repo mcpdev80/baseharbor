@@ -1,5 +1,23 @@
 # Einstieg in fuenf Minuten
 
+## Optional: Shell-Completion aktivieren
+
+BaseHarbor erzeugt Completion ohne separates Plugin:
+
+```bash
+# Bash
+source <(baha completion bash)
+
+# Zsh
+source <(baha completion zsh)
+
+# Fish
+baha completion fish | source
+```
+
+Fuer eine dauerhafte Installation wird das erzeugte Skript im ueblichen Completion-Verzeichnis der jeweiligen Shell gespeichert. Completion ist read-only und kann Befehle, Flags sowie feste Werte wie `dev`, `test` und `prod` vorschlagen.
+
+
 BaseHarbor kann ein bestehendes Repository uebernehmen, ohne dass Entwickler zuerst Provider- oder Runtime-Topologie verstehen muessen.
 
 ## 1. Repository analysieren
@@ -82,6 +100,22 @@ baha doctor -o json
 ```
 
 Secret-Werte werden nie ausgegeben. Bei Required Secrets erscheinen nur Readiness-Metadaten.
+
+## Terminal-UX
+
+Die normale Ausgabe ist fuer Menschen optimiert: gruppierte Bereiche, semantische Zustaende wie `READY`, `VERIFIED`, `UPDATED` und `DELETED` sowie sichtbare Aktivitaet bei merklich dauernden Operationen.
+
+Nuetzliche globale Controls:
+
+```bash
+baha status --quiet
+baha doctor --verbose
+baha up --no-color
+```
+
+`NO_COLOR` und `TERM=dumb` werden respektiert. In CI/Non-TTY ist Fortschritt zeilenorientiert und enthaelt keine Spinner-Control-Sequenzen. BaseHarbor erfindet keine Prozentwerte oder ETAs.
+
+`status` beantwortet, was gesund ist und was Aufmerksamkeit benoetigt. `doctor` gruppiert Checks, Probleme, sichere Reparaturen und naechste Aktionen statt eine unstrukturierte Diagnoseliste auszugeben.
 
 ## Sichere Defaults
 

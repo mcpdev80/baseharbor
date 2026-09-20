@@ -42,9 +42,14 @@ func appCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "created application %s (%s)\n", m.Name, m.Environment)
-				fmt.Fprintf(out, "manifest: %s\n", path)
-				fmt.Fprintln(out, "next: run 'baha app plan "+m.Name+"' and 'baha app preflight "+m.Name+"'")
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(m.Name, m.Environment)
+				term.Section("Application")
+				term.Result("CREATED", "application", m.Name)
+				term.Info("manifest", path)
+				fmt.Fprintln(out, "\nNext:")
+				fmt.Fprintln(out, "  baha app plan "+m.Name)
+				fmt.Fprintln(out, "  baha app preflight "+m.Name)
 				return nil
 			},
 		},
@@ -64,9 +69,9 @@ func appCommand(store application.Store) *cli.Command {
 					fmt.Fprintln(out, "No applications configured.")
 					return nil
 				}
-				fmt.Fprintln(out, "NAME\tENVIRONMENT\tSERVICES")
+				fmt.Fprintf(out, "  %-20s %-12s %s\n", "NAME", "ENVIRONMENT", "SERVICES")
 				for _, item := range items {
-					fmt.Fprintf(out, "%s\t%s\t%s\n", item.Name, item.Environment, serviceNames(item))
+					fmt.Fprintf(out, "  %-20s %-12s %s\n", item.Name, item.Environment, serviceNames(item))
 				}
 				return nil
 			},
@@ -185,9 +190,9 @@ func appCommand(store application.Store) *cli.Command {
 					if requiredKnown {
 						printRequiredSecretStatus(out, requiredStatuses)
 					} else {
-						fmt.Fprintln(out, "REQUIRED SECRET\tSTATUS\tACTION")
+						fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
 						for _, name := range application.RequiredSecretNames(m) {
-							fmt.Fprintf(out, "%s\tunknown - secret scope not materialized yet\tbaha app secret set %s --stdin\n", name, name)
+							fmt.Fprintf(out, "  %-24s %-38s %s\n", name, "unknown - secret scope not materialized yet", "baha app secret set "+name+" --stdin")
 						}
 						fmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
 					}

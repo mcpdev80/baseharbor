@@ -44,7 +44,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err := service.Set(ctx, resolved.Manifest.Name, key, value); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "Secret %s updated for application %s (%s).\n", key, resolved.Manifest.Name, resolved.Manifest.Environment)
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
+				term.Section("Secrets")
+				term.Result("UPDATED", "secret", key)
 				return nil
 			},
 		},
@@ -123,7 +126,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err := service.Delete(ctx, appName, key); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "Secret %s permanently deleted from application %s (%s).\n", key, appName, resolved.Manifest.Environment)
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
+				term.Section("Secrets")
+				term.Result("DELETED", "secret", key+" permanently deleted")
 				return nil
 			},
 		},

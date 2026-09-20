@@ -95,7 +95,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.manifest); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "[SKIP] logs               application log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
+		fmt.Fprintf(out, "[SKIPPED] logs             application log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
 		return nil
 	}
 	if prepared.execution == nil {
@@ -107,7 +107,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if _, err := logsprovider.EnsureWorkloadOverride(prepared.manifest, files, prepared.services); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] logs-provider      Loki/Alloy collector state converged for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s\n", prepared.manifest.Name)
 	return nil
 }
 
@@ -125,7 +125,7 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[OK] logs               %d workload service log stream(s) ingested for %s\n", len(prepared.services), prepared.manifest.Name)
+	fmt.Fprintf(out, "[VERIFIED] logs          %d workload service log stream(s) ingested for %s\n", len(prepared.services), prepared.manifest.Name)
 	return nil
 }
 
