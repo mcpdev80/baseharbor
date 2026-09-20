@@ -379,3 +379,11 @@ Jedes konfigurierbare Feld muss klare Semantik besitzen:
 Overrides werden nur akzeptiert, wenn aktive Runtime und Provider sie sicher und deterministisch umsetzen koennen. Security, Ownership, Reconciliation, Conformance und Fail-Closed-Validierung duerfen dadurch niemals umgangen werden.
 
 Einfacher und Experten-Pfad verwenden denselben Core. Erweiterte Flexibilitaet darf weder einen zweiten Application Contract noch einen parallelen Lifecycle erzeugen.
+
+## Ausfuehrbare Conformance seit v0.4.9
+
+Die statischen Descriptor-Checks bleiben das erste Gate; Provider Integration Contract v1 besitzt jetzt zusaetzlich einen wiederverwendbaren ausfuehrbaren Lifecycle-Conformance-Harness.
+
+Referenzprovider koennen damit gegen side-effect-freien Preflight, fail-closed Unsupported Placement, deterministisches Provisioning, idempotente wiederholte Convergence, Binding, echtes Verify, Retry-Semantik, secret-sichere Diagnosen und ownership-sicheres Destroy getestet werden. Der In-Process-Fake-Provider liefert deterministische CREATE/NOOP/DRIFT/REPAIR-/Failure-Szenarien, ohne eine neue Runtime oder ein Plugin-System einzufuehren.
+
+Loki ist der erste v0.4.9-Referenzprovider, der diese ausfuehrbare Conformance-Maschinerie verpflichtend verwendet.
