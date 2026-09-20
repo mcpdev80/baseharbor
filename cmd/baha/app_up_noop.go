@@ -81,6 +81,11 @@ func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApp
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("read repository deployment state: %w", err)
 	}
+	if data, err := os.ReadFile(filepath.Join(repoRoot, ".env")); err == nil {
+		write(".env", data)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read repository compose environment: %w", err)
+	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
