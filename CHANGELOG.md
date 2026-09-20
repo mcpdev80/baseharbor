@@ -29,7 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Repository workloads that request privileged mode, host network/PID/IPC, runtime sockets, dangerous capabilities or critical host mounts fail closed in managed environments before workload mutation.
 - Development-only exceptions require explicit acknowledgement; host devices are warnings by default in development and denies in managed environments.
-- Loki and Alloy run read-only, drop all Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
+- Loki and Alloy run read-only, drop all Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only; provider-internal traffic and host publishing use separate provider-owned networks so isolation does not depend on wildcard host exposure.
+- Managed Compose runtimes are validated for effective non-root execution, not only configured user fields. The OpenBao control-plane service runs directly as non-root `openbao`, keeps its root filesystem read-only, uses an ephemeral writable `/openbao/config` tmpfs for generated local configuration and disables privileged entrypoint chown attempts through `SKIP_CHOWN`.
 - Log registration state and provider files are owner-only and contain no credentials.
 
 
