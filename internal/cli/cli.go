@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -193,17 +194,13 @@ func (c *Command) decorateUsageError(args []string, err error) error {
 	return err
 }
 
+var helpUsageFlagPattern = regexp.MustCompile(`--[A-Za-z0-9][A-Za-z0-9-]*|-[A-Za-z]`)
+
 func (c *Command) knownFlags() []string {
 	flags := []string{"-h", "--help", "-q", "--quiet", "--silent", "-v", "--verbose", "--plain", "--no-color", "--no-input", "--non-interactive", "--version"}
-	for _, field := range strings.Fields(c.Usage) {
-		field = strings.Trim(field, "[](){}|,")
-		if strings.HasPrefix(field, "-") {
-			if before, _, ok := strings.Cut(field, "="); ok {
-				field = before
-			}
-			if field != "" && !containsString(flags, field) {
-				flags = append(flags, field)
-			}
+	for _, flag := range helpUsageFlagPattern.FindAllString(c.Usage, -1) {
+		if !containsString(flags, flag) {
+			flags = append(flags, flag)
 		}
 	}
 	return flags
