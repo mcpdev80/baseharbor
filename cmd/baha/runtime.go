@@ -306,6 +306,17 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
+	if strings.TrimSpace(recoveryFile) == "" {
+		checks := health.RuntimeChecks()
+		if len(checks) > 0 {
+			_, ready := health.Format(checks)
+			if ready {
+				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY. No changes.")
+				return nil
+			}
+		}
+	}
+
 	files, err := bhruntime.ExistingFiles("")
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
