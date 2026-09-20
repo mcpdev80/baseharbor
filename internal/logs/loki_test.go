@@ -171,7 +171,17 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 
 
 func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
-	cfg := lokiConfig()
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFiles(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.LokiConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := string(data)
 	if !strings.Contains(cfg, "http_listen_address: 0.0.0.0") {
 		t.Fatalf("Loki config must bind IPv4 for host loopback publishing:\n%s", cfg)
 	}
