@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
