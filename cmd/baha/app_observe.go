@@ -96,10 +96,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 
 	if application.HasObjectStorage(m) {
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
-			cancel()
-			if err != nil {
+		cancel()
+		if err != nil {
 			result.AddCheck("object-storage", false, err.Error())
 		} else {
 			result.AddCheck("object-storage", true, fmt.Sprintf("%d bucket(s) passed authenticated S3 Put/Get", len(application.ObjectStorageBucketNames(m))))
@@ -108,8 +108,8 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if application.HasOTLPTelemetry(m) {
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err := telemetry.VerifyApplication(checkCtx, m, files)
-			cancel()
-			if err != nil {
+		cancel()
+		if err != nil {
 			result.AddCheck("telemetry/otlp", false, err.Error())
 		} else {
 			result.AddCheck("telemetry/otlp", true, "real OTLP HTTP/protobuf export accepted")
@@ -181,7 +181,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 
 	if workloadStatus.Found {
-			for _, service := range workloadStatus.Services {
+		for _, service := range workloadStatus.Services {
 			result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
 		}
 		if workloadErr != nil {
@@ -389,10 +389,10 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
 				if format == outputJSON {
 					payload := struct {
-						Application string `json:"application"`
-						Environment string `json:"environment"`
-						State       string `json:"state"`
-						Healthy     bool   `json:"healthy"`
+						Application string             `json:"application"`
+						Environment string             `json:"environment"`
+						State       string             `json:"state"`
+						Healthy     bool               `json:"healthy"`
 						Checks      []preflight.Result `json:"checks"`
 					}{Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
 					return writeJSON(out, payload)
@@ -478,23 +478,23 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
 					checks = append(checks, preflight.Check{Name: "logs deployment policy", Run: func(context.Context) error { return policyErr }})
 				} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-				checks = append(checks, preflight.Check{Name: "Loki log ingestion", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
-					if err != nil {
-						return err
-					}
-					if !status.Found {
-						return nil
-					}
-					services := make([]string, 0, len(status.Services))
-					for _, service := range status.Services {
-						services = append(services, service.Service)
-					}
-					return logsprovider.VerifyApplication(ctx, m, services)
-				}})
+					checks = append(checks, preflight.Check{Name: "Loki log ingestion", Run: func(ctx context.Context) error {
+						if runtimeErr != nil {
+							return runtimeErr
+						}
+						status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+						if err != nil {
+							return err
+						}
+						if !status.Found {
+							return nil
+						}
+						services := make([]string, 0, len(status.Services))
+						for _, service := range status.Services {
+							services = append(services, service.Service)
+						}
+						return logsprovider.VerifyApplication(ctx, m, services)
+					}})
 				}
 			}
 			if len(m.Exposures) > 0 {
