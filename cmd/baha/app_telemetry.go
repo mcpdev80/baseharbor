@@ -17,13 +17,16 @@ type managedTelemetryExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedTelemetryExecution, error) {
+func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution) (*managedTelemetryExecution, error) {
 	m := resolved.Manifest
 	if !application.HasOTLPTelemetry(m) {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
 	driver := telemetry.NewDriver(compose, m, files)
+	if traces != nil && traces.enabled {
+		driver.SetTraceBackend("http://tempo:4318", traces.placement.Network)
+	}
 	request := capability.Request{
 		Requirement: capability.Requirement{Kind: capability.TelemetryOTLP, Name: "default"},
 		Workload:    "application/" + m.Name,
