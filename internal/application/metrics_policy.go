@@ -29,15 +29,18 @@ type MetricsDeploymentPolicy struct {
 }
 
 // MetricsPolicy is deployment/operator state, never portable application intent.
-// Defaults deliberately grant the minimum useful collection surface:
-// application metrics only. Broader provider/platform collection is explicit.
+// Defaults keep the user-facing path simple: when metrics collection is enabled,
+// BaseHarbor also observes managed providers that explicitly advertise safe
+// OpenMetrics endpoints. Policy can narrow the collected source classes.
 func MetricsPolicy(m Manifest) (MetricsDeploymentPolicy, error) {
 	enabled, err := MetricsCollectionEnabled(m)
 	if err != nil {
 		return MetricsDeploymentPolicy{}, err
 	}
 	collect := map[MetricsSourceClass]bool{
-		MetricsSourceApplication: true,
+		MetricsSourceApplication:         true,
+		MetricsSourceApplicationProvider: true,
+		MetricsSourcePlatformProvider:    true,
 	}
 	if raw := strings.TrimSpace(os.Getenv(MetricsCollectSourcesEnv)); raw != "" {
 		collect = map[MetricsSourceClass]bool{}
