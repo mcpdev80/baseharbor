@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
 	"fmt"
 	"io"
 
@@ -47,6 +49,14 @@ func rootCommand() *cli.Command {
 	)
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 
+	var appPlan *cli.Command
+	for _, child := range appCmd.Children {
+		if child.Name == "plan" {
+			appPlan = child
+			break
+		}
+	}
+
 	root := &cli.Command{
 		Name:    "baha",
 		Summary: "BaseHarbor command-line interface",
@@ -84,17 +94,45 @@ func rootCommand() *cli.Command {
 			},
 		},
 		{
+			Name:    "plan",
+			Summary: "Show the application plan in the current repository",
+			Usage:   "baha plan [NAME] [-o json|--output json]",
+			Long:    "Repository-aware shorthand for 'baha app plan'. It is read-only and uses the same application planning core.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if appPlan == nil {
+					return errors.New("application plan command is unavailable")
+				}
+				return appPlan.Run(ctx, args, out, errOut)
+			},
+		},
+		{
 			Name:    "status",
-			Summary: "Show control-plane container and readiness status",
-			Usage:   "baha status",
-			Run:     noArgsCtx("baha status", runtimeStatus),
+			Summary: "Show application status in a repository, otherwise control-plane status",
+			Usage:   "baha status [-o json|--output json]",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appStatusCommandWithTLS(store).Run(ctx, args, out, errOut)
+				}
+				if len(args) != 0 {
+					return usageError("structured application status requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app status NAME -o json'.")
+				}
+				return runtimeStatus(ctx, out)
+			},
 		},
 		{
 			Name:    "doctor",
-			Summary: "Verify prerequisites and safely repair supported runtime findings",
-			Usage:   "baha doctor [--fix]",
-			Long:    "Classifies failed checks as auto-fixable, fixable with confirmation, requiring developer input, or requiring manual/admin action. --fix only applies safe reversible repairs to existing runtime state and never invents credentials, unseals OpenBao without recovery material, discards data, or silently overwrites application files.",
-			Run:     doctorCommand,
+			Summary: "Diagnose the current application repository, otherwise the control plane",
+			Usage:   "baha doctor [--fix] [-o json|--output json]",
+			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appDoctorRepairCommandWithTLS(store).Run(ctx, args, out, errOut)
+				}
+				if requestsJSONOutput(args) {
+					return usageError("structured application doctor requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app doctor NAME -o json'.")
+				}
+				return doctorCommand(ctx, args, out, errOut)
+			},
 		},
 		serveCommand(store),
 		appCmd,
@@ -144,4 +182,13 @@ func noArgsCtx(name string, fn noArgsCtxHandler) cli.RunFunc {
 		}
 		return fn(ctx, out)
 	}
+}
+
+func inApplicationRepository() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	_, err = application.FindRepositoryManifest(cwd)
+	return err == nil
 }
