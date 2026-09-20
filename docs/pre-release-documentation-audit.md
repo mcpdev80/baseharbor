@@ -2,9 +2,9 @@
 
 This file is the active documentation/release gate for the **next unreleased BaseHarbor version**.
 
-Target release: `v0.4.7`.
+Target release: `v0.4.9`.
 
-The latest published stable release before this release is `v0.4.6`. Completed release audits are preserved under `docs/release-audits/`.
+The latest published stable release before this release is `v0.4.8`. Completed release audits are preserved under `docs/release-audits/`.
 
 Before preparing the next release, update this document with the concrete target version and audit the actual implementation rather than copying claims from the previous release.
 
@@ -60,11 +60,11 @@ Run expensive runtime, MailFlow, broker, backup/restore or full product acceptan
 
 Before a product release tag is created, the exact final release-preparation head must have the validation required by `docs/DEVELOPMENT_GUIDELINES.md`.
 
-## v0.4.7 audit result
+## v0.4.9 audit result
 
-The target-specific implementation, architecture, security, readiness, documentation and validation findings are recorded in [release-audits/v0.4.7.md](release-audits/v0.4.7.md).
+The target-specific implementation, architecture, security, readiness, documentation and validation findings are recorded in [release-audits/v0.4.9.md](release-audits/v0.4.9.md).
 
-The release remains open until the exact final feature head, real Docker/Compose OTLP acceptance, merged release source, tag, GitHub Release artifacts and runtime image have all been verified.
+The release remains open until the exact final feature head, targeted Loki/Alloy data-flow acceptance, merged release source, tag, GitHub Release artifacts and runtime image have all been verified.
 
 ## Release completion
 
