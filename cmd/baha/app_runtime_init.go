@@ -105,7 +105,7 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 		case strings.HasPrefix(arg, "--cert-dir="):
 			opts.CertDir = strings.TrimSpace(strings.TrimPrefix(arg, "--cert-dir="))
 		default:
-			return repositoryInitOptions{}, usageError("unknown app init option "+arg, "With an existing baseharbor.yaml use --hostname, --tls, --cert-dir and --yes.")
+			return repositoryInitOptions{}, unknownOptionUsage("baha app init", arg, "--hostname", "--tls", "--cert-dir", "--yes", "-y")
 		}
 		if err != nil {
 			return repositoryInitOptions{}, err
