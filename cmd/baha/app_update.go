@@ -264,8 +264,7 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 }
 
 func parseGitDirtyEntries(status string) []gitDirtyEntry {
-	lines := strings.Split(strings.TrimSpace(status), "
-")
+	lines := strings.Split(strings.TrimSpace(status), "\n")
 	entries := make([]gitDirtyEntry, 0, len(lines))
 	for _, line := range lines {
 		if len(line) < 3 {
@@ -387,8 +386,7 @@ func formatGitApplicationUpdateCheck(out io.Writer, name, environment string, st
 			if entry.BaseHarborLocal {
 				detail += " · BaseHarbor local state"
 			}
-			fmt.Fprintf(out, "  %-20s %s
-", detail, entry.Path)
+			fmt.Fprintf(out, "  %-20s %s\n", detail, entry.Path)
 		}
 		fmt.Fprintln(out, "Resolve or commit these changes yourself; BaseHarbor will not reset, stash, discard or overwrite them.")
 	} else {
