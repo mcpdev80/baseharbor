@@ -28,7 +28,7 @@ const (
 	ProviderNetwork    = "baseharbor-telemetry"
 	ProviderImage      = "otel/opentelemetry-collector-contrib:0.161.0"
 	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
-	ProbeTraceIDHex     = "42617365486172626f72303430370001"
+	ProbeTraceIDHex    = "42617365486172626f72303430370001"
 )
 
 type Runtime interface {
@@ -124,13 +124,13 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	}
 	if resource.Provider == capability.ProviderOTelCollector {
 		if err := observability.Update(observability.MetricsSource{
-			ID: "opentelemetry-collector:" + ProviderProject,
+			ID:       "opentelemetry-collector:" + ProviderProject,
 			Provider: capability.ProviderOTelCollector,
-			Class: observability.SourcePlatformProvider,
-			Scope: capability.ScopeShared,
-			Network: ProviderNetwork,
-			Target: ProviderService + ":8888",
-			Path: "/metrics",
+			Class:    observability.SourcePlatformProvider,
+			Scope:    capability.ScopeShared,
+			Network:  ProviderNetwork,
+			Target:   ProviderService + ":8888",
+			Path:     "/metrics",
 		}); err != nil {
 			return err
 		}
