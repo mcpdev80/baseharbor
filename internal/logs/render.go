@@ -110,8 +110,6 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	b.WriteString("    internal: true\n")
 	b.WriteString("  logs-publish:\n")
 	b.WriteString("    driver: bridge\n")
-	b.WriteString("  logs-publish:\n")
-	b.WriteString("    driver: bridge\n")
 	b.WriteString("volumes:\n")
 	fmt.Fprintf(&b, "  loki-data:\n    name: %s\n", strconv.Quote(placement.LokiVolume))
 	fmt.Fprintf(&b, "  alloy-data:\n    name: %s\n", strconv.Quote(placement.AlloyVolume))
