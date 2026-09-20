@@ -51,7 +51,6 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	configText := string(config)
 	if !strings.Contains(configText, "file_sd_configs:") ||
 		!strings.Contains(configText, "/etc/prometheus/targets/*.json") ||
-		!strings.Contains(configText, "/etc/prometheus/runtime-targets/*/*.json") ||
 		!strings.Contains(configText, "target_label: __metrics_path__") {
 		t.Fatalf("Prometheus config does not use dynamic file discovery/path relabeling:\n%s", configText)
 	}
@@ -285,5 +284,29 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 	}
 	if len(instances) != 0 {
 		t.Fatalf("shared provider state remains: %#v", instances)
+	}
+}
+
+
+func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
+	config := prometheusConfig([]sourceRegistration{
+		{Application: "alpha", Environment: "dev", RuntimeVolume: "runtime-alpha"},
+		{Application: "beta", Environment: "dev"},
+		{Application: "gamma", Environment: "dev", RuntimeVolume: "runtime-gamma"},
+	})
+	for _, want := range []string{
+		"/etc/prometheus/targets/*.json",
+		"/etc/prometheus/runtime-targets/0/*.json",
+		"/etc/prometheus/runtime-targets/2/*.json",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("Prometheus config missing %q:\n%s", want, config)
+		}
+	}
+	if strings.Contains(config, "/etc/prometheus/runtime-targets/*/*.json") {
+		t.Fatalf("Prometheus config contains unsupported nested wildcard file discovery path:\n%s", config)
+	}
+	if strings.Contains(config, "/etc/prometheus/runtime-targets/1/*.json") {
+		t.Fatalf("Prometheus config rendered runtime target path for registration without runtime volume:\n%s", config)
 	}
 }
