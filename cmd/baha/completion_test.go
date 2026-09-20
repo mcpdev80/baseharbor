@@ -91,7 +91,6 @@ func TestGlobalOutputOptionsIncludePlainNoInputAndVersion(t *testing.T) {
 	}
 }
 
-
 func TestBashCompletionUsesCurrentCursorWord(t *testing.T) {
 	script := bashCompletionScript()
 	for _, wanted := range []string{
