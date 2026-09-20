@@ -272,6 +272,22 @@ func writeWrapped(w io.Writer, text string, width int, prefix string) {
 	fmt.Fprintln(w, line)
 }
 
+func SuggestClosest(input string, candidates []string) string {
+	best := ""
+	bestDistance := 3
+	for _, candidate := range candidates {
+		distance := levenshtein(strings.ToLower(input), strings.ToLower(candidate))
+		if distance < bestDistance {
+			bestDistance = distance
+			best = candidate
+		}
+	}
+	if bestDistance <= 2 {
+		return best
+	}
+	return ""
+}
+
 func (c *Command) suggest(input string) string {
 	best := ""
 	bestDistance := 3
