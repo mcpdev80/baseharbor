@@ -67,7 +67,6 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	}
 }
 
-
 func TestRuntimeHostnameRoundTripPreservesLiteralDots(t *testing.T) {
 	root := t.TempDir()
 	const hostname = "mailflow.mcp-dev.de"
