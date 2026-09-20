@@ -32,7 +32,7 @@ trap cleanup EXIT
 verify_container() {
   local project="$1"
   local service="$2"
-  local id user privileged readonly cap_add cap_drop security_opt
+  local id user privileged readonly cap_add cap_drop security_opt effective_uid
 
   id="$(docker ps -q \
     --filter "label=com.docker.compose.project=$project" \
@@ -49,11 +49,16 @@ verify_container() {
   cap_add="$(docker inspect "$id" --format '{{json .HostConfig.CapAdd}}')"
   cap_drop="$(docker inspect "$id" --format '{{json .HostConfig.CapDrop}}')"
   security_opt="$(docker inspect "$id" --format '{{json .HostConfig.SecurityOpt}}')"
+  effective_uid="$(docker top "$id" -eo uid 2>/dev/null | awk 'NR==2 {print $1}')"
 
-  printf '  %-34s user=%-14s privileged=%-5s readonly=%-5s\n' "$project/$service" "$user" "$privileged" "$readonly"
+  printf '  %-34s user=%-14s effective_uid=%-8s privileged=%-5s readonly=%-5s\n' "$project/$service" "$user" "$effective_uid" "$privileged" "$readonly"
 
   if [[ -z "$user" || "$user" == "0" || "$user" == "root" || "$user" == 0:* || "$user" == root:* ]]; then
     printf 'FAIL: %s/%s runs as root or has no explicit runtime user (%q)\n' "$project" "$service" "$user" >&2
+    return 1
+  fi
+  if [[ -z "$effective_uid" || "$effective_uid" == "0" || "$effective_uid" == "root" ]]; then
+    printf 'FAIL: %s/%s effective process UID is root or unavailable (%q)\n' "$project" "$service" "$effective_uid" >&2
     return 1
   fi
   [[ "$privileged" == "false" ]] || {
