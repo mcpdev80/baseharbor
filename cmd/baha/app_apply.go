@@ -196,7 +196,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
 			defer verifyCancel()
 			var verifyErr error
-			if err := activity(ctx, term, "Waiting for backend readiness", func(io.Writer) error {
+			if err := activity(ctx, term, "Waiting for backend readiness", func(progress io.Writer) error {
+				cli.ReportActivityDetail(progress, "checking managed service readiness")
 				for verifyCtx.Err() == nil {
 					verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
 					if verifyErr == nil && m.Services.Secrets {
@@ -207,6 +208,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 						}
 					}
 					if verifyErr == nil {
+						cli.ReportActivityDetail(progress, "managed services ready")
 						break
 					}
 					select {
@@ -223,8 +225,8 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 
 			if application.RequiresRuntimeBroker(m) {
-				if err := activity(ctx, term, "Starting secure runtime broker", func(io.Writer) error {
-					return ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files)
+				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
 				}); err != nil {
 					return err
 				}
@@ -306,7 +308,9 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 	project := application.RuntimeProjectName(m)
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProject(ctx, project, files.Compose, files.Env)
+		err := compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		})
 		if err == nil {
 			return nil
 		}

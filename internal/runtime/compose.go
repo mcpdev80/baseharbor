@@ -83,7 +83,12 @@ func (c Compose) Config(ctx context.Context, composeFile, envFile string) error 
 }
 
 func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile string) error {
-	return c.runProject(ctx, project, composeFile, envFile, "up", "-d")
+	return c.UpProjectProgress(ctx, project, composeFile, envFile, nil)
+}
+
+func (c Compose) UpProjectProgress(ctx context.Context, project, composeFile, envFile string, onProgress func(string)) error {
+	_, err := c.outputProjectInputProgress(ctx, project, composeFile, envFile, nil, onProgress, "up", "-d")
+	return err
 }
 
 func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
@@ -412,6 +417,38 @@ func (c Compose) runProject(ctx context.Context, project, composeFile, envFile s
 
 func (c Compose) outputProject(ctx context.Context, project, composeFile, envFile string, args ...string) (string, error) {
 	return c.outputProjectInput(ctx, project, composeFile, envFile, nil, args...)
+}
+
+func (c Compose) outputProjectInputProgress(ctx context.Context, project, composeFile, envFile string, input []byte, onProgress func(string), args ...string) (string, error) {
+	if c.command == "" {
+		return "", ErrRuntimeNotFound
+	}
+	if strings.TrimSpace(project) == "" {
+		return "", errors.New("compose project name is required")
+	}
+
+	fullArgs := append([]string{}, c.prefix...)
+	fullArgs = append(fullArgs, "--project-name", project, "--file", composeFile, "--env-file", envFile)
+	fullArgs = append(fullArgs, args...)
+
+	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
+	var stdout bytes.Buffer
+	progress := newComposeProgressCapture(onProgress)
+	cmd.Stdout = &stdout
+	cmd.Stderr = progress
+	err := cmd.Run()
+	progress.Flush()
+	if err != nil {
+		message := strings.TrimSpace(progress.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
+	}
+	return stdout.String(), nil
 }
 
 func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {

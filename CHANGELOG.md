@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Compose-backed lifecycle activities now stream secret-safe live detail such as image pulls, builds, container creation/start and readiness phases into the current CLI activity instead of hiding runtime progress until completion.
+
 - Long-running CLI lifecycle activities now expose elapsed time while running and include actual duration on completion, so slow fresh-start phases can be identified without verbose/debug mode or guessed ETAs.
 
 - Interactive file and directory prompts now show the current path base and explain where relative paths resolve, so recovery, TLS/certificate and future path selection remain orienting and predictable.

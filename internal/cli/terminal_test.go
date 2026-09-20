@@ -162,3 +162,31 @@ func TestTerminalActivityIncludesDurationForSlowOperation(t *testing.T) {
 		t.Fatalf("slow activity missing elapsed duration: %q", got)
 	}
 }
+
+
+func TestTerminalActivityRendersLiveDetailInPlainMode(t *testing.T) {
+	ctx := WithOutputOptions(context.Background(), OutputOptions{ReducedMotion: true})
+	var out bytes.Buffer
+	term := NewTerminal(ctx, &out, &out)
+	err := term.Activity(context.Background(), "Starting repository workload", func(w io.Writer) error {
+		time.Sleep(400 * time.Millisecond)
+		ReportActivityDetail(w, "pulling image ghcr.io/example/api:latest")
+		time.Sleep(20 * time.Millisecond)
+		ReportActivityDetail(w, "starting container demo-api-1")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, wanted := range []string{
+		"[START] Starting repository workload",
+		"[INFO] Starting repository workload - pulling image ghcr.io/example/api:latest",
+		"[INFO] Starting repository workload - starting container demo-api-1",
+		"[OK] Starting repository workload - done",
+	} {
+		if !strings.Contains(got, wanted) {
+			t.Fatalf("activity output missing %q: %q", wanted, got)
+		}
+	}
+}

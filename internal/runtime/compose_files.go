@@ -66,12 +66,16 @@ func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, co
 }
 
 func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+	return c.UpProjectFilesSelectedProgress(ctx, project, workdir, environment, services, nil, composeFiles...)
+}
+
+func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
 	args := []string{"up", "-d"}
 	if len(services) > 0 {
 		args = append(args, "--no-deps")
 		args = append(args, services...)
 	}
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
+	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
 }
 
@@ -171,6 +175,53 @@ func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
 		env = append(env, key+"="+value)
 	}
 	return env, nil
+}
+
+func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, onProgress func(string), args ...string) (string, error) {
+	if c.command == "" {
+		return "", ErrRuntimeNotFound
+	}
+	if strings.TrimSpace(project) == "" {
+		return "", errors.New("compose project name is required")
+	}
+	if len(composeFiles) == 0 {
+		return "", errors.New("at least one compose file is required")
+	}
+
+	fullArgs := append([]string{}, c.prefix...)
+	fullArgs = append(fullArgs, "--project-name", project)
+	for _, file := range composeFiles {
+		if strings.TrimSpace(file) == "" {
+			return "", errors.New("compose file path is empty")
+		}
+		fullArgs = append(fullArgs, "--file", file)
+	}
+	fullArgs = append(fullArgs, args...)
+
+	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
+	if strings.TrimSpace(workdir) != "" {
+		cmd.Dir = workdir
+	}
+	var err error
+	cmd.Env, err = mergeProcessEnvironment(environment)
+	if err != nil {
+		return "", err
+	}
+
+	var stdout bytes.Buffer
+	progress := newComposeProgressCapture(onProgress)
+	cmd.Stdout = &stdout
+	cmd.Stderr = progress
+	err = cmd.Run()
+	progress.Flush()
+	if err != nil {
+		message := strings.TrimSpace(progress.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
+	}
+	return stdout.String(), nil
 }
 
 func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {

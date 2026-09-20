@@ -282,7 +282,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
 			}
 			if application.RequiresRuntimeBroker(m) {
-				if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, m, files); err != nil {
+				if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, m, files); err != nil {
 					return err
 				}
 			}
@@ -306,7 +306,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
 	var result error
 	if brokerStopped {
-		if err := ensureAndStartRuntimeBroker(ctx, compose, platformFiles, resolved.Manifest, files); err != nil {
+		if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, resolved.Manifest, files); err != nil {
 			result = errors.Join(result, fmt.Errorf("restart application runtime broker after backup: %w", err))
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -195,7 +196,9 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 	}
 	const maxAttempts = 4
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, composeFiles...)
+		err := compose.UpProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		}, composeFiles...)
 		if err == nil {
 			return nil
 		}

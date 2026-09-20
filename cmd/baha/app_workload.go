@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
+	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -397,6 +398,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		return false, fmt.Errorf("start application workload: %w", err)
 	}
 
+	cli.ReportActivityDetail(out, "waiting for workload service and HTTP/TLS readiness")
 	fmt.Fprintf(out, "[WAIT] workload          waiting up to %s for service and HTTP/TLS readiness\n", repositoryWorkloadReadinessTimeout)
 	verifyCtx, cancel := context.WithTimeout(ctx, repositoryWorkloadReadinessTimeout)
 	defer cancel()
@@ -405,6 +407,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	for verifyCtx.Err() == nil {
 		lastStatus, lastErr = inspectRepositoryWorkloadStatus(verifyCtx, compose, resolved, files)
 		if lastErr == nil && lastStatus.Found && lastStatus.Ready() {
+			cli.ReportActivityDetail(out, "workload ready")
 			fmt.Fprintf(out, "[READY] workload         %d Compose service(s) ready\n", len(expectedServices))
 			if len(lastStatus.Exposures) > 0 {
 				fmt.Fprintf(out, "[READY] exposure         %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
