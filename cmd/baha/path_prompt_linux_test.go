@@ -89,11 +89,8 @@ func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *tes
 		t.Fatalf("path = %q, want recovery.json", got)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Path base") || !strings.Contains(text, dir) {
-		t.Fatalf("interactive path context missing: %q", text)
-	}
-	if !strings.Contains(text, "New recovery output file:") {
-		t.Fatalf("path prompt missing: %q", text)
+	if !strings.Contains(text, shellDisplayPath(dir)+"/ New recovery output file:") {
+		t.Fatalf("shell-like path prompt missing: %q", text)
 	}
 }
 
@@ -149,10 +146,19 @@ func TestDrawPathPromptShowsBrowsingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "Browsing\n  "+root) {
-		t.Fatalf("missing browsing directory: %q", got)
+if !strings.Contains(got, shellDisplayPath(root)+"/ New recovery output file: ") {
+		t.Fatalf("missing shell-like path prompt: %q", got)
 	}
-	if !strings.Contains(got, "New recovery output file: ") {
-		t.Fatalf("missing prompt: %q", got)
+}
+
+
+func TestShellDisplayPathUsesHomeShorthand(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := shellDisplayPath(filepath.Join(home, "dev", "project"))
+	if got != "~/dev/project" {
+		t.Fatalf("shellDisplayPath = %q, want ~/dev/project", got)
 	}
 }

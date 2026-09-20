@@ -27,9 +27,6 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	if !readerIsTerminal(input) {
 		return promptLine(reader, out, label, "")
 	}
-	if err := writePathPromptContext(out); err != nil {
-		return "", err
-	}
 	inputFile, ok := input.(*os.File)
 	if !ok {
 		return promptLine(reader, out, label, "")
@@ -107,11 +104,15 @@ func drawPathPrompt(out io.Writer, prompt, value string, fresh bool) error {
 	if err != nil {
 		return err
 	}
+	prefix := shellDisplayPath(browsing)
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
 	if fresh {
-		_, err = fmt.Fprintf(out, "Browsing\n  %s\n%s%s", browsing, prompt, value)
+		_, err = fmt.Fprintf(out, "%s %s%s", prefix, prompt, value)
 		return err
 	}
-	_, err = fmt.Fprintf(out, "\r\x1b[2K\x1b[1A\r\x1b[2K  %s\n%s%s", browsing, prompt, value)
+	_, err = fmt.Fprintf(out, "\r\x1b[2K%s %s%s", prefix, prompt, value)
 	return err
 }
 
@@ -150,6 +151,22 @@ func pathBrowsingDirectory(typed string) (string, error) {
 
 	dir := filepath.Dir(value)
 	return filepath.Clean(dir), nil
+}
+
+func shellDisplayPath(path string) string {
+	cleaned := filepath.Clean(path)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.ToSlash(cleaned)
+	}
+	home = filepath.Clean(home)
+	if cleaned == home {
+		return "~"
+	}
+	if rel, err := filepath.Rel(home, cleaned); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		return "~/" + filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(cleaned)
 }
 
 func completeDirectoryPath(typed string) (string, []string) {
