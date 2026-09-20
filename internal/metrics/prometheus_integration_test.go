@@ -73,9 +73,11 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 				Path:      "/metrics",
 			},
 		}
+		t.Logf("%s: preflight", m.Name)
 		if err := driver.Preflight(ctx, resource, binding); err != nil {
 			t.Fatalf("%s preflight: %v", m.Name, err)
 		}
+		t.Logf("%s: provision Prometheus", m.Name)
 		if err := driver.Provision(ctx, resource, binding); err != nil {
 			t.Fatalf("%s provision: %v", m.Name, err)
 		}
@@ -92,13 +94,16 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 			"python:3.13-alpine",
 			"sh", "-c", script,
 		)
+		t.Logf("%s: start metrics endpoint", m.Name)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%s start metrics endpoint: %v\n%s", m.Name, err, output)
 		}
 
+		t.Logf("%s: bind target", m.Name)
 		if err := driver.Bind(ctx, resource, binding); err != nil {
 			t.Fatalf("%s bind: %v", m.Name, err)
 		}
+		t.Logf("%s: verify real scrape", m.Name)
 		if err := driver.Verify(ctx, resource, binding); err != nil {
 			t.Fatalf("%s verify real scrape/ingestion: %v", m.Name, err)
 		}
