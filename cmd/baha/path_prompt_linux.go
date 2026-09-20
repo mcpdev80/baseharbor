@@ -48,8 +48,13 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, oldState) }()
 
 	prompt := label
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	promptPath := shellDisplayPath(cwd)
 	var value []byte
-	if err := drawPathPrompt(out, prompt, string(value), true); err != nil {
+	if err := drawPathPrompt(out, prompt, promptPath, string(value), true); err != nil {
 		return "", err
 	}
 	for {
@@ -72,13 +77,13 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 		case 8, 127: // backspace
 			if len(value) > 0 {
 				value = value[:len(value)-1]
-				redrawPathPrompt(out, prompt, string(value))
+				redrawPathPrompt(out, prompt, promptPath, string(value))
 			}
 		case '\t':
 			completed, matches := completeDirectoryPath(string(value))
 			if completed != string(value) {
 				value = []byte(completed)
-				redrawPathPrompt(out, prompt, completed)
+				redrawPathPrompt(out, prompt, promptPath, completed)
 				continue
 			}
 			if len(matches) > 1 {
@@ -86,7 +91,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 				for _, match := range matches {
 					_, _ = fmt.Fprintln(out, "  "+match)
 				}
-				_ = drawPathPrompt(out, prompt, string(value), true)
+				_ = drawPathPrompt(out, prompt, promptPath, string(value), true)
 			}
 		case 27: // swallow basic escape sequences (arrow keys etc.)
 			if next, err := reader.Peek(2); err == nil && len(next) == 2 && next[0] == '[' {
@@ -94,61 +99,23 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 			}
 		default:
 			value = append(value, b)
-			redrawPathPrompt(out, prompt, string(value))
+			redrawPathPrompt(out, prompt, promptPath, string(value))
 		}
 	}
 }
 
-func drawPathPrompt(out io.Writer, prompt, value string, fresh bool) error {
-	browsing, err := pathBrowsingDirectory(value)
-	if err != nil {
-		return err
-	}
-	prefix := shellDisplayPath(browsing)
-	line := fmt.Sprintf("%s:%s$ %s", prompt, prefix, value)
+func drawPathPrompt(out io.Writer, prompt, promptPath, value string, fresh bool) error {
+	line := fmt.Sprintf("%s:%s$ %s", prompt, promptPath, value)
 	if fresh {
-		_, err = fmt.Fprint(out, line)
+		_, err := fmt.Fprint(out, line)
 		return err
 	}
-	_, err = fmt.Fprintf(out, "\r\x1b[2K%s", line)
+	_, err := fmt.Fprintf(out, "\r\x1b[2K%s", line)
 	return err
 }
 
-func redrawPathPrompt(out io.Writer, prompt, value string) {
-	_ = drawPathPrompt(out, prompt, value, false)
-}
-
-func pathBrowsingDirectory(typed string) (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	value := strings.TrimSpace(typed)
-	if value == "" {
-		return filepath.Clean(cwd), nil
-	}
-
-	if value == "~" || strings.HasPrefix(value, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		if value == "~" {
-			return filepath.Clean(home), nil
-		}
-		value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
-	} else if !filepath.IsAbs(value) {
-		value = filepath.Join(cwd, value)
-	}
-
-	value = filepath.Clean(value)
-	if info, err := os.Stat(value); err == nil && info.IsDir() {
-		return value, nil
-	}
-
-	dir := filepath.Dir(value)
-	return filepath.Clean(dir), nil
+func redrawPathPrompt(out io.Writer, prompt, promptPath, value string) {
+	_ = drawPathPrompt(out, prompt, promptPath, value, false)
 }
 
 func shellDisplayPath(path string) string {

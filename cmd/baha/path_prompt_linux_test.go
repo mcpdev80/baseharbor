@@ -95,42 +95,7 @@ func TestPromptPathWithCompletionShowsPathBaseForInteractiveNonFileReader(t *tes
 }
 
 
-func TestPathBrowsingDirectory(t *testing.T) {
-	original, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(root); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chdir(original) }()
-
-	tests := []struct {
-		typed string
-		want  string
-	}{
-		{"", root},
-		{"a", filepath.Join(root, "a")},
-		{"a/b/", filepath.Join(root, "a", "b")},
-		{"a/b/file.json", filepath.Join(root, "a", "b")},
-		{"../", filepath.Dir(root)},
-	}
-	for _, tt := range tests {
-		got, err := pathBrowsingDirectory(tt.typed)
-		if err != nil {
-			t.Fatalf("pathBrowsingDirectory(%q): %v", tt.typed, err)
-		}
-		if got != filepath.Clean(tt.want) {
-			t.Fatalf("pathBrowsingDirectory(%q) = %q, want %q", tt.typed, got, filepath.Clean(tt.want))
-		}
-	}
-}
-
-func TestDrawPathPromptShowsBrowsingDirectory(t *testing.T) {
+func TestDrawPathPromptKeepsStaticCWDForRelativeInput(t *testing.T) {
 	original, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -142,12 +107,28 @@ func TestDrawPathPromptShowsBrowsingDirectory(t *testing.T) {
 	defer func() { _ = os.Chdir(original) }()
 
 	var out bytes.Buffer
-	if err := drawPathPrompt(&out, "New recovery output file: ", "", true); err != nil {
+	promptPath := shellDisplayPath(root)
+	if err := drawPathPrompt(&out, "OpenBao-recovery-key", promptPath, "../../key", true); err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
-if !strings.Contains(got, "New recovery output file:"+shellDisplayPath(root)+"$ ") {
-		t.Fatalf("missing shell-like path prompt: %q", got)
+	want := "OpenBao-recovery-key:" + promptPath + "$ ../../key"
+	if got != want {
+		t.Fatalf("prompt = %q, want %q", got, want)
+	}
+}
+
+func TestDrawPathPromptKeepsStaticCWDForAbsoluteInput(t *testing.T) {
+	root := t.TempDir()
+	var out bytes.Buffer
+	promptPath := shellDisplayPath(root)
+	if err := drawPathPrompt(&out, "OpenBao-recovery-key", promptPath, "/tmp/key", true); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	want := "OpenBao-recovery-key:" + promptPath + "$ /tmp/key"
+	if got != want {
+		t.Fatalf("prompt = %q, want %q", got, want)
 	}
 }
 
