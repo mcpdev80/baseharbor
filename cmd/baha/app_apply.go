@@ -197,27 +197,27 @@ func appApplyCommand(store application.Store) *cli.Command {
 			defer verifyCancel()
 			var verifyErr error
 			if err := activity(ctx, term, "Waiting for backend readiness", func(io.Writer) error {
-			for verifyCtx.Err() == nil {
-				verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
-				if verifyErr == nil && m.Services.Secrets {
-					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-					verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+				for verifyCtx.Err() == nil {
+					verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
+					if verifyErr == nil && m.Services.Secrets {
+						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+						verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+						if verifyErr == nil {
+							verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+						}
+					}
 					if verifyErr == nil {
-						verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+						break
+					}
+					select {
+					case <-verifyCtx.Done():
+					case <-time.After(time.Second):
 					}
 				}
-				if verifyErr == nil {
-					break
+				if verifyErr != nil {
+					return fmt.Errorf("application verification failed: %w", verifyErr)
 				}
-				select {
-				case <-verifyCtx.Done():
-				case <-time.After(time.Second):
-				}
-			}
-			if verifyErr != nil {
-				return fmt.Errorf("application verification failed: %w", verifyErr)
-			}
-			return nil
+				return nil
 			}); err != nil {
 				return err
 			}
