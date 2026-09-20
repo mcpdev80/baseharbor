@@ -18,30 +18,30 @@ import (
 )
 
 const (
-	providerProject = "baseharbor-logs"
+	providerProject      = "baseharbor-logs"
 	workloadOverrideName = "workload.logging.override.yaml"
 )
 
 type Placement struct {
-	Scope capability.ProviderScope
-	Project string
-	Dir string
-	LokiVolume string
+	Scope       capability.ProviderScope
+	Project     string
+	Dir         string
+	LokiVolume  string
 	AlloyVolume string
 }
 
 type Registration struct {
 	Application string `json:"application"`
 	Environment string `json:"environment"`
-	SyslogPort int `json:"syslog_port"`
+	SyslogPort  int    `json:"syslog_port"`
 }
 
 type ProviderFiles struct {
-	Dir string
-	Compose string
-	Env string
-	LokiConfig string
-	AlloyConfig string
+	Dir           string
+	Compose       string
+	Env           string
+	LokiConfig    string
+	AlloyConfig   string
 	Registrations string
 }
 
@@ -71,10 +71,10 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	case capability.ScopeApplication:
 		suffix := m.Name + "-" + m.Environment
 		return Placement{
-			Scope: p.Scope,
-			Project: providerProject + "-" + suffix,
-			Dir: filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
-			LokiVolume: "baseharbor-loki-data-" + suffix,
+			Scope:       p.Scope,
+			Project:     providerProject + "-" + suffix,
+			Dir:         filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
+			LokiVolume:  "baseharbor-loki-data-" + suffix,
 			AlloyVolume: "baseharbor-alloy-data-" + suffix,
 		}, nil
 	case capability.ScopeExternal:
@@ -86,11 +86,11 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 
 func providerFiles(p Placement) ProviderFiles {
 	return ProviderFiles{
-		Dir: p.Dir,
-		Compose: filepath.Join(p.Dir, "compose.yaml"),
-		Env: filepath.Join(p.Dir, "runtime.env"),
-		LokiConfig: filepath.Join(p.Dir, "loki.yaml"),
-		AlloyConfig: filepath.Join(p.Dir, "config.alloy"),
+		Dir:           p.Dir,
+		Compose:       filepath.Join(p.Dir, "compose.yaml"),
+		Env:           filepath.Join(p.Dir, "runtime.env"),
+		LokiConfig:    filepath.Join(p.Dir, "loki.yaml"),
+		AlloyConfig:   filepath.Join(p.Dir, "config.alloy"),
 		Registrations: filepath.Join(p.Dir, "registrations.json"),
 	}
 }
