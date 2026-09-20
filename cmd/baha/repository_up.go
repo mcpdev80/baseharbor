@@ -140,10 +140,10 @@ func recoveryFileForRepositoryUp(ctx context.Context, in io.Reader, out io.Write
 	if action == "initialize" {
 		fmt.Fprintln(out, "OpenBao needs a NEW operator-held recovery output file.")
 		fmt.Fprintln(out, "The file must not already exist, must be outside BaseHarbor state, and will be created owner-only (0600).")
-		label = "New recovery output file"
+		label = "OpenBao-recovery-key"
 	} else {
 		fmt.Fprintln(out, "OpenBao needs the existing operator-held recovery file used when it was initialized.")
-		label = "Existing recovery file"
+		label = "OpenBao-decrypt-key"
 	}
 
 	for {
