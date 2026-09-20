@@ -58,6 +58,9 @@ func appGuidedInitCommand() *cli.Command {
 					quick = true
 				}
 			}
+			if noInput(ctx) && len(args) == 0 {
+				return usageError("app init needs explicit non-interactive input", "Use 'baha app init --quick' for detected safe defaults or provide deterministic app-init flags.")
+			}
 			if quick {
 				if len(args) != 1 {
 					return usageError("--quick cannot be combined with explicit app-init arguments", "Use either 'baha app init --quick' or the deterministic app-init flags.")
