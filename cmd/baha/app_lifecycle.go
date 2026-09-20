@@ -385,8 +385,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				case capability.ScopeExternal:
 				}
 			}
-			if err := resolved.Store.Delete(m.Name); err != nil {
-				return err
+			if _, err := os.Stat(appDir); err == nil {
+				if err := resolved.Store.Delete(m.Name); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("inspect application state before removal: %w", err)
 			}
 			if fullReset && resolved.FromRepository {
 				repoRoot := filepath.Dir(resolved.ManifestPath)
