@@ -143,7 +143,7 @@ func rootCommand() *cli.Command {
 		updateCommand(),
 		{
 			Name:    "version",
-			Aliases: []string{"--version", "-v"},
+			Aliases: nil,
 			Summary: "Print build version",
 			Usage:   "baha version",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -155,7 +155,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 	}
-	root.Children = append(root.Children, tuiCommand(store), completionCommand(root), internalCompletionCommand(root))
+	root.Children = append(root.Children, tuiCommand(store), completionCommand(root, store), internalCompletionCommand(root, store))
 	return root
 }
 
