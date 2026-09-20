@@ -149,6 +149,23 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, erro
 	return files,p,nil
 }
 
+func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
+	p, err := PlacementFor(m)
+	if err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	if p.Scope == capability.ScopeExternal {
+		return ProviderFiles{}, p, os.ErrNotExist
+	}
+	files := ProviderFiles{Dir: p.Dir, Compose: filepath.Join(p.Dir, "compose.yaml"), Env: filepath.Join(p.Dir, "runtime.env"), Config: filepath.Join(p.Dir, "tempo.yaml")}
+	for _, path := range []string{files.Compose, files.Env, files.Config} {
+		if _, err := os.Stat(path); err != nil {
+			return ProviderFiles{}, p, err
+		}
+	}
+	return files, p, nil
+}
+
 func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Placement, error) {
 	files,p,err := EnsureProviderFiles(m)
 	if err != nil { return Placement{}, err }
