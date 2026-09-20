@@ -287,7 +287,6 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 	}
 }
 
-
 func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 	config := prometheusConfig([]sourceRegistration{
 		{Application: "alpha", Environment: "dev", RuntimeVolume: "runtime-alpha"},
