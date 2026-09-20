@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -436,6 +437,9 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	if errors.Is(err, os.ErrNotExist) && resolved.FromRepository {
+		return stopRepositoryWorkloadRecovery(ctx, compose, resolved, files)
+	}
 	if err != nil || !found {
 		return false, err
 	}
@@ -470,6 +474,48 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 		for _, active := range running {
 			if service == active {
 				return false, fmt.Errorf("verify application workload stopped: selected service %s is still running", service)
+			}
+		}
+	}
+	return true, nil
+}
+
+func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	services, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
+	if err != nil || !found {
+		return false, err
+	}
+	environment, err := repositoryWorkloadStopEnvironment(resolved, files)
+	if err != nil {
+		return false, err
+	}
+	project := application.WorkloadProjectName(resolved.Manifest)
+	composeFiles := []string{composePath}
+	if err := compose.ConfigProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...); err != nil {
+		return false, fmt.Errorf("validate application workload before recovery stop: %w", err)
+	}
+	activeServices, err := compose.ServicesProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return false, fmt.Errorf("resolve active application workload services before recovery stop: %w", err)
+	}
+	expectedServices := activeSelectedWorkloadServices(activeServices, services)
+	partial := len(services) != len(activeServices) || len(resolved.Manifest.Workload.Services) > 0
+	if partial {
+		if err := compose.StopProjectFilesSelected(ctx, project, repositoryRoot, environment, expectedServices, composeFiles...); err != nil {
+			return false, fmt.Errorf("stop selected application workload services during recovery: %w", err)
+		}
+	} else if err := compose.DownProjectFiles(ctx, project, repositoryRoot, composeFiles...); err != nil {
+		return false, fmt.Errorf("stop application workload during recovery: %w", err)
+	}
+	running, err := compose.RunningServicesProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return false, fmt.Errorf("verify recovered application workload stop: %w", err)
+	}
+	for _, service := range expectedServices {
+		for _, active := range running {
+			if service == active {
+				return false, fmt.Errorf("verify recovered application workload stop: selected service %s is still running", service)
 			}
 		}
 	}
