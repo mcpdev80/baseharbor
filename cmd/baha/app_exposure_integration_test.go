@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -41,7 +42,16 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	}
 	if err := convergeManagedExposure(ctx, io.Discard, prepared); err != nil {
 		status, _ := compose.StatusProjectFiles(ctx, workload.Project, workload.RepositoryRoot, workload.Compose, workload.Override)
-		t.Fatalf("converge managed exposure: %v\nfixture workload status:\n%s", err, status)
+		providerProject := exposure.ProjectName(resolved.Manifest)
+		providerStatus, _ := exec.CommandContext(ctx, "docker", "ps", "-a",
+			"--filter", "label=com.docker.compose.project="+providerProject,
+			"--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}",
+		).CombinedOutput()
+		providerLogs, _ := exec.CommandContext(ctx, "sh", "-ec",
+			"for id in $(docker ps -aq --filter label=com.docker.compose.project="+providerProject+"); do docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' $id; docker logs $id 2>&1; done",
+		).CombinedOutput()
+		t.Fatalf("converge managed exposure: %v\nfixture workload status:\n%s\nprovider status:\n%s\nprovider logs:\n%s",
+			err, status, providerStatus, providerLogs)
 	}
 
 	firstState, providerFiles, err := exposure.Load(files)
