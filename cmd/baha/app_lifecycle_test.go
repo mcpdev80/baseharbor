@@ -31,7 +31,6 @@ func TestParseDestroyArgsRejectsUnknownOption(t *testing.T) {
 	}
 }
 
-
 func TestOpenBaoDestroyScopeRequiredAllowsUninitializedCleanup(t *testing.T) {
 	required, err := openBaoDestroyScopeRequired(openbao.State{Initialized: false})
 	if err != nil {
