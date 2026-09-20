@@ -106,6 +106,9 @@ func parsePort(value string) (int, error) {
 }
 
 func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
 	if _, err := bhruntime.ExistingFiles(""); err == nil {
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
