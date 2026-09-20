@@ -543,6 +543,15 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				}
 			}
 			results, ok := preflight.Run(checkCtx, checks)
+			var tlsStatus *applicationTLSStatus
+			var tlsObservation *applicationTLSObservation
+			var tlsErr error
+			if resolved.FromRepository {
+				tlsStatus, tlsObservation, tlsErr = collectApplicationTLSObservation(resolved)
+				if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
+					ok = false
+				}
+			}
 			if format == outputJSON {
 				type workloadResult struct {
 					Service string `json:"service"`
@@ -565,28 +574,16 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					Healthy         bool               `json:"healthy"`
 					Checks          []preflight.Result `json:"checks"`
 					Workload        []workloadResult   `json:"workload,omitempty"`
-					RequiredSecrets []map[string]any   `json:"required_secrets,omitempty"`
+					RequiredSecrets []map[string]any          `json:"required_secrets,omitempty"`
+					TLS             *applicationTLSObservation `json:"tls,omitempty"`
 				}{
 					Application: m.Name, Environment: m.Environment, Healthy: ok,
-					Checks: results, Workload: workloads, RequiredSecrets: secretStatus,
+					Checks: results, Workload: workloads, RequiredSecrets: secretStatus, TLS: tlsObservation,
 				}
 				if err := writeJSON(out, payload); err != nil {
 					return err
 				}
 			} else {
-				var tlsStatus *applicationTLSStatus
-				var tlsErr error
-				if resolved.FromRepository {
-					status, inspectErr := inspectApplicationTLS(resolved)
-					if inspectErr != nil {
-						tlsErr = inspectErr
-					} else if status.State.TLSMode != "" {
-						tlsStatus = &status
-					}
-				}
-				if tlsErr != nil {
-					ok = false
-				}
 				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, requiredStatuses, workloadSecurity, ok, tlsStatus, tlsErr)
 			}
 			if !ok {
