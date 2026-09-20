@@ -420,7 +420,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 		if err := os.MkdirAll(routeDir, 0o700); err != nil {
 			return State{}, false, err
 		}
-		if err := writeOwnerOnly(filepath.Join(routeDir, "Caddyfile"), []byte(caddyfile(route))); err != nil {
+		if err := writeContainerReadable(filepath.Join(routeDir, "Caddyfile"), []byte(caddyfile(route))); err != nil {
 			return State{}, false, err
 		}
 		if route.Protocol == "https" {
@@ -429,7 +429,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 				if err != nil {
 					return State{}, false, err
 				}
-				if err := writeOwnerOnly(filepath.Join(routeDir, name), data); err != nil {
+				if err := writeContainerReadable(filepath.Join(routeDir, name), data); err != nil {
 					return State{}, false, err
 				}
 			}
@@ -457,13 +457,21 @@ func composeYAML(state State, files Files) string {
 	b.WriteString("services:\n")
 	for _, route := range state.Routes {
 		serviceName := "route-" + route.Name
-		containerPort := 80
+		containerPort := 8080
 		if route.Protocol == "https" {
-			containerPort = 443
+			containerPort = 8443
 		}
 		fmt.Fprintf(&b, "  %s:\n", serviceName)
 		fmt.Fprintf(&b, "    image: %s\n", caddyImage)
 		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"caddy\"\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n")
+		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("      - /config:rw,noexec,nosuid,nodev\n")
+		b.WriteString("      - /data:rw,noexec,nosuid,nodev\n")
 		if route.Visibility == "internal" {
 			fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", route.PublishedPort, containerPort)
 		} else {
@@ -484,10 +492,10 @@ func composeYAML(state State, files Files) string {
 }
 
 func caddyfile(route Route) string {
-	listen := ":80"
+	listen := ":8080"
 	var tlsLine string
 	if route.Protocol == "https" {
-		listen = ":443"
+		listen = ":8443"
 		tlsLine = "  tls /certs/cert.pem /certs/key.pem\n"
 	}
 	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
@@ -517,6 +525,22 @@ func choosePublishedPort(preferred int, visibility string, used map[int]struct{}
 		}
 	}
 	return 0, errors.New("allocate Caddy exposure host port: exhausted retries")
+}
+
+func writeContainerReadable(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func writeOwnerOnly(path string, data []byte) error {
