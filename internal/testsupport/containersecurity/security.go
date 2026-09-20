@@ -3,7 +3,6 @@ package containersecurity
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -111,4 +110,3 @@ func containsSecurityOpt(values []string, want string) bool {
 	return false
 }
 
-var _ = errors.New
