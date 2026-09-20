@@ -471,9 +471,10 @@ func composeYAML(state State, files Files) string {
 		b.WriteString("    command:\n")
 		b.WriteString("      - /bin/sh\n")
 		b.WriteString("      - -ec\n")
-		b.WriteString("      - cp /usr/bin/caddy /tmp/baseharbor-caddy && exec /tmp/baseharbor-caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - cp /usr/bin/caddy /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 		b.WriteString("    tmpfs:\n")
 		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("      - /run/baseharbor:rw,nosuid,nodev,mode=0700,uid=65532,gid=65532\n")
 		b.WriteString("      - /config:rw,noexec,nosuid,nodev,mode=1777\n")
 		b.WriteString("      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 		if route.Visibility == "internal" {
