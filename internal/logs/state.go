@@ -24,13 +24,13 @@ const (
 )
 
 type Placement struct {
-	Scope           capability.ProviderScope
-	Project         string
-	Network         string
-	Dir             string
-	LokiVolume      string
-	AlloyVolume     string
-	SharingBoundary string
+	Scope            capability.ProviderScope
+	Project          string
+	Network          string
+	Dir              string
+	LokiVolume       string
+	AlloyVolume      string
+	SharingBoundary  string
 	OwnerApplication string
 }
 
@@ -402,13 +402,3 @@ func allocatePort(network string) (int, error) {
 		defer listener.Close()
 		return listener.Addr().(*net.TCPAddr).Port, nil
 	}
-	if network == "udp" {
-		listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-		if err != nil {
-			return 0, err
-		}
-		defer listener.Close()
-		return listener.LocalAddr().(*net.UDPAddr).Port, nil
-	}
-	return 0, fmt.Errorf("unsupported port allocation network %q", network)
-}
