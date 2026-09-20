@@ -18,7 +18,7 @@ enterprise deployment profiles
 
 The application declares logical requirements. BaseHarbor resolves, provisions, secures and operates those requirements through the selected runtime and capability providers while applications continue to use standard protocols and native clients.
 
-## Current v0.4.9 portable application foundation
+## Current v0.4.11 portable application foundation
 
 Docker/Podman Compose remains the complete runtime implementation. v0.4 adds the architecture seams required to evolve beyond it without redefining the application contract.
 
@@ -168,7 +168,7 @@ Implemented in v0.4.9:
 
 ## v0.4.11 developer experience and repository adoption
 
-v0.4.11 makes the existing provider-neutral runtime foundation easier to adopt without moving the agent-native machine interface forward from v0.4.12.
+Released/completed in v0.4.11. This release makes the existing provider-neutral runtime foundation easier to adopt without moving the agent-native machine interface forward from v0.4.12.
 
 Implemented:
 

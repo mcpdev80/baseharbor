@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-09-21
+
+### Final acceptance and lifecycle hardening
+
 - `baha app destroy` now recovers safely from incomplete generated runtime state instead of refusing managed-secret applications. It derives canonical runtime paths, verifies exact Compose ownership, removes only ownership-verified expected runtime resources when generated Compose files are missing, and verifies OpenBao policy/AppRole ownership directly without depending on the application credential file.
 - Repository workload/log-registration cleanup and full-reset state removal remain available during partial-runtime recovery; ambiguous resource ownership still fails closed.
 
@@ -53,7 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `baha app doctor --fix` now fails closed when the existing OpenBao control plane is uninitialized or sealed instead of continuing into application reconciliation.
 
-## [0.4.11] - 2026-09-20
+- Real MailFlow acceptance verified clean repository adoption, fresh startup, no-op `baha up`, STOPPED -> READY recovery, encrypted backup/restore, strict fast-forward application update, TLS readiness, required/generated secrets and ownership-safe destroy behavior.
+- OpenBao required-secret reads are batched per observation instead of repeating full scope/login/list/read work per key, substantially reducing normal `status` and `doctor` latency.
+- Fresh OpenBao recovery prompts now render their question and path input reliably before blocking for input.
+- `baha app update --check` now reports the exact dirty working-tree paths and change classes that block automatic update while preserving the fail-closed no-reset/no-stash policy.
+- Provider-registry helper call regressions found during fresh acceptance were corrected before release.
 
 ### Added
 
@@ -557,7 +565,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.11...HEAD
+[0.4.11]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...v0.4.11
 [0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
 [0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
