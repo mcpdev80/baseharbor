@@ -34,6 +34,7 @@ type runtimeUpOptions struct {
 	PostgresPort     int
 	OpenBaoPort      int
 	RecoveryFile     string
+	Environment      string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -41,6 +42,8 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	if err != nil {
 		return err
 	}
+	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
+	defer restoreEnvironment()
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
@@ -58,6 +61,12 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			opts.Yes = true
 		case "--control-plane-only":
 			opts.ControlPlaneOnly = true
+		case "--environment", "-e":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
+			}
+			i++
+			opts.Environment = strings.TrimSpace(args[i])
 		case "--postgres-port":
 			if i+1 >= len(args) {
 				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
@@ -85,6 +94,13 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			i++
 			opts.RecoveryFile = args[i]
 		default:
+			if strings.HasPrefix(args[i], "--environment=") {
+				opts.Environment = strings.TrimSpace(strings.TrimPrefix(args[i], "--environment="))
+				if opts.Environment == "" {
+					return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
+				}
+				continue
+			}
 			if strings.HasPrefix(args[i], "--recovery-file=") {
 				opts.RecoveryFile = strings.TrimPrefix(args[i], "--recovery-file=")
 				if strings.TrimSpace(opts.RecoveryFile) == "" {
