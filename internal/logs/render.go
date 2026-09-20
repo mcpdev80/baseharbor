@@ -9,6 +9,7 @@ import (
 func lokiConfig() string {
 	return `auth_enabled: false
 server:
+  http_listen_address: 0.0.0.0
   http_listen_port: 3100
 common:
   path_prefix: /loki
