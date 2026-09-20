@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-09-20
+
+### Added
+
+- Repository adoption workflow with remote HTTPS/SSH Git inspection through normal Git authentication.
+- Repository-aware root shortcuts for `plan`, `status` and `doctor`.
+- Secret-safe `-o json` / `--output json` result paths for inspect, plan, status and doctor.
+- Optional idempotent bounded BaseHarbor guidance in `AGENTS.md` through `baha app init --agents`.
+- Five-minute onboarding and first-class local Compose Playground documentation.
+
+### Changed
+
+- `baha up -e ENV` / `--environment ENV` selects deployment context without rewriting the portable repository manifest.
+- `baha app init -e ENV` accepts the same short environment alias.
+- Human and JSON application status use the same readiness result model.
+- Doctor JSON is produced directly from shared preflight results rather than terminal rendering.
+- `baha app inspect --json` remains a compatibility alias while `-o json` is the canonical structured-output form.
+
+### Security
+
+- Remote Git URLs containing embedded userinfo/credentials are rejected; authentication is delegated to normal Git mechanisms.
+- Structured status/doctor output excludes secret values and reports only readiness metadata for required secrets.
+- Structured doctor output is read-only and cannot be combined with `--fix`.
+- BaseHarbor edits only its own bounded `AGENTS.md` section and fails closed on malformed or ambiguous markers.
+- Weak or ambiguous repository evidence remains non-authoritative and never silently grants runtime permissions or replaces infrastructure.
+
+
 ## [0.4.10] - 2026-09-20
 
 ### Added
