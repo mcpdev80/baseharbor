@@ -334,7 +334,6 @@ func (t *Terminal) Diagnostic(format string, args ...any) {
 	fmt.Fprintf(t.errOut, format, args...)
 }
 
-
 func formatActivityDuration(d time.Duration) string {
 	if d < time.Second {
 		return "<1s"
@@ -346,7 +345,6 @@ func formatActivityDuration(d time.Duration) string {
 	seconds := int((d % time.Minute) / time.Second)
 	return fmt.Sprintf("%dm%02ds", minutes, seconds)
 }
-
 
 func formatActivityDetail(detail string) string {
 	detail = strings.TrimSpace(detail)
