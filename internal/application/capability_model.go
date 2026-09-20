@@ -118,6 +118,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return TelemetryProviderForDeployment(), nil
 	case capability.Metrics:
 		return capability.Prometheus, nil
+	case capability.Logs:
+		return capability.Loki, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}
