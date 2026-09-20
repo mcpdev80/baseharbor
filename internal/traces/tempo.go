@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 const (
@@ -46,6 +47,55 @@ type ProviderFiles struct {
 	Compose string
 	Env string
 	Config string
+}
+
+type Driver struct {
+	runtime Runtime
+	app application.Manifest
+}
+
+func NewDriver(runtime Runtime, app application.Manifest) *Driver {
+	return &Driver{runtime: runtime, app: app}
+}
+
+func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
+
+func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ capability.Binding) error {
+	if resource.Kind != capability.Traces {
+		return fmt.Errorf("Tempo provider cannot satisfy %s", resource.Kind)
+	}
+	enabled, err := application.TracesCollectionEnabled(d.app)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return errors.New("trace storage is disabled by deployment policy")
+	}
+	if !application.HasTraceSignal(d.app) {
+		return errors.New("trace storage requires an application OTLP traces signal")
+	}
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderTempo)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return errors.New("external Tempo placement requires an external trace storage adapter")
+	}
+	if application.TelemetryProviderForDeployment().Kind != capability.ProviderOTelCollector {
+		return errors.New("managed Tempo requires the managed OpenTelemetry Collector transport")
+	}
+	return nil
+}
+
+func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
+	_, err := Provision(ctx, d.runtime, d.app)
+	return err
+}
+
+func (d *Driver) Bind(context.Context, capability.Resource, capability.Binding) error { return nil }
+
+func (d *Driver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
+	return VerifyTrace(ctx, d.app, telemetry.ProbeTraceIDHex)
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
