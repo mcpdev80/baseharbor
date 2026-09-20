@@ -53,6 +53,8 @@ func InspectRequiredApplicationSecrets(ctx context.Context, executor Executor, f
 		path := applicationSecretKeyPath(identity, name)
 		if _, err := execWithToken(ctx, executor, files, token, fmt.Sprintf(`exec bao kv get -field=value -mount=baseharbor %s`, path)); err == nil {
 			status.Usable = true
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 		statuses = append(statuses, status)
 	}

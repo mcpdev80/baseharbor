@@ -72,12 +72,14 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		result.Manifest = resolved.ManifestPath
 	}
 
-	workloadRunning := []string(nil)
-	workloadFound := false
-	if _, running, found, inspectErr := inspectRepositoryWorkload(ctx, compose, resolved, files); inspectErr == nil {
-		workloadRunning = running
-		workloadFound = found
+	workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
+	workloadRunning := make([]string, 0, len(workloadStatus.Services))
+	for _, service := range workloadStatus.Services {
+		if service.State == "running" {
+			workloadRunning = append(workloadRunning, service.Service)
+		}
 	}
+	workloadFound := workloadStatus.Found
 	brokerRunning := false
 	if application.RequiresRuntimeBroker(m) {
 		if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
@@ -146,15 +148,18 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			scopeCtx, scopeCancel := context.WithTimeout(ctx, 2*time.Second)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-			err := openbao.InspectApplicationScope(checkCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+			err := openbao.InspectApplicationScope(scopeCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+			scopeCancel()
 			if err != nil {
 				result.AddCheck("secrets", false, "isolated OpenBao application scope is not ready")
 			} else {
 				result.AddCheck("secrets", true, "isolated OpenBao AppRole authentication succeeded")
 				if len(application.RequiredSecretNames(m)) > 0 {
-					statuses, statusErr := inspectRequiredApplicationSecrets(checkCtx, compose, platformFiles, m, files)
+					secretCtx, secretCancel := context.WithTimeout(ctx, 8*time.Second)
+					statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
+					secretCancel()
 					if statusErr != nil {
 						result.AddCheck("required-secrets", false, "readiness inspection failed")
 					} else {
@@ -164,7 +169,6 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 					}
 				}
 			}
-			cancel()
 		}
 		brokerCtx, brokerCancel := context.WithTimeout(ctx, 2*time.Second)
 		brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
@@ -176,7 +180,6 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		}
 	}
 
-	workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
 	if workloadStatus.Found {
 		for _, service := range workloadStatus.Services {
 			result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
