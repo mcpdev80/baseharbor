@@ -89,43 +89,44 @@ func (t *Terminal) Section(title string) {
 	fmt.Fprintf(t.out, "\n%s\n", title)
 }
 
-func (t *Terminal) Success(label, detail string) { t.state("success", label, detail) }
-func (t *Terminal) Info(label, detail string)    { t.state("info", label, detail) }
-func (t *Terminal) Warn(label, detail string)    { t.state("warning", label, detail) }
-func (t *Terminal) Fail(label, detail string)    { t.state("failure", label, detail) }
-func (t *Terminal) Skip(label, detail string)    { t.state("skipped", label, detail) }
+func (t *Terminal) Success(label, detail string) { t.Result("OK", label, detail) }
+func (t *Terminal) Info(label, detail string)    { t.Result("INFO", label, detail) }
+func (t *Terminal) Warn(label, detail string)    { t.Result("WARN", label, detail) }
+func (t *Terminal) Fail(label, detail string)    { t.Result("FAILED", label, detail) }
+func (t *Terminal) Skip(label, detail string)    { t.Result("SKIPPED", label, detail) }
 
-func (t *Terminal) state(kind, label, detail string) {
-	if t.opts.Quiet && kind != "failure" {
+func (t *Terminal) Result(state, subject, detail string) {
+	if t.opts.Quiet && state != "FAILED" {
 		return
 	}
-	symbol, plain, color := stateStyle(kind)
-	marker := plain
-	if t.tty {
-		marker = symbol
+	state = strings.ToUpper(strings.TrimSpace(state))
+	if state == "" {
+		state = "INFO"
 	}
+	marker := state
 	if t.color {
-		marker = color + marker + "\x1b[0m"
+		marker = stateColor(state) + marker + "\x1b[0m"
 	}
 	if strings.TrimSpace(detail) == "" {
-		fmt.Fprintf(t.out, "  %s %s\n", marker, label)
+		fmt.Fprintf(t.out, "  %-9s %-20s\n", marker, subject)
 		return
 	}
-	fmt.Fprintf(t.out, "  %s %-20s %s\n", marker, label, detail)
+	fmt.Fprintf(t.out, "  %-9s %-20s %s\n", marker, subject, detail)
 }
 
-func stateStyle(kind string) (symbol, plain, color string) {
-	switch kind {
-	case "success":
-		return "✓", "[OK]", "\x1b[32m"
-	case "warning":
-		return "!", "[WARN]", "\x1b[33m"
-	case "failure":
-		return "✗", "[FAIL]", "\x1b[31m"
-	case "skipped":
-		return "–", "[SKIP]", "\x1b[2m"
+
+func stateColor(state string) string {
+	switch state {
+	case "FAILED", "ERROR":
+		return "\x1b[31m"
+	case "WARN", "WARNING", "RETRYING":
+		return "\x1b[33m"
+	case "READY", "VERIFIED", "CREATED", "UPDATED", "DELETED", "REMOVED", "STARTED", "STOPPED", "RESTORED", "BACKED UP", "OK":
+		return "\x1b[32m"
+	case "SKIPPED":
+		return "\x1b[2m"
 	default:
-		return "•", "[INFO]", "\x1b[36m"
+		return "\x1b[36m"
 	}
 }
 
