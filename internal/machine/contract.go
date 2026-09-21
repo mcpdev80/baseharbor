@@ -102,3 +102,27 @@ type ErrorResult struct {
 func ResultError(err error) ErrorResult {
 	return ErrorResult{ContractVersion: ContractVersion, Error: Classify(err)}
 }
+
+
+func Operations() []Operation {
+	return []Operation{
+		{ID: "inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "doctor", Description: "Run diagnostic verification without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+	}
+}
+
+func CapabilitySpecifications() []string {
+	return []string{
+		"cache.key-value",
+		"database.sql",
+		"exposure.http/v1",
+		"logs/v1",
+		"metrics/v1",
+		"object-storage.s3/v1",
+		"secure-binding/v1",
+		"telemetry.otlp/v1",
+		"traces/v1",
+	}
+}
