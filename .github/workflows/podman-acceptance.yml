@@ -1,0 +1,90 @@
+name: podman-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/podman/**'
+
+permissions:
+  contents: read
+
+jobs:
+  podman-compose:
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify Podman runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/podman-info.txt
+          podman compose version
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+      - name: Build BaseHarbor
+        run: go build -trimpath -o /tmp/baha ./cmd/baha
+
+      - name: Verify Podman runtime detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/baha doctor | tee /tmp/podman-doctor.txt
+          grep -Eq '^\[OK\][[:space:]]+podman[[:space:]]+daemon reachable$' /tmp/podman-doctor.txt
+          grep -Eq '^\[OK\][[:space:]]+compose[[:space:]]+podman compose available$' /tmp/podman-doctor.txt
+
+      - name: Verify application lifecycle on Podman Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          printf '%s\n' "$workdir" > /tmp/baseharbor-podman-workdir
+          cd "$workdir"
+
+          /tmp/baha app create podman-ci --postgres --redis
+          /tmp/baha app plan podman-ci | grep -q "dedicated PostgreSQL service"
+          /tmp/baha app preflight podman-ci | grep -q "Preflight passed"
+          /tmp/baha app apply podman-ci | grep -q "application and requested infrastructure verified"
+          /tmp/baha app status podman-ci --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status podman-ci --verbose | grep -q "authenticated PING returned PONG"
+          /tmp/baha app doctor podman-ci | grep -q '^READY$'
+
+          /tmp/baha app down podman-ci | grep -q "persistent data preserved"
+          /tmp/baha app up podman-ci | grep -q "runtime and requested infrastructure verified"
+          /tmp/baha app doctor podman-ci | grep -q '^READY$'
+
+          /tmp/baha app destroy podman-ci --yes | grep -q "permanently deleted"
+
+      - name: Cleanup Podman runtime
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -s /tmp/baseharbor-podman-workdir ]; then
+            cd "$(cat /tmp/baseharbor-podman-workdir)"
+            /tmp/baha app destroy podman-ci --yes >/dev/null 2>&1 || true
+          fi
+          podman ps -aq --filter label=com.docker.compose.project=baseharbor-podman-ci-dev | xargs -r podman rm -f

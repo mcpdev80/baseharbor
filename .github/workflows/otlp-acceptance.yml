@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   otlp:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 8
     env:
       BASEHARBOR_OTLP_INTEGRATION: "1"

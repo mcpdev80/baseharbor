@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   postgres-backup:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 10
     env:
       BASEHARBOR_POSTGRES_BACKUP_INTEGRATION: "1"

@@ -30,8 +30,8 @@ permissions:
 jobs:
   validate:
     name: pre-release-validation
-    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'develop' || startsWith(github.ref, 'refs/heads/release-candidate/') }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
 
     steps:
