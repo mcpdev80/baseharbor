@@ -123,9 +123,9 @@ type StepResult struct {
 }
 
 type Result struct {
-	Application string       `json:"application"`
-	Status      Status       `json:"status"`
-	Plan        Plan         `json:"plan"`
+	Application    string                 `json:"application"`
+	Status         Status                 `json:"status"`
+	Plan           Plan                   `json:"plan"`
 	Steps          []StepResult           `json:"steps"`
 	Reconciliation []ReconciliationResult `json:"reconciliation,omitempty"`
 }
