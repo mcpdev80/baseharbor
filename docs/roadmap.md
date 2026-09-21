@@ -239,7 +239,7 @@ v0.4 finishes the runtime-neutral BaseHarbor language and lifecycle semantics be
 - conformance against the now-complete lifecycle, ownership, security and evidence semantics;
 - no runtime-provider SDK and no Kubernetes-specific types.
 
-### v0.4.17 – Runtime boundary and semantic full-stack acceptance
+### v0.4.17 – Runtime/capability/delivery boundary and semantic full-stack acceptance
 
 - classify all important state as portable, deployment/operator, runtime, provider or protected/generated;
 - prove the full Compose reference lifecycle;
@@ -295,7 +295,7 @@ v0.7 implements Kubernetes as a BaseHarbor Runtime Provider. Namespace-only oper
 
 Cluster-admin, namespace creation and cluster-wide discovery are not normal application-lifecycle requirements. Platform-owned resources such as namespaces, Gateway/GatewayClass, StorageClass, CRDs and admission policy remain consumable without BaseHarbor owning them.
 
-The normal path uses the Kubernetes API directly. kubectl, Helm, CRDs and a BaseHarbor Operator are not required runtime engines for v0.7.
+v0.7.0 starts with direct Kubernetes API delivery as the reference path. It is not the only permanent reconciliation model: v0.7.8 adds delegated/GitOps delivery through a provider-neutral Delivery Provider contract. kubectl, Helm, CRDs and a BaseHarbor Operator are not required application-facing runtime engines.
 
 ## v0.8 – Kubernetes Complete
 
