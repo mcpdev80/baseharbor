@@ -181,7 +181,6 @@ func formatCLIError(w io.Writer, err error) {
 	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
 }
 
-
 func classifyMachineCLIError(err error) error {
 	if err == nil {
 		return nil
