@@ -59,7 +59,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		Version: version,
 	}, &mcp.ServerOptions{
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
-		Capabilities:             &mcp.ServerCapabilities{},
+		Capabilities:              &mcp.ServerCapabilities{},
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -143,7 +143,6 @@ func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
 		},
 	}, payload, nil
 }
-
 
 func boolPointer(value bool) *bool {
 	return &value
