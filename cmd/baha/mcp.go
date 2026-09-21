@@ -59,6 +59,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		Version: version,
 	}, &mcp.ServerOptions{
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
+		Capabilities:             &mcp.ServerCapabilities{},
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
