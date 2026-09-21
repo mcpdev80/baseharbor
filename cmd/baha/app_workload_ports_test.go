@@ -115,7 +115,7 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 		FromRepository: true,
 	}
 	var out bytes.Buffer
-	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader("\\n"), &out, resolved, repo); err != nil {
+	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader("\n"), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
 
