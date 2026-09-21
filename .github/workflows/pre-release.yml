@@ -10,7 +10,7 @@ on:
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: main
+        default: develop
         type: string
 
 permissions:
@@ -52,9 +52,9 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          git fetch origin main
-          git merge-base --is-ancestor HEAD origin/main || {
-            echo "Pre-release candidate must be contained in main." >&2
+          git fetch origin develop
+          git merge-base --is-ancestor HEAD origin/develop || {
+            echo "Pre-release candidate must be contained in develop." >&2
             exit 1
           }
           version="${TAG#v}"

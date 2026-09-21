@@ -543,6 +543,8 @@ Start here:
 
 Provider and architecture contributions should preserve the portable application boundary and reuse the existing capability/provider lifecycle rather than adding product-specific paths.
 
+Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch is reserved for the currently released source and advances through release promotion from `develop` or an explicit hotfix.
+
 Start with:
 
 - [Development Guidelines](docs/DEVELOPMENT_GUIDELINES.md)

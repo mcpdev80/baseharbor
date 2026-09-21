@@ -524,6 +524,37 @@ BaseHarbor is not optimized for architectural novelty.
 Optimize for correctness, security, isolation, explicit control flow, reliable operations, and long-term human maintenance.
 
 
+## Branch strategy
+
+BaseHarbor uses two long-lived branches:
+
+- `main`: released source only. It should represent the currently published release and advances only through a release promotion from `develop` or an explicit hotfix.
+- `develop`: integration branch for the next release.
+
+Normal work uses short-lived branches such as `feature/*`, `fix/*` and `chore/*` created from `develop`. Their pull requests target `develop`.
+
+Release promotion is deliberately one-way:
+
+```text
+feature/fix/chore
+      |
+      v
+   develop
+      |
+      | pre-release gate
+      v
+     main
+      |
+      v
+   vX.Y.Z
+```
+
+A normal development pull request must not target `main` directly.
+
+Hotfixes are the exception: create the hotfix from the released `main`, release it through `main`, then merge/backport the fix into `develop` immediately so future releases retain it.
+
+Do not introduce long-lived `release/*` branches unless parallel maintenance of release lines makes them necessary.
+
 ### Mandatory pre-release GitHub gate
 
 Development validation should continue to prefer local and Hugging Face execution to avoid unnecessary GitHub Actions usage.
@@ -540,13 +571,15 @@ Why this is mandatory:
 Required release order:
 
 ```text
-development
+feature/fix/chore branch
   -> local/Hugging Face validation
-  -> merge candidate to main
-  -> manual pre-release workflow on exact main SHA
-  -> fix and repeat until every pre-release job is green
-  -> create/move release tag to that exact green SHA
-  -> release workflow
+  -> pull request to develop
+  -> integrate release candidate on develop
+  -> manual pre-release workflow on exact develop SHA
+  -> fix on develop and repeat until every pre-release job is green
+  -> release pull request develop -> main
+  -> create immutable release tag on resulting main commit
+  -> release workflow revalidates the tagged source
   -> verify release artifacts/provenance
 ```
 
@@ -563,7 +596,7 @@ The manual pre-release gate must cover, at minimum:
 - GoReleaser snapshot packaging;
 - runtime image build without publishing.
 
-If the pre-release gate exposes a failure, fix the issue on main and rerun the gate until green before tagging.
+If the pre-release gate exposes a failure, fix the issue on develop and rerun the gate until green before promoting develop to main.
 
 
 ## Release
