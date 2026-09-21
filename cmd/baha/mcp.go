@@ -103,7 +103,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		if name := strings.TrimSpace(input.Name); name != "" {
 			args = []string{name}
 		}
-		result, err := collectApplicationStatus(ctx, store, args)
+		result, err := collectApplicationStatusResult(ctx, store, args)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
