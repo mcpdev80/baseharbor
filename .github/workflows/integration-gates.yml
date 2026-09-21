@@ -42,8 +42,7 @@ jobs:
           /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
-          /tmp/baha app apply ci-demo | tee /tmp/postgres-valkey-apply.out
-          grep -q "application and requested infrastructure verified" /tmp/postgres-valkey-apply.out
+          /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
@@ -206,104 +205,7 @@ jobs:
           /tmp/baha app apply required-demo | grep -q "application and requested infrastructure verified"
           /tmp/baha app status required-demo | tee /tmp/required-status.out
           grep -Eq 'required-secret/API_TOKEN[[:space:]]+present and usable' /tmp/required-status.out
-          grep -q '^READY
-          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
-          grep -q "^READY$" /tmp/required-doctor.out
-
-          /tmp/baha app down required-demo | grep -q "persistent data preserved"
-          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
-          set +e
-          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
-          required_up_code=$?
-          set -e
-          test "$required_up_code" -eq 1
-          grep -q "required application secrets" /tmp/required-up-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
-
-          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
-          /tmp/baha app up required-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app destroy required-demo --yes | grep -q "permanently deleted"
-
-          mkdir generated-app
-          cd generated-app
-          cat > baseharbor.yaml <<'EOF'
-          version: 1
-          app:
-            name: generated-demo
-            environment: dev
-          services:
-            postgres:
-              enabled: true
-            redis:
-              enabled: false
-            secrets:
-              enabled: true
-          secrets:
-            required:
-              - name: SECRET_KEY
-                generate:
-                  type: random
-                  length: 64
-              - name: EXTERNAL_TOKEN
-          EOF
-
-          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
-          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
-          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
-
-          set +e
-          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
-          generated_code=$?
-          set -e
-          test "$generated_code" -eq 1
-          grep -Eq '\[OK\][[:space:]]+generated-secret[[:space:]]+SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
-          grep -q "required secrets check failed" /tmp/generated-first-apply.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
-
-          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
-          grep -Eq 'SECRET_KEY[[:space:]]+present[[:space:]]+-' /tmp/generated-preflight-after.out
-          grep -Eq 'EXTERNAL_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
-
-          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
-          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
-          /tmp/baha app apply | tee /tmp/generated-second-apply.out
-          grep -q "application and requested infrastructure verified" /tmp/generated-second-apply.out
-          ! grep -q "generated-secret" /tmp/generated-second-apply.out
-          /tmp/baha app status | tee /tmp/generated-status.out
-          grep -Eq 'required-secret/SECRET_KEY[[:space:]]+present and usable' /tmp/generated-status.out
-          grep -Eq 'required-secret/EXTERNAL_TOKEN[[:space:]]+present and usable' /tmp/generated-status.out
-          /tmp/baha app doctor | grep -q "^READY$"
-          /tmp/baha app destroy --yes | grep -q "permanently deleted"
-          cd "$workdir"
-          unset BASEHARBOR_STATE_DIR
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
-          for i in $(seq 1 20); do
-            set +e
-            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
-            code=$?
-            set -e
-            if [ "$code" -eq 2 ]; then
-              break
-            fi
-            sleep 1
-          done
-          test "$code" -eq 2
-
-          set +e
-          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
-          status_code=$?
-          set -e
-          test "$status_code" -eq 1
-          grep -q "sealed" /tmp/openbao-sealed.out
-
-          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
- /tmp/required-status.out
+          grep -q '^READY$' /tmp/required-status.out
           /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
           grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
           grep -q "^READY$" /tmp/required-doctor.out
