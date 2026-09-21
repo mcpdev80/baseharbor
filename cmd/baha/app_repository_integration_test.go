@@ -44,7 +44,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
 		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "Application repo-e2e is ready") {
+	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("unexpected apply output: %s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, ".baseharbor", ".gitignore")); err != nil {
