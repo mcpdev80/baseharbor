@@ -59,10 +59,10 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	}
 	result := Result{
 		ContractVersion: "v1",
-		Root:          absRoot,
-		Application:   slugify(filepath.Base(absRoot)),
-		Artifacts:     artifacts,
-		SecretSources: map[string]string{},
+		Root:            absRoot,
+		Application:     slugify(filepath.Base(absRoot)),
+		Artifacts:       artifacts,
+		SecretSources:   map[string]string{},
 	}
 	if result.Application == "" {
 		result.Application = "app"
