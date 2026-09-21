@@ -53,6 +53,37 @@ Operator overrides are explicit and bounded. They may acknowledge a documented d
 
 These rules intentionally contain no Kubernetes concepts. A future namespace-only Kubernetes target consumes the same environment and policy semantics while runtime permissions, namespace identity and platform-owned resources remain runtime/provider concerns.
 
+## Reconciliation, ownership and convergence
+
+BaseHarbor uses one shared runtime-neutral reconciliation model below CLI, provider and future runtime surfaces.
+
+```text
+desired state
+    ↓
+provider-native observation
+    ↓
+typed diff + ownership
+    ↓
+policy / preflight gate
+    ↓
+minimal mutation when required
+    ↓
+binding + verification
+    ↓
+observation after verification
+    ↓
+verified convergence
+```
+
+The semantic states are `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` and `degraded`. Corresponding actions are `create`, `noop`, `repair`, `destroy`, `observe` and `blocked`.
+
+For BaseHarbor-owned resources, stable state resolves to a core-level NOOP and drift resolves to minimal repair. Foreign ownership, conflicting ownership, unsupported realization and degraded observed state fail closed before mutation. Externally owned resources remain observe-only.
+
+Provider verification is not the final truth by itself. Semantic providers are observed again after verification; a BaseHarbor-owned resource is successful only when the post-verification observation is `in_sync`.
+
+Repository-inspection reconciliation remains separate. Repository inspection compares detected source evidence with application intent; runtime reconciliation compares desired realization with provider-native observed state.
+
+
 ## Runtime, capability and delivery provider axes
 
 BaseHarbor has three independent provider axes:
