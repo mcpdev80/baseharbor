@@ -30,8 +30,8 @@ func TestAgentDescribeJSON(t *testing.T) {
 	if got.MCP.ProtocolVersion != "2026-07-28" || got.MCP.Transport != "stdio" || got.MCP.Remote {
 		t.Fatalf("unexpected MCP discovery: %#v", got.MCP)
 	}
-	if len(got.Operations) != 4 {
-		t.Fatalf("operations = %d, want 4", len(got.Operations))
+	if len(got.Operations) != 6 {
+		t.Fatalf("operations = %d, want 6", len(got.Operations))
 	}
 	for _, operation := range got.Operations {
 		if operation.Safety != machine.SafetyReadOnly || operation.ConfirmationRequired {
@@ -92,7 +92,9 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		"baseharbor.inspect": false,
 		"baseharbor.plan":    false,
 		"baseharbor.status":  false,
-		"baseharbor.doctor":  false,
+		"baseharbor.doctor":         false,
+		"baseharbor.policy.check":    false,
+		"baseharbor.policy.explain":  false,
 	}
 	for _, tool := range list.Tools {
 		if _, exists := want[tool.Name]; !exists {
@@ -127,6 +129,8 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		{name: "baseharbor.plan", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.status", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.doctor", args: map[string]any{"name": manifest.Name}},
+		{name: "baseharbor.policy.check", args: map[string]any{"name": manifest.Name}},
+		{name: "baseharbor.policy.explain", args: map[string]any{"name": manifest.Name}},
 	}
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
