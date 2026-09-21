@@ -16,7 +16,7 @@ func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.
 	if !resolved.FromRepository || strings.TrimSpace(resolved.ManifestPath) == "" {
 		return bhruntime.ProviderCompose, nil
 	}
-	state, err := loadRepositoryInitState(resolved.repositoryRoot())
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return "", fmt.Errorf("load deployment runtime provider: %w", err)
 	}
