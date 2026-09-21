@@ -10,12 +10,21 @@ Waehrend der `0.x`-Serie gelten Patch-Releases als rueckwaertskompatible Fehler-
 >=0.4.0 <0.5.0
 ```
 
+## Entwicklungs- und Release-Branches
+
+BaseHarbor verwendet zwei dauerhafte Branches mit klar getrennten Aufgaben:
+
+- `main` ist der veroeffentlichte Source-Stand. Er soll dem aktuell publizierten Release entsprechen und wird nur durch einen Release-PR aus `develop` oder einen expliziten Hotfix fortgeschrieben.
+- `develop` ist der Integrations-Branch fuer den naechsten Release. Normale Feature-, Fix-, Chore- und Dependency-Branches zielen auf `develop`.
+
+Normale Entwicklungs-PRs duerfen nicht direkt auf `main` zielen. Hotfixes starten von `main`, werden ueber `main` released und danach in `develop` uebernommen, damit der Fix im naechsten Release erhalten bleibt.
+
 ## Release-Kanaele
 
-- `vX.Y.Z`: unveraenderlicher GitHub Release
+- `vX.Y.Z`: unveraenderlicher GitHub Release von `main`
 - `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z`: passendes Runtime-Image
 - `:latest`: neuester stabiler Release
-- `:edge`: beweglicher Entwicklungsstand von `main`
+- `:edge`: beweglicher Entwicklungsstand von `develop`
 
 Ein veroeffentlichtes `baha X.Y.Z` verwendet standardmaessig das gleich versionierte Runtime-Image. Ein Development-Build verwendet `edge`. `BASEHARBOR_RUNTIME_IMAGE` bleibt ein expliziter Operator-Override.
 
@@ -31,17 +40,19 @@ zeigt Version, Commit und Build-Zeit.
 
 ## Release-Prozess
 
-Vor jedem Tag gibt es einen Release-Preparation-PR.
+Jeder Release wird auf `develop` vorbereitet und erst nach erfolgreicher Release-Pruefung nach `main` promoted.
 
-1. Der finale Stand wird gegen `docs/DEVELOPMENT_GUIDELINES.md` geprueft, inklusive Ownership, Isolation, Secret-Sicherheit, Fail-closed-Verhalten, Tests und Doku-Konsistenz.
+1. Der finale Stand auf `develop` wird gegen `docs/DEVELOPMENT_GUIDELINES.md` geprueft, inklusive Ownership, Isolation, Secret-Sicherheit, Fail-closed-Verhalten, Tests und Doku-Konsistenz.
 2. Alle betroffenen kanonischen Dokumente werden aktualisiert, inklusive EN/DE-Varianten. Veraltete Versionsnummern, Statusaussagen, Beispiele und Future-Work-Hinweise werden gezielt gesucht.
-3. Alle relevanten CI-/Real-Product-Acceptance-Gates muessen auf dem **exakten Release-Preparation-Head** gruen sein. Wo sinnvoll zuerst lokal/Hugging Face pruefen und GitHub Actions nur verwenden, wenn sie fuer den finalen Nachweis erforderlich sind.
-4. Der Changelog erhaelt einen datierten Versionsabschnitt.
-5. Unter `docs/releases/vX.Y.Z.md` werden menschenfreundliche Release Notes erstellt: Was hat sich geaendert, warum ist es wichtig, welche Kompatibilitaets-/Upgrade-Auswirkungen und Security-Aspekte gibt es und was bleibt bewusst spaeter. Eine rohe Commit-Liste oder ein generiertes Git-Log ist kein Release-Text.
-6. Der PR wird erst danach nach `main` gemerged.
-7. Der Tag muss exakt auf diesem gruenen `main`-Commit liegen und wird unveraenderlich gepusht.
-8. Der Release-Workflow muss erfolgreich Tag/Source validieren, den getaggten Code testen und GitHub Release, Artefakte und Provenance veroeffentlichen.
-9. Erst nach Verifikation von GitHub Release, Binaries, Checksums, Provenance und passendem Runtime-Image gilt der Release als abgeschlossen. Ein gepushter Tag allein reicht nicht.
+3. Der Changelog erhaelt einen datierten Versionsabschnitt.
+4. Unter `docs/releases/vX.Y.Z.md` werden menschenfreundliche Release Notes erstellt: Was hat sich geaendert, warum ist es wichtig, welche Kompatibilitaets-/Upgrade-Auswirkungen und Security-Aspekte gibt es und was bleibt bewusst spaeter. Eine rohe Commit-Liste oder ein generiertes Git-Log ist kein Release-Text.
+5. Wo sinnvoll wird zuerst lokal/Hugging Face validiert.
+6. Der verpflichtende GitHub-Pre-Release-Workflow wird gegen den exakten Release-Candidate-SHA auf `develop` ausgefuehrt. Fehler werden auf `develop` korrigiert und der Gate-Lauf wiederholt, bis alles gruen ist.
+7. Danach wird genau ein Release-PR `develop -> main` erstellt. Dieser PR darf keine sachfremden Aenderungen enthalten.
+8. Erst nach gruenem Pre-Release-Gate wird nach `main` gemerged.
+9. Der Tag `vX.Y.Z` wird auf dem daraus resultierenden `main`-Release-Commit erstellt und unveraenderlich gepusht.
+10. Der Release-Workflow muss erfolgreich pruefen, dass der Tag in `main` enthalten ist, den getaggten Code erneut testen und GitHub Release, Artefakte und Provenance veroeffentlichen.
+11. Erst nach Verifikation von GitHub Release, Binaries, Checksums, Provenance und passendem Runtime-Image gilt der Release als abgeschlossen. Ein gepushter Tag allein reicht nicht.
 
 Veroeffentlichte Tags werden niemals verschoben. Fehlerhafte Releases werden durch einen neuen Patch-Release korrigiert.
 

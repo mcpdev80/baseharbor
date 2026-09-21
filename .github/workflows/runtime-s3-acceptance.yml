@@ -6,7 +6,7 @@ on:
       ref:
         description: Git ref to test
         required: false
-        default: main
+        default: develop
 permissions:
   contents: read
 

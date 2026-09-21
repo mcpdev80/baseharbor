@@ -98,6 +98,7 @@ type PortEvidence struct {
 }
 
 type Result struct {
+	ContractVersion   string               `json:"contract_version"`
 	Root              string               `json:"root"`
 	Application       string               `json:"application"`
 	ExistingManifest  string               `json:"existing_manifest,omitempty"`
