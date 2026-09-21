@@ -17,7 +17,7 @@ func TestBuildPlanSupportsCurrentObservabilityCapabilities(t *testing.T) {
 		Metrics: MetricsRequirements{Sources: []MetricsSourceRequirement{
 			{Name: "application", Service: "api", Port: 8080, Path: "/metrics"},
 		}},
-		Logs: LogsRequirements{Collect: []string{"api"}},
+		Logs: LogsRequirements{Collect: []string{"application"}},
 	}
 	m = WithOTLPTelemetry(m, "traces")
 
