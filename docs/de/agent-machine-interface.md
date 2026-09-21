@@ -33,7 +33,7 @@ baha agent describe -o json
 
 Die Discovery zeigt BaseHarbor-Version, Machine-Contract-Version, semantische Operationen, Safety-Klasse, Confirmation-/Policy-Metadaten, Capability Specifications sowie MCP-Transport, Protokoll und Tool-Namen.
 
-v0.4.12 startet bewusst klein:
+v0.4.13 haelt die Machine-Oberflaeche klein und ergaenzt explizite Environment-/Policy-Inspection:
 
 | Operation | Safety | Zweck |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ v0.4.12 startet bewusst klein:
 | `plan` | read-only | deterministischer Desired-State-Plan |
 | `status` | read-only | Runtime-/Readiness-Zustand |
 | `doctor` | read-only | diagnostische Verifikation |
+| `policy.check` | read-only | effektive Allow/Warn/Deny-Policy pruefen |
+| `policy.explain` | read-only | Defaults und begrenzte Operator-Overrides erklaeren |
 
 ## Strukturiertes JSON
 
@@ -49,6 +51,8 @@ baha app inspect . -o json
 baha plan -o json
 baha status -o json
 baha doctor -o json
+baha policy check -e prod -o json
+baha policy explain -e prod -o json
 ```
 
 Human- und Machine-Ausgabe verwenden dieselben typisierten Result-Pfade. JSON ist ein stabiler Machine Contract und keine Serialisierung von Terminaltabellen oder ANSI-Ausgabe.
@@ -65,16 +69,18 @@ v0.4.12 verwendet das offizielle Model Context Protocol Go SDK v1.8.0 und zielt 
 
 Der erste Transport ist ausschliesslich **stdio**. BaseHarbor oeffnet keinen Netzwerk-Port, startet keinen Hintergrund-Daemon und fuehrt in v0.4.12 keine Remote-MCP-Authentifizierung ein.
 
-Exponiert werden exakt vier semantische Tools:
+Exponiert werden sechs semantische read-only Tools:
 
 ```text
 baseharbor.inspect
 baseharbor.plan
 baseharbor.status
 baseharbor.doctor
+baseharbor.policy.check
+baseharbor.policy.explain
 ```
 
-Alle vier sind explizit read-only annotiert. `inspect` darf eine explizit uebergebene Remote-Git-Quelle lesen und ist deshalb als open-world markiert; die anderen Tools arbeiten im lokalen BaseHarbor-Kontext.
+Alle sechs sind explizit read-only annotiert. `inspect` darf eine explizit uebergebene Remote-Git-Quelle lesen und ist deshalb als open-world markiert; die anderen Tools arbeiten im lokalen BaseHarbor-Kontext.
 
 ### Keine generische Ausfuehrung
 
