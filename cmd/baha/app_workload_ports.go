@@ -118,7 +118,7 @@ func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resol
 	if !resolved.FromRepository {
 		return nil
 	}
-	repoRoot := filepath.Dir(resolved.ManifestPath)
+	repoRoot := resolved.repositoryRoot()
 	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
 	if err != nil || !found {
 		return err
