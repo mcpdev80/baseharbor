@@ -80,6 +80,8 @@ func currentAgentDescription() agentDescription {
 				"baseharbor.plan",
 				"baseharbor.status",
 				"baseharbor.doctor",
+				"baseharbor.policy.check",
+				"baseharbor.policy.explain",
 			},
 			Remote: false,
 		},

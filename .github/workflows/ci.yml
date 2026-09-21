@@ -106,7 +106,7 @@ jobs:
           grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "present and readable"
+          /tmp/baha app status --help | grep -q "runtime and readiness status"
           /tmp/baha app doctor --help | grep -q "presence/usability"
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "required application secrets"
@@ -130,8 +130,8 @@ jobs:
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
           /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
@@ -148,8 +148,8 @@ jobs:
           /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
           env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
           test "$env_hash_before" = "$env_hash_after"
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
 
@@ -172,8 +172,8 @@ jobs:
           /tmp/baha app create s3-demo --s3-bucket assets
           /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
           /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
-          grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
+          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
+          grep -Eq '\[VERIFIED\][[:space:]]+object-storage[[:space:]]+assets authenticated S3 Put/Get' /tmp/s3-apply.out
 
           provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
           test -f "$provider_dir/compose.yaml"
@@ -245,7 +245,7 @@ jobs:
           ! grep -q 'postgres://' /tmp/required-show.out
           /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
           /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
-          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
+          grep -Eq 'API_TOKEN[[:space:]]+unknown - secret scope not materialized yet[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
 
           set +e
           /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
@@ -256,16 +256,16 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
 
           /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
-          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
           grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
 
           printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app apply required-demo | grep -q "application and requested infrastructure verified"
           /tmp/baha app status required-demo | tee /tmp/required-status.out
-          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
-          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          grep -Eq 'required-secret/API_TOKEN[[:space:]]+present and usable' /tmp/required-status.out
+          grep -q '^READY$' /tmp/required-status.out
           /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
+          grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
           grep -q "^READY$" /tmp/required-doctor.out
 
           /tmp/baha app down required-demo | grep -q "persistent data preserved"
@@ -315,13 +315,13 @@ jobs:
           generated_code=$?
           set -e
           test "$generated_code" -eq 1
-          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -Eq '\[OK\][[:space:]]+generated-secret[[:space:]]+SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
           grep -q "required secrets check failed" /tmp/generated-first-apply.out
           grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
 
           /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
-          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
-          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+          grep -Eq 'SECRET_KEY[[:space:]]+present[[:space:]]+-' /tmp/generated-preflight-after.out
+          grep -Eq 'EXTERNAL_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
 
           /tmp/baha app secret list | grep -q '^SECRET_KEY$'
           printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
@@ -329,8 +329,8 @@ jobs:
           grep -q "application and requested infrastructure verified" /tmp/generated-second-apply.out
           ! grep -q "generated-secret" /tmp/generated-second-apply.out
           /tmp/baha app status | tee /tmp/generated-status.out
-          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
-          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          grep -Eq 'required-secret/SECRET_KEY[[:space:]]+present and usable' /tmp/generated-status.out
+          grep -Eq 'required-secret/EXTERNAL_TOKEN[[:space:]]+present and usable' /tmp/generated-status.out
           /tmp/baha app doctor | grep -q "^READY$"
           /tmp/baha app destroy --yes | grep -q "permanently deleted"
           cd "$workdir"
@@ -399,7 +399,7 @@ jobs:
           grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "present and readable"
+          /tmp/baha app status --help | grep -q "runtime and readiness status"
           /tmp/baha app doctor --help | grep -q "presence/usability"
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "required application secrets"
@@ -423,8 +423,8 @@ jobs:
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
           /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
@@ -441,8 +441,8 @@ jobs:
           /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
           env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
           test "$env_hash_before" = "$env_hash_after"
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
 
@@ -465,8 +465,8 @@ jobs:
           /tmp/baha app create s3-demo --s3-bucket assets
           /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
           /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
-          grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
+          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
+          grep -Eq '\[VERIFIED\][[:space:]]+object-storage[[:space:]]+assets authenticated S3 Put/Get' /tmp/s3-apply.out
 
           provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
           test -f "$provider_dir/compose.yaml"
@@ -538,7 +538,7 @@ jobs:
           ! grep -q 'postgres://' /tmp/required-show.out
           /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
           /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
-          grep -q $'API_TOKEN\tunknown - secret scope not materialized yet\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
+          grep -Eq 'API_TOKEN[[:space:]]+unknown - secret scope not materialized yet[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
 
           set +e
           /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
@@ -549,16 +549,16 @@ jobs:
           test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
 
           /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
-          grep -q $'API_TOKEN\tmissing - user input required\tbaha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
+          grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
           grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
 
           printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app apply required-demo | grep -q "application and requested infrastructure verified"
           /tmp/baha app status required-demo | tee /tmp/required-status.out
-          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-status.out
-          grep -q "all required secret values are present and readable" /tmp/required-status.out
+          grep -Eq 'required-secret/API_TOKEN[[:space:]]+present and usable' /tmp/required-status.out
+          grep -q '^READY$' /tmp/required-status.out
           /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -q $'API_TOKEN\tpresent\t-' /tmp/required-doctor.out
+          grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
           grep -q "^READY$" /tmp/required-doctor.out
 
           /tmp/baha app down required-demo | grep -q "persistent data preserved"
@@ -608,13 +608,13 @@ jobs:
           generated_code=$?
           set -e
           test "$generated_code" -eq 1
-          grep -q $'\[OK\] generated-secret  SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
+          grep -Eq '\[OK\][[:space:]]+generated-secret[[:space:]]+SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
           grep -q "required secrets check failed" /tmp/generated-first-apply.out
           grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
 
           /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
-          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-preflight-after.out
-          grep -q $'EXTERNAL_TOKEN\tmissing - user input required\tbaha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
+          grep -Eq 'SECRET_KEY[[:space:]]+present[[:space:]]+-' /tmp/generated-preflight-after.out
+          grep -Eq 'EXTERNAL_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
 
           /tmp/baha app secret list | grep -q '^SECRET_KEY$'
           printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
@@ -622,8 +622,8 @@ jobs:
           grep -q "application and requested infrastructure verified" /tmp/generated-second-apply.out
           ! grep -q "generated-secret" /tmp/generated-second-apply.out
           /tmp/baha app status | tee /tmp/generated-status.out
-          grep -q $'SECRET_KEY\tpresent\t-' /tmp/generated-status.out
-          grep -q $'EXTERNAL_TOKEN\tpresent\t-' /tmp/generated-status.out
+          grep -Eq 'required-secret/SECRET_KEY[[:space:]]+present and usable' /tmp/generated-status.out
+          grep -Eq 'required-secret/EXTERNAL_TOKEN[[:space:]]+present and usable' /tmp/generated-status.out
           /tmp/baha app doctor | grep -q "^READY$"
           /tmp/baha app destroy --yes | grep -q "permanently deleted"
           cd "$workdir"

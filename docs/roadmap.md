@@ -106,7 +106,7 @@ Still future:
 - additional traffic/exposure providers and broader provider-neutral TLS/certificate lifecycle beyond the current `exposure.http/v1` + existing/BYOC path;
 - BaseHarbor-managed ACME issuance/renewal;
 - OpenBao PKI issuance/rotation for application ingress certificates;
-- managed environment/policy profiles;
+- higher-level enterprise policy/profile composition beyond the v0.4.13 core semantics;
 - topology/HA profiles;
 - managed-production OIDC/RBAC/JIT policy;
 - actual Kubernetes and OpenShift runtime implementations.
@@ -209,10 +209,18 @@ v0.4 finishes the runtime-neutral BaseHarbor language and lifecycle semantics be
 
 ### v0.4.13 – Environment and policy semantics
 
-- deterministic environment resolution;
-- typed allow/warn/deny policy;
-- secure defaults and bounded operator overrides;
-- environment remains distinct from runtime, topology and availability.
+v0.4.13 makes deployment environment and effective policy explicit shared semantics rather than CLI-only hints.
+
+- deterministic selection of either the compatibility root `baseharbor.yaml` or one complete `envs/<environment>/baseharbor.yaml`; environment manifests are complete intents, never hidden overlays;
+- `-e/--environment` is resolved centrally for repository lifecycle/read operations and never mutates the portable manifest;
+- repository workload resolution remains anchored at the real repository root even when the selected manifest lives below `envs/`;
+- protected application, deployment-input, TLS and generated runtime state is isolated per selected environment under `.baseharbor/environments/<environment>/`; unchanged single-environment repositories retain their v0.4.12 state path for compatibility;
+- typed policy results use `allow`, `warn` and `deny`, with `baha policy check` and `baha policy explain` plus matching read-only MCP tools;
+- existing Compose workload-isolation checks feed the shared policy result instead of becoming a second policy engine;
+- secure policy is fail-closed: managed environments cannot be downgraded to development by an operator variable, and only the explicitly bounded development host-device acknowledgement is overridable;
+- environment is deployment/risk context only. It does not encode runtime, provider placement, topology, availability or future Kubernetes namespace details.
+
+Kubernetes/OpenShift behavior remains future work. The semantics here deliberately allow a later namespace-only runtime target without adding Kubernetes-specific fields to application intent.
 
 ### v0.4.14 – Reconciliation, security and lifecycle semantics
 

@@ -28,7 +28,7 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	if !resolved.FromRepository {
 		return nil
 	}
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	_, _, err := application.ResolveWorkloadCompose(repositoryRoot, resolved.Manifest)
 	return err
 }
@@ -37,7 +37,7 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	if !resolved.FromRepository {
 		return application.WorkloadSecurityReport{}, nil
 	}
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
 	if err != nil || !found {
 		return application.WorkloadSecurityReport{}, err
@@ -145,7 +145,7 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 	if !resolved.FromRepository {
 		return application.WorkloadFiles{}, false, nil
 	}
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	return application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
 }
 
@@ -486,7 +486,7 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 }
 
 func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	services, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
 	if err != nil || !found {
 		return false, err
