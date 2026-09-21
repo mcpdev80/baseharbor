@@ -33,3 +33,18 @@ func TestProviderTargetFileNameIsStableAndNamespaced(t *testing.T) {
 		t.Fatalf("unexpected provider target filename %q / %q", first, second)
 	}
 }
+
+
+func TestPrometheusConfigSeparatesApplicationAndProviderTargets(t *testing.T) {
+	rendered := prometheusConfig(nil)
+	for _, want := range []string{
+		"job_name: baseharbor-applications",
+		"/etc/prometheus/targets/*--*--*.json",
+		"job_name: baseharbor-providers",
+		"/etc/prometheus/targets/provider--*.json",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("Prometheus config missing %q:\n%s", want, rendered)
+		}
+	}
+}
