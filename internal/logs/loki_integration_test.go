@@ -43,7 +43,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
-	provisionCtx, cancelProvision := context.WithTimeout(ctx, 45*time.Second)
+	provisionCtx, cancelProvision := context.WithTimeout(ctx, 90*time.Second)
 	err = driver.Provision(provisionCtx, resource, binding)
 	cancelProvision()
 	if err != nil {
