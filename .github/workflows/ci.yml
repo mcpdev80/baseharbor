@@ -106,7 +106,7 @@ jobs:
           grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "present and readable"
+          /tmp/baha app status --help | grep -q "runtime and readiness status"
           /tmp/baha app doctor --help | grep -q "presence/usability"
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "required application secrets"
@@ -399,7 +399,7 @@ jobs:
           grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
           grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
           /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "present and readable"
+          /tmp/baha app status --help | grep -q "runtime and readiness status"
           /tmp/baha app doctor --help | grep -q "presence/usability"
           /tmp/baha app down --help | grep -q "preserving persistent data"
           /tmp/baha app up --help | grep -q "required application secrets"
