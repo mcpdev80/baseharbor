@@ -10,9 +10,9 @@ type Action struct {
 
 type Plan struct {
 	ContractVersion string   `json:"contract_version"`
-	Application string   `json:"application"`
-	Environment string   `json:"environment"`
-	Actions     []Action `json:"actions"`
+	Application     string   `json:"application"`
+	Environment     string   `json:"environment"`
+	Actions         []Action `json:"actions"`
 }
 
 func BuildPlan(m Manifest) (Plan, error) {
