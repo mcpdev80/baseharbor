@@ -341,7 +341,6 @@ func doctorApplicationArgs(args []string) []string {
 }
 
 func inspectApplicationTLS(resolved resolvedApplication) (applicationTLSStatus, error) {
-	repoRoot := resolved.repositoryRoot()
 	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return applicationTLSStatus{}, err
