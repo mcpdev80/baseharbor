@@ -17,8 +17,6 @@
   </a>
 </p>
 
-## Bring your app. No rewrite required.
-
 - **Inspect existing repositories** and discover infrastructure requirements from code, dependencies, Compose files, ports and configuration.
 - **Declare needs, not products.** Keep infrastructure intent portable instead of coupling the app to a specific implementation.
 - **Use standard interfaces.** PostgreSQL, Redis/Valkey, S3, HTTP, OTLP, environment variables and files. No proprietary SDK in your business code.
