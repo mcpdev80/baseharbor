@@ -12,13 +12,13 @@ type StatusCheck struct {
 // contains operational state only and never credential or secret values.
 type StatusResult struct {
 	ContractVersion string        `json:"contract_version"`
-	Application string        `json:"application"`
-	Environment string        `json:"environment"`
-	Manifest    string        `json:"manifest,omitempty"`
-	Project     string        `json:"project"`
-	State       string        `json:"state"`
-	Ready       bool          `json:"ready"`
-	Checks      []StatusCheck `json:"checks"`
+	Application     string        `json:"application"`
+	Environment     string        `json:"environment"`
+	Manifest        string        `json:"manifest,omitempty"`
+	Project         string        `json:"project"`
+	State           string        `json:"state"`
+	Ready           bool          `json:"ready"`
+	Checks          []StatusCheck `json:"checks"`
 }
 
 // AddCheck appends one readiness observation and folds failures into Ready.
