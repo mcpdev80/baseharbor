@@ -458,7 +458,6 @@ func validateLogsRequirements(workload WorkloadConfig, logs LogsRequirements) er
 	return nil
 }
 
-
 func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequirement) error {
 	if len(sources) == 0 {
 		return nil

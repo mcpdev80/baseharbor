@@ -108,7 +108,6 @@ func TestFindingsNeedControlPlaneRepair(t *testing.T) {
 	}
 }
 
-
 func TestClassifyStructuredAppDoctorUninitializedControlPlaneNeedsInput(t *testing.T) {
 	result := appDoctorStructuredResult{
 		Healthy: false,

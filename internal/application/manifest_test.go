@@ -340,7 +340,6 @@ func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 	}
 }
 
-
 func TestManifestLogsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.Postgres = false

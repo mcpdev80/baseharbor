@@ -90,7 +90,6 @@ func TestExecWithTokenInputKeepsTokenAndSecretOutOfArguments(t *testing.T) {
 	}
 }
 
-
 type batchSecretExecutor struct {
 	calls int
 	args  []string

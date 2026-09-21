@@ -83,7 +83,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
-
 			}
 			checks = appendManagedProviderPreflights(checks, &compose, resolved, providers)
 			if application.RequiresRuntimeBroker(m) {

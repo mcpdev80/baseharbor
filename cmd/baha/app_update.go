@@ -264,14 +264,15 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 }
 
 func parseGitDirtyEntries(status string) []gitDirtyEntry {
-	lines := strings.Split(strings.TrimSpace(status), "\n")
+	lines := strings.Split(status, "\n")
 	entries := make([]gitDirtyEntry, 0, len(lines))
 	for _, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
 		if len(line) < 3 {
 			continue
 		}
 		code := line[:2]
-		path := strings.TrimSpace(line[3:])
+		path := line[3:]
 		if path == "" {
 			continue
 		}

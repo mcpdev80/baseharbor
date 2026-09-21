@@ -129,7 +129,6 @@ func TestPlainModeDisablesInteractiveRendering(t *testing.T) {
 	}
 }
 
-
 func TestFormatActivityDuration(t *testing.T) {
 	tests := []struct {
 		in   time.Duration
@@ -163,7 +162,6 @@ func TestTerminalActivityIncludesDurationForSlowOperation(t *testing.T) {
 	}
 }
 
-
 func TestTerminalActivityRendersLiveDetailInPlainMode(t *testing.T) {
 	ctx := WithOutputOptions(context.Background(), OutputOptions{ReducedMotion: true})
 	var out bytes.Buffer
@@ -190,7 +188,6 @@ func TestTerminalActivityRendersLiveDetailInPlainMode(t *testing.T) {
 		}
 	}
 }
-
 
 func TestActivityReturnsPromptlyWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

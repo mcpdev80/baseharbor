@@ -80,11 +80,11 @@ func TestParseGitDirtyEntriesClassifiesBaseHarborLocalState(t *testing.T) {
 func TestFormatGitApplicationUpdateCheckExplainsDirtyBlockers(t *testing.T) {
 	state := gitUpdateState{
 		RepositoryRoot: "/repo",
-		Branch: "main",
-		Upstream: "origin/main",
-		Current: "aaa",
-		Target: "bbb",
-		Dirty: true,
+		Branch:         "main",
+		Upstream:       "origin/main",
+		Current:        "aaa",
+		Target:         "bbb",
+		Dirty:          true,
 		DirtyEntries: []gitDirtyEntry{
 			{Status: "modified", Path: "README.md"},
 			{Status: "untracked", Path: ".baseharbor/runtime.env", BaseHarborLocal: true},

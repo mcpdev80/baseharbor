@@ -102,7 +102,7 @@ func TestRecordRepositoryAppliedFingerprintRoundTrip(t *testing.T) {
 		ManifestPath:   manifestPath,
 		FromRepository: true,
 	}
-	files := application.RuntimeFiles{Dir: filepath.Join(repo, ".runtime")}
+	files := application.RuntimeFiles{Dir: filepath.Join(repo, ".baseharbor", "runtime")}
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

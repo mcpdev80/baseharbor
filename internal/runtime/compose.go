@@ -270,7 +270,6 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 	return nil
 }
 
-
 func resourceCommands(resource ProjectResource) ([]string, []string, error) {
 	switch resource.Kind {
 	case "container":
