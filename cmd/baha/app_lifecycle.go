@@ -289,11 +289,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
 				repoRoot := resolved.repositoryRoot()
 				if fullReset {
-					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
+					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(resolved.stateRoot(), repositoryTLSDirName))
 				} else {
-					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
+					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(resolved.stateRoot(), repositoryTLSDirName))
 				}
 			}
 			if !confirmed {
@@ -394,10 +394,10 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			}
 			if fullReset && resolved.FromRepository {
 				repoRoot := resolved.repositoryRoot()
-				if err := os.Remove(repositoryInitEnvPath(repoRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				if err := os.Remove(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return fmt.Errorf("remove repository deployment state: %w", err)
 				}
-				if err := os.RemoveAll(filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)); err != nil {
+				if err := os.RemoveAll(filepath.Join(resolved.stateRoot(), repositoryTLSDirName)); err != nil {
 					return fmt.Errorf("remove normalized repository TLS state: %w", err)
 				}
 			}
