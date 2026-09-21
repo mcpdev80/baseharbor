@@ -55,8 +55,8 @@ jobs:
           echo "GREP_CODE=$grep_code"
           test "$apply_code" -eq 0
           test "$grep_code" -eq 0
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
           test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
           ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
@@ -73,8 +73,8 @@ jobs:
           /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
           env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
           test "$env_hash_before" = "$env_hash_after"
-          /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
+          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
           docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
 
