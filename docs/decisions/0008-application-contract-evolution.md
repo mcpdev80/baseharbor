@@ -2,6 +2,9 @@
 
 ## Status
 
+> Roadmap sequencing note (2026-09-21): the architectural decision remains unchanged, but release sequencing has evolved. v0.7 implements the Kubernetes Runtime, v0.8 completes Kubernetes feature parity and production acceptance, and OpenShift/Enterprise specialization follows afterward. Version labels in this ADR are sequencing context, not part of the contract decision.
+
+
 Accepted for v0.4.0.
 
 ## Context
@@ -93,7 +96,7 @@ application source + baseharbor.yaml
             +--> test / staging          (Compose or future Kubernetes)
             +--> production              (provider selected by deployment)
             +--> Kubernetes              (future v0.7 provider)
-            +--> OpenShift / enterprise  (future v0.8 specialization)
+            +--> OpenShift / enterprise  (future post-v0.8 specialization)
 ```
 
 Moving between those stages may change deployment state, provider selection, topology and policy. It must not require rewriting the application's logical capability identities or introducing Kubernetes/OpenShift objects into the common application contract.
