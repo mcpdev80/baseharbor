@@ -186,7 +186,17 @@ baha doctor -o json
 
 The compatibility alias `baha app inspect --json` remains supported. Structured output contains no ANSI rendering and no secret values. `doctor --fix` is intentionally human-only.
 
-Repository-aware startup accepts `-e ENV` / `--environment ENV` as a deployment-context override without rewriting `baseharbor.yaml`.
+Repository-aware lifecycle/read commands accept `-e ENV` / `--environment ENV` as deployment-context selection without rewriting portable intent. A repository may use one root `baseharbor.yaml` or complete `envs/<environment>/baseharbor.yaml` contracts. Multiple environment manifests require explicit selection.
+
+Policy inspection:
+
+```bash
+baha policy explain -e prod
+baha policy check -e prod
+baha policy check -e prod -o json
+```
+
+Policy results are typed `allow|warn|deny`. Managed environments cannot be weakened to the development security profile through an operator environment variable; only documented bounded development exceptions are overridable.
 
 Remote inspection accepts normal HTTPS/SSH Git URLs and delegates authentication to Git. URLs with embedded credentials are rejected.
 
@@ -209,7 +219,7 @@ Local MCP server:
 baha mcp serve
 ```
 
-The MCP server uses stdio only and exposes exactly four read-only semantic tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` and `baseharbor.doctor`.
+The MCP server uses stdio only and exposes six read-only semantic tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`, `baseharbor.policy.check` and `baseharbor.policy.explain`.
 
 There is no generic shell, exec, Docker or Compose tool. MCP calls route into the same typed result collectors used by the CLI/TUI and therefore preserve BaseHarbor ownership, isolation and verification semantics.
 
