@@ -105,7 +105,6 @@ func desiredDigest(resource capability.Resource, binding capability.Binding) str
 	return fmt.Sprintf("%s|%s|%s|%s|%s", resource.Application, resource.Kind, resource.Name, resource.Provider, binding.Workload)
 }
 
-
 func (d *FakeDriver) SetFailure(mode FailureMode) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
