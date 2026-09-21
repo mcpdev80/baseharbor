@@ -391,12 +391,13 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
 				if format == outputJSON {
 					payload := struct {
+						ContractVersion string             `json:"contract_version"`
 						Application string             `json:"application"`
 						Environment string             `json:"environment"`
 						State       string             `json:"state"`
 						Healthy     bool               `json:"healthy"`
 						Checks      []preflight.Result `json:"checks"`
-					}{Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
+					}{ContractVersion: "v1", Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
 					return writeJSON(out, payload)
 				}
 				term := cli.NewTerminal(ctx, out, errOut)
@@ -634,6 +635,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					})
 				}
 				payload := struct {
+					ContractVersion string                     `json:"contract_version"`
 					Application     string                     `json:"application"`
 					Environment     string                     `json:"environment"`
 					Healthy         bool                       `json:"healthy"`
@@ -642,7 +644,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					RequiredSecrets []map[string]any           `json:"required_secrets,omitempty"`
 					TLS             *applicationTLSObservation `json:"tls,omitempty"`
 				}{
-					Application: m.Name, Environment: m.Environment, Healthy: ok,
+					ContractVersion: "v1", Application: m.Name, Environment: m.Environment, Healthy: ok,
 					Checks: results, Workload: workloads, RequiredSecrets: secretStatus, TLS: tlsObservation,
 				}
 				if err := writeJSON(out, payload); err != nil {
