@@ -157,7 +157,28 @@ Umgesetzt:
 - lokale Compose-Runtime als first-class BaseHarbor Playground;
 - Five-Minute-Onboarding.
 
-Versionierte Agent Contracts und MCP bleiben bewusst v0.4.12.
+Die strukturierte Ausgabe aus v0.4.11 bildet die Grundlage fuer die Machine-Schicht.
+
+## v0.4.12 Agent-native Machine Interface und MCP
+
+In v0.4.12 umgesetzt/abgeschlossen:
+
+- versionierter BaseHarbor Machine Contract `v1` fuer Inspect/Plan/Status/Doctor;
+- strukturierte secret-safe Fehler-Envelopes fuer JSON-Automation;
+- explizite Safety-Metadaten fuer semantische Operationen;
+- `baha agent describe` / `baha agent describe -o json`;
+- offizielles Model Context Protocol Go SDK v1.8.0;
+- MCP `2026-07-28` als aktuelles Ziel mit ausgehandelter `2025-11-25`-Kompatibilitaet;
+- lokales stdio-only `baha mcp serve`;
+- exakt vier read-only Tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`;
+- MCP Read-only-/Destructive-/Open-world-Annotations;
+- gemeinsame typisierte Status+TLS- und Doctor-Result-Pfade fuer CLI, TUI und MCP;
+- Acceptance ueber einen generischen MCP-Client ohne BaseHarbor-spezifisches Plugin;
+- Secret-Leak-Tests und explizit keine generischen Shell-/Docker-/Compose-Ausfuehrungsprimitiven;
+- erweiterte begrenzte/idempotente `AGENTS.md`-Guidance fuer strukturierte BaseHarbor-Interfaces.
+
+Remote-MCP/Auth, mutierende/destruktive MCP-Tools, eingebettete LLM-Logik, vendor-spezifische Agent-Integrationen und Application-MCP-Capabilities bleiben bewusst spaeter.
+
 
 ## Geplante Phasen
 
