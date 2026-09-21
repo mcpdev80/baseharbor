@@ -2,6 +2,9 @@ name: ci
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/v0414-ci-runner-hygiene
 
 permissions:
   contents: read
