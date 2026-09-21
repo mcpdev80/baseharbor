@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
