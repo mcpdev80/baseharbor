@@ -50,7 +50,7 @@ jobs:
           set -e
           test "$code" -eq 1
           printf '%s' 'bootstrap' | /tmp/baha app secret set perf-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply perf-demo | grep -q "Application perf-demo is ready"
+          /tmp/baha app apply perf-demo | grep -q "application and requested infrastructure verified"
 
       - name: Measure 200 real mTLS secret resolves
         run: |
