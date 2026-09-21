@@ -21,7 +21,12 @@ func TestEnsureBaseHarborAgentsSectionCreatesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(first), baseHarborAgentsStart) || !strings.Contains(string(first), "Never place secret or credential values") {
+	content := string(first)
+	if !strings.Contains(content, baseHarborAgentsStart) ||
+		!strings.Contains(content, "Never place secret or credential values") ||
+		!strings.Contains(content, "baha agent describe -o json") ||
+		!strings.Contains(content, "baha mcp serve") ||
+		!strings.Contains(content, "shell, Docker or Compose execution") {
 		t.Fatalf("unexpected AGENTS.md:\n%s", first)
 	}
 	changed, err = ensureBaseHarborAgentsSection(root)
