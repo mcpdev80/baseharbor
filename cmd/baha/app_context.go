@@ -64,6 +64,17 @@ func resolveApplication(store application.Store, args []string, command string) 
 }
 
 func resolveApplicationEnvironment(store application.Store, args []string, command, environment string) (resolvedApplication, error) {
+	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	if argumentEnvironment != "" {
+		if environment != "" && environment != argumentEnvironment {
+			return resolvedApplication{}, usageError("conflicting environment selections", "Specify the environment only once.")
+		}
+		environment = argumentEnvironment
+	}
+	args = filtered
 	if len(args) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
 	}
@@ -109,6 +120,38 @@ func resolveApplicationEnvironment(store application.Store, args []string, comma
 		Store:          repoStore,
 		FromRepository: true,
 	}, nil
+}
+
+func extractApplicationEnvironment(args []string, command string) ([]string, string, error) {
+	filtered := make([]string, 0, len(args))
+	environment := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-e" || arg == "--environment":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return nil, "", usageError("--environment requires ENV", "Example: baha app "+command+" -e prod")
+			}
+			i++
+			value := strings.TrimSpace(args[i])
+			if environment != "" && environment != value {
+				return nil, "", usageError("conflicting environment selections", "Specify -e/--environment only once.")
+			}
+			environment = value
+		case strings.HasPrefix(arg, "--environment="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--environment="))
+			if value == "" {
+				return nil, "", usageError("--environment requires ENV", "Example: baha app "+command+" --environment=prod")
+			}
+			if environment != "" && environment != value {
+				return nil, "", usageError("conflicting environment selections", "Specify -e/--environment only once.")
+			}
+			environment = value
+		default:
+			filtered = append(filtered, arg)
+		}
+	}
+	return filtered, environment, nil
 }
 
 func configureRepositoryComposeEnvironment(repoRoot, stateRoot string) error {
