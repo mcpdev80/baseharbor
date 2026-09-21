@@ -94,7 +94,7 @@ Weiterhin Future Work:
 - neue oeffentliche capability-orientierte Contract-Syntax;
 - weitere Capability-Provider und zusaetzliche S3/Object-Storage-Provider/Provider-Auswahl;
 - BaseHarbor-Recovery fuer Object-Storage-Inhalte (v0.4.6 bricht Backup/Restore fuer S3-Anwendungen fail-closed ab statt unvollstaendige Recovery zu behaupten);
-- breitere Environment-/Policy-Profile;
+- weitergehende Enterprise-Policy-/Profil-Komposition ueber die v0.4.13-Core-Semantik hinaus;
 - OIDC/RBAC/JIT fuer Managed Production;
 - HA-/Topologieprofile;
 - weitere Traffic-/Exposure-Provider und breiterer providerneutraler TLS-/Zertifikats-Lifecycle ueber den aktuellen `exposure.http/v1`- und Existing/BYOC-Pfad hinaus;
@@ -192,10 +192,18 @@ v0.4 schliesst die runtime-neutrale BaseHarbor-Sprache und die Lifecycle-Semanti
 
 ### v0.4.13 - Environment- und Policy-Semantik
 
-- deterministische Environment-Aufloesung;
-- typisierte Allow/Warn/Deny-Policy;
-- sichere Defaults und begrenzte Operator-Overrides;
-- Environment bleibt getrennt von Runtime, Topologie und Availability.
+v0.4.13 macht Deployment-Environment und effektive Policy zu expliziten gemeinsamen Semantiken statt zu CLI-Sonderlogik.
+
+- deterministische Auswahl entweder des kompatiblen Root-`baseharbor.yaml` oder genau eines vollstaendigen `envs/<environment>/baseharbor.yaml`; Environment-Manifeste sind vollstaendige Intents und keine versteckten Overlays;
+- `-e/--environment` wird zentral fuer Repository-Lifecycle-/Read-Operationen aufgeloest und veraendert niemals das portable Manifest;
+- Workload-Aufloesung bleibt am echten Repository-Root verankert, auch wenn das gewaehlte Manifest unter `envs/` liegt;
+- geschuetzter Application-, Deployment-Input-, TLS- und generierter Runtime-State wird pro Environment unter `.baseharbor/environments/<environment>/` getrennt; unveraenderte Single-Environment-Repositories behalten fuer Kompatibilitaet ihren v0.4.12-State-Pfad;
+- typisierte Policy-Ergebnisse verwenden `allow`, `warn` und `deny`; `baha policy check` und `baha policy explain` besitzen passende read-only MCP-Tools;
+- vorhandene Compose-Workload-Isolation speist dasselbe Policy-Ergebnis statt eine zweite Policy-Engine zu erzeugen;
+- sichere Policy ist fail-closed: Managed Environments koennen nicht per Operator-Variable auf Development abgeschwaecht werden; ueberschreibbar bleibt nur die explizit begrenzte Host-Device-Bestaetigung in Development;
+- Environment ist ausschliesslich Deployment-/Risiko-Kontext und kodiert weder Runtime, Provider-Placement, Topologie, Availability noch spaetere Kubernetes-Namespace-Details.
+
+Kubernetes/OpenShift bleiben Future Work. Diese Semantik ist bewusst so gebaut, dass ein spaeterer Namespace-only Runtime Target keine Kubernetes-spezifischen Felder im Application Intent erfordert.
 
 ### v0.4.14 - Reconciliation-, Security- und Lifecycle-Semantik
 

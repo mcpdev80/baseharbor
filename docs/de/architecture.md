@@ -24,6 +24,18 @@ Das langfristige Ziel ist ein durchgängiger Weg von lokaler Entwicklung und Hom
 - Contracts, nicht Tools: etablierte OSS-Mechanismen bleiben hinter BaseHarbor-Contracts austauschbar.
 - Der Entwickler bedient primaer `baha`; BaseHarbor bedient oder delegiert an die darunterliegenden Tools.
 
+## Environment- und Policy-Grenze
+
+Environment ist Deployment-/Risiko-Kontext und kein Runtime- oder Topologie-Selektor. Ein Repository kann das kompatible Root-`baseharbor.yaml` behalten oder vollstaendige Environment-Vertraege unter `envs/<environment>/baseharbor.yaml` bereitstellen. BaseHarbor fuehrt diese Dateien niemals als versteckte Overlays zusammen: Es wird deterministisch genau ein vollstaendiger Intent ausgewaehlt.
+
+Bei environment-spezifischen Deployments liegt geschuetzter Deployment-State getrennt unter `.baseharbor/environments/<environment>/`. Der echte Application-Repository-Root bleibt unabhaengig vom Manifest-Pfad, damit Workload-Source, Git-Ownership und Repository-Inspection nicht nach `envs/<environment>` verschoben werden.
+
+Policy-Auswertung ist Teil des gemeinsamen semantischen Cores. Ergebnisse sind als `allow`, `warn` oder `deny` typisiert, stehen ueber Human-/JSON-CLI und MCP bereit und werden vor policy-sensitiver Konvergenz fail-closed ausgewertet. Die bestehenden Compose-Isolation-Checks speisen dieses Modell.
+
+Operator-Overrides sind explizit und begrenzt. Sie duerfen eine dokumentierte Development-Ausnahme bestaetigen, aber weder Validation, Ownership, Secret-Isolation, Conformance noch Managed-Environment-Security abschalten. Insbesondere kann eine Operator-Variable ein Managed Environment nicht in ein Development-Security-Profil umschalten.
+
+Diese Regeln enthalten bewusst keine Kubernetes-Konzepte. Ein spaeterer Namespace-only Kubernetes Target nutzt dieselbe Environment-/Policy-Semantik; Runtime-Rechte, Namespace-Identitaet und platform-owned Ressourcen bleiben Runtime-/Provider-Themen.
+
 ## Gemeinsamer Core und mehrere Bedienoberflaechen
 
 BaseHarbor wird als **ein gemeinsamer Application-/Lifecycle-Core mit mehreren Control Surfaces** aufgebaut.

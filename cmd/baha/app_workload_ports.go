@@ -51,7 +51,7 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	if len(variables) == 0 {
 		return nil
 	}
-	persisted, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
+	persisted, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
 	if errors.Is(err, os.ErrNotExist) {
 		persisted = map[string]string{}
 	} else if err != nil {
@@ -85,7 +85,7 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 
 		if portAvailable(port) {
 			if strings.TrimSpace(persisted[variable.Name]) == "" {
-				if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(port)}); err != nil {
+				if err := updateRepositoryInitValuesAtStateRoot(resolved.stateRoot(), map[string]string{variable.Name: strconv.Itoa(port)}); err != nil {
 					return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, port, err)
 				}
 				persisted[variable.Name] = strconv.Itoa(port)
@@ -105,7 +105,7 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 		if !accepted {
 			return fmt.Errorf("workload port fallback declined for %s; choose a free host port and retry", variable.Name)
 		}
-		if err := updateRepositoryInitValues(repoRoot, map[string]string{variable.Name: strconv.Itoa(fallback)}); err != nil {
+		if err := updateRepositoryInitValuesAtStateRoot(resolved.stateRoot(), map[string]string{variable.Name: strconv.Itoa(fallback)}); err != nil {
 			return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, fallback, err)
 		}
 		persisted[variable.Name] = strconv.Itoa(fallback)
@@ -118,7 +118,7 @@ func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resol
 	if !resolved.FromRepository {
 		return nil
 	}
-	repoRoot := filepath.Dir(resolved.ManifestPath)
+	repoRoot := resolved.repositoryRoot()
 	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
 	if err != nil || !found {
 		return err
@@ -127,7 +127,7 @@ func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resol
 	if err != nil {
 		return err
 	}
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

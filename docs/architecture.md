@@ -41,6 +41,18 @@ For example, an application may require a SQL database, S3-compatible object sto
 
 This is a hard architecture rule. Every bundled/default component must have a provider boundary and a documented replacement path. See [Capability and provider model](capability-provider-model.md) and ADR [0005](decisions/0005-capabilities-not-products.md).
 
+## Environment and policy boundary
+
+Environment is a deployment/risk context, not a runtime or topology selector. A repository may keep the compatibility root `baseharbor.yaml` or provide complete environment contracts under `envs/<environment>/baseharbor.yaml`. BaseHarbor never merges those files as hidden overlays: exactly one complete intent is selected deterministically.
+
+For environment-specific deployments, protected deployment state is isolated below `.baseharbor/environments/<environment>/`. The real application repository root remains independent from the manifest location, so workload source, Git ownership and repository inspection do not move into `envs/<environment>`.
+
+Policy evaluation is part of the shared semantic core. Results are typed as `allow`, `warn` or `deny`, are available through human and JSON CLI output and through MCP, and are evaluated fail-closed before policy-sensitive convergence. Existing Compose isolation checks feed this model.
+
+Operator overrides are explicit and bounded. They may acknowledge a documented development-only exception, but they cannot disable validation, ownership checks, secret isolation, conformance or managed-environment security. In particular, an operator variable cannot turn a managed environment into a development security profile.
+
+These rules intentionally contain no Kubernetes concepts. A future namespace-only Kubernetes target consumes the same environment and policy semantics while runtime permissions, namespace identity and platform-owned resources remain runtime/provider concerns.
+
 ## Runtime, capability and delivery provider axes
 
 BaseHarbor has three independent provider axes:

@@ -116,7 +116,17 @@ baha doctor -o json
 
 `--output json` ist gleichwertig. JSON enthaelt keine Secret-Werte. `doctor --fix` bleibt bewusst Human-only.
 
-`baha up -e dev` bzw. `baha up --environment dev` waehlt den Deployment-Kontext, ohne `baseharbor.yaml` umzuschreiben.
+Repository-aware Lifecycle-/Read-Befehle akzeptieren `-e ENV` bzw. `--environment ENV` als Deployment-Kontext, ohne portablen Intent umzuschreiben. Ein Repository kann ein Root-`baseharbor.yaml` oder vollstaendige `envs/<environment>/baseharbor.yaml`-Vertraege verwenden. Bei mehreren Environment-Manifesten ist eine explizite Auswahl erforderlich.
+
+Policy-Inspection:
+
+```bash
+baha policy explain -e prod
+baha policy check -e prod
+baha policy check -e prod -o json
+```
+
+Policy-Ergebnisse sind als `allow|warn|deny` typisiert. Managed Environments koennen nicht ueber eine Operator-Variable auf das Development-Security-Profil abgeschwaecht werden; nur dokumentierte begrenzte Development-Ausnahmen sind ueberschreibbar.
 
 Remote Inspection akzeptiert normale HTTPS-/SSH-Git-URLs und verwendet die vorhandene Git-Authentifizierung. Eingebettete Credentials in URLs werden abgelehnt.
 
@@ -139,7 +149,7 @@ Lokaler MCP-Server:
 baha mcp serve
 ```
 
-Der MCP-Server verwendet ausschliesslich stdio und exponiert exakt vier read-only semantische Tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` und `baseharbor.doctor`.
+Der MCP-Server verwendet ausschliesslich stdio und exponiert sechs read-only semantische Tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`, `baseharbor.policy.check` und `baseharbor.policy.explain`.
 
 Es gibt kein generisches Shell-, Exec-, Docker- oder Compose-Tool. MCP verwendet dieselben typisierten Result-Collector wie CLI/TUI und behaelt dadurch BaseHarbor-Ownership-, Isolation- und Verification-Semantik bei.
 

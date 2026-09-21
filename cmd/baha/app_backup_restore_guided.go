@@ -29,6 +29,10 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 	command.Usage = "baha app backup [NAME] [--output FILE] [--password-file FILE]"
 	command.Long = "Creates one encrypted application recovery unit. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry and safe output defaults. Automation keeps using an owner-only --password-file; backup passwords are never accepted as command-line values."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		filtered, environment, err := extractApplicationEnvironment(args, "backup")
+		if err != nil {
+			return err
+		}
 		if hasOption(args, "--password-file") {
 			return baseRun(ctx, args, out, errOut)
 		}
@@ -39,7 +43,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 			return usageError("interactive application backup requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
 
-		name, outputPath, err := parseGuidedBackupArgs(args)
+		name, outputPath, err := parseGuidedBackupArgs(filtered)
 		if err != nil {
 			return err
 		}
@@ -47,7 +51,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		if name != "" {
 			appArgs = []string{name}
 		}
-		resolved, err := resolveApplication(store, appArgs, "backup")
+		resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
 		if err != nil {
 			return err
 		}
@@ -72,7 +76,10 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		}
 		defer zeroBytes(password)
 		return withInMemoryPasswordFile(password, func(passwordPath string) error {
-			forwarded := append([]string(nil), args...)
+			forwarded := append([]string(nil), filtered...)
+			if environment != "" {
+				forwarded = append(forwarded, "--environment", environment)
+			}
 			if !hasOption(forwarded, "--output") {
 				forwarded = append(forwarded, "--output", outputPath)
 			}

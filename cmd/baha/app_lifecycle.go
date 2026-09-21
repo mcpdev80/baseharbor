@@ -138,7 +138,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
 		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			name, confirmed, fullReset, err := parseDestroyArgs(args)
+			filtered, environment, err := extractApplicationEnvironment(args, "destroy")
+			if err != nil {
+				return err
+			}
+			name, confirmed, fullReset, err := parseDestroyArgs(filtered)
 			if err != nil {
 				return err
 			}
@@ -146,7 +150,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if name != "" {
 				appArgs = []string{name}
 			}
-			resolved, err := resolveApplication(store, appArgs, "destroy")
+			resolved, err := resolveApplicationEnvironment(store, appArgs, "destroy", environment)
 			if err != nil {
 				return err
 			}
@@ -287,13 +291,12 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
-				repoRoot := filepath.Dir(resolved.ManifestPath)
 				if fullReset {
-					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
+					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(resolved.stateRoot(), repositoryTLSDirName))
 				} else {
-					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPath(repoRoot))
-					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName))
+					fmt.Fprintf(out, "  deployment: %s (preserved)\n", repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
+					fmt.Fprintf(out, "  local TLS:  %s (preserved)\n", filepath.Join(resolved.stateRoot(), repositoryTLSDirName))
 				}
 			}
 			if !confirmed {
@@ -393,11 +396,10 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("inspect application state before removal: %w", err)
 			}
 			if fullReset && resolved.FromRepository {
-				repoRoot := filepath.Dir(resolved.ManifestPath)
-				if err := os.Remove(repositoryInitEnvPath(repoRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				if err := os.Remove(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return fmt.Errorf("remove repository deployment state: %w", err)
 				}
-				if err := os.RemoveAll(filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)); err != nil {
+				if err := os.RemoveAll(filepath.Join(resolved.stateRoot(), repositoryTLSDirName)); err != nil {
 					return fmt.Errorf("remove normalized repository TLS state: %w", err)
 				}
 			}

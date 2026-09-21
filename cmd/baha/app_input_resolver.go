@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -162,7 +161,7 @@ func repositoryDeploymentInputDefinitions(needsTLS bool) []applicationinput.Defi
 }
 
 func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
-	current, err := loadRepositoryInitState(repoRoot)
+	current, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return err
 	}
@@ -259,16 +258,19 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 	if err != nil {
 		return err
 	}
-	path, err := application.FindRepositoryManifest(cwd)
-	if err != nil {
-		return nil
-	}
-	resolved, err := resolveApplication(application.DefaultStore(), nil, "up")
+	found, err := application.HasRepositoryApplication(cwd)
 	if err != nil {
 		return err
 	}
-	repoRoot := filepath.Dir(path)
-	current, err := loadRepositoryInitState(repoRoot)
+	if !found {
+		return nil
+	}
+	resolved, err := resolveApplicationEnvironment(application.DefaultStore(), nil, "up", opts.Environment)
+	if err != nil {
+		return err
+	}
+	repoRoot := resolved.repositoryRoot()
+	current, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return err
 	}
@@ -325,10 +327,11 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	if err != nil {
 		return err
 	}
-	if _, err := application.FindRepositoryManifest(cwd); err != nil {
-		if !errors.Is(err, application.ErrRepositoryManifestNotFound) {
-			return err
-		}
+	found, err := application.HasRepositoryApplication(cwd)
+	if err != nil {
+		return err
+	}
+	if !found {
 		initialized, err := initializeRepositoryManifestForUp(ctx, runtimeInput, out, errOut, opts)
 		if err != nil {
 			return err
