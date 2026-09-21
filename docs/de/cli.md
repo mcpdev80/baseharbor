@@ -7,6 +7,8 @@
 ```text
 baha
 ├── up / down / plan / status / doctor
+├── agent describe
+├── mcp serve
 ├── serve
 ├── connect SOURCE TARGET
 ├── disconnect SOURCE TARGET
@@ -119,6 +121,29 @@ baha doctor -o json
 Remote Inspection akzeptiert normale HTTPS-/SSH-Git-URLs und verwendet die vorhandene Git-Authentifizierung. Eingebettete Credentials in URLs werden abgelehnt.
 
 Mit `baha app init --agents` kann BaseHarbor nur seine klar markierte Sektion in `AGENTS.md` idempotent pflegen; andere Anweisungen bleiben unangetastet.
+
+## Agent- und MCP-Machine-Interface
+
+BaseHarbor v0.4.12 definiert einen versionierten Machine Contract, damit Automation keine Human-Terminal-Ausgabe parsen muss.
+
+Discovery:
+
+```bash
+baha agent describe
+baha agent describe -o json
+```
+
+Lokaler MCP-Server:
+
+```bash
+baha mcp serve
+```
+
+Der MCP-Server verwendet ausschliesslich stdio und exponiert exakt vier read-only semantische Tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` und `baseharbor.doctor`.
+
+Es gibt kein generisches Shell-, Exec-, Docker- oder Compose-Tool. MCP verwendet dieselben typisierten Result-Collector wie CLI/TUI und behaelt dadurch BaseHarbor-Ownership-, Isolation- und Verification-Semantik bei.
+
+Siehe [Agent-native Machine Interface](agent-machine-interface.md).
 
 ## Read-only Repository Inspection und Reconciliation
 
