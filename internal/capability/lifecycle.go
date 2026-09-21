@@ -290,6 +290,7 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 	for _, item := range plan.Items {
 		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
 	}
+	decisions := make([]reconciliation.Result, len(plan.Items))
 	for i, item := range plan.Items {
 		started := time.Now()
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
@@ -300,8 +301,31 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 		}
 		observeProviderOperation(requests[i], item, PhasePreflight, StatusReady, time.Since(started))
 		result.Steps = append(result.Steps, readyStep(PhasePreflight, item))
+
+		if driver, ok := requests[i].Driver.(ReconciliationDriver); ok {
+			started = time.Now()
+			observed, err := driver.Observe(ctx, item.Resource, item.Binding)
+			if err != nil {
+				observeProviderOperation(requests[i], item, PhaseObserve, StatusFailed, time.Since(started))
+				result.Steps = append(result.Steps, failedStep(PhaseObserve, item, "provider-observe-failed", err))
+				result.Status = StatusFailed
+				return nil, result, fmt.Errorf("capability observation failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
+			decision := reconciliation.Evaluate(driver.DesiredState(item.Resource, item.Binding), observed)
+			decisions[i] = decision
+			result.Reconciliation = append(result.Reconciliation, ReconciliationResult{Resource: item.Resource, Result: decision})
+			if decision.Action == reconciliation.ActionBlocked {
+				err := fmt.Errorf("%s", decision.Message)
+				observeProviderOperation(requests[i], item, PhaseObserve, StatusFailed, time.Since(started))
+				result.Steps = append(result.Steps, failedStep(PhaseObserve, item, "provider-reconciliation-blocked", err))
+				result.Status = StatusFailed
+				return nil, result, fmt.Errorf("capability reconciliation blocked for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
+			observeProviderOperation(requests[i], item, PhaseObserve, StatusReady, time.Since(started))
+			result.Steps = append(result.Steps, readyStep(PhaseObserve, item))
+		}
 	}
-	return &Execution{requests: requests, result: result}, result, nil
+	return &Execution{requests: requests, result: result, decisions: decisions}, result, nil
 }
 
 func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
