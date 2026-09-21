@@ -20,7 +20,7 @@ permissions:
 jobs:
   postgres-valkey:
     if: ${{ inputs.gate == 'all' || inputs.gate == 'postgres-valkey' }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
@@ -76,7 +76,7 @@ jobs:
 
   s3:
     if: ${{ inputs.gate == 'all' || inputs.gate == 's3' }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
@@ -130,7 +130,7 @@ jobs:
 
   openbao:
     if: ${{ inputs.gate == 'all' || inputs.gate == 'openbao' }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 30
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
