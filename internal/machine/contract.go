@@ -103,7 +103,6 @@ func ResultError(err error) ErrorResult {
 	return ErrorResult{ContractVersion: ContractVersion, Error: Classify(err)}
 }
 
-
 func Operations() []Operation {
 	return []Operation{
 		{ID: "inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
