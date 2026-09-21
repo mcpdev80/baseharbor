@@ -36,6 +36,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
+			ContractVersion: "v1",
 			Application: m.Name,
 			Environment: m.Environment,
 			Project:     application.RuntimeProjectName(m),
@@ -61,6 +62,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		return application.StatusResult{}, err
 	}
 	result := application.StatusResult{
+		ContractVersion: "v1",
 		Application: m.Name,
 		Environment: m.Environment,
 		Project:     project,
