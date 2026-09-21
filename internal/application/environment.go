@@ -132,6 +132,40 @@ func ResolveRepositoryEnvironment(start, requested string) (RepositoryEnvironmen
 	)
 }
 
+// HasRepositoryApplication reports whether start is inside a repository that
+// carries either the compatibility root manifest or one or more complete
+// environment manifests. It intentionally does not select an environment.
+func HasRepositoryApplication(start string) (bool, error) {
+	if start == "" {
+		start = "."
+	}
+	current, err := filepath.Abs(start)
+	if err != nil {
+		return false, fmt.Errorf("resolve current directory: %w", err)
+	}
+	for {
+		rootManifest := filepath.Join(current, RepositoryManifestName)
+		if exists, err := regularFileExists(rootManifest); err != nil {
+			return false, err
+		} else if exists {
+			return true, nil
+		}
+		candidates, err := environmentManifestCandidates(current)
+		if err != nil {
+			return false, err
+		}
+		if len(candidates) > 0 {
+			return true, nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return false, nil
+}
+
 func loadEnvironmentSelection(repoRoot, path, environment string, environmentSpecific, legacyState bool) (RepositoryEnvironmentSelection, error) {
 	m, err := LoadManifestFile(path)
 	if err != nil {
