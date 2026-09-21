@@ -3,6 +3,10 @@ name: ci
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -41,6 +45,10 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-docs.txt
 
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Install validation tooling
         run: |
           python -m pip install --disable-pip-version-check -r requirements-docs.txt
@@ -67,6 +75,11 @@ jobs:
 
       - name: Run unit and package tests
         run: go test ./...
+
+      - name: Run runtime integration tests serially
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
       - name: Run Go vet
         run: go vet ./...
@@ -95,3 +108,8 @@ jobs:
           grep -q "init" /tmp/baha-app-help.txt
           grep -q '"contract_version":"v1"' /tmp/baha-agent.json
           /tmp/baha version | grep -q '^baha '
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker

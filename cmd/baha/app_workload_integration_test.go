@@ -14,8 +14,8 @@ import (
 )
 
 func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real repository workload lifecycle runs in CI")
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -151,8 +151,8 @@ networks:
 }
 
 func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real repository workload-only lifecycle runs in CI")
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository workload-only lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()

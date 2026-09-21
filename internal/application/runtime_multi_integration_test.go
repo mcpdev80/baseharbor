@@ -13,8 +13,8 @@ import (
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
-	if os.Getenv("CI") == "" && os.Getenv("BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE") != "1" {
-		t.Skip("real multi-instance runtime verification requires CI or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1")
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" && os.Getenv("BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE") != "1" {
+		t.Skip("real multi-instance runtime verification requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1 or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

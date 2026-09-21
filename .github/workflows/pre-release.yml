@@ -41,6 +41,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
           fetch-depth: 0
 
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Resolve release candidate
         id: release
         shell: bash
@@ -98,6 +102,11 @@ jobs:
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
           go vet ./...
           go build ./cmd/baha
+
+      - name: Run runtime integration tests serially
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
       - name: Verify control-plane recovery
         env:
@@ -181,3 +190,8 @@ jobs:
           echo "tag=${{ steps.release.outputs.tag }}"
           echo "sha=${{ steps.release.outputs.candidate_sha }}"
           echo "external_demo_acceptance=PASS"
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
