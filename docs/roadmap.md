@@ -72,6 +72,12 @@ Compose is not disposable prototype code; it remains a first-class runtime provi
 
 Runtime providers and capability providers are independent axes. For example, a future OpenShift deployment may still use customer-managed PostgreSQL, Vault/OpenBao and Ceph RGW rather than requiring platform-native products for every capability.
 
+Delivery providers are a third independent axis. They decide how desired runtime realization reaches/reconciles against the selected runtime. Direct delivery and delegated/GitOps delivery must preserve the same BaseHarbor semantics without making Argo CD, Flux, Git or Kubernetes objects portable application requirements.
+
+Where applicable, Runtime, Capability and Delivery Provider families reuse the same canonical `application | shared | external` placement/ownership semantics while keeping their responsibilities separate.
+
+BaseHarbor remains the normal developer/agent interface. Mature OSS and open standards are reused behind provider boundaries rather than reimplemented, while native tool UIs/CLIs remain available for platform/expert drill-down.
+
 Provider-specific implementation details include:
 
 - Compose project/network/container names;
@@ -241,12 +247,18 @@ Kubernetes/OpenShift behavior remains future work. The semantics here deliberate
 - conformance against the now-complete lifecycle, ownership, security and evidence semantics;
 - no runtime-provider SDK and no Kubernetes-specific types.
 
-### v0.4.17 – Runtime boundary and semantic full-stack acceptance
+### v0.4.17 – Runtime/capability/delivery boundary and semantic full-stack acceptance
 
 - classify all important state as portable, deployment/operator, runtime, provider or protected/generated;
 - prove the full Compose reference lifecycle;
 - prove CLI/JSON/MCP semantic consistency;
 - close all blockers before the v0.5 freeze.
+
+## Provider ecosystem direction
+
+The open provider ecosystem remains strategic. gRPC/Protocol Buffers are the language-neutral external process boundary where required, and OCI is the registry-neutral distribution path for independently implemented community/vendor/company providers.
+
+Provider implementations may internally use mature OSS, standard APIs/SDKs, controllers/operators/CRDs or managed-service APIs. Those mechanisms stay behind the provider boundary; BaseHarbor Core must not become a catalog of product-specific integrations.
 
 ## v0.5 – Contract freeze and compatibility
 
@@ -286,11 +298,12 @@ v0.7 implements Kubernetes as a BaseHarbor Runtime Provider. Namespace-only oper
 - **v0.7.4** stateful runtime support without capability-provider leakage;
 - **v0.7.5** availability realization with permission-aware verification;
 - **v0.7.6** Runtime conformance across restricted-access profiles;
-- **v0.7.7** Compose-to-Kubernetes portability proof under namespace-only constraints.
+- **v0.7.7** Compose-to-Kubernetes portability proof under namespace-only constraints;
+- **v0.7.8** delegated delivery and GitOps provider architecture, with Argo CD as the first reference provider and no Argo-specific portable application contract.
 
 Cluster-admin, namespace creation and cluster-wide discovery are not normal application-lifecycle requirements. Platform-owned resources such as namespaces, Gateway/GatewayClass, StorageClass, CRDs and admission policy remain consumable without BaseHarbor owning them.
 
-The normal path uses the Kubernetes API directly. kubectl, Helm, CRDs and a BaseHarbor Operator are not required runtime engines for v0.7.
+v0.7.0 starts with direct Kubernetes API delivery as the reference path. It is not the only permanent reconciliation model: v0.7.8 adds delegated/GitOps delivery through a provider-neutral Delivery Provider contract. kubectl, Helm, CRDs and a BaseHarbor Operator are not required application-facing runtime engines.
 
 ## v0.8 – Kubernetes Complete
 

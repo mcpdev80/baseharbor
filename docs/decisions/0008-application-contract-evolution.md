@@ -51,6 +51,7 @@ Manifest v1 fields are classified as follows.
 | generated Compose networks/project names/ports/volumes | provider implementation detail | never part of the portable contract |
 | FQDN, TLS source directory, selected TLS mode | deployment/operator state | stored outside `baseharbor.yaml` |
 | runtime provider/profile | deployment/platform state | stored outside `baseharbor.yaml` |
+| delivery provider/mode and reconciliation ownership | deployment/operator state | stored outside `baseharbor.yaml`; never an Argo/Flux application field |
 | OpenBao paths/AppRoles/policies | capability-provider implementation detail | never part of the portable contract |
 
 Future object storage, persistent storage, exposure, TLS intent, health, backup relevance, observability, generic inputs and availability intent are portable contract domains when they express application requirements. Their concrete provider products, topology objects and security policy remain environment/platform concerns.
@@ -72,7 +73,7 @@ The top-level contract version is the compatibility gate.
 
 A later contract version may gain first-class workload/endpoints, object storage, persistent storage, exposure/TLS intent, health, backup/observability, input and availability declarations. Manifest v1 translation remains supported until a separately documented release policy explicitly removes it.
 
-### 5. Runtime and capability providers are independent axes
+### 5. Runtime, capability and delivery providers are independent axes
 
 A deployment may combine, for example:
 
@@ -84,6 +85,10 @@ secrets: Vault
 ```
 
 Kubernetes or OpenShift therefore must not become shorthand for PostgreSQL, secrets or object-storage provider selection.
+
+Delivery selection is likewise deployment/operator state. Direct runtime mutation and delegated/GitOps reconciliation must be selectable without changing portable application intent. Argo CD, Flux, Git repository layout, Helm values and reconciler-specific resources remain delivery/runtime implementation details.
+
+For one managed resource set there must be exactly one active reconciliation owner.
 
 ### 6. Lifecycle stability is the acceptance test
 

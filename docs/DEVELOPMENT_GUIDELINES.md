@@ -31,6 +31,8 @@ BaseHarbor has deliberate boundaries between, at minimum:
 - authorization / tenancy
 - secrets and credentials
 - runtime providers
+- capability providers
+- delivery providers / reconciliation ownership
 - health / preflight / verification
 - backup / restore
 - observability
@@ -48,6 +50,24 @@ Prefer direct, readable code over clever framework-style abstractions. A small a
 Do not introduce abstract factories, generic workflow engines, plugin systems, strategy hierarchies, or storage abstractions unless a current, demonstrated requirement needs them.
 
 Prefer existing repository patterns before adding a new framework or architectural style.
+
+## 2a. Reuse mature mechanisms behind BaseHarbor contracts
+
+BaseHarbor is not optimized for reinventing established infrastructure machinery.
+
+Before implementing a new infrastructure mechanism, evaluate whether a mature open standard, OSS component, standard API/SDK, controller/operator/CRD or provider-native mechanism already solves the lower-level problem safely.
+
+Prefer integration behind a stable BaseHarbor contract over reimplementation when:
+
+- portable BaseHarbor semantics remain authoritative;
+- security, isolation, ownership and verification requirements can be preserved;
+- the mechanism does not become a required product-specific application API;
+- Compose and other runtimes remain independent where the mechanism is runtime-specific;
+- vendor/community integrations can remain outside BaseHarbor Core where practical.
+
+This rule does **not** weaken BaseHarbor's open provider ecosystem. Third-party providers should attach through versioned BaseHarbor contracts and conformance, using gRPC/Protocol Buffers where a process boundary is required and OCI for registry-neutral distribution. A provider may internally use existing OSS/APIs/controllers rather than reimplementing them.
+
+BaseHarbor Core must not become a catalog of product-specific clients that every vendor integration requires maintainers to update.
 
 ## 3. Keep modules cohesive
 
@@ -88,6 +108,28 @@ Services and command handlers should orchestrate:
 - coordinate retries and state transitions
 
 They should not become permanent containers for unrelated logic.
+
+## Provider-axis consistency
+
+Runtime, Capability and Delivery Provider are separate axes.
+
+```text
+runtime != capability != delivery
+```
+
+Where applicable they reuse the same canonical placement semantics:
+
+```text
+application
+shared
+external
+```
+
+Do not create provider-family-specific meanings for ownership, policy, verification or placement without a demonstrated requirement.
+
+For one managed resource set there must be exactly one mutation/reconciliation owner. Direct and delegated delivery must never create competing controllers.
+
+The normal developer/agent path remains BaseHarbor-first. Underlying tool CLIs/UIs may remain available for expert drill-down, but normal BaseHarbor lifecycle operations must not require users to orchestrate those tools manually.
 
 ## 6. `baha` is a product interface
 
@@ -511,6 +553,9 @@ Before a BaseHarbor change is considered ready, verify:
 - [ ] Backup/restore implications were considered where persistent state changes.
 - [ ] Mutating runtime operations have preflight and post-verification where applicable.
 - [ ] New dependencies are justified.
+- [ ] Existing mature OSS/standard mechanisms were evaluated before implementing new infrastructure machinery.
+- [ ] New provider/tool integration stays behind a stable BaseHarbor contract and does not add product-specific portable intent.
+- [ ] Reconciliation ownership is singular and explicit for mutated resource sets.
 - [ ] Tests include meaningful negative cases for claimed security/isolation guarantees.
 - [ ] Documentation matches the implemented behavior.
 - [ ] The actual diff contains no unrelated changes.

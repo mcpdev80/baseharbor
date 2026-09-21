@@ -10,6 +10,8 @@ Dieselbe Anwendung kann deshalb als `dev`, `test`, `staging`, `production` oder 
 
 Provider-spezifische Details wie Compose-Projektnamen, Netzwerke, Host-Ports, Volumes oder OpenBao-Pfade gehoeren nicht zum portablen Anwendungsvertrag.
 
+Runtime-Auswahl, Capability-Provider-Auswahl, Delivery-Provider-Auswahl und Reconciliation-Ownership sind Deployment-/Operator-Themen. Direct Delivery oder delegierte/GitOps-Delivery duerfen keine Umschreibung des portablen Application Intent erfordern. Argo CD, Flux, Git-Layout, Helm Values und runtime-spezifische Reconciliation-Ressourcen bleiben ausserhalb des Application Contracts.
+
 ## Portabler Contract und Deployment-State
 
 `baseharbor.yaml` Manifest v1 ist der unterstuetzte repository-eigene Kompatibilitaetsvertrag. BaseHarbor uebersetzt daraus den portablen Anwendungs-Intent in den providerneutralen `PortableContract`; Compose-spezifische Kompatibilitaetsfelder gehoeren nicht in diesen portablen View.

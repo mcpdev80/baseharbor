@@ -18,6 +18,11 @@ Das langfristige Ziel ist ein durchgängiger Weg von lokaler Entwicklung und Hom
 - Spätere Kubernetes-/OpenShift-Provider müssen dieselben logischen Anforderungen abbilden, statt einen neuen App-Vertrag zu erzwingen.
 - Environment/Risiko und Deployment-Topologie sind getrennte Konzepte.
 - CLI, API/WebGUI und Operator sind Adapter ueber denselben Domain-/Lifecycle-Core und duerfen keine getrennten Wahrheiten fuer Plan, Status, Readiness oder Security entwickeln.
+- Runtime-, Capability- und Delivery-Provider sind getrennte Achsen.
+- Placement bleibt, wo anwendbar, durchgehend `application | shared | external`.
+- Pro Ressourcensatz existiert genau ein Reconciliation Owner.
+- Contracts, nicht Tools: etablierte OSS-Mechanismen bleiben hinter BaseHarbor-Contracts austauschbar.
+- Der Entwickler bedient primaer `baha`; BaseHarbor bedient oder delegiert an die darunterliegenden Tools.
 
 ## Environment- und Policy-Grenze
 
@@ -94,6 +99,61 @@ Eine App soll beispielsweise SQL-Datenbank, Key-Value-Cache, S3-Object-Storage, 
 Ein lokales Environment kann diese Capabilities mit BaseHarbor-Defaults erfüllen. Ein Enterprise-Environment kann stattdessen Kundendienste wie externes PostgreSQL, Managed Redis, Ceph RGW, Vault oder OpenShift Routes verwenden. Die Application-YAML soll dafür nicht neu geschrieben werden müssen.
 
 Die vollständige Matrix steht unter [Capability- und Provider-Modell](capability-provider-model.md). Die verbindliche Architekturentscheidung ist ADR [0005](decisions/0005-capabilities-not-products.md).
+
+## Runtime-, Capability- und Delivery-Provider
+
+BaseHarbor besitzt drei unabhängige Provider-Achsen:
+
+```text
+                         BaseHarbor Core
+                               |
+             +-----------------+-----------------+
+             |                 |                 |
+             v                 v                 v
+       Runtime Provider  Capability Provider  Delivery Provider
+             |                 |                 |
+          Compose           SQL / S3         direct
+        Kubernetes          Secrets          delegated/GitOps
+         OpenShift          Telemetry
+```
+
+Harte Regel:
+
+```text
+runtime != capability != delivery
+```
+
+Runtime Provider realisieren Workload-/Runtime-Primitiven. Capability Provider realisieren logische Application Capabilities. Delivery Provider bestimmen, wie die gewünschte Runtime-Realisierung zur Ziel-Runtime gelangt und dort reconciled wird.
+
+Auswahl und Placement gehören zu Deployment-/Operator-State, nicht zum portablen Application Intent.
+
+Wo anwendbar verwenden alle Provider-Familien dieselben kanonischen Placement-Semantiken:
+
+```text
+application
+shared
+external
+```
+
+### Direct und delegated delivery
+
+Bei direct delivery besitzt BaseHarbor Mutation/Reconciliation des verwalteten Runtime-Ressourcensatzes.
+
+Bei delegated delivery erzeugt BaseHarbor die gewünschte Realisierung; ein Delivery Provider bzw. externer Reconciler besitzt die Runtime-Mutation. BaseHarbor behält Policy, Lifecycle-Semantik, Observation, semantische Verifikation und Evidence.
+
+Für einen Ressourcensatz darf genau ein aktiver Reconciliation Owner existieren. BaseHarbor darf nicht gegen einen externen Reconciler arbeiten.
+
+Argo CD kann Referenzprovider für GitOps sein. Flux oder andere konforme Provider müssen ohne Änderung des portablen Contracts möglich bleiben.
+
+### Contracts, not tools
+
+BaseHarbor besitzt Contract und semantische Wahrheit. Runtime, Provider und Delivery-System wählen den Mechanismus.
+
+Reifes OSS, offene Standards, Standard-APIs/SDKs, Controller/Operatoren und CRDs sollen hinter Provider-Grenzen wiederverwendet werden, wenn sie den BaseHarbor-Contract erfüllen. Sie werden nicht zur Application API.
+
+Der normale Entwickler-/Agentenpfad bleibt BaseHarbor-first: `baha`, JSON und MCP bedienen die gewählten Provider/Tools. Native Tool-UIs und CLIs bleiben für Platform Engineers und Experten verfügbar.
+
+Siehe ADR [0011](decisions/0011-delivery-providers-and-tool-neutrality.md).
 
 ## Portabler Vertrag und Deployment-State
 

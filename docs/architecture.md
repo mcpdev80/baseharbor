@@ -53,6 +53,63 @@ Operator overrides are explicit and bounded. They may acknowledge a documented d
 
 These rules intentionally contain no Kubernetes concepts. A future namespace-only Kubernetes target consumes the same environment and policy semantics while runtime permissions, namespace identity and platform-owned resources remain runtime/provider concerns.
 
+## Runtime, capability and delivery provider axes
+
+BaseHarbor has three independent provider axes:
+
+```text
+                         BaseHarbor Core
+                               |
+             +-----------------+-----------------+
+             |                 |                 |
+             v                 v                 v
+       Runtime Provider  Capability Provider  Delivery Provider
+             |                 |                 |
+          Compose           SQL / S3         direct
+        Kubernetes          secrets          delegated/GitOps
+         OpenShift          telemetry
+```
+
+Hard rule:
+
+```text
+runtime != capability != delivery
+```
+
+A Runtime Provider realizes workload/runtime primitives. A Capability Provider realizes a logical application capability. A Delivery Provider decides how desired runtime realization reaches and reconciles against the selected runtime.
+
+Provider selection and delivery selection are deployment/operator state, not portable application intent.
+
+Where applicable, provider families reuse the same canonical placement semantics:
+
+```text
+application
+shared
+external
+```
+
+The semantics stay consistent across BaseHarbor, while provider responsibilities remain separate.
+
+### Direct and delegated delivery
+
+Direct delivery means BaseHarbor owns mutation/reconciliation for the managed runtime resource set.
+
+Delegated delivery means BaseHarbor produces the desired realization and a Delivery Provider/external reconciler owns runtime mutation. BaseHarbor still owns policy, lifecycle semantics, observation, semantic verification and evidence.
+
+For one managed resource set there must be exactly one active reconciliation owner. BaseHarbor must not fight an external reconciler by mutating the same owned fields in normal operation.
+
+Argo CD may be a reference GitOps Delivery Provider. Flux or another conforming provider must remain possible without portable-contract changes. Product-specific GitOps resources, Helm values and Git-provider settings remain implementation/deployment state.
+
+See ADR [0011](decisions/0011-delivery-providers-and-tool-neutrality.md).
+
+### Contracts, not tools
+
+BaseHarbor owns the contract and semantic truth. Runtimes, providers and delivery systems choose the mechanism.
+
+Mature OSS, open standards, standard APIs/SDKs, controllers/operators and CRDs should be reused behind provider boundaries where they satisfy the BaseHarbor contract. They must not become the portable application API.
+
+The normal developer/agent workflow remains BaseHarbor-first: `baha`, JSON and MCP operate the selected providers/tools. Native tool UIs and CLIs remain available to platform engineers and experts for drill-down and administration.
+
 ## Shared core and control surfaces
 
 BaseHarbor is designed as **one shared application/lifecycle core with multiple control surfaces**.
@@ -91,7 +148,7 @@ v0.4.2 adds provider registry, placement and lifecycle ownership as protected op
 
 v0.4.3 moves repository understanding into a shared read-only core. CLI inspection and guided application initialization consume the same deterministic detector engine, with explicit Detected/Suggested/Possible confidence and machine-readable results for future control surfaces.
 
-Provider Integration Contract v1 establishes the mandatory boundary for all subsequent capability providers. BaseHarbor owns versioned capability semantics; built-in/reference providers implement them through the shared driver/registry model, and future external providers will adapt to the same semantics through a language-neutral gRPC/Protocol Buffers boundary. OCI is the distribution direction for future external provider packages. See [Provider Integration Contract v1](provider-integration-contract.md).
+Provider Integration Contract v1 establishes the mandatory boundary for independently implementable capability providers. BaseHarbor owns versioned capability semantics; built-in/reference and external community/vendor/company providers implement the same semantics. gRPC/Protocol Buffers remain the language-neutral process boundary where required, and OCI remains the registry-neutral distribution direction. Provider implementations may internally use mature OSS, standard APIs/SDKs, controllers/operators/CRDs or managed-service APIs without moving product-specific integration code into BaseHarbor Core. See [Provider Integration Contract v1](provider-integration-contract.md).
 
 See ADR [0009](decisions/0009-shared-core-multiple-control-surfaces.md).
 
@@ -146,7 +203,7 @@ These values are operational realization, not portable application requirements.
 5. Every default BaseHarbor component has a defined provider boundary and documented replacement path.
 6. Native protocols are preferred where they already provide a stable ecosystem boundary.
 7. Secure defaults, least privilege, deny by default and fail closed.
-8. Mature open-source components are composed instead of reimplemented.
+8. Mature open-source components are composed behind stable BaseHarbor contracts instead of reimplemented.
 9. Desired state is validated before mutation and verified after mutation.
 10. Container-running is not equivalent to service-ready.
 11. Secrets never belong in application manifests.
@@ -155,6 +212,10 @@ These values are operational realization, not portable application requirements.
 14. Observability is integrated through open standards rather than a proprietary telemetry stack.
 15. CLI, HTTP API, Web UI and Operator are adapters over shared domain/lifecycle services; business logic must not be duplicated in presentation layers.
 16. Every capability provider implements a versioned BaseHarbor Capability Specification and shared provider lifecycle; product-specific one-off lifecycle paths are not allowed.
+17. Runtime, capability and delivery providers are separate axes; none may redefine portable application intent.
+18. Provider families reuse the same application/shared/external placement semantics where applicable.
+19. Exactly one reconciliation owner mutates a managed resource set; delegated delivery never creates competing controllers.
+20. BaseHarbor is the normal developer/agent interface; native provider/tool interfaces remain available for expert drill-down.
 
 ## Capability intent and deployment policy
 
@@ -185,7 +246,7 @@ Preflight
    ↓
 Build desired-state plan
    ↓
-Mutate through current provider
+Deliver through selected provider
    ↓
 Verify actual state
    ↓
