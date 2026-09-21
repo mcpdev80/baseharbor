@@ -26,7 +26,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	if !resolved.FromRepository {
 		return nil, nil
 	}
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	services, _, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
 	if err != nil || !found {
 		return nil, err
@@ -133,7 +133,7 @@ func printResolvedLogsPlacement(out io.Writer, resolved resolvedApplication) err
 	if !resolved.FromRepository || !application.HasLogsCollection(resolved.Manifest) {
 		return nil
 	}
-	repositoryRoot := filepath.Dir(resolved.ManifestPath)
+	repositoryRoot := resolved.repositoryRoot()
 	services, _, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
 	if err != nil || !found || len(services) == 0 {
 		return err
