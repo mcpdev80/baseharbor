@@ -47,11 +47,15 @@ func appUpdateCommand(store application.Store) *cli.Command {
 		Usage:   "baha app update [--check] [--backup-password-file FILE | --no-backup]",
 		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. For applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted pre-update recovery point through --backup-password-file FILE or an explicit --no-backup acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision, followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			opts, err := parseAppUpdateOptions(args)
+			filtered, environment, err := extractApplicationEnvironment(args, "update")
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveApplication(store, nil, "update")
+			opts, err := parseAppUpdateOptions(filtered)
+			if err != nil {
+				return err
+			}
+			resolved, err := resolveApplicationEnvironment(store, nil, "update", environment)
 			if err != nil {
 				return err
 			}
@@ -86,7 +90,7 @@ func appUpdateCommand(store application.Store) *cli.Command {
 			if applicationUpdateHasDurableState(resolved.Manifest) {
 				switch {
 				case opts.BackupPasswordFile != "":
-					backup, err = createApplicationUpdateRecoveryPoint(ctx, store, resolved, opts.BackupPasswordFile, out, errOut)
+					backup, err = createApplicationUpdateRecoveryPoint(ctx, store, resolved, environment, opts.BackupPasswordFile, out, errOut)
 					if err != nil {
 						return fmt.Errorf("create pre-update recovery point: %w", err)
 					}
@@ -102,7 +106,11 @@ func appUpdateCommand(store application.Store) *cli.Command {
 			}
 			fmt.Fprintf(out, "Source fast-forwarded: %s -> %s\n", state.Current, state.Target)
 			fmt.Fprintln(out, "Re-reading application contract and reconciling runtime...")
-			if err := appApplyCommand(store).Run(ctx, nil, out, errOut); err != nil {
+			applyArgs := []string(nil)
+			if environment != "" {
+				applyArgs = []string{"--environment", environment}
+			}
+			if err := appApplyCommand(store).Run(ctx, applyArgs, out, errOut); err != nil {
 				metadata := newApplicationUpdateMetadata(resolved, state, "runtime-verification-failed", backup)
 				if metadataErr := resolved.Store.RecordLastUpdate(metadata); metadataErr != nil {
 					return errors.Join(fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err), fmt.Errorf("record failed application update metadata: %w", metadataErr))
@@ -150,7 +158,7 @@ func applicationUpdateHasDurableState(m application.Manifest) bool {
 	return len(application.PostgresInstanceNames(m)) > 0 || m.Services.Secrets
 }
 
-func createApplicationUpdateRecoveryPoint(ctx context.Context, store application.Store, resolved resolvedApplication, passwordFile string, out, errOut io.Writer) (application.BackupMetadata, error) {
+func createApplicationUpdateRecoveryPoint(ctx context.Context, store application.Store, resolved resolvedApplication, environment, passwordFile string, out, errOut io.Writer) (application.BackupMetadata, error) {
 	if strings.TrimSpace(passwordFile) == "" {
 		return application.BackupMetadata{}, errors.New("backup password file is required")
 	}
@@ -159,7 +167,11 @@ func createApplicationUpdateRecoveryPoint(ctx context.Context, store application
 		return application.BackupMetadata{}, fmt.Errorf("create pre-update backup directory: %w", err)
 	}
 	outputPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s-pre-update-%s.bhbackup", resolved.Manifest.Name, resolved.Manifest.Environment, time.Now().UTC().Format("20060102T150405Z")))
-	if err := appBackupCommandWithMetadata(store).Run(ctx, []string{"--output", outputPath, "--password-file", passwordFile}, out, errOut); err != nil {
+	backupArgs := []string{"--output", outputPath, "--password-file", passwordFile}
+	if environment != "" {
+		backupArgs = append(backupArgs, "--environment", environment)
+	}
+	if err := appBackupCommandWithMetadata(store).Run(ctx, backupArgs, out, errOut); err != nil {
 		return application.BackupMetadata{}, err
 	}
 	metadata, err := resolved.Store.LastBackup(resolved.Manifest.Name)
