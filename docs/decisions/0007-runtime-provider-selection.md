@@ -8,7 +8,7 @@ Accepted for v0.4 incremental implementation.
 
 BaseHarbor v0.3 runs application workloads through Docker/Podman Compose. The long-term runtime targets also include Kubernetes and OpenShift, while the portable application contract must remain stable across those environments.
 
-A runtime provider answers where and through which runtime primitives an application workload is operated. This is separate from capability providers such as PostgreSQL, Valkey, object storage or secrets.
+A runtime provider answers where and through which runtime primitives an application workload is operated. This is separate from capability providers such as PostgreSQL, Valkey, object storage or secrets. It is also separate from the later Delivery Provider axis defined by ADR 0011, which determines how desired runtime realization is applied/reconciled.
 
 If runtime selection leaks into the application contract, an application would need to be rewritten when moving from Compose to Kubernetes or OpenShift. If BaseHarbor guesses a runtime implicitly from host state, production behavior can become ambiguous.
 
@@ -75,7 +75,7 @@ Positive:
 
 - one selection point exists before Kubernetes/OpenShift implementation begins;
 - existing Compose behavior is preserved;
-- runtime and capability-provider axes remain separate;
+- runtime, capability-provider and delivery-provider axes remain separate;
 - provider capability failures can become explicit and fail closed.
 
 Trade-off:
