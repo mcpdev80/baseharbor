@@ -22,7 +22,7 @@ import (
 
 const (
 	stateVersion = 1
-	caddyImage   = "caddy:2.11.4-alpine"
+	caddyImage   = "docker.io/library/caddy:2.11.4-alpine"
 )
 
 type Deployment struct {
