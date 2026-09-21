@@ -88,3 +88,32 @@ func TestResolveRepositoryEnvironmentRejectsDirectoryEnvironmentMismatch(t *test
 		t.Fatalf("expected environment mismatch, got %v", err)
 	}
 }
+
+func TestResolveRepositoryEnvironmentSwitchesFromInsideDifferentEnvironment(t *testing.T) {
+	repo := t.TempDir()
+	writeEnvironmentTestManifest(t, filepath.Join(repo, "envs", "dev", RepositoryManifestName), "demo", "dev")
+	writeEnvironmentTestManifest(t, filepath.Join(repo, "envs", "prod", RepositoryManifestName), "demo", "prod")
+	start := filepath.Join(repo, "envs", "dev", "nested")
+	if err := os.MkdirAll(start, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := ResolveRepositoryEnvironment(start, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Environment != "prod" || selected.RepositoryRoot != repo {
+		t.Fatalf("selection=%+v", selected)
+	}
+}
+
+func TestHasRepositoryApplicationFindsEnvironmentOnlyRepository(t *testing.T) {
+	repo := t.TempDir()
+	writeEnvironmentTestManifest(t, filepath.Join(repo, "envs", "test", RepositoryManifestName), "demo", "test")
+	found, err := HasRepositoryApplication(filepath.Join(repo, "envs", "test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("environment-only repository was not detected")
+	}
+}
