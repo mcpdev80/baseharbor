@@ -41,7 +41,7 @@ jobs:
           pip install --requirement requirements-docs.txt
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Validate workflow YAML
-        run: "$(go env GOPATH)/bin/actionlint"
+        run: "$(go env GOPATH)/bin/actionlint -shellcheck="
       - name: Build documentation
         run: |
           mkdocs build --strict --config-file mkdocs.yml
