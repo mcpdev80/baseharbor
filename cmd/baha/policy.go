@@ -69,7 +69,7 @@ func policyCommand(store application.Store) *cli.Command {
 	}
 }
 
-func parsePolicyArgs(args []string, command string) ([]string, string, outputFormat, error) {
+func parsePolicyArgs(args []string, command string) ([]string, string, cliOutputFormat, error) {
 	filtered := make([]string, 0, len(args))
 	environment := ""
 	for i := 0; i < len(args); i++ {
@@ -110,6 +110,13 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 		return policy.Result{}, err
 	}
 	if !resolved.FromRepository {
+		return result, nil
+	}
+	_, found, err := application.ResolveWorkloadCompose(resolved.repositoryRoot(), resolved.Manifest)
+	if err != nil {
+		return policy.Result{}, err
+	}
+	if !found {
 		return result, nil
 	}
 
