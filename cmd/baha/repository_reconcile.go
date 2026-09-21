@@ -17,7 +17,7 @@ func reportRepositoryContractEvolution(ctx context.Context, out, errOut io.Write
 	if !resolved.FromRepository || strings.TrimSpace(resolved.ManifestPath) == "" {
 		return
 	}
-	result, err := repositoryinspect.Inspect(ctx, filepath.Dir(resolved.ManifestPath))
+	result, err := repositoryinspect.Inspect(ctx, resolved.repositoryRoot())
 	if err != nil {
 		fmt.Fprintf(errOut, "[WARN] repository capability reconciliation unavailable: %v\n", err)
 		return
