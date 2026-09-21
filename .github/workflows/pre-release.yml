@@ -155,6 +155,29 @@ jobs:
             VERSION=${{ steps.release.outputs.tag }}
             COMMIT=${{ github.sha }}
 
+      - name: Validate GoReleaser configuration
+        run: goreleaser check
+
+      - name: Verify release snapshot contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/checksums.txt
+          test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+          grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+          grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
+
+      - name: Run external demo acceptance against candidate SHA
+        shell: bash
+        env:
+          BASEHARBOR_SOURCE_REF: ${{ github.sha }}
+          ARTIFACT_DIR: /tmp/baseharbor-demo-acceptance
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo
+          cd /tmp/baseharbor-demo
+          BASEHARBOR_SOURCE_REF="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh
+
       - name: Pre-release summary
         shell: bash
         env:
@@ -164,3 +187,4 @@ jobs:
           echo "Pre-release gate passed."
           echo "tag=${TAG}"
           echo "sha=$(git rev-parse HEAD)"
+          echo "external_demo_acceptance=PASS"
