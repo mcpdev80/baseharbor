@@ -41,6 +41,10 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-docs.txt
 
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Install validation tooling
         run: |
           python -m pip install --disable-pip-version-check -r requirements-docs.txt
@@ -67,6 +71,37 @@ jobs:
 
       - name: Run unit and package tests
         run: go test ./...
+
+      - name: Run repository lifecycle integration
+        env:
+          BASEHARBOR_REPOSITORY_LIFECYCLE_INTEGRATION: "1"
+        run: go test ./cmd/baha -run '^TestRepositoryWorkflowRealLifecycle        run: go vet ./...
+
+      - name: Validate Compose model
+        shell: bash
+        run: |
+          cat > /tmp/baseharbor-runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          docker compose             --file internal/runtime/assets/compose.yaml             --env-file /tmp/baseharbor-runtime.env             config --quiet
+
+      - name: Build and smoke-test CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -trimpath -o /tmp/baha ./cmd/baha
+          /tmp/baha --help >/tmp/baha-help.txt
+          /tmp/baha app --help >/tmp/baha-app-help.txt
+          /tmp/baha agent describe -o json >/tmp/baha-agent.json
+          grep -q "Usage:" /tmp/baha-help.txt
+          grep -q "init" /tmp/baha-app-help.txt
+          grep -q '"contract_version":"v1"' /tmp/baha-agent.json
+          /tmp/baha version | grep -q '^baha '
+ -count=1 -v
 
       - name: Run Go vet
         run: go vet ./...
@@ -95,3 +130,8 @@ jobs:
           grep -q "init" /tmp/baha-app-help.txt
           grep -q '"contract_version":"v1"' /tmp/baha-agent.json
           /tmp/baha version | grep -q '^baha '
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
