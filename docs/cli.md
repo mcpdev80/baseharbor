@@ -24,6 +24,10 @@ baha
 ├── plan
 ├── status
 ├── doctor
+├── agent
+│   └── describe
+├── mcp
+│   └── serve
 ├── serve
 ├── connect SOURCE TARGET
 ├── disconnect SOURCE TARGET
@@ -187,6 +191,29 @@ Repository-aware startup accepts `-e ENV` / `--environment ENV` as a deployment-
 Remote inspection accepts normal HTTPS/SSH Git URLs and delegates authentication to Git. URLs with embedded credentials are rejected.
 
 `baha app init --agents` can create or idempotently maintain only BaseHarbor's bounded section in `AGENTS.md`; unrelated instructions are preserved and malformed markers fail closed.
+
+## Agent and MCP machine interface
+
+BaseHarbor v0.4.12 defines a versioned machine contract rather than asking automation to parse human terminal output.
+
+Discovery:
+
+```bash
+baha agent describe
+baha agent describe -o json
+```
+
+Local MCP server:
+
+```bash
+baha mcp serve
+```
+
+The MCP server uses stdio only and exposes exactly four read-only semantic tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` and `baseharbor.doctor`.
+
+There is no generic shell, exec, Docker or Compose tool. MCP calls route into the same typed result collectors used by the CLI/TUI and therefore preserve BaseHarbor ownership, isolation and verification semantics.
+
+See [Agent-native machine interface](agent-machine-interface.md).
 
 ## Control-plane startup
 

@@ -34,6 +34,7 @@ The README is a product overview and quick entry point. Detailed behavior, opera
 
 ## Project operation
 
+- [Agent-native machine interface](agent-machine-interface.md)
 - [Roadmap](roadmap.md)
 - [Dependency updates](dependency-updates.md)
 - [Development guidelines](DEVELOPMENT_GUIDELINES.md)

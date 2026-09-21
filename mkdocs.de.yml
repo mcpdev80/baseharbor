@@ -53,6 +53,7 @@ nav:
   - Repository-Workflow: repository-application-workflow.md
   - Anwendungsvertrag: application-contract.md
   - CLI: cli.md
+  - Agent & MCP: agent-machine-interface.md
   - Input-Aufloesung: input-resolution.md
   - Entwicklerzugriff: developer-access.md
   - Control Plane: runtime-compose.md

@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-09-21
+
+### Added
+
+- Versioned BaseHarbor machine contract `v1` for inspect, plan, status and doctor structured results.
+- `baha agent describe` / `baha agent describe -o json` semantic discovery with operation safety metadata and supported capability specifications.
+- Local stdio-only `baha mcp serve` built on the official Model Context Protocol Go SDK v1.8.0, targeting MCP `2026-07-28` with negotiated `2025-11-25` compatibility.
+- Four read-only MCP tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` and `baseharbor.doctor`.
+- Stable structured machine error categories and JSON error envelopes.
+- Generic MCP-client acceptance covering discovery, read-only annotations, inspect/plan/status/doctor execution and secret-leak protection.
+- English/German agent-machine-interface documentation.
+
+### Changed
+
+- Status+TLS and Doctor now expose shared typed result paths consumed directly by CLI, TUI and MCP instead of routing machine adapters through rendered CLI JSON.
+- Inspect/plan/status/doctor machine results include additive `contract_version: "v1"` metadata.
+- Bounded `AGENTS.md` guidance now directs coding agents toward structured BaseHarbor/MCP interfaces and away from shell/Docker/Compose bypasses.
+- Repository development now integrates normal feature/fix/chore/dependency work through `develop`; `main` remains the released source line.
+- Pre-release validation defaults to candidates contained in `develop`, while the release workflow continues to require tags contained in `main`.
+
+### Security
+
+- MCP exposes no generic shell, exec, Docker or Compose execution primitive.
+- The initial MCP surface is read-only and local-only over stdio; no remote listener/auth surface is introduced.
+- Machine output and MCP responses remain secret-safe and are covered by marker-secret acceptance.
+- MCP annotations are descriptive hints only; BaseHarbor safety remains enforced by explicit semantic operations and the existing ownership/isolation/verification paths.
+
 ## [0.4.11] - 2026-09-21
 
 ### Final acceptance and lifecycle hardening

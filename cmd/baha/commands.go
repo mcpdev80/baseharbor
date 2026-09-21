@@ -134,6 +134,8 @@ func rootCommand() *cli.Command {
 				return doctorCommand(ctx, args, out, errOut)
 			},
 		},
+		agentCommand(),
+		mcpCommand(store),
 		serveCommand(store),
 		appCmd,
 		connectCommand(),

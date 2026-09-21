@@ -47,7 +47,7 @@ Compose is the complete runtime implementation today. Kubernetes and OpenShift a
 
 ## Five-minute adoption path
 
-For an existing repository, the normal v0.4.11 developer path is:
+For an existing repository, the normal v0.4.12 developer path is:
 
 ```bash
 baha app inspect .
@@ -61,6 +61,28 @@ baha doctor
 Use `-o json` on inspect/plan/status/doctor for secret-safe structured read-only results. `baha app init --agents` can add or update only BaseHarbor's bounded section in `AGENTS.md`.
 
 See [Five-minute onboarding](docs/five-minute-onboarding.md).
+
+## Agent-native automation
+
+BaseHarbor v0.4.12 exposes the same deterministic read-only semantics to coding agents and automation without adding an agent-specific lifecycle.
+
+```bash
+baha agent describe -o json
+baha mcp serve
+```
+
+The local stdio MCP server targets MCP `2026-07-28` through the official Go SDK and exposes only:
+
+```text
+baseharbor.inspect
+baseharbor.plan
+baseharbor.status
+baseharbor.doctor
+```
+
+There is no generic shell, Docker or Compose execution tool. Machine results are versioned with `contract_version: "v1"` and remain secret-safe.
+
+See [Agent-native machine interface](docs/agent-machine-interface.md).
 
 ## 30-second demo
 
@@ -501,7 +523,8 @@ BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 - backup/restore and update lifecycle;
 - provider placement/ownership registry;
 - executable provider conformance;
-- Compose workload security preflight.
+- Compose workload security preflight;
+- versioned agent/machine contract with local stdio MCP for inspect, plan, status and doctor.
 
 ### Planned / future runtime tracks
 
@@ -523,6 +546,7 @@ Start here:
 - [Capability / provider model](docs/capability-provider-model.md)
 - [Provider Integration Contract](docs/provider-integration-contract.md)
 - [CLI reference](docs/cli.md)
+- [Agent-native machine interface](docs/agent-machine-interface.md)
 - [Roadmap](docs/roadmap.md)
 - [Release policy](docs/releases.md)
 

@@ -36,12 +36,13 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
-			Application: m.Name,
-			Environment: m.Environment,
-			Project:     application.RuntimeProjectName(m),
-			State:       "not_applied",
-			Ready:       false,
-			Checks:      []application.StatusCheck{},
+			ContractVersion: "v1",
+			Application:     m.Name,
+			Environment:     m.Environment,
+			Project:         application.RuntimeProjectName(m),
+			State:           "not_applied",
+			Ready:           false,
+			Checks:          []application.StatusCheck{},
 		}
 		if resolved.FromRepository {
 			result.Manifest = resolved.ManifestPath
@@ -61,12 +62,13 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		return application.StatusResult{}, err
 	}
 	result := application.StatusResult{
-		Application: m.Name,
-		Environment: m.Environment,
-		Project:     project,
-		State:       "running",
-		Ready:       true,
-		Checks:      []application.StatusCheck{},
+		ContractVersion: "v1",
+		Application:     m.Name,
+		Environment:     m.Environment,
+		Project:         project,
+		State:           "running",
+		Ready:           true,
+		Checks:          []application.StatusCheck{},
 	}
 	if resolved.FromRepository {
 		result.Manifest = resolved.ManifestPath
@@ -380,276 +382,42 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveApplication(store, filtered, "doctor")
+			result, err := collectApplicationDoctor(ctx, store, filtered)
 			if err != nil {
 				return err
 			}
-			m := resolved.Manifest
-			files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
-			if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {
-				if format == outputJSON {
-					payload := struct {
-						Application string             `json:"application"`
-						Environment string             `json:"environment"`
-						State       string             `json:"state"`
-						Healthy     bool               `json:"healthy"`
-						Checks      []preflight.Result `json:"checks"`
-					}{Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
-					return writeJSON(out, payload)
+			if format == outputJSON {
+				if err := writeJSON(out, result); err != nil {
+					return err
 				}
+			} else if result.State == "not_applied" {
 				term := cli.NewTerminal(ctx, out, errOut)
-				term.Header(m.Name, m.Environment)
+				term.Header(result.Application, result.Environment)
 				term.Section("Application")
 				term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
 				fmt.Fprintln(out, "\nNext:")
 				fmt.Fprintln(out, "  baha up")
 				fmt.Fprintln(out, "  baha app apply")
 				fmt.Fprintln(out, "\nNOT APPLIED")
+			} else {
+				renderApplicationDoctor(
+					ctx,
+					out,
+					errOut,
+					result.manifest,
+					result.Checks,
+					result.workloadStatus,
+					result.requiredSecretStatuses,
+					result.workloadSecurity,
+					result.Healthy,
+					result.tlsStatus,
+					result.tlsErr,
+				)
+			}
+			if result.State == "not_applied" {
 				return nil
 			}
-			var compose bhruntime.Compose
-			var running []string
-			var platformFiles bhruntime.Files
-			var requiredStatuses []openbao.RequiredSecretStatus
-			var workloadStatus repositoryWorkloadStatus
-			var workloadStatusErr error
-			var workloadSecurity application.WorkloadSecurityReport
-			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			checks := []preflight.Check{
-				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error {
-					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
-				}},
-				{Name: "workload discovery", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
-				{Name: "runtime state", Run: func(context.Context) error { return runtimeErr }},
-				{Name: "runtime permissions", Run: func(context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					return application.CheckRuntimePermissions(files)
-				}},
-				{Name: "managed runtime definition", Run: func(context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					return application.CheckManagedRuntimeDefinition(files, m)
-				}},
-				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
-					var err error
-					compose, err = bhruntime.DetectCompose(ctx)
-					return err
-				}},
-				{Name: "workload security", Run: func(ctx context.Context) error {
-					var err error
-					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "compose configuration", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
-				}},
-				{Name: "running services", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					var err error
-					running, err = compose.RunningServicesProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
-					return err
-				}},
-				{Name: "repository workload", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					workloadStatus, workloadStatusErr = inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
-					if workloadStatusErr != nil {
-						return workloadStatusErr
-					}
-					if workloadStatus.Found && !workloadStatus.Ready() {
-						return fmt.Errorf("%d/%d selected workload services ready", workloadStatus.ReadyCount(), len(workloadStatus.Services))
-					}
-					return nil
-				}},
-			}
-			if application.HasLogsCollection(m) {
-				if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
-					checks = append(checks, preflight.Check{Name: "logs deployment policy", Run: func(context.Context) error { return policyErr }})
-				} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] {
-					checks = append(checks, preflight.Check{Name: "Loki log ingestion", Run: func(ctx context.Context) error {
-						if runtimeErr != nil {
-							return runtimeErr
-						}
-						status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
-						if err != nil {
-							return err
-						}
-						if !status.Found {
-							return nil
-						}
-						services := make([]string, 0, len(status.Services))
-						for _, service := range status.Services {
-							services = append(services, service.Service)
-						}
-						return logsprovider.VerifyApplication(ctx, m, services)
-					}})
-				}
-			}
-			if len(m.Exposures) > 0 {
-				checks = append(checks, preflight.Check{Name: "managed HTTP exposure", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					_, err := inspectManagedExposure(ctx, compose, m, files)
-					return err
-				}})
-			}
-			if application.HasObjectStorage(m) {
-				checks = append(checks, preflight.Check{Name: "object-storage S3 readiness", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					return objectstorage.VerifyApplicationBuckets(ctx, compose, m, files)
-				}})
-			}
-			if application.HasOTLPTelemetry(m) {
-				checks = append(checks, preflight.Check{Name: "OTLP telemetry export", Run: func(ctx context.Context) error {
-					if runtimeErr != nil {
-						return runtimeErr
-					}
-					return telemetry.VerifyApplication(ctx, m, files)
-				}})
-			}
-			if m.Services.Postgres {
-				checks = append(checks,
-					preflight.Check{Name: "postgres running", Run: func(context.Context) error {
-						if !containsString(running, "postgres") {
-							return errors.New("no postgres instance is running")
-						}
-						return nil
-					}},
-					preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
-						if !containsString(running, "postgres") {
-							return errors.New("no postgres instance is running")
-						}
-						return application.VerifyPostgresRuntime(ctx, compose, m, files)
-					}},
-				)
-			}
-			if m.Services.Redis {
-				checks = append(checks,
-					preflight.Check{Name: "valkey running", Run: func(context.Context) error {
-						if !containsString(running, "valkey") {
-							return errors.New("no valkey instance is running")
-						}
-						return nil
-					}},
-					preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
-						if !containsString(running, "valkey") {
-							return errors.New("no valkey instance is running")
-						}
-						return application.VerifyValkeyRuntime(ctx, compose, m, files)
-					}},
-				)
-			}
-			if m.Services.Secrets {
-				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(ctx context.Context) error {
-						var err error
-						platformFiles, err = bhruntime.ExistingFiles("")
-						if err != nil {
-							return err
-						}
-						state, err := openbao.Inspect(ctx, compose, platformFiles)
-						if err != nil {
-							return err
-						}
-						if !state.Initialized {
-							return openbao.ErrNotInitialized
-						}
-						if state.Sealed {
-							return openbao.ErrSealed
-						}
-						return nil
-					}},
-					preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
-						if runtimeErr != nil {
-							return runtimeErr
-						}
-						if platformFiles.Compose == "" {
-							return errors.New("BaseHarbor OpenBao runtime is not materialized")
-						}
-						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-						return openbao.InspectApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-					}},
-					preflight.Check{Name: "application runtime broker", Run: func(ctx context.Context) error {
-						if runtimeErr != nil {
-							return runtimeErr
-						}
-						return verifyRuntimeBrokerRunning(ctx, compose, m, files)
-					}},
-				)
-				if len(application.RequiredSecretNames(m)) > 0 {
-					checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
-						if runtimeErr != nil {
-							return runtimeErr
-						}
-						var err error
-						requiredStatuses, err = inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
-						if err != nil {
-							return err
-						}
-						return openbao.RequireApplicationSecrets(requiredStatuses)
-					}})
-				}
-			}
-			results, ok := preflight.Run(checkCtx, checks)
-			var tlsStatus *applicationTLSStatus
-			var tlsObservation *applicationTLSObservation
-			var tlsErr error
-			if resolved.FromRepository {
-				tlsStatus, tlsObservation, tlsErr = collectApplicationTLSObservation(resolved)
-				if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
-					ok = false
-				}
-			}
-			if format == outputJSON {
-				type workloadResult struct {
-					Service string `json:"service"`
-					Ready   bool   `json:"ready"`
-					Detail  string `json:"detail,omitempty"`
-				}
-				workloads := make([]workloadResult, 0, len(workloadStatus.Services))
-				for _, service := range workloadStatus.Services {
-					workloads = append(workloads, workloadResult{Service: service.Service, Ready: service.Ready, Detail: formatWorkloadServiceStatus(service)})
-				}
-				secretStatus := make([]map[string]any, 0, len(requiredStatuses))
-				for _, status := range requiredStatuses {
-					secretStatus = append(secretStatus, map[string]any{
-						"name": status.Name, "present": status.Present, "usable": status.Usable, "generated": status.Generated,
-					})
-				}
-				payload := struct {
-					Application     string                     `json:"application"`
-					Environment     string                     `json:"environment"`
-					Healthy         bool                       `json:"healthy"`
-					Checks          []preflight.Result         `json:"checks"`
-					Workload        []workloadResult           `json:"workload,omitempty"`
-					RequiredSecrets []map[string]any           `json:"required_secrets,omitempty"`
-					TLS             *applicationTLSObservation `json:"tls,omitempty"`
-				}{
-					Application: m.Name, Environment: m.Environment, Healthy: ok,
-					Checks: results, Workload: workloads, RequiredSecrets: secretStatus, TLS: tlsObservation,
-				}
-				if err := writeJSON(out, payload); err != nil {
-					return err
-				}
-			} else {
-				renderApplicationDoctor(ctx, out, errOut, m, results, workloadStatus, requiredStatuses, workloadSecurity, ok, tlsStatus, tlsErr)
-			}
-			if !ok {
+			if !result.Healthy {
 				return cli.Presented(errors.New("application doctor found one or more failures"))
 			}
 			return nil

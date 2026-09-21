@@ -11,13 +11,14 @@ type StatusCheck struct {
 // StatusResult is the shared application readiness model. It intentionally
 // contains operational state only and never credential or secret values.
 type StatusResult struct {
-	Application string        `json:"application"`
-	Environment string        `json:"environment"`
-	Manifest    string        `json:"manifest,omitempty"`
-	Project     string        `json:"project"`
-	State       string        `json:"state"`
-	Ready       bool          `json:"ready"`
-	Checks      []StatusCheck `json:"checks"`
+	ContractVersion string        `json:"contract_version"`
+	Application     string        `json:"application"`
+	Environment     string        `json:"environment"`
+	Manifest        string        `json:"manifest,omitempty"`
+	Project         string        `json:"project"`
+	State           string        `json:"state"`
+	Ready           bool          `json:"ready"`
+	Checks          []StatusCheck `json:"checks"`
 }
 
 // AddCheck appends one readiness observation and folds failures into Ready.
