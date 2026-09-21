@@ -11,6 +11,7 @@ type StatusCheck struct {
 // StatusResult is the shared application readiness model. It intentionally
 // contains operational state only and never credential or secret values.
 type StatusResult struct {
+	ContractVersion string        `json:"contract_version"`
 	Application string        `json:"application"`
 	Environment string        `json:"environment"`
 	Manifest    string        `json:"manifest,omitempty"`
