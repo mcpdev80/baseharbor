@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/reconciliation"
 )
 
 type FailureMode string
@@ -36,13 +37,74 @@ type FakeDriver struct {
 	destroys    int
 	credential  string
 	lastBinding capability.Binding
+	reconciliationOwner reconciliation.Ownership
+	conflict bool
+	unsupported bool
+	degraded bool
 }
 
 func NewFakeDriver(provider capability.Provider) *FakeDriver {
-	return &FakeDriver{provider: provider, credential: "fake-secret-never-diagnostic"}
+	return &FakeDriver{provider: provider, credential: "fake-secret-never-diagnostic", reconciliationOwner: reconciliation.OwnershipBaseHarbor}
 }
 
 func (d *FakeDriver) Descriptor() capability.Provider { return d.provider }
+
+func (d *FakeDriver) DesiredState(resource capability.Resource, binding capability.Binding) reconciliation.Desired {
+	return reconciliation.Desired{
+		Exists: true,
+		Digest: desiredDigest(resource, binding),
+		Owner:  reconciliation.OwnershipBaseHarbor,
+	}
+}
+
+func (d *FakeDriver) Observe(_ context.Context, resource capability.Resource, binding capability.Binding) (reconciliation.Observed, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	observed := reconciliation.Observed{
+		Exists:      d.created,
+		Owner:       d.reconciliationOwner,
+		Conflict:    d.conflict,
+		Unsupported: d.unsupported,
+		Degraded:    d.degraded,
+	}
+	if d.created {
+		if d.drifted {
+			observed.Digest = "drifted"
+		} else {
+			observed.Digest = desiredDigest(resource, binding)
+		}
+	}
+	return observed, nil
+}
+
+func (d *FakeDriver) SetReconciliationOwnership(owner reconciliation.Ownership) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.reconciliationOwner = owner
+}
+
+func (d *FakeDriver) SetConflict(value bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.conflict = value
+}
+
+func (d *FakeDriver) SetUnsupported(value bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.unsupported = value
+}
+
+func (d *FakeDriver) SetDegraded(value bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.degraded = value
+}
+
+func desiredDigest(resource capability.Resource, binding capability.Binding) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s", resource.Application, resource.Kind, resource.Name, resource.Provider, binding.Workload)
+}
+
 
 func (d *FakeDriver) SetFailure(mode FailureMode) {
 	d.mu.Lock()
