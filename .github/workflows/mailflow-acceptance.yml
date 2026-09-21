@@ -40,7 +40,7 @@ jobs:
           test "$(stat -c '%a' /tmp/mailflow-openbao-recovery.json)" = 600
           PATH="/tmp:$PATH" /tmp/baha app status | tee /tmp/mailflow-status.out
           PATH="/tmp:$PATH" /tmp/baha app doctor | tee /tmp/mailflow-doctor.out
-          grep -q "Application runtime is healthy" /tmp/mailflow-doctor.out
+          grep -q "^READY$" /tmp/mailflow-doctor.out
       - name: Verify generated secret and native managed backends
         working-directory: /tmp/mailflow
         run: |
@@ -72,7 +72,7 @@ jobs:
             -addext 'subjectAltName=DNS:localhost'
           /tmp/baha app secret tls-set --cert-file /tmp/mailflow-tls.crt --key-file /tmp/mailflow-tls.key
           /tmp/baha app apply | tee /tmp/mailflow-apply.out
-          grep -q "Application mailflow is ready" /tmp/mailflow-apply.out
+          grep -q "application and requested infrastructure verified" /tmp/mailflow-apply.out
       - name: Verify TLS file bindings
         working-directory: /tmp/mailflow
         run: |
@@ -190,7 +190,7 @@ jobs:
           /tmp/baha app restore /tmp/mailflow.baha --password-file /tmp/mailflow-backup.pass | tee /tmp/mailflow-restore.out
           /tmp/baha app status | tee /tmp/mailflow-restored-status.out
           /tmp/baha app doctor | tee /tmp/mailflow-restored-doctor.out
-          grep -q "Application runtime is healthy" /tmp/mailflow-restored-doctor.out
+          grep -q "^READY$" /tmp/mailflow-restored-doctor.out
       - name: Verify MailFlow data secret reference and fresh runtime identity
         working-directory: /tmp/mailflow
         run: |
