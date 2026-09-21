@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"strings"
 
@@ -22,31 +20,6 @@ type machineInspectInput struct {
 
 type machineApplicationInput struct {
 	Name string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside a repository containing baseharbor.yaml"`
-}
-
-type machineDoctorResult struct {
-	ContractVersion string                     `json:"contract_version"`
-	Application     string                     `json:"application"`
-	Environment     string                     `json:"environment"`
-	State           string                     `json:"state,omitempty"`
-	Healthy         bool                       `json:"healthy"`
-	Checks          []preflight.Result         `json:"checks"`
-	Workload        []machineDoctorWorkload    `json:"workload,omitempty"`
-	RequiredSecrets []machineDoctorSecret      `json:"required_secrets,omitempty"`
-	TLS             *applicationTLSObservation `json:"tls,omitempty"`
-}
-
-type machineDoctorWorkload struct {
-	Service string `json:"service"`
-	Ready   bool   `json:"ready"`
-	Detail  string `json:"detail,omitempty"`
-}
-
-type machineDoctorSecret struct {
-	Name      string `json:"name"`
-	Present   bool   `json:"present"`
-	Usable    bool   `json:"usable"`
-	Generated bool   `json:"generated,omitempty"`
 }
 
 type machineToolError struct {
@@ -142,7 +115,11 @@ func newMCPServer(store application.Store) *mcp.Server {
 		Description: "Read-only diagnostic verification for the current repository or named application.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		result, err := collectMachineDoctor(ctx, store, strings.TrimSpace(input.Name))
+		var args []string
+		if name := strings.TrimSpace(input.Name); name != "" {
+			args = []string{name}
+		}
+		result, err := collectApplicationDoctor(ctx, store, args)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -167,25 +144,3 @@ func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
 	}, payload, nil
 }
 
-func collectMachineDoctor(ctx context.Context, store application.Store, name string) (machineDoctorResult, error) {
-	args := []string{"-o", "json"}
-	if name != "" {
-		args = append([]string{name}, args...)
-	}
-	var out bytes.Buffer
-	err := appDoctorCommand(store).Run(ctx, args, &out, io.Discard)
-	var result machineDoctorResult
-	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
-		if err != nil {
-			return machineDoctorResult{}, errors.Join(err, decodeErr)
-		}
-		return machineDoctorResult{}, decodeErr
-	}
-	if result.ContractVersion == "" {
-		result.ContractVersion = machine.ContractVersion
-	}
-	if err != nil && len(result.Checks) == 0 && result.State == "" {
-		return machineDoctorResult{}, err
-	}
-	return result, nil
-}
