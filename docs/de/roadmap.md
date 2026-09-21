@@ -65,6 +65,12 @@ Mehrere logische Service-Instanzen sind nicht HA. HA ist eine spaetere Topologie
 
 Compose bleibt first-class, ist aber nicht mehr die konzeptionelle Anwendungs-API. Runtime Provider und Capability Provider sind getrennte Achsen.
 
+Delivery Provider bilden eine dritte, unabhängige Achse. Sie bestimmen, wie die gewünschte Runtime-Realisierung zur Ziel-Runtime gelangt und dort reconciled wird. Direct Delivery und delegated/GitOps Delivery müssen dieselbe BaseHarbor-Semantik erhalten, ohne Argo CD, Flux, Git oder Kubernetes-Objekte in den portablen Application Contract zu ziehen.
+
+Wo anwendbar verwenden Runtime-, Capability- und Delivery-Provider dieselben kanonischen `application | shared | external` Placement-/Ownership-Semantiken bei weiterhin getrennten Verantwortlichkeiten.
+
+BaseHarbor bleibt die normale Entwickler-/Agenten-Oberfläche. Reifes OSS und offene Standards werden hinter Provider-Grenzen wiederverwendet statt neu implementiert; native Tool-UIs/CLIs bleiben für Platform-/Expert-Drill-down verfügbar.
+
 Provider-spezifische Details wie Compose-Projektnamen, Host-Ports, generierte Overrides, Kubernetes-Objektnamen oder OpenShift Routes/SCCs duerfen nicht in den providerneutralen `PortableContract` leaken.
 
 Provider-Substitution muss den angeforderten Contract erfuellen oder klar fehlschlagen. Sicherheit, Haltbarkeit oder Verfuegbarkeit duerfen niemals still reduziert werden.
@@ -216,6 +222,12 @@ v0.4 schliesst die runtime-neutrale BaseHarbor-Sprache und die Lifecycle-Semanti
 - den vollstaendigen Compose-Referenz-Lifecycle beweisen;
 - CLI/JSON/MCP-Semantik angleichen;
 - alle Blocker vor dem v0.5-Freeze schliessen.
+
+## Richtung des Provider-Oekosystems
+
+Das offene Provider-Oekosystem bleibt strategisch. gRPC/Protocol Buffers bilden bei Bedarf die sprachneutrale externe Prozessgrenze; OCI bleibt der registry-neutrale Distributionsweg fuer unabhaengig implementierte Community-/Hersteller-/Unternehmens-Provider.
+
+Provider duerfen intern reifes OSS, Standard-APIs/SDKs, Controller/Operatoren/CRDs oder Managed-Service-APIs verwenden. Diese Mechanismen bleiben hinter der Provider-Grenze; der BaseHarbor Core darf nicht zum Katalog produktspezifischer Integrationen werden.
 
 ## v0.5 - Contract Freeze und Compatibility
 
