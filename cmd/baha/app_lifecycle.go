@@ -138,7 +138,11 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
 		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			name, confirmed, fullReset, err := parseDestroyArgs(args)
+			filtered, environment, err := extractApplicationEnvironment(args, "destroy")
+			if err != nil {
+				return err
+			}
+			name, confirmed, fullReset, err := parseDestroyArgs(filtered)
 			if err != nil {
 				return err
 			}
@@ -146,7 +150,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if name != "" {
 				appArgs = []string{name}
 			}
-			resolved, err := resolveApplication(store, appArgs, "destroy")
+			resolved, err := resolveApplicationEnvironment(store, appArgs, "destroy", environment)
 			if err != nil {
 				return err
 			}
