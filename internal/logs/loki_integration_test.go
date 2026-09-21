@@ -31,7 +31,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 	t.Setenv(application.LogsEnabledEnv, "true")
 
-	m := application.New("logs-acceptance", "dev", false, false, false)
+	m := application.WithLogsCollection(application.New("logs-acceptance", "dev", false, false, false), "application")
 	driver := logs.NewDriver(compose, m)
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
 	binding := capability.Binding{
