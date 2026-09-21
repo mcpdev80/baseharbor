@@ -55,9 +55,14 @@ func ResolveRepositoryEnvironment(start, requested string) (RepositoryEnvironmen
 				return RepositoryEnvironmentSelection{}, err
 			} else if exists {
 				environment := filepath.Base(current)
+				repoRoot := filepath.Dir(filepath.Dir(current))
 				if requested == "" || requested == environment {
-					return loadEnvironmentSelection(filepath.Dir(filepath.Dir(current)), rootManifest, environment, true, false)
+					return loadEnvironmentSelection(repoRoot, rootManifest, environment, true, false)
 				}
+				// A different explicit environment must be resolved from the real
+				// repository root, never by retargeting this environment manifest.
+				current = repoRoot
+				continue
 			}
 		}
 
