@@ -21,6 +21,9 @@ func baseHarborAgentsSection() string {
 		"- Keep provider, placement and runtime topology out of portable `baseharbor.yaml`; declare application requirements instead.\n" +
 		"- Never place secret or credential values in `baseharbor.yaml`.\n" +
 		"- Never bypass BaseHarbor security, ownership or provider-binding boundaries.\n" +
+		"- Prefer BaseHarbor structured interfaces for automation instead of parsing terminal prose.\n" +
+		"- Use `baha agent describe -o json` to discover the supported machine contract and semantic operations.\n" +
+		"- Prefer `baha mcp serve` for agent integration where MCP is available; do not replace BaseHarbor semantics with shell, Docker or Compose execution.\n" +
 		"- Use `baha up` or `baha app apply` to converge managed runtime infrastructure.\n" +
 		baseHarborAgentsEnd
 }
