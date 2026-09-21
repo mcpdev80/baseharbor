@@ -58,7 +58,7 @@ func appUpdateCommand(store application.Store) *cli.Command {
 			if !resolved.FromRepository {
 				return errors.New("application update requires a repository-owned baseharbor.yaml")
 			}
-			state, err := inspectGitApplicationUpdate(ctx, filepath.Dir(resolved.ManifestPath), true)
+			state, err := inspectGitApplicationUpdate(ctx, resolved.repositoryRoot(), true)
 			if err != nil {
 				return err
 			}
