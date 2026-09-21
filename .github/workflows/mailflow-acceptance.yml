@@ -44,7 +44,7 @@ jobs:
       - name: Verify generated secret and native managed backends
         working-directory: /tmp/mailflow
         run: |
-          project=baseharbor-workload-mailflow-production
+          project=baseharbor-workload-mailflow-dev
           services=$(docker ps --filter "label=com.docker.compose.project=$project" --format '{{.Label "com.docker.compose.service"}}' | sort)
           printf '%s\n' "$services"
           printf '%s\n' "$services" | grep -qx 'api'
@@ -76,7 +76,7 @@ jobs:
       - name: Verify TLS file bindings
         working-directory: /tmp/mailflow
         run: |
-          project=baseharbor-workload-mailflow-production
+          project=baseharbor-workload-mailflow-dev
           api_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
           docker exec "$api_id" python -c 'import os; assert os.environ["TLS_CERT_FILE"] == "/run/baseharbor/bindings/secrets/TLS_CERT_FILE"; assert os.environ["TLS_KEY_FILE"] == "/run/baseharbor/bindings/secrets/TLS_KEY_FILE"; assert open(os.environ["TLS_CERT_FILE"], "rb").read().startswith(b"-----BEGIN CERTIFICATE-----"); assert b"PRIVATE KEY" in open(os.environ["TLS_KEY_FILE"], "rb").read()'
@@ -92,7 +92,7 @@ jobs:
       - name: Create MailFlow provider data backed by a dynamic secret reference
         working-directory: /tmp/mailflow
         run: |
-          broker_project=baseharbor-broker-mailflow-production
+          broker_project=baseharbor-broker-mailflow-dev
           broker_id=$(docker ps --filter "label=com.docker.compose.project=$broker_project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           ref=$(docker exec "$broker_id" sh -ec '
@@ -110,7 +110,7 @@ jobs:
           test -n "$ref"
           printf '%s' "$ref" > /tmp/mailflow-provider-ref
 
-          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
+          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-dev" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
           docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
           import asyncio
@@ -174,7 +174,7 @@ jobs:
           /tmp/baha app backup --password-file /tmp/mailflow-backup.pass --output /tmp/mailflow.baha
           test -s /tmp/mailflow.baha
 
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-production" --filter 'label=com.docker.compose.service=broker' -q)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-dev" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           token_before=$(docker exec "$broker_id" sha256sum /run/secrets/runtime-token | awk '{print $1}')
           identity_path=.baseharbor/apps/mailflow/runtime/bindings/runtime-identity/client-cert.pem
@@ -184,8 +184,8 @@ jobs:
           printf '%s\n' "$cert_before" > /tmp/mailflow-cert-before
 
           /tmp/baha app destroy --yes
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production)"
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-broker-mailflow-production)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-workload-mailflow-dev)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-broker-mailflow-dev)"
 
           /tmp/baha app restore /tmp/mailflow.baha --password-file /tmp/mailflow-backup.pass | tee /tmp/mailflow-restore.out
           /tmp/baha app status | tee /tmp/mailflow-restored-status.out
@@ -196,7 +196,7 @@ jobs:
         run: |
           ref=$(cat /tmp/mailflow-provider-ref)
           test -n "$ref"
-          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-production" --filter 'label=com.docker.compose.service=api' -q)
+          api_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-workload-mailflow-dev" --filter 'label=com.docker.compose.service=api' -q)
           test -n "$api_id"
           docker exec -i -e SECRET_REF="$ref" "$api_id" uv run python <<'PY'
           import asyncio
@@ -227,7 +227,7 @@ jobs:
           asyncio.run(main())
           PY
 
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-production" --filter 'label=com.docker.compose.service=broker' -q)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-mailflow-dev" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
@@ -252,14 +252,14 @@ jobs:
         if: failure()
         working-directory: /tmp/mailflow
         run: |
-          project=baseharbor-workload-mailflow-production
+          project=baseharbor-workload-mailflow-dev
           docker ps -a --filter "label=com.docker.compose.project=$project" --format 'table {{.Names}}\t{{.Status}}' || true
           api_id=$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=api' -q | head -1)
           if [ -n "$api_id" ]; then
             docker inspect "$api_id" --format '{{json .State.Health}}' || true
             docker logs "$api_id" || true
           fi
-          broker_project=baseharbor-broker-mailflow-production
+          broker_project=baseharbor-broker-mailflow-dev
           docker ps -a --filter "label=com.docker.compose.project=$broker_project" --format 'table {{.Names}}\t{{.Status}}' || true
           broker_id=$(docker ps -a --filter "label=com.docker.compose.project=$broker_project" -q | head -1)
           if [ -n "$broker_id" ]; then
