@@ -27,7 +27,7 @@ import (
 const (
 	ProviderProject = "baseharbor-metrics"
 	ProviderService = "prometheus"
-	ProviderImage   = "prom/prometheus:v3.14.0"
+	ProviderImage   = "docker.io/prom/prometheus:v3.14.0"
 )
 
 type Placement struct {
