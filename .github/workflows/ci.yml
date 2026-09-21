@@ -172,7 +172,7 @@ jobs:
           /tmp/baha app create s3-demo --s3-bucket assets
           /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
           /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
+          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
           grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
 
           provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
@@ -465,7 +465,7 @@ jobs:
           /tmp/baha app create s3-demo --s3-bucket assets
           /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
           /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha app apply s3-demo | tee /tmp/s3-apply.out
+          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
           grep -q "object-storage.*assets authenticated S3 Put/Get succeeded" /tmp/s3-apply.out
 
           provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
