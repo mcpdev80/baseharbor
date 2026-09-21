@@ -9,6 +9,7 @@ type Action struct {
 }
 
 type Plan struct {
+	ContractVersion string   `json:"contract_version"`
 	Application string   `json:"application"`
 	Environment string   `json:"environment"`
 	Actions     []Action `json:"actions"`
@@ -24,7 +25,7 @@ func BuildPlan(m Manifest) (Plan, error) {
 		return Plan{}, err
 	}
 
-	p := Plan{Application: m.Name, Environment: m.Environment}
+	p := Plan{ContractVersion: "v1", Application: m.Name, Environment: m.Environment}
 	if HasManagedRuntimeServices(m) {
 		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})
 	}
