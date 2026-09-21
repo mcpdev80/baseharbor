@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/reconciliation"
 )
 
 type Phase string
@@ -12,6 +14,7 @@ type Phase string
 const (
 	PhaseResolve   Phase = "resolve"
 	PhasePreflight Phase = "preflight"
+	PhaseObserve   Phase = "observe"
 	PhaseApply     Phase = "apply"
 	PhaseBind      Phase = "bind"
 	PhaseVerify    Phase = "verify"
@@ -106,6 +109,11 @@ type Plan struct {
 	Items       []PlanItem `json:"items"`
 }
 
+type ReconciliationResult struct {
+	Resource Resource              `json:"resource"`
+	Result   reconciliation.Result `json:"result"`
+}
+
 type StepResult struct {
 	Phase       Phase        `json:"phase"`
 	Status      Status       `json:"status"`
@@ -118,7 +126,8 @@ type Result struct {
 	Application string       `json:"application"`
 	Status      Status       `json:"status"`
 	Plan        Plan         `json:"plan"`
-	Steps       []StepResult `json:"steps"`
+	Steps          []StepResult           `json:"steps"`
+	Reconciliation []ReconciliationResult `json:"reconciliation,omitempty"`
 }
 
 type Driver interface {
@@ -127,6 +136,11 @@ type Driver interface {
 	Provision(context.Context, Resource, Binding) error
 	Bind(context.Context, Resource, Binding) error
 	Verify(context.Context, Resource, Binding) error
+}
+
+type ReconciliationDriver interface {
+	DesiredState(Resource, Binding) reconciliation.Desired
+	Observe(context.Context, Resource, Binding) (reconciliation.Observed, error)
 }
 
 type Request struct {
@@ -261,8 +275,9 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 // then be coordinated around runtime/workload convergence without duplicating
 // provider lifecycle semantics.
 type Execution struct {
-	requests []Request
-	result   Result
+	requests  []Request
+	result    Result
+	decisions []reconciliation.Result
 }
 
 func Prepare(ctx context.Context, application string, requests []Request) (*Execution, Result, error) {
