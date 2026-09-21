@@ -60,7 +60,7 @@ jobs:
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
           /tmp/baha app apply broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
-          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS identity and app-scoped OpenBao readiness succeeded"
+          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
           /tmp/baha app doctor broker-demo | grep -q "^READY$"
 
           /tmp/baha app create other-demo --postgres --require-secret BOOTSTRAP_SECRET
@@ -156,7 +156,7 @@ jobs:
           test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-broker-demo-dev)"
 
           /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS identity and app-scoped OpenBao readiness succeeded"
+          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
           client_after=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
           test "$client_before" = "$client_after"
 
