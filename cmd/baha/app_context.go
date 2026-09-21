@@ -60,6 +60,10 @@ func (r resolvedApplication) stateRoot() string {
 }
 
 func resolveApplication(store application.Store, args []string, command string) (resolvedApplication, error) {
+	return resolveApplicationEnvironment(store, args, command, applicationEnvironmentOverride)
+}
+
+func resolveApplicationEnvironment(store application.Store, args []string, command, environment string) (resolvedApplication, error) {
 	if len(args) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
 	}
@@ -68,7 +72,7 @@ func resolveApplication(store application.Store, args []string, command string) 
 		if err != nil {
 			return resolvedApplication{}, err
 		}
-		if applicationEnvironmentOverride != "" && m.Environment != applicationEnvironmentOverride {
+		if environment != "" && m.Environment != environment {
 			return resolvedApplication{}, usageError(
 				"--environment cannot retarget stored application state",
 				"Run inside the application repository so BaseHarbor can select the environment-scoped manifest and state safely.",
@@ -81,7 +85,7 @@ func resolveApplication(store application.Store, args []string, command string) 
 	if err != nil {
 		return resolvedApplication{}, fmt.Errorf("resolve current directory: %w", err)
 	}
-	selection, err := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride)
+	selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
 	if err != nil {
 		return resolvedApplication{}, usageError(
 			"no application environment could be resolved",
