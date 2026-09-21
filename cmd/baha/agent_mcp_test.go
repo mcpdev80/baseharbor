@@ -65,16 +65,10 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(root); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldwd) })
-
 	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	if _, err := store.Create(manifest); err != nil {
+		t.Fatal(err)
+	}
 	server := newMCPServer(store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
@@ -130,9 +124,9 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		args map[string]any
 	}{
 		{name: "baseharbor.inspect", args: map[string]any{"path": root}},
-		{name: "baseharbor.plan", args: map[string]any{}},
-		{name: "baseharbor.status", args: map[string]any{}},
-		{name: "baseharbor.doctor", args: map[string]any{}},
+		{name: "baseharbor.plan", args: map[string]any{"name": manifest.Name}},
+		{name: "baseharbor.status", args: map[string]any{"name": manifest.Name}},
+		{name: "baseharbor.doctor", args: map[string]any{"name": manifest.Name}},
 	}
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
