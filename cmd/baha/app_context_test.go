@@ -14,7 +14,7 @@ func TestConfigureRepositoryComposeEnvironmentUsesRepositoryDotEnv(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := configureRepositoryComposeEnvironment(repo); err != nil {
+	if err := configureRepositoryComposeEnvironment(repo, filepath.Join(repo, ".baseharbor")); err != nil {
 		t.Fatal(err)
 	}
 	if got := os.Getenv("COMPOSE_ENV_FILES"); got != envPath {
@@ -29,7 +29,7 @@ func TestConfigureRepositoryComposeEnvironmentPreservesExplicitOverride(t *testi
 		t.Fatal(err)
 	}
 
-	if err := configureRepositoryComposeEnvironment(repo); err != nil {
+	if err := configureRepositoryComposeEnvironment(repo, filepath.Join(repo, ".baseharbor")); err != nil {
 		t.Fatal(err)
 	}
 	if got := os.Getenv("COMPOSE_ENV_FILES"); got != "/tmp/custom.env" {

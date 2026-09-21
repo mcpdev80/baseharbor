@@ -41,7 +41,7 @@ The discovery result includes:
 - supported capability specifications;
 - MCP transport, protocol and tool names.
 
-The v0.4.12 public operation set is deliberately small:
+v0.4.13 keeps the machine surface small while adding explicit environment-policy inspection:
 
 | Operation | Safety | Purpose |
 | --- | --- | --- |
@@ -49,6 +49,8 @@ The v0.4.12 public operation set is deliberately small:
 | `plan` | read-only | build the deterministic desired-state plan |
 | `status` | read-only | observe runtime/readiness state |
 | `doctor` | read-only | run diagnostic verification |
+| `policy.check` | read-only | evaluate effective allow/warn/deny policy |
+| `policy.explain` | read-only | explain defaults and bounded operator overrides |
 
 ## Structured JSON
 
@@ -59,6 +61,8 @@ baha app inspect . -o json
 baha plan -o json
 baha status -o json
 baha doctor -o json
+baha policy check -e prod -o json
+baha policy explain -e prod -o json
 ```
 
 Human and machine output use the same underlying typed result collection. JSON is a machine contract, not a serialization of terminal tables or ANSI output.
@@ -77,16 +81,18 @@ v0.4.12 uses the official Model Context Protocol Go SDK v1.8.0 and targets MCP s
 
 The initial transport is **stdio only**. BaseHarbor does not open a listening socket, provide remote MCP authentication or create a background daemon.
 
-The server exposes exactly four semantic tools:
+The server exposes six semantic read-only tools:
 
 ```text
 baseharbor.inspect
 baseharbor.plan
 baseharbor.status
 baseharbor.doctor
+baseharbor.policy.check
+baseharbor.policy.explain
 ```
 
-All four are explicitly annotated read-only. `inspect` may read a remote Git source supplied as its path, so it is marked open-world; the other initial tools operate against the selected local BaseHarbor application context.
+All six are explicitly annotated read-only. `inspect` may read a remote Git source supplied as its path, so it is marked open-world; the other initial tools operate against the selected local BaseHarbor application context.
 
 ### No generic execution
 

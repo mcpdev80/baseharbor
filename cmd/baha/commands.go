@@ -134,6 +134,7 @@ func rootCommand() *cli.Command {
 				return doctorCommand(ctx, args, out, errOut)
 			},
 		},
+		policyCommand(store),
 		agentCommand(),
 		mcpCommand(store),
 		serveCommand(store),
@@ -192,6 +193,6 @@ func inApplicationRepository() bool {
 	if err != nil {
 		return false
 	}
-	_, err = application.FindRepositoryManifest(cwd)
-	return err == nil
+	found, err := application.HasRepositoryApplication(cwd)
+	return err == nil && found
 }

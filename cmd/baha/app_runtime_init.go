@@ -118,8 +118,9 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 }
 
 func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication, opts repositoryInitOptions, out io.Writer) error {
-	repoRoot := filepath.Dir(resolved.ManifestPath)
-	current, err := loadRepositoryInitState(repoRoot)
+	repoRoot := resolved.repositoryRoot()
+	stateRoot := resolved.stateRoot()
+	current, err := loadRepositoryInitStateFromStateRoot(stateRoot)
 	if err != nil {
 		return err
 	}
@@ -168,7 +169,7 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 		tlsMode = "local"
 	}
 
-	tlsDir := filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)
+	tlsDir := filepath.Join(stateRoot, repositoryTLSDirName)
 	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
 		return fmt.Errorf("create local TLS state directory: %w", err)
 	}
@@ -215,7 +216,7 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 		TLSDir:          tlsDir,
 		RuntimeProvider: provider,
 	}
-	if err := writeRepositoryInitState(repoRoot, state); err != nil {
+	if err := writeRepositoryInitStateToStateRoot(stateRoot, state); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Application runtime initialization saved for %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
@@ -411,11 +412,19 @@ func writeNormalizedTLSFiles(tlsDir string, pair detectedCertificatePair) error 
 }
 
 func repositoryInitEnvPath(repoRoot string) string {
-	return filepath.Join(repoRoot, ".baseharbor", repositoryInitEnvName)
+	return repositoryInitEnvPathFromStateRoot(filepath.Join(repoRoot, ".baseharbor"))
+}
+
+func repositoryInitEnvPathFromStateRoot(stateRoot string) string {
+	return filepath.Join(stateRoot, repositoryInitEnvName)
 }
 
 func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repoRoot))
+	return loadRepositoryInitStateFromStateRoot(filepath.Join(repoRoot, ".baseharbor"))
+}
+
+func loadRepositoryInitStateFromStateRoot(stateRoot string) (repositoryInitState, error) {
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
 		return repositoryInitState{RuntimeProvider: bhruntime.ProviderCompose}, nil
 	}
@@ -436,7 +445,11 @@ func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 }
 
 func updateRepositoryInitValues(repoRoot string, updates map[string]string) error {
-	path := repositoryInitEnvPath(repoRoot)
+	return updateRepositoryInitValuesAtStateRoot(filepath.Join(repoRoot, ".baseharbor"), updates)
+}
+
+func updateRepositoryInitValuesAtStateRoot(stateRoot string, updates map[string]string) error {
+	path := repositoryInitEnvPathFromStateRoot(stateRoot)
 	values := map[string]string{}
 	if current, err := readSimpleEnvFile(path); err == nil {
 		for key, value := range current {
@@ -483,6 +496,10 @@ func updateRepositoryInitValues(repoRoot string, updates map[string]string) erro
 }
 
 func writeRepositoryInitState(repoRoot string, state repositoryInitState) error {
+	return writeRepositoryInitStateToStateRoot(filepath.Join(repoRoot, ".baseharbor"), state)
+}
+
+func writeRepositoryInitStateToStateRoot(stateRoot string, state repositoryInitState) error {
 	values := map[string]string{
 		"BASEHARBOR_HOSTNAME":       state.Hostname,
 		"BASEHARBOR_PUBLIC_SCHEME":  "https",
@@ -493,7 +510,7 @@ func writeRepositoryInitState(repoRoot string, state repositoryInitState) error 
 	if err := deployment.ApplyRuntimeProviderState(values, deployment.RuntimeProviderState{Provider: state.RuntimeProvider}); err != nil {
 		return err
 	}
-	return updateRepositoryInitValues(repoRoot, values)
+	return updateRepositoryInitValuesAtStateRoot(stateRoot, values)
 }
 
 func readSimpleEnvFile(path string) (map[string]string, error) {

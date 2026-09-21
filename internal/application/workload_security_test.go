@@ -44,24 +44,32 @@ func TestComposeSecurityManagedDeniesIsolationBypass(t *testing.T) {
 	}
 }
 
-func TestComposeSecurityDevelopmentWarnsDevicesAndAllowsAcknowledgedException(t *testing.T) {
-	t.Setenv(WorkloadSecurityAllowEnv, "host-device,privileged")
+func TestComposeSecurityDevelopmentAllowsOnlyBoundedDeviceException(t *testing.T) {
+	t.Setenv(WorkloadSecurityAllowEnv, "host-device")
 	m := New("demo", "dev", false, false, false)
-	rendered := []byte(`{"services":{"api":{"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm"}]}}}`)
+	rendered := []byte(`{"services":{"api":{"devices":[{"source":"/dev/kvm","target":"/dev/kvm"}]}}}`)
 	report, err := AnalyzeRenderedComposeSecurity(m, rendered)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Denied() {
-		t.Fatalf("acknowledged development exceptions should not deny: %#v", report)
+	if report.Denied() || len(report.Findings) != 1 || report.Findings[0].Decision != WorkloadSecurityAllow {
+		t.Fatalf("bounded development exception not applied: %#v", report)
 	}
-	if len(report.Findings) != 2 {
-		t.Fatalf("findings=%#v", report.Findings)
+}
+
+func TestComposeSecurityRejectsNonOverridableDevelopmentException(t *testing.T) {
+	t.Setenv(WorkloadSecurityAllowEnv, "privileged")
+	m := New("demo", "dev", false, false, false)
+	if _, err := AnalyzeRenderedComposeSecurity(m, []byte(`{"services":{"api":{"privileged":true}}}`)); err == nil {
+		t.Fatal("privileged policy was incorrectly made overridable")
 	}
-	for _, finding := range report.Findings {
-		if finding.Decision != WorkloadSecurityAllow {
-			t.Fatalf("finding decision=%s want allow: %#v", finding.Decision, finding)
-		}
+}
+
+func TestComposeSecurityCannotDowngradeManagedEnvironmentToDevelopment(t *testing.T) {
+	t.Setenv(WorkloadSecurityModeEnv, "development")
+	m := New("demo", "prod", false, false, false)
+	if _, err := ResolveWorkloadSecurityPolicy(m); err == nil {
+		t.Fatal("managed environment accepted development policy downgrade")
 	}
 }
 

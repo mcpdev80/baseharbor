@@ -45,6 +45,32 @@ Diese Bausteine ersetzen nicht die BaseHarbor-Regeln fuer Capabilities, Lifecycl
 
 Der oeffentliche Compatibility Contract darf nicht von HashiCorp go-plugin, Kubernetes, Docker, GitHub, einem Cloud-Anbieter oder einer proprietaeren BaseHarbor Registry abhaengen.
 
+## Implementierungsfreiheit und Oekosystem-Grenze
+
+Der Provider Integration Contract existiert, damit Community, Hersteller und Unternehmen BaseHarbor integrieren koennen, ohne den BaseHarbor Core zu patchen.
+
+Die offene Oekosystem-Richtung bleibt:
+
+```text
+versionierte BaseHarbor Capability Specification
+        ↓
+Provider Integration Contract
+        ↓
+gRPC / Protocol Buffers bei Prozessgrenzen
+        ↓
+OCI Distribution
+        ↓
+unabhaengige Provider-Implementierung
+```
+
+Ein Provider darf intern den kleinsten reifen Mechanismus nutzen, der den BaseHarbor-Contract erfuellt: offene Standards, reifes OSS, Standard-APIs/SDKs, Controller/Operatoren/CRDs oder Managed-Service-APIs.
+
+Diese Entscheidungen sind Implementierungsdetails des Providers. Sie ersetzen die BaseHarbor-Provider-Grenze nicht und duerfen nicht dazu fuehren, dass produktspezifische Integrationslogik im BaseHarbor Core anwächst.
+
+BaseHarbor kann sinnvolle Reference Provider liefern, aber das Oekosystem darf nicht davon abhaengen, dass BaseHarbor-Maintainer jede Produktintegration selbst implementieren.
+
+Dasselbe Prinzip gilt fuer kuenftige Provider-Familien wie Delivery Provider: stabile BaseHarbor-Semantik aussen, Implementierungsfreiheit innen.
+
 ## GraphQL-Grenze
 
 GraphQL ist **nicht** das Provider-Lifecycle-Protokoll von BaseHarbor.

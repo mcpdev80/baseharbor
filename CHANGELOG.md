@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-09-21
+
+### Added
+
+- Deterministic repository environment resolution for root `baseharbor.yaml` and complete `envs/<environment>/baseharbor.yaml` contracts without hidden overlay inheritance.
+- Environment-scoped protected deployment state under `.baseharbor/environments/<environment>/` for multi-environment deployments while preserving the existing single-environment state path.
+- Typed policy result contract with `allow`, `warn` and `deny` decisions.
+- `baha policy check` and `baha policy explain` with human and JSON output.
+- Read-only MCP tools `baseharbor.policy.check` and `baseharbor.policy.explain`.
+
+### Changed
+
+- Repository lifecycle resolution now separates repository root, selected manifest path and environment-scoped deployment state.
+- `-e/--environment` selection is handled by the common application resolver for repository-aware lifecycle/read operations.
+- Backup, restore, update and destroy preserve the selected environment identity and state boundary.
+- Existing Compose workload-isolation findings feed the shared policy model instead of forming a separate policy surface.
+- Agent discovery now advertises six read-only semantic operations/tools.
+
+### Security
+
+- Managed environments cannot be downgraded to the development workload-security profile through `BASEHARBOR_WORKLOAD_SECURITY_MODE`.
+- Operator policy exceptions are bounded: the existing development host-device acknowledgement remains explicit, while privileged containers and the other isolation-bypass classes are not overridable.
+- Environment-specific state prevents deployment inputs, TLS material and generated runtime state from colliding across environments.
+- Environment remains separate from runtime, topology, availability and future Kubernetes namespace details.
+
+
 ## [0.4.12] - 2026-09-21
 
 ### Added

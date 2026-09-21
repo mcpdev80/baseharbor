@@ -18,7 +18,8 @@ type machineInspectInput struct {
 }
 
 type machineApplicationInput struct {
-	Name string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside a repository containing baseharbor.yaml"`
+	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
 type machineToolError struct {
@@ -120,6 +121,38 @@ func newMCPServer(store application.Store) *mcp.Server {
 			args = []string{name}
 		}
 		result, err := collectApplicationDoctor(ctx, store, args)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "baseharbor.policy.check",
+		Description: "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		var args []string
+		if name := strings.TrimSpace(input.Name); name != "" {
+			args = []string{name}
+		}
+		result, err := collectApplicationPolicy(ctx, store, args, strings.TrimSpace(input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "baseharbor.policy.explain",
+		Description: "Read-only explanation of effective environment policy defaults, rules and bounded operator overrides.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		var args []string
+		if name := strings.TrimSpace(input.Name); name != "" {
+			args = []string{name}
+		}
+		result, err := explainApplicationPolicy(store, args, strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
 		}
