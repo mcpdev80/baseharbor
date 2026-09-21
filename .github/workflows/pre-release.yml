@@ -41,6 +41,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
           fetch-depth: 0
 
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Resolve release candidate
         id: release
         shell: bash
@@ -181,3 +185,8 @@ jobs:
           echo "tag=${{ steps.release.outputs.tag }}"
           echo "sha=${{ steps.release.outputs.candidate_sha }}"
           echo "external_demo_acceptance=PASS"
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
