@@ -31,6 +31,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
       - name: Verify Podman runner
         shell: bash
         run: |
@@ -55,13 +59,14 @@ jobs:
           /tmp/baha doctor | tee /tmp/podman-doctor.txt
           grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
           grep -Eq '^  OK +compose' /tmp/podman-doctor.txt
+          grep -q '^READY$' /tmp/podman-doctor.txt
 
       - name: Verify application lifecycle on Podman Compose
         shell: bash
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          printf '%s\n' "$workdir" > /tmp/baseharbor-podman-workdir
+          printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
           cd "$workdir"
 
           /tmp/baha app create podman-ci --postgres --redis | tee /tmp/podman-create.txt
@@ -74,47 +79,18 @@ jobs:
           /tmp/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
           grep -q "authenticated PING returned PONG" /tmp/podman-status.txt
-          /tmp/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
-          grep -q '^READY
 
-      - name: Cleanup Podman runtime
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          if [ -s /tmp/baseharbor-podman-workdir ]; then
-            cd "$(cat /tmp/baseharbor-podman-workdir)"
-            /tmp/baha app destroy podman-ci --yes >/dev/null 2>&1 || true
-          fi
-          podman ps -aq --filter label=com.docker.compose.project=baseharbor-podman-ci-dev | xargs -r podman rm -f
- /tmp/podman-app-doctor.txt
+          /tmp/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
+          grep -q '^READY$' /tmp/podman-app-doctor.txt
 
           /tmp/baha app down podman-ci | tee /tmp/podman-down.txt
           /tmp/baha app up podman-ci | tee /tmp/podman-up.txt
           /tmp/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
-          grep -q '^READY
-
-      - name: Cleanup Podman runtime
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          if [ -s /tmp/baseharbor-podman-workdir ]; then
-            cd "$(cat /tmp/baseharbor-podman-workdir)"
-            /tmp/baha app destroy podman-ci --yes >/dev/null 2>&1 || true
-          fi
-          podman ps -aq --filter label=com.docker.compose.project=baseharbor-podman-ci-dev | xargs -r podman rm -f
- /tmp/podman-resume-doctor.txt
+          grep -q '^READY$' /tmp/podman-resume-doctor.txt
 
           /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
 
       - name: Cleanup Podman runtime
         if: always()
         shell: bash
-        run: |
-          set +e
-          if [ -s /tmp/baseharbor-podman-workdir ]; then
-            cd "$(cat /tmp/baseharbor-podman-workdir)"
-            /tmp/baha app destroy podman-ci --yes >/dev/null 2>&1 || true
-          fi
-          podman ps -aq --filter label=com.docker.compose.project=baseharbor-podman-ci-dev | xargs -r podman rm -f
+        run: bash scripts/ci-runtime-reset.sh podman
