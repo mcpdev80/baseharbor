@@ -2,6 +2,8 @@
   <img src="docs/brand/github_banner.png" alt="BaseHarbor" width="100%">
 </p>
 
+<h2 align="center">One application contract. Replaceable infrastructure.</h2>
+
 <p align="center">
   <a href="https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml">
     <img src="https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml/badge.svg" alt="Release">
