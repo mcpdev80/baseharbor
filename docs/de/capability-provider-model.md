@@ -106,6 +106,14 @@ providers:
 
 Das spaetere Environment-/Provider-Policy-Schema wird in v0.4.0 bewusst noch nicht festgeschrieben. Deployment-eigener Runtime-Provider/Profile-State existiert bereits; breitere Environment-Policy bleibt Future Work.
 
+## Regel fuer das externe Provider-Oekosystem
+
+BaseHarbor-Capability-/Provider-Semantik ist die stabile Grenze. Community, Hersteller und Unternehmen muessen Provider ohne Aenderung des BaseHarbor Core implementieren koennen.
+
+gRPC/Protocol Buffers bleiben bei Bedarf die sprachneutrale externe Prozessgrenze; OCI bleibt die registry-neutrale Distribution. Provider duerfen intern reifes OSS, Standard-APIs/SDKs, Controller/Operatoren/CRDs oder Managed-Service-APIs verwenden.
+
+Diese Entscheidungen bleiben hinter der Provider-Grenze; der Core darf nicht fuer jedes Oekosystem-Tool produktspezifische Sonderpfade bekommen.
+
 ## Provider-Conformance
 
 Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen. Provider muessen Capabilities deklarieren und dagegen getestet werden, zum Beispiel:
