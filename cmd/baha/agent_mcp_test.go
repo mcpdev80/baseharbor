@@ -89,12 +89,12 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"baseharbor.inspect": false,
-		"baseharbor.plan":    false,
-		"baseharbor.status":  false,
+		"baseharbor.inspect":        false,
+		"baseharbor.plan":           false,
+		"baseharbor.status":         false,
 		"baseharbor.doctor":         false,
-		"baseharbor.policy.check":    false,
-		"baseharbor.policy.explain":  false,
+		"baseharbor.policy.check":   false,
+		"baseharbor.policy.explain": false,
 	}
 	for _, tool := range list.Tools {
 		if _, exists := want[tool.Name]; !exists {
