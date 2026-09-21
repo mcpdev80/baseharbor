@@ -42,7 +42,7 @@ jobs:
               input_*)
                 inputs+=("-f" "${key#input_}=${value}")
                 ;;
-              ""|#*)
+              "")
                 ;;
               *)
                 echo "Unsupported dispatch key: $key" >&2
