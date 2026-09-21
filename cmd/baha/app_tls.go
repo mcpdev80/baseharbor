@@ -42,7 +42,7 @@ func collectApplicationTLSObservation(resolved resolvedApplication) (*applicatio
 	if !resolved.FromRepository {
 		return nil, nil, nil
 	}
-	state, err := loadRepositoryInitState(resolved.repositoryRoot())
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return nil, &applicationTLSObservation{Healthy: false, Detail: "TLS deployment state could not be read"}, err
 	}
@@ -342,7 +342,7 @@ func doctorApplicationArgs(args []string) []string {
 
 func inspectApplicationTLS(resolved resolvedApplication) (applicationTLSStatus, error) {
 	repoRoot := resolved.repositoryRoot()
-	state, err := loadRepositoryInitState(repoRoot)
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return applicationTLSStatus{}, err
 	}
@@ -352,7 +352,7 @@ func inspectApplicationTLS(resolved resolvedApplication) (applicationTLSStatus, 
 	}
 	if state.TLSMode == "existing" {
 		if state.TLSDir == "" {
-			state.TLSDir = filepath.Join(repoRoot, ".baseharbor", repositoryTLSDirName)
+			state.TLSDir = filepath.Join(resolved.stateRoot(), repositoryTLSDirName)
 			status.State.TLSDir = state.TLSDir
 		}
 		installed, err := readManagedCertificate(state.TLSDir, state.Hostname)
