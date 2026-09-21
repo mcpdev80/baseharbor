@@ -291,7 +291,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			fmt.Fprintf(out, "  state:      %s\n", appDir)
 			if resolved.FromRepository {
 				fmt.Fprintf(out, "  manifest:   %s (preserved)\n", resolved.ManifestPath)
-				repoRoot := resolved.repositoryRoot()
 				if fullReset {
 					fmt.Fprintf(out, "  deployment: %s (removed by --full-reset)\n", repositoryInitEnvPathFromStateRoot(resolved.stateRoot()))
 					fmt.Fprintf(out, "  local TLS:  %s (removed by --full-reset; external certificate source is never touched)\n", filepath.Join(resolved.stateRoot(), repositoryTLSDirName))
@@ -397,7 +396,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("inspect application state before removal: %w", err)
 			}
 			if fullReset && resolved.FromRepository {
-				repoRoot := resolved.repositoryRoot()
 				if err := os.Remove(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return fmt.Errorf("remove repository deployment state: %w", err)
 				}
