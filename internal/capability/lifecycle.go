@@ -378,6 +378,26 @@ func (e *Execution) Verify(ctx context.Context) (Result, error) {
 		}
 		observeProviderOperation(request, item, PhaseVerify, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseVerify, item))
+		if driver, ok := request.Driver.(ReconciliationDriver); ok {
+			observed, observeErr := driver.Observe(ctx, item.Resource, item.Binding)
+			if observeErr != nil {
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability post-verification observation failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, observeErr)
+			}
+			decision := reconciliation.Evaluate(driver.DesiredState(item.Resource, item.Binding), observed)
+			if i < len(e.decisions) {
+				e.decisions[i] = decision
+			}
+			for j := range e.result.Reconciliation {
+				if e.result.Reconciliation[j].Resource == item.Resource {
+					e.result.Reconciliation[j].Result = decision
+				}
+			}
+			if decision.Ownership == reconciliation.OwnershipBaseHarbor && decision.State != reconciliation.StateInSync {
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability failed to converge for %s/%s: state=%s", item.Resource.Kind, item.Resource.Name, decision.State)
+			}
+		}
 	}
 	e.result.Status = StatusReady
 	return e.result, nil
