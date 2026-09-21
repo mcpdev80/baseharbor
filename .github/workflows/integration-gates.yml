@@ -15,7 +15,7 @@ on:
           - openbao
   push:
     branches:
-      - feature/v0.4.13-environment-policy-semantics
+      - 'ci/**'
 
 permissions:
   contents: read
