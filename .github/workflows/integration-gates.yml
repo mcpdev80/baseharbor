@@ -42,7 +42,13 @@ jobs:
           /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
-          /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
+          set +e
+          /tmp/baha app apply ci-demo >/tmp/postgres-valkey-apply.out 2>&1
+          apply_code=$?
+          set -e
+          cat /tmp/postgres-valkey-apply.out
+          test "$apply_code" -eq 0
+          grep -q "application and requested infrastructure verified" /tmp/postgres-valkey-apply.out
           /tmp/baha app status ci-demo | grep -q "authenticated SELECT 1 succeeded"
           /tmp/baha app status ci-demo | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
