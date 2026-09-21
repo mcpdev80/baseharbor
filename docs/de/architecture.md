@@ -36,6 +36,37 @@ Operator-Overrides sind explizit und begrenzt. Sie duerfen eine dokumentierte De
 
 Diese Regeln enthalten bewusst keine Kubernetes-Konzepte. Ein spaeterer Namespace-only Kubernetes Target nutzt dieselbe Environment-/Policy-Semantik; Runtime-Rechte, Namespace-Identitaet und platform-owned Ressourcen bleiben Runtime-/Provider-Themen.
 
+## Reconciliation, Ownership und Convergence
+
+BaseHarbor verwendet ein gemeinsames runtime-neutrales Reconciliation-Modell unterhalb von CLI-, Provider- und spaeteren Runtime-Oberflaechen.
+
+```text
+Desired State
+    ↓
+provider-native Observation
+    ↓
+typisierter Diff + Ownership
+    ↓
+Policy-/Preflight-Gate
+    ↓
+minimale Mutation wenn erforderlich
+    ↓
+Binding + Verification
+    ↓
+Observation nach Verification
+    ↓
+verifizierte Convergence
+```
+
+Die semantischen Zustaende sind `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` und `degraded`. Die zugehoerigen Aktionen sind `create`, `noop`, `repair`, `destroy`, `observe` und `blocked`.
+
+Bei BaseHarbor-owned Ressourcen wird stabiler Zustand bereits im Core zu NOOP; Drift fuehrt zu minimaler Reparatur. Foreign Ownership, konkurrierende Ownership, unsupported Realization und degraded Observed State brechen vor jeder Mutation fail-closed ab. Extern verwaltete Ressourcen bleiben observe-only.
+
+Provider-Verification allein ist nicht die letzte Wahrheit. Semantische Provider werden nach Verification erneut beobachtet; eine BaseHarbor-owned Ressource gilt nur dann als erfolgreich, wenn die anschliessende Observation `in_sync` meldet.
+
+Repository-Inspection-Reconciliation bleibt davon getrennt. Repository Inspection vergleicht erkannte Source-Evidenz mit Application Intent; Runtime-Reconciliation vergleicht Desired Realization mit provider-nativ beobachtetem Zustand.
+
+
 ## Gemeinsamer Core und mehrere Bedienoberflaechen
 
 BaseHarbor wird als **ein gemeinsamer Application-/Lifecycle-Core mit mehreren Control Surfaces** aufgebaut.

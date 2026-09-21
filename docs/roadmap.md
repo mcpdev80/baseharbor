@@ -230,10 +230,21 @@ Kubernetes/OpenShift behavior remains future work. The semantics here deliberate
 
 ### v0.4.14 – Reconciliation, security and lifecycle semantics
 
-- desired/observed/diff/ownership model;
-- typed drift, conflict, foreign ownership, unsupported and degraded states;
-- idempotent convergence and minimal repair;
-- ownership-safe destroy and verified recovery.
+Implemented/completed in v0.4.14:
+
+- runtime-neutral typed Desired/Observed/Diff/Ownership reconciliation model in the shared core;
+- typed `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` and `degraded` states;
+- typed reconciliation actions `create`, `noop`, `repair`, `destroy`, `observe` and `blocked`;
+- provider-native observation before mutation and a second observation after verification;
+- fail-closed conflict, unsupported, degraded and foreign-ownership handling before provider mutation;
+- core-level NOOP detection that avoids unnecessary provider mutation;
+- minimal repair for BaseHarbor-owned drift while preserving stable logical resource identity;
+- externally owned resources remain observe-only and cannot become BaseHarbor mutation targets;
+- existing Provider Integration Contract conformance now exercises the shared typed reconciliation semantics;
+- ownership-safe destroy semantics remain explicit and reusable;
+- no Kubernetes/OpenShift runtime implementation or product-specific delivery mechanism was introduced.
+
+The model is intentionally shared below CLI/runtime presentation. Future Compose, Kubernetes, OpenShift and delegated delivery adapters can consume the same semantics without adding runtime-specific fields to portable application intent.
 
 ### v0.4.15 – Audit and evidence semantics
 
