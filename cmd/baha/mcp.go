@@ -78,6 +78,10 @@ func mcpCommand(store application.Store) *cli.Command {
 }
 
 func runMCPServer(ctx context.Context, store application.Store) error {
+	return newMCPServer(store).Run(ctx, &mcp.StdioTransport{})
+}
+
+func newMCPServer(store application.Store) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "baseharbor",
 		Version: version,
@@ -88,6 +92,7 @@ func runMCPServer(ctx context.Context, store application.Store) error {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.inspect",
 		Description: "Read-only repository inspection. Returns deterministic, secret-safe evidence and capability findings without changing repository or runtime state.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: true},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineInspectInput) (*mcp.CallToolResult, any, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
@@ -103,6 +108,7 @@ func runMCPServer(ctx context.Context, store application.Store) error {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.plan",
 		Description: "Read-only deterministic desired-state plan for the current repository or named application.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		resolved, err := resolveMachineApplication(store, strings.TrimSpace(input.Name), "plan")
 		if err != nil {
@@ -118,6 +124,7 @@ func runMCPServer(ctx context.Context, store application.Store) error {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.status",
 		Description: "Read-only runtime and readiness observation for the current repository or named application.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		var args []string
 		if name := strings.TrimSpace(input.Name); name != "" {
@@ -133,6 +140,7 @@ func runMCPServer(ctx context.Context, store application.Store) error {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.doctor",
 		Description: "Read-only diagnostic verification for the current repository or named application.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		result, err := collectMachineDoctor(ctx, store, strings.TrimSpace(input.Name))
 		if err != nil {
@@ -141,7 +149,7 @@ func runMCPServer(ctx context.Context, store application.Store) error {
 		return nil, result, nil
 	})
 
-	return server.Run(ctx, &mcp.StdioTransport{})
+	return server
 }
 
 func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
