@@ -29,7 +29,7 @@ const (
 	ProviderProject = "baseharbor-object-storage"
 	ProviderService = "seaweedfs"
 	ProviderNetwork = "baseharbor-object-storage"
-	ProviderImage   = "chrislusf/seaweedfs:4.47"
+	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 )
 
 type Runtime interface {
