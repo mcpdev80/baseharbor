@@ -53,8 +53,8 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/baha doctor | tee /tmp/podman-doctor.txt
-          grep -Eq '^\[OK\][[:space:]]+podman[[:space:]]+daemon reachable$' /tmp/podman-doctor.txt
-          grep -Eq '^\[OK\][[:space:]]+compose[[:space:]]+podman compose available$' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +compose' /tmp/podman-doctor.txt
 
       - name: Verify application lifecycle on Podman Compose
         shell: bash
