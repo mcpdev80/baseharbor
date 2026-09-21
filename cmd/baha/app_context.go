@@ -98,10 +98,13 @@ func resolveApplicationEnvironment(store application.Store, args []string, comma
 	}
 	selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
 	if err != nil {
-		return resolvedApplication{}, usageError(
-			"no application environment could be resolved",
-			"Run inside a repository containing baseharbor.yaml or envs/<environment>/baseharbor.yaml; use -e/--environment when multiple environments exist.",
-		)
+		if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+			return resolvedApplication{}, usageError(
+				"no application environment could be resolved",
+				"Run inside a repository containing baseharbor.yaml or envs/<environment>/baseharbor.yaml; use -e/--environment when multiple environments exist.",
+			)
+		}
+		return resolvedApplication{}, err
 	}
 
 	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
