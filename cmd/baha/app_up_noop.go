@@ -47,7 +47,7 @@ func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApp
 	if !resolved.FromRepository {
 		return "", nil
 	}
-	repoRoot := filepath.Dir(resolved.ManifestPath)
+	repoRoot := resolved.repositoryRoot()
 	h := sha256.New()
 	write := func(name string, data []byte) {
 		_, _ = io.WriteString(h, name)
