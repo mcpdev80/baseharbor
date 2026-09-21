@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate (for example v0.4.10)
+        description: Release tag to validate, for example v0.4.14
         required: true
         type: string
       ref:
@@ -12,6 +12,14 @@ on:
         required: true
         default: develop
         type: string
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
 
 permissions:
   contents: read
@@ -19,57 +27,53 @@ permissions:
 jobs:
   validate:
     name: pre-release-validation
+    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'develop' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 75
+
     steps:
-      - name: Resolve inputs
+      - name: Checkout candidate source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref }}
+          fetch-depth: 0
+
+      - name: Resolve release candidate
         id: release
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
-          INPUT_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          if [[ ! "${INPUT_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+            test -n "$version"
+            tag="v$version"
+          fi
+
+          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Release tag must be valid SemVer with a v prefix." >&2
             exit 1
           fi
-          test -n "${INPUT_REF}" || {
-            echo "Source ref is required." >&2
-            exit 1
-          }
-          echo "tag=${INPUT_TAG}" >> "${GITHUB_OUTPUT}"
-          echo "ref=${INPUT_REF}" >> "${GITHUB_OUTPUT}"
 
-      - name: Checkout candidate source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.release.outputs.ref }}
-          fetch-depth: 0
-
-      - name: Validate candidate source
-        shell: bash
-        env:
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          set -euo pipefail
           git fetch origin develop
           git merge-base --is-ancestor HEAD origin/develop || {
             echo "Pre-release candidate must be contained in develop." >&2
             exit 1
           }
-          version="${TAG#v}"
-          grep -Fq "## [${version}]" CHANGELOG.md || {
-            echo "CHANGELOG.md must contain ## [${version}]." >&2
-            exit 1
-          }
-          test -s "docs/releases/${TAG}.md" || {
-            echo "Missing human-readable release notes: docs/releases/${TAG}.md" >&2
-            exit 1
-          }
-          echo "candidate_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+          version="${tag#v}"
+          grep -Fq "## [${version}]" CHANGELOG.md
+          test -s "docs/releases/${tag}.md"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -79,69 +83,68 @@ jobs:
         run: |
           set -euo pipefail
           files="$(gofmt -l cmd internal spec)"
-          test -z "${files}" || {
+          test -z "$files" || {
             echo "gofmt required:" >&2
-            echo "${files}" >&2
+            echo "$files" >&2
             exit 1
           }
 
-      - name: Run release-source tests exactly as release workflow
+      - name: Run release-source tests
         run: |
           go test ./internal/... ./spec/...
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
+          go vet ./...
+          go build ./cmd/baha
 
-      - name: Run Go vet
-        run: go vet ./...
-
-      - name: Build CLI
-        run: go build ./cmd/baha
-
-      - name: Verify control-plane restart and operator-held unseal recovery
+      - name: Verify control-plane recovery
         env:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
-      - name: Verify real Loki and Alloy workload log ingestion
+      - name: Verify real workload log ingestion
         env:
           BASEHARBOR_LOGS_INTEGRATION: "1"
         run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
 
-      - name: Verify real OpenTelemetry to Tempo trace ingestion
+      - name: Verify real trace ingestion
         env:
           BASEHARBOR_TRACES_INTEGRATION: "1"
         run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: '3.13'
           cache: pip
           cache-dependency-path: requirements-docs.txt
 
       - name: Validate documentation
         shell: bash
         run: |
-          set -euo pipefail
           python -m pip install --disable-pip-version-check -r requirements-docs.txt
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
 
-      - name: Validate GitHub workflow syntax
+      - name: Validate workflow syntax
         shell: bash
         run: |
-          set -euo pipefail
-          GOBIN="${RUNNER_TEMP}/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-          "${RUNNER_TEMP}/bin/actionlint" -shellcheck=
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
 
-      - name: Validate GoReleaser packaging without publishing
+      - name: Build release snapshot
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: '~> v2'
           args: release --snapshot --clean
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Verify release snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/checksums.txt
+          test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+          grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+          grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
 
       - name: Build runtime image without publishing
         uses: docker/build-push-action@v6
@@ -153,14 +156,25 @@ jobs:
           tags: baseharbor-runtime:pre-release
           build-args: |
             VERSION=${{ steps.release.outputs.tag }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ steps.release.outputs.candidate_sha }}
+
+      - name: Run external demo acceptance against candidate SHA
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+          ARTIFACT_DIR: /tmp/baseharbor-demo-acceptance
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo
+          cd /tmp/baseharbor-demo
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh
 
       - name: Pre-release summary
         shell: bash
-        env:
-          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          set -euo pipefail
           echo "Pre-release gate passed."
-          echo "tag=${TAG}"
-          echo "sha=$(git rev-parse HEAD)"
+          echo "tag=${{ steps.release.outputs.tag }}"
+          echo "sha=${{ steps.release.outputs.candidate_sha }}"
+          echo "external_demo_acceptance=PASS"
