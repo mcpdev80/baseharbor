@@ -27,29 +27,36 @@ Manifest v1 remains the supported v0.4 compatibility surface. v0.4 adds provider
 
 ## Development versus releases
 
-`main` is development state and must not be used as a production dependency.
+BaseHarbor uses two long-lived branches with distinct responsibilities:
+
+- `main` is the released source line. It should represent the currently published release and should only advance through a release PR from `develop` or an explicitly documented hotfix.
+- `develop` is the integration branch for the next release. Normal feature, fix, chore and dependency branches target `develop`.
 
 Published channels:
 
-- GitHub tag/release `vX.Y.Z`: immutable supported release;
+- GitHub tag/release `vX.Y.Z`: immutable supported release created from `main`;
 - `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z`: matching runtime image;
 - `ghcr.io/mcpdev80/baseharbor-runtime:latest`: latest stable release;
-- `ghcr.io/mcpdev80/baseharbor-runtime:edge`: moving development build from `main`.
+- `ghcr.io/mcpdev80/baseharbor-runtime:edge`: moving development build from `develop`.
+
+Normal development branches must not target `main` directly. Hotfix branches start from `main`, are released through `main`, and must then be merged/backported into `develop` so the next release retains the fix.
 
 ## Release preparation
 
-Every release starts with a release-preparation pull request.
+Every release is prepared on `develop` and promoted to `main` only after the release candidate is proven.
 
-1. Review the final implementation against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
+1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
-3. Ensure all required CI and real-product acceptance gates are green on the **exact release-preparation head**. Prefer local/Hugging Face validation first where practical and use GitHub Actions only where required.
-4. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
-5. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
-6. Review compatibility impact and select the SemVer increment.
-7. Merge the release-preparation PR to `main` only after the required gates are green.
-8. Create an immutable tag `vX.Y.Z` on that exact green `main` commit and push it.
-9. The release workflow must successfully validate the tag/source, test the tagged code, publish the GitHub Release, artifacts and provenance.
-10. Verify the resulting GitHub Release, binaries, checksums, provenance and matching runtime image before declaring the release usable. A pushed tag without a successful published release is not release completion.
+3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
+4. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
+5. Review compatibility impact and select the SemVer increment.
+6. Run local/Hugging Face validation first where practical.
+7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green.
+8. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
+9. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
+10. Create an immutable tag `vX.Y.Z` on the resulting `main` release commit and push it.
+11. The release workflow must successfully validate that the tag is contained in `main`, retest the tagged source, publish the GitHub Release, artifacts and provenance.
+12. Verify the resulting GitHub Release, binaries, checksums, provenance and matching runtime image before declaring the release usable. A pushed tag without a successful published release is not release completion.
 
 Never move a published version tag. Fix a bad release with a new patch release.
 
