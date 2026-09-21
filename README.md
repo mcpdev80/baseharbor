@@ -1,6 +1,6 @@
 # BaseHarbor
 
-[![CI](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml)
+[![Release](https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver)](https://github.com/mcpdev80/baseharbor/releases)
 [![License](https://img.shields.io/github/license/mcpdev80/baseharbor)](LICENSE)
 
@@ -47,15 +47,17 @@ Compose is the complete runtime implementation today. Kubernetes and OpenShift a
 
 ## Five-minute adoption path
 
-For an existing repository, the normal v0.4.12 developer path is:
+For an existing repository, the v0.4.13 developer path is:
 
 ```bash
 baha app inspect .
 baha app init
 baha plan
+baha policy explain -e dev
+baha policy check -e dev
 baha up -e dev
-baha status
-baha doctor
+baha status -e dev
+baha doctor -e dev
 ```
 
 Use `-o json` on inspect/plan/status/doctor for secret-safe structured read-only results. `baha app init --agents` can add or update only BaseHarbor's bounded section in `AGENTS.md`.
@@ -78,6 +80,8 @@ baseharbor.inspect
 baseharbor.plan
 baseharbor.status
 baseharbor.doctor
+baseharbor.policy.check
+baseharbor.policy.explain
 ```
 
 There is no generic shell, Docker or Compose execution tool. Machine results are versioned with `contract_version: "v1"` and remain secret-safe.

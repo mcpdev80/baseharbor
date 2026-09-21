@@ -65,6 +65,12 @@ Mehrere logische Service-Instanzen sind nicht HA. HA ist eine spaetere Topologie
 
 Compose bleibt first-class, ist aber nicht mehr die konzeptionelle Anwendungs-API. Runtime Provider und Capability Provider sind getrennte Achsen.
 
+Delivery Provider bilden eine dritte, unabhängige Achse. Sie bestimmen, wie die gewünschte Runtime-Realisierung zur Ziel-Runtime gelangt und dort reconciled wird. Direct Delivery und delegated/GitOps Delivery müssen dieselbe BaseHarbor-Semantik erhalten, ohne Argo CD, Flux, Git oder Kubernetes-Objekte in den portablen Application Contract zu ziehen.
+
+Wo anwendbar verwenden Runtime-, Capability- und Delivery-Provider dieselben kanonischen `application | shared | external` Placement-/Ownership-Semantiken bei weiterhin getrennten Verantwortlichkeiten.
+
+BaseHarbor bleibt die normale Entwickler-/Agenten-Oberfläche. Reifes OSS und offene Standards werden hinter Provider-Grenzen wiederverwendet statt neu implementiert; native Tool-UIs/CLIs bleiben für Platform-/Expert-Drill-down verfügbar.
+
 Provider-spezifische Details wie Compose-Projektnamen, Host-Ports, generierte Overrides, Kubernetes-Objektnamen oder OpenShift Routes/SCCs duerfen nicht in den providerneutralen `PortableContract` leaken.
 
 Provider-Substitution muss den angeforderten Contract erfuellen oder klar fehlschlagen. Sicherheit, Haltbarkeit oder Verfuegbarkeit duerfen niemals still reduziert werden.
@@ -88,7 +94,7 @@ Weiterhin Future Work:
 - neue oeffentliche capability-orientierte Contract-Syntax;
 - weitere Capability-Provider und zusaetzliche S3/Object-Storage-Provider/Provider-Auswahl;
 - BaseHarbor-Recovery fuer Object-Storage-Inhalte (v0.4.6 bricht Backup/Restore fuer S3-Anwendungen fail-closed ab statt unvollstaendige Recovery zu behaupten);
-- breitere Environment-/Policy-Profile;
+- weitergehende Enterprise-Policy-/Profil-Komposition ueber die v0.4.13-Core-Semantik hinaus;
 - OIDC/RBAC/JIT fuer Managed Production;
 - HA-/Topologieprofile;
 - weitere Traffic-/Exposure-Provider und breiterer providerneutraler TLS-/Zertifikats-Lifecycle ueber den aktuellen `exposure.http/v1`- und Existing/BYOC-Pfad hinaus;
@@ -180,40 +186,118 @@ In v0.4.12 umgesetzt/abgeschlossen:
 Remote-MCP/Auth, mutierende/destruktive MCP-Tools, eingebettete LLM-Logik, vendor-spezifische Agent-Integrationen und Application-MCP-Capabilities bleiben bewusst spaeter.
 
 
-## Geplante Phasen
+## Verbleibende v0.4-Sequenz
 
-### v0.5 - Capability Provider
+v0.4 schliesst die runtime-neutrale BaseHarbor-Sprache und die Lifecycle-Semantik vor dem Compatibility-Freeze ab.
 
-- austauschbare Capability-Provider hinter stabilen logischen Anforderungen;
-- SQL, Key/Value und Secrets weiter providerisieren sowie zusaetzliche S3-Implementierungen hinter `object-storage.s3/v1` anbinden;
-- Provider-Conformance und klare Unsupported-Fehler.
+### v0.4.13 - Environment- und Policy-Semantik
 
-### v0.6 - Environment, Policy und Topologie
+v0.4.13 macht Deployment-Environment und effektive Policy zu expliziten gemeinsamen Semantiken statt zu CLI-Sonderlogik.
 
-Diese Phase ist zugleich der natuerliche Einstieg fuer Remote-Management und eine schlanke WebGUI ueber denselben Core.
+- deterministische Auswahl entweder des kompatiblen Root-`baseharbor.yaml` oder genau eines vollstaendigen `envs/<environment>/baseharbor.yaml`; Environment-Manifeste sind vollstaendige Intents und keine versteckten Overlays;
+- `-e/--environment` wird zentral fuer Repository-Lifecycle-/Read-Operationen aufgeloest und veraendert niemals das portable Manifest;
+- Workload-Aufloesung bleibt am echten Repository-Root verankert, auch wenn das gewaehlte Manifest unter `envs/` liegt;
+- geschuetzter Application-, Deployment-Input-, TLS- und generierter Runtime-State wird pro Environment unter `.baseharbor/environments/<environment>/` getrennt; unveraenderte Single-Environment-Repositories behalten fuer Kompatibilitaet ihren v0.4.12-State-Pfad;
+- typisierte Policy-Ergebnisse verwenden `allow`, `warn` und `deny`; `baha policy check` und `baha policy explain` besitzen passende read-only MCP-Tools;
+- vorhandene Compose-Workload-Isolation speist dasselbe Policy-Ergebnis statt eine zweite Policy-Engine zu erzeugen;
+- sichere Policy ist fail-closed: Managed Environments koennen nicht per Operator-Variable auf Development abgeschwaecht werden; ueberschreibbar bleibt nur die explizit begrenzte Host-Device-Bestaetigung in Development;
+- Environment ist ausschliesslich Deployment-/Risiko-Kontext und kodiert weder Runtime, Provider-Placement, Topologie, Availability noch spaetere Kubernetes-Namespace-Details.
 
-- explizite Environment-/Plattform-Policy;
-- OIDC/RBAC/JIT;
-- Standard- und HA-Topologieprofile;
-- Security-/Durability-/Availability-Anforderungen als Policy;
-- stabile maschinenlesbare BaseHarbor-API;
-- schlanke WebGUI fuer Plan/Apply/Status/Doctor/Logs/Inputs/Backup/Restore/Update;
-- gemeinsame Authorization-/Policy-Grenzen fuer CLI, API und WebGUI.
+Kubernetes/OpenShift bleiben Future Work. Diese Semantik ist bewusst so gebaut, dass ein spaeterer Namespace-only Runtime Target keine Kubernetes-spezifischen Felder im Application Intent erfordert.
 
-### v0.7 - Kubernetes
+### v0.4.14 - Reconciliation-, Security- und Lifecycle-Semantik
 
-- Kubernetes als Runtime Provider;
-- BaseHarbor Operator als cluster-native Control Surface ueber denselben Core;
-- native Deployments/StatefulSets/Services/PVCs/Gateway/Ingress/Secrets/NetworkPolicies;
-- gleicher logischer Application Contract;
-- CRDs/Reconciliation und Status/Conditions aus derselben BaseHarbor-Runtime-Wahrheit;
-- kein Wrapping von imperativen `baha`-Kommandos im Operator.
+- Desired/Observed/Diff/Ownership-Modell;
+- typisierte Drift-, Conflict-, Foreign-Ownership-, Unsupported- und Degraded-Zustaende;
+- idempotente Konvergenz und minimale Reparatur;
+- ownership-sicheres Destroy und verifizierte Recovery.
 
-### v0.8 - OpenShift / Enterprise
+### v0.4.15 - Audit- und Evidence-Semantik
 
-- OpenShift-spezifische Routes, SCCs, Registry-/Proxy-/Offline-Integration;
-- Enterprise-Policy und Operator-Integrationen;
-- weiterhin derselbe portable Anwendungs-Intent.
+- secret-safe Lifecycle-/Policy-/Verification-Events;
+- klare Trennung von Desired/Enforced/Observed/Verified;
+- generische Evidence-Export-Grenze ohne Vendor-Lock-in.
+
+### v0.4.16 - Capability Provider SDK, Starter Kit und Conformance
+
+- praktischer Third-Party-Capability-Provider-Pfad;
+- Conformance gegen die nun vollstaendige Lifecycle-, Ownership-, Security- und Evidence-Semantik;
+- kein Runtime-Provider-SDK und keine Kubernetes-spezifischen Typen.
+
+### v0.4.17 - Runtime-Grenze und semantische Full-Stack-Acceptance
+
+- alle wichtigen States als portable, Deployment/Operator, Runtime, Provider oder Protected/Generated klassifizieren;
+- den vollstaendigen Compose-Referenz-Lifecycle beweisen;
+- CLI/JSON/MCP-Semantik angleichen;
+- alle Blocker vor dem v0.5-Freeze schliessen.
+
+## Richtung des Provider-Oekosystems
+
+Das offene Provider-Oekosystem bleibt strategisch. gRPC/Protocol Buffers bilden bei Bedarf die sprachneutrale externe Prozessgrenze; OCI bleibt der registry-neutrale Distributionsweg fuer unabhaengig implementierte Community-/Hersteller-/Unternehmens-Provider.
+
+Provider duerfen intern reifes OSS, Standard-APIs/SDKs, Controller/Operatoren/CRDs oder Managed-Service-APIs verwenden. Diese Mechanismen bleiben hinter der Provider-Grenze; der BaseHarbor Core darf nicht zum Katalog produktspezifischer Integrationen werden.
+
+## v0.5 - Contract Freeze und Compatibility
+
+v0.5 fuegt keine neuen Plattformprimitiven hinzu. Die in v0.4 abgeschlossenen Contracts werden eingefroren, versioniert und bewiesen.
+
+- **v0.5.0** kompletter agent-nativer Core und Contract Freeze;
+- **v0.5.1** State-Versionierung und Migration-Compatibility;
+- **v0.5.2** Cross-Component-Compatibility-Contracts;
+- **v0.5.3** Upgrade-, Recovery- und Deprecation-Verhalten;
+- **v0.5.4** Portability- und Compatibility-Acceptance.
+
+Vor Abschluss von v0.5 muss die Deployment-/Runtime-Grenze einen spaeteren eingeschraenkten Runtime-Target, secret-safe Runtime-Access-Referenzen und platform-owned Resource-Referenzen ausdruecken koennen, ohne Kubernetes-Felder in den portablen Application Intent aufzunehmen.
+
+Die BaseHarbor-MCP-/JSON-Control-Surface muss vor dem Freeze ausserdem den vollstaendigen sinnvollen Compose-Lifecycle abdecken.
+
+## v0.6 - Availability, Topologie und portable Garantien
+
+v0.6 definiert portable Availability-Semantik vor jeder Kubernetes-Implementierung.
+
+- **v0.6.0** Availability- und portable Guarantee-Semantik;
+- **v0.6.1** Runtime-/Capability-Guarantee-Negotiation;
+- **v0.6.2** ehrliche Compose-Realisierung und Verifikation;
+- **v0.6.3** Topology- und Portability-Acceptance.
+
+Environment, Runtime und Availability bleiben unabhaengig. Compose darf nur Garantien melden, die es tatsaechlich beweisen kann; es gibt kein stilles Downgrade und keine erfundene HA.
+
+Human OIDC/RBAC/JIT, Remote-Management-WebUI und andere Platform-Access-Themen bleiben separate spaetere Tracks und definieren v0.6 nicht.
+
+## v0.7 - Kubernetes Runtime
+
+v0.7 implementiert Kubernetes als BaseHarbor Runtime Provider. Namespace-only mit einem vorprovisionierten Target-Namespace ist das primaere enterprise-kompatible Zielmodell.
+
+- **v0.7.0** Runtime Foundation und Namespace-only Access Model;
+- **v0.7.1** namespaced Security, Identity und Networking;
+- **v0.7.2** platform-owned HTTP Exposure mit Gateway API;
+- **v0.7.3** namespace-only Persistent Storage;
+- **v0.7.4** Stateful Runtime Support ohne Capability-Provider-Leakage;
+- **v0.7.5** Availability-Realisierung mit permission-aware Verification;
+- **v0.7.6** Runtime Conformance ueber Restricted-Access-Profile;
+- **v0.7.7** Compose-to-Kubernetes-Portability-Proof unter Namespace-only-Bedingungen;
+- **v0.7.8** delegierte Delivery- und GitOps-Provider-Architektur mit Argo CD als erster Referenzimplementierung ohne Argo-spezifischen portablen Application Contract.
+
+Cluster-Admin, Namespace-Erstellung und cluster-weite Discovery sind keine normalen Application-Lifecycle-Anforderungen. Platform-owned Ressourcen wie Namespaces, Gateway/GatewayClass, StorageClass, CRDs und Admission Policy bleiben nutzbar, ohne dass BaseHarbor sie besitzen muss.
+
+v0.7.0 startet mit direkter Kubernetes-API-Delivery als Referenzpfad. Das ist nicht das einzige dauerhafte Reconciliation-Modell: v0.7.8 ergänzt delegierte/GitOps-Delivery über einen providerneutralen Delivery-Provider-Contract. kubectl, Helm, CRDs und ein BaseHarbor Operator sind keine notwendigen anwendungsseitigen Runtime-Engines.
+
+## v0.8 - Kubernetes Complete
+
+v0.8 schliesst die Produktparitaet und macht Kubernetes zu einer vollwertigen first-class BaseHarbor Production Runtime.
+
+- **v0.8.0** vollstaendige Application-Lifecycle-Paritaet;
+- **v0.8.1** Capability- und Provider-Placement-Paritaet;
+- **v0.8.2** Backup-/Restore-/Disaster-Recovery-Paritaet;
+- **v0.8.3** Observability-, Diagnostics- und Evidence-Paritaet;
+- **v0.8.4** Update-, Migration- und Recovery-Paritaet;
+- **v0.8.5** Agent-native- und Developer-Experience-Paritaet;
+- **v0.8.6** Production Hardening und vollstaendige Conformance-Matrix;
+- **v0.8.7** Kubernetes Complete First-Class-Runtime-Acceptance.
+
+Abschlusskriterium ist, dass jede auf Kubernetes anwendbare BaseHarbor-Core-Funktion ueber BaseHarbor-Semantik funktioniert, inklusive Namespace-only, ohne Kubernetes-spezifischen portablen Application Contract und ohne normalen Raw-Kubernetes-Fallback.
+
+Erst nach Kubernetes Complete folgen OpenShift-/Enterprise-spezifische Themen. Operator/OLM, SCC-/Route-spezifische Integration, Enterprise Proxy/Registry/Disconnected sowie Human OIDC/JIT bleiben separate spaetere Tracks, solange kein echter Prerequisite-Use-Case entsteht.
 
 ## Langfristiges Erfolgskriterium
 

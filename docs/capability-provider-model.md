@@ -33,7 +33,7 @@ The governing rule is ADR [0005-capabilities-not-products](decisions/0005-capabi
 | Logs | `logs/v1` platform log-source lifecycle; application intent remains product-neutral | Loki 3.7.8 + Alloy 1.19.2 Compose reference provider | v0.4.9: policy-controlled workload collection, shared/application placement, protected registry ownership and real query verification | OpenSearch, Elasticsearch, VictoriaLogs and compatible stacks through conforming providers | Loki is provider state, not application intent; local `baha app logs` remains an independent trusted-local operator path |
 | Trace storage | `traces/v1` platform facility consuming trace signals transported by `telemetry.otlp/v1` | Tempo 3.0.2 shared Compose reference provider | v0.4.10: policy-controlled shared trace storage, managed OTel-to-Tempo routing and real query verification | Jaeger and compatible trace backends through conforming providers | Trace instrumentation/transport stays separate from storage. Tempo topology/storage is provider state and never becomes application intent |
 
-## Runtime provider versus capability provider
+## Runtime, capability and delivery providers
 
 These are separate axes.
 
@@ -55,7 +55,22 @@ secrets             -> OpenBao / Vault / cloud secret store
 exposure.http       -> Caddy / Traefik / Kubernetes Gateway / OpenShift Route
 ```
 
-An OpenShift runtime therefore does not imply that every capability must also be OpenShift-native. An enterprise customer may combine OpenShift workloads with an external PostgreSQL cluster, Vault and Ceph RGW.
+A **delivery provider** decides how desired runtime realization reaches/reconciles against the selected runtime:
+
+```text
+direct            -> BaseHarbor mutates/reconciles runtime state
+delegated/GitOps  -> external reconciler mutates runtime state
+```
+
+These are three independent axes:
+
+```text
+runtime != capability != delivery
+```
+
+An OpenShift runtime therefore does not imply that every capability must also be OpenShift-native, and Kubernetes does not imply Argo CD. An enterprise customer may combine OpenShift workloads with an external PostgreSQL cluster, Vault and Ceph RGW and may use direct or delegated delivery.
+
+Where applicable, provider families reuse the same canonical `application | shared | external` placement semantics while keeping their responsibilities separate.
 
 ## Application contract versus environment definition
 
@@ -107,7 +122,15 @@ providers:
   exposure: openshift-route
 ```
 
-The exact future environment/provider configuration schema is intentionally not fixed by v0.4.0. Deployment-owned runtime provider/profile state exists, while broader environment policy remains future work.
+The exact future environment/provider configuration schema is intentionally not fixed by v0.4.0. Deployment-owned runtime provider/profile state exists, while broader environment policy remains future work. Delivery selection and reconciliation ownership are likewise deployment/operator state, never portable application intent.
+
+## External provider ecosystem rule
+
+BaseHarbor capability/provider semantics are the stable boundary. Community, vendors and companies must be able to implement providers without BaseHarbor Core changes.
+
+gRPC/Protocol Buffers remain the language-neutral external process boundary where required and OCI remains the registry-neutral distribution direction. Provider implementations may internally use mature OSS, standard APIs/SDKs, controllers/operators/CRDs or managed-service APIs.
+
+Those implementation choices remain behind the provider boundary; the Core must not grow product-specific integration branches for every ecosystem tool.
 
 ## Provider conformance
 

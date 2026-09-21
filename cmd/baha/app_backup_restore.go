@@ -26,7 +26,11 @@ func appBackupCommand(store application.Store) *cli.Command {
 		Usage:   "baha app backup [NAME] --password-file FILE [--output FILE]",
 		Long:    "Quiesces the repository workload and per-application secret broker, captures desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope, encrypts the complete recovery unit, then restarts the quiesced application components.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			name, outputPath, passwordPath, err := parseAppBackupArgs(args)
+			filtered, environment, err := extractApplicationEnvironment(args, "backup")
+			if err != nil {
+				return err
+			}
+			name, outputPath, passwordPath, err := parseAppBackupArgs(filtered)
 			if err != nil {
 				return err
 			}
@@ -34,7 +38,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 			if name != "" {
 				appArgs = []string{name}
 			}
-			resolved, err := resolveApplication(store, appArgs, "backup")
+			resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
 			if err != nil {
 				return err
 			}
@@ -160,7 +164,11 @@ func appRestoreCommand(store application.Store) *cli.Command {
 		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
 		Long:    "Validates and decrypts the complete archive before mutation, rebuilds protected BaseHarbor application state, restores PostgreSQL and the matching OpenBao secret scope while the workload remains stopped, regenerates runtime identities, then starts and verifies the broker and repository workload.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			backupPath, name, passwordPath, err := parseAppRestoreArgs(args)
+			filtered, environment, err := extractApplicationEnvironment(args, "restore")
+			if err != nil {
+				return err
+			}
+			backupPath, name, passwordPath, err := parseAppRestoreArgs(filtered)
 			if err != nil {
 				return err
 			}
@@ -184,6 +192,9 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			}
 			if name != "" && name != m.Name {
 				return errors.New("restore target NAME does not match backup application identity")
+			}
+			if environment != "" && environment != m.Environment {
+				return fmt.Errorf("restore target environment %q does not match backup environment %q", environment, m.Environment)
 			}
 			if application.HasObjectStorage(m) {
 				return errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
@@ -332,19 +343,25 @@ func resolveRestoreTarget(store application.Store, backupManifest application.Ma
 	if err != nil {
 		return resolved, err
 	}
-	path, err := application.FindRepositoryManifest(cwd)
-	if err != nil {
-		return resolved, nil
-	}
-	repositoryManifest, err := application.LoadManifestFile(path)
+	found, err := application.HasRepositoryApplication(cwd)
 	if err != nil {
 		return resolved, err
 	}
-	if repositoryManifest.YAML() != backupManifest.YAML() {
-		return resolved, errors.New("repository baseharbor.yaml does not match backup desired state")
+	if !found {
+		return resolved, nil
 	}
-	resolved.Store = application.Store{Root: filepath.Join(filepath.Dir(path), ".baseharbor", "apps")}
-	resolved.ManifestPath = path
+	selection, err := application.ResolveRepositoryEnvironment(cwd, backupManifest.Environment)
+	if err != nil {
+		return resolved, err
+	}
+	if selection.Manifest.YAML() != backupManifest.YAML() {
+		return resolved, errors.New("selected repository environment manifest does not match backup desired state")
+	}
+	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
+	resolved.Store = application.Store{Root: filepath.Join(stateRoot, "apps")}
+	resolved.ManifestPath = selection.ManifestPath
+	resolved.RepositoryRoot = selection.RepositoryRoot
+	resolved.StateRoot = stateRoot
 	resolved.FromRepository = true
 	return resolved, nil
 }

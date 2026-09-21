@@ -263,10 +263,10 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("record successfully applied repository desired state: %w", err)
 			}
 			term.Section("Application")
-			term.Success("READY", "application and requested infrastructure verified")
-			if !term.Quiet() {
+			if resolved.FromRepository && !term.Quiet() {
 				fmt.Fprintln(out, "  Environment contract: baha app env --path")
 			}
+			term.Success("READY", "application and requested infrastructure verified")
 			return nil
 		},
 	}

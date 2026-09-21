@@ -2,6 +2,9 @@
 
 ## Status
 
+> Roadmap sequencing note (2026-09-21): the architectural decision remains unchanged, but release sequencing has evolved. v0.7 implements the Kubernetes Runtime, v0.8 completes Kubernetes feature parity and production acceptance, and OpenShift/Enterprise specialization follows afterward. Version labels in this ADR are sequencing context, not part of the contract decision.
+
+
 Accepted for v0.4.0.
 
 ## Context
@@ -48,6 +51,7 @@ Manifest v1 fields are classified as follows.
 | generated Compose networks/project names/ports/volumes | provider implementation detail | never part of the portable contract |
 | FQDN, TLS source directory, selected TLS mode | deployment/operator state | stored outside `baseharbor.yaml` |
 | runtime provider/profile | deployment/platform state | stored outside `baseharbor.yaml` |
+| delivery provider/mode and reconciliation ownership | deployment/operator state | stored outside `baseharbor.yaml`; never an Argo/Flux application field |
 | OpenBao paths/AppRoles/policies | capability-provider implementation detail | never part of the portable contract |
 
 Future object storage, persistent storage, exposure, TLS intent, health, backup relevance, observability, generic inputs and availability intent are portable contract domains when they express application requirements. Their concrete provider products, topology objects and security policy remain environment/platform concerns.
@@ -69,7 +73,7 @@ The top-level contract version is the compatibility gate.
 
 A later contract version may gain first-class workload/endpoints, object storage, persistent storage, exposure/TLS intent, health, backup/observability, input and availability declarations. Manifest v1 translation remains supported until a separately documented release policy explicitly removes it.
 
-### 5. Runtime and capability providers are independent axes
+### 5. Runtime, capability and delivery providers are independent axes
 
 A deployment may combine, for example:
 
@@ -82,6 +86,10 @@ secrets: Vault
 
 Kubernetes or OpenShift therefore must not become shorthand for PostgreSQL, secrets or object-storage provider selection.
 
+Delivery selection is likewise deployment/operator state. Direct runtime mutation and delegated/GitOps reconciliation must be selectable without changing portable application intent. Argo CD, Flux, Git repository layout, Helm values and reconciler-specific resources remain delivery/runtime implementation details.
+
+For one managed resource set there must be exactly one active reconciliation owner.
+
 ### 6. Lifecycle stability is the acceptance test
 
 The intended lifecycle is:
@@ -93,7 +101,7 @@ application source + baseharbor.yaml
             +--> test / staging          (Compose or future Kubernetes)
             +--> production              (provider selected by deployment)
             +--> Kubernetes              (future v0.7 provider)
-            +--> OpenShift / enterprise  (future v0.8 specialization)
+            +--> OpenShift / enterprise  (future post-v0.8 specialization)
 ```
 
 Moving between those stages may change deployment state, provider selection, topology and policy. It must not require rewriting the application's logical capability identities or introducing Kubernetes/OpenShift objects into the common application contract.

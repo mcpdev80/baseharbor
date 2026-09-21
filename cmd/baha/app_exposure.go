@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -27,7 +26,7 @@ func prepareManagedExposure(ctx context.Context, compose bhruntime.Compose, reso
 	if !resolved.FromRepository {
 		return nil, errors.New("managed HTTP exposure requires a repository-owned baseharbor.yaml")
 	}
-	state, err := loadRepositoryInitState(filepath.Dir(resolved.ManifestPath))
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return nil, fmt.Errorf("load repository deployment state for managed exposure: %w", err)
 	}

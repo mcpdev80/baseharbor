@@ -19,10 +19,11 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 	if err != nil {
 		return fmt.Errorf("resolve current directory: %w", err)
 	}
-	if _, err := application.FindRepositoryManifest(cwd); err != nil {
-		if !errors.Is(err, application.ErrRepositoryManifestNotFound) {
-			return err
-		}
+	found, err := application.HasRepositoryApplication(cwd)
+	if err != nil {
+		return err
+	}
+	if !found {
 		initialized, err := initializeRepositoryManifestForUp(ctx, in, out, errOut, opts)
 		if err != nil {
 			return err
