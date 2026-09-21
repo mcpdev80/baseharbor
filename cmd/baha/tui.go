@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,21 +12,11 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
-type tuiDoctorResult struct {
-	Application string                     `json:"application"`
-	Environment string                     `json:"environment"`
-	Healthy     bool                       `json:"healthy"`
-	Checks      []preflight.Result         `json:"checks"`
-	TLS         *applicationTLSObservation `json:"tls,omitempty"`
-}
+type tuiDoctorResult = applicationDoctorResult
 
-type tuiApplicationStatusResult struct {
-	application.StatusResult
-	TLS *applicationTLSObservation `json:"tls,omitempty"`
-}
+type tuiApplicationStatusResult = applicationStatusResult
 
 type tuiStatusMsg struct {
 	result application.StatusResult
@@ -218,29 +205,11 @@ func (m tuiModel) View() tea.View {
 }
 
 func collectTUIStatus(ctx context.Context, store application.Store) (tuiApplicationStatusResult, error) {
-	var out bytes.Buffer
-	err := appStatusCommandWithTLS(store).Run(ctx, []string{"-o", "json"}, &out, io.Discard)
-	var result tuiApplicationStatusResult
-	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
-		if err != nil {
-			return tuiApplicationStatusResult{}, errors.Join(err, decodeErr)
-		}
-		return tuiApplicationStatusResult{}, decodeErr
-	}
-	return result, nil
+	return collectApplicationStatusResult(ctx, store, nil)
 }
 
 func collectTUIDoctor(ctx context.Context, store application.Store) (tuiDoctorResult, error) {
-	var out bytes.Buffer
-	err := appDoctorCommand(store).Run(ctx, []string{"-o", "json"}, &out, io.Discard)
-	var result tuiDoctorResult
-	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
-		if err != nil {
-			return tuiDoctorResult{}, errors.Join(err, decodeErr)
-		}
-		return tuiDoctorResult{}, decodeErr
-	}
-	return result, nil
+	return collectApplicationDoctor(ctx, store, nil)
 }
 
 func renderTUISummary(result application.StatusResult, width int, success, failure lipgloss.Style) string {
