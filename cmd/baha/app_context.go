@@ -38,6 +38,27 @@ type resolvedApplication struct {
 	FromRepository bool
 }
 
+func (r resolvedApplication) repositoryRoot() string {
+	if r.RepositoryRoot != "" {
+		return r.RepositoryRoot
+	}
+	if r.ManifestPath != "" {
+		return filepath.Dir(r.ManifestPath)
+	}
+	return ""
+}
+
+func (r resolvedApplication) stateRoot() string {
+	if r.StateRoot != "" {
+		return r.StateRoot
+	}
+	root := r.repositoryRoot()
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, ".baseharbor")
+}
+
 func resolveApplication(store application.Store, args []string, command string) (resolvedApplication, error) {
 	if len(args) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
