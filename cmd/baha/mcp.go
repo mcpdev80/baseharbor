@@ -11,7 +11,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
 type machineInspectInput struct {
@@ -65,7 +64,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.inspect",
 		Description: "Read-only repository inspection. Returns deterministic, secret-safe evidence and capability findings without changing repository or runtime state.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: true},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(true)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineInspectInput) (*mcp.CallToolResult, any, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
@@ -81,7 +80,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.plan",
 		Description: "Read-only deterministic desired-state plan for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		resolved, err := resolveMachineApplication(store, strings.TrimSpace(input.Name), "plan")
 		if err != nil {
@@ -97,7 +96,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.status",
 		Description: "Read-only runtime and readiness observation for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		var args []string
 		if name := strings.TrimSpace(input.Name); name != "" {
@@ -113,7 +112,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "baseharbor.doctor",
 		Description: "Read-only diagnostic verification for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, OpenWorldHint: false},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		var args []string
 		if name := strings.TrimSpace(input.Name); name != "" {
@@ -144,3 +143,7 @@ func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
 	}, payload, nil
 }
 
+
+func boolPointer(value bool) *bool {
+	return &value
+}
