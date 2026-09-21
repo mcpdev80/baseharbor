@@ -8,6 +8,9 @@ on:
         required: false
         default: develop
         type: string
+  push:
+    branches:
+      - 'runtime-validation/podman/**'
 
 permissions:
   contents: read
@@ -21,7 +24,7 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
 
       - uses: actions/setup-go@v7
         with:
