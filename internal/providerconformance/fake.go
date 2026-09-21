@@ -22,25 +22,25 @@ const (
 )
 
 type FakeDriver struct {
-	mu          sync.Mutex
-	provider    capability.Provider
-	mode        FailureMode
-	owner       string
-	resource    capability.Resource
-	created     bool
-	drifted     bool
-	bound       bool
-	verified    bool
-	creates     int
-	noops       int
-	repairs     int
-	destroys    int
-	credential  string
-	lastBinding capability.Binding
+	mu                  sync.Mutex
+	provider            capability.Provider
+	mode                FailureMode
+	owner               string
+	resource            capability.Resource
+	created             bool
+	drifted             bool
+	bound               bool
+	verified            bool
+	creates             int
+	noops               int
+	repairs             int
+	destroys            int
+	credential          string
+	lastBinding         capability.Binding
 	reconciliationOwner reconciliation.Ownership
-	conflict bool
-	unsupported bool
-	degraded bool
+	conflict            bool
+	unsupported         bool
+	degraded            bool
 }
 
 func NewFakeDriver(provider capability.Provider) *FakeDriver {
