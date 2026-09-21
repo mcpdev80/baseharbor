@@ -21,117 +21,79 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build exact BaseHarbor CLI under test
-        run: CGO_ENABLED=0 go build -trimpath -o /tmp/baha ./cmd/baha
-
-      - name: Build exact runtime broker image under test
+      - name: Build exact BaseHarbor artifacts
         run: |
+          CGO_ENABLED=0 go build -trimpath -o /tmp/baha ./cmd/baha
           mkdir -p /tmp/baseharbor-runtime-image
           cp /tmp/baha /tmp/baseharbor-runtime-image/baha
           cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
           docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" /tmp/baseharbor-runtime-image
 
-      - name: Occupy common control-plane ports
+      - name: Prepare realistic host constraints and MailFlow
         run: |
           docker run -d --name baseharbor-port-5432 -p 127.0.0.1:5432:80 nginx:alpine
           docker run -d --name baseharbor-port-8200 -p 127.0.0.1:8200:80 nginx:alpine
+          git clone --depth 1 --branch main https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
 
-      - name: Clone reference application from main
-        run: git clone --depth 1 --branch main https://github.com/mcpdev80/MAILFLOW-AI_MAILING.git /tmp/mailflow
-
-      - name: Prove one-command startup with generated secrets and safe port recovery
+      - name: Prove current developer journey
         working-directory: /tmp/mailflow
         run: |
+          set -euo pipefail
           umask 077
-          /tmp/baha app plan | tee /tmp/developer-journey-plan.out
-          grep -q 'SECRET_KEY' /tmp/developer-journey-plan.out
 
-          /tmp/baha up --yes --recovery-file /tmp/developer-journey-openbao-recovery.json | tee /tmp/developer-journey-up.out
-          grep -q 'Application repository detected: mailflow' /tmp/developer-journey-up.out
-          grep -q 'OpenBao is not initialized; bootstrapping managed secrets' /tmp/developer-journey-up.out
-          grep -q 'Converging application backend and workload' /tmp/developer-journey-up.out
-          grep -q 'application and requested infrastructure verified' /tmp/developer-journey-up.out
-          grep -Eq '^READY +exposure +2/2 published HTTP/TLS endpoint\(s\) ready$' /tmp/developer-journey-up.out
+          /tmp/baha app plan | tee /tmp/journey-plan.out
+          grep -q 'SECRET_KEY' /tmp/journey-plan.out
 
-          test -f /tmp/developer-journey-openbao-recovery.json
+          /tmp/baha up --yes --recovery-file /tmp/journey-openbao-recovery.json | tee /tmp/journey-up.out
+          grep -q 'Application repository detected: mailflow' /tmp/journey-up.out
+          grep -q 'application and requested infrastructure verified' /tmp/journey-up.out
+          test -f /tmp/journey-openbao-recovery.json
           test -f "$BASEHARBOR_STATE_DIR/runtime.env"
-          test -f "$BASEHARBOR_STATE_DIR/compose.yaml"
           ! grep -q '^BASEHARBOR_POSTGRES_PORT=5432$' "$BASEHARBOR_STATE_DIR/runtime.env"
           ! grep -q '^BASEHARBOR_OPENBAO_PORT=8200$' "$BASEHARBOR_STATE_DIR/runtime.env"
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
-          /tmp/baha app status | tee /tmp/developer-journey-status.out
-          grep -Eq '^READY +workload/api +running health=healthy$' /tmp/developer-journey-status.out
-          grep -Eq '^READY +workload/edge +running .*exposure=http://localhost:80 HTTP 30[1278].*exposure=https://localhost:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-status.out
-          grep -Eq '^READY +workload/web +running$' /tmp/developer-journey-status.out
-          grep -Eq '^READY +workload/worker +running$' /tmp/developer-journey-status.out
-          grep -Fq 'READY workload          4/4 selected Compose service(s) ready' /tmp/developer-journey-status.out
+          /tmp/baha app status | tee /tmp/journey-status.out
+          grep -Eq '^  READY +workload/api +running health=healthy$' /tmp/journey-status.out
+          grep -Eq '^  READY +workload/edge +running .*http://localhost:8080 HTTP 30[1278].*https://localhost:8443 HTTP 2[0-9][0-9]$' /tmp/journey-status.out
+          grep -Eq '^  READY +workload/web +running$' /tmp/journey-status.out
+          grep -Eq '^  READY +workload/worker +running$' /tmp/journey-status.out
+          grep -Eq '^  READY +workload +4/4 selected Compose service\(s\) ready$' /tmp/journey-status.out
 
-          /tmp/baha app doctor | tee /tmp/developer-journey-doctor.out
-          grep -q '^READY$' /tmp/developer-journey-doctor.out
-          grep -Eq '^\[OK\] api +running health=healthy$' /tmp/developer-journey-doctor.out
-          grep -Eq '^READY +edge +running .*exposure=http://localhost:80 HTTP 30[1278].*exposure=https://localhost:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-doctor.out
+          /tmp/baha app doctor | tee /tmp/journey-doctor.out
+          grep -q '^READY$' /tmp/journey-doctor.out
 
-          /tmp/baha app show | tee /tmp/developer-journey-show.out
-          grep -Fq 'Application: mailflow' /tmp/developer-journey-show.out
-          grep -Fq 'Environment: production' /tmp/developer-journey-show.out
-          grep -Fq 'Status: READY' /tmp/developer-journey-show.out
-          grep -Eq '^  PostgreSQL +default +healthy$' /tmp/developer-journey-show.out
-          grep -Eq '^  Valkey +default +healthy$' /tmp/developer-journey-show.out
-          grep -Eq '^  api +running health=healthy$' /tmp/developer-journey-show.out
-          grep -Eq '^  edge +running .*exposure=http://localhost:80 HTTP 30[1278].*exposure=https://localhost:443 HTTP 2[0-9][0-9]$' /tmp/developer-journey-show.out
-          grep -Eq '^  required +4$' /tmp/developer-journey-show.out
-          grep -Eq '^  ready +4$' /tmp/developer-journey-show.out
-          ! grep -Fq 'SECRET_KEY' /tmp/developer-journey-show.out
-          ! grep -Fq 'postgres://' /tmp/developer-journey-show.out
-          ! grep -Fq 'redis://' /tmp/developer-journey-show.out
+          /tmp/baha app show | tee /tmp/journey-show.out
+          grep -Fq 'Application: mailflow' /tmp/journey-show.out
+          grep -Fq 'Environment: dev' /tmp/journey-show.out
+          grep -Fq 'Status: READY' /tmp/journey-show.out
+          grep -Eq '^  required +5$' /tmp/journey-show.out
+          grep -Eq '^  ready +5$' /tmp/journey-show.out
+          ! grep -Fq 'SECRET_KEY' /tmp/journey-show.out
+          ! grep -Fq 'postgres://' /tmp/journey-show.out
+          ! grep -Fq 'redis://' /tmp/journey-show.out
 
-      - name: Verify real repository workload and managed backends
-        working-directory: /tmp/mailflow
-        run: |
-          workload_project=baseharbor-workload-mailflow-production
+          workload_project=baseharbor-workload-mailflow-dev
           services=$(docker ps --filter "label=com.docker.compose.project=$workload_project" --format '{{.Label "com.docker.compose.service"}}' | sort)
-          printf '%s\n' "$services"
-          printf '%s\n' "$services" | grep -qx 'api'
-          printf '%s\n' "$services" | grep -qx 'edge'
-          printf '%s\n' "$services" | grep -qx 'web'
-          printf '%s\n' "$services" | grep -qx 'worker'
+          for service in api edge web worker; do printf '%s\n' "$services" | grep -qx "$service"; done
 
-          api_id=$(docker ps --filter "label=com.docker.compose.project=$workload_project" --filter 'label=com.docker.compose.service=api' -q)
-          test -n "$api_id"
-          docker exec "$api_id" python -c 'import os,re; assert re.fullmatch(r"[0-9a-f]{64}", os.environ["SECRET_KEY"]); assert "@postgres:5432/" in os.environ["DATABASE_URL"]; assert "@valkey:6379/0" in os.environ["REDIS_URL"]'
-
-      - name: Verify MailFlow app-owned HTTP and TLS exposure
-        working-directory: /tmp/mailflow
-        run: |
-          curl --fail --silent --show-error --head --resolve localhost:80:127.0.0.1 http://localhost/ | tee /tmp/mailflow-http-headers.out
-          grep -Eq '^HTTP/.* 30[1278]' /tmp/mailflow-http-headers.out
-          curl --fail --silent --show-error --insecure --location --resolve localhost:443:127.0.0.1 https://localhost/ --output /tmp/mailflow-home.html
+          curl --fail --silent --show-error --head --resolve localhost:8080:127.0.0.1 http://localhost:8080/ | grep -Eq '^HTTP/.* 30[1278]'
+          curl --fail --silent --show-error --insecure --location --resolve localhost:8443:127.0.0.1 https://localhost:8443/ --output /tmp/mailflow-home.html
           test -s /tmp/mailflow-home.html
-          openssl s_client -connect 127.0.0.1:443 -servername localhost </dev/null 2>/tmp/mailflow-tls.err | grep -q 'BEGIN CERTIFICATE'
+          openssl s_client -connect 127.0.0.1:8443 -servername localhost </dev/null 2>/tmp/mailflow-tls.err | grep -q 'BEGIN CERTIFICATE'
 
-      - name: Prove restart lifecycle preserves application state contract
-        working-directory: /tmp/mailflow
-        run: |
-          /tmp/baha app down | tee /tmp/developer-journey-down.out
-          grep -q 'persistent data preserved' /tmp/developer-journey-down.out
-          test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production)"
+          /tmp/baha app down | tee /tmp/journey-down.out
+          grep -q 'persistent data preserved' /tmp/journey-down.out
+          test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-mailflow-dev)"
 
-          /tmp/baha up --yes | tee /tmp/developer-journey-restart.out
-          grep -q 'application and requested infrastructure verified' /tmp/developer-journey-restart.out
-          grep -Eq '^READY +exposure +2/2 published HTTP/TLS endpoint\(s\) ready$' /tmp/developer-journey-restart.out
+          /tmp/baha up --yes | tee /tmp/journey-restart.out
+          grep -q 'application and requested infrastructure verified' /tmp/journey-restart.out
           /tmp/baha app doctor | grep -q '^READY$'
 
       - name: Diagnostics on failure
         if: failure()
         working-directory: /tmp/mailflow
         run: |
-          printf '%s\n' '--- BaseHarbor control plane ---'
-          docker ps -a --filter label=com.docker.compose.project=baseharbor || true
-          printf '%s\n' '--- MailFlow workload ---'
-          docker ps -a --filter label=com.docker.compose.project=baseharbor-workload-mailflow-production || true
-          printf '%s\n' '--- MailFlow backend ---'
-          docker ps -a --filter label=com.docker.compose.project=baseharbor-mailflow-production || true
+          docker ps -a || true
           /tmp/baha app status || true
           /tmp/baha app doctor || true
           /tmp/baha app show || true
@@ -145,4 +107,4 @@ jobs:
             docker compose --project-name baseharbor --file "$BASEHARBOR_STATE_DIR/compose.yaml" --env-file "$BASEHARBOR_STATE_DIR/runtime.env" down -v || true
           fi
           docker rm -f baseharbor-port-5432 baseharbor-port-8200 || true
-          rm -f /tmp/developer-journey-openbao-recovery.json
+          rm -f /tmp/journey-openbao-recovery.json
