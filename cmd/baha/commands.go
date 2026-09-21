@@ -193,6 +193,6 @@ func inApplicationRepository() bool {
 	if err != nil {
 		return false
 	}
-	_, err = application.FindRepositoryManifest(cwd)
-	return err == nil
+	found, err := application.HasRepositoryApplication(cwd)
+	return err == nil && found
 }
