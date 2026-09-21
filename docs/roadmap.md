@@ -203,60 +203,103 @@ Implemented/completed in v0.4.12:
 Remote MCP transport/authentication, mutating/destructive MCP tools, embedded LLM logic, vendor-specific agent integrations and application-provided MCP capabilities remain out of scope.
 
 
-## Next architecture tracks
+## Remaining v0.4 sequence
 
-### v0.5 – Compose platform capabilities
+v0.4 finishes the runtime-neutral BaseHarbor language and lifecycle semantics before the compatibility freeze.
 
-Expand the portable capability model while keeping Compose as the production implementation:
+### v0.4.13 – Environment and policy semantics
 
-- capability-provider boundaries for relational SQL, cache/key-value, secrets, S3-compatible object storage and exposure;
-- replaceable reference providers rather than product lock-in;
-- provider conformance and explicit capability negotiation;
-- additional object-storage implementations such as Ceph RGW/external S3 behind the implemented `object-storage.s3/v1` contract;
-- further provider-neutral exposure/TLS intent without leaking Compose details.
+- deterministic environment resolution;
+- typed allow/warn/deny policy;
+- secure defaults and bounded operator overrides;
+- environment remains distinct from runtime, topology and availability.
 
-### v0.6 – Environments, policy, identity and topology intent
+### v0.4.14 – Reconciliation, security and lifecycle semantics
 
-Add platform/operator policy while keeping it outside the application contract. This is also the natural phase for the first remote/API management surface and a lightweight Web UI backed by the shared core:
+- desired/observed/diff/ownership model;
+- typed drift, conflict, foreign ownership, unsupported and degraded states;
+- idempotent convergence and minimal repair;
+- ownership-safe destroy and verified recovery.
 
-- named environment profiles and server-side policy;
-- runtime/capability provider selection per environment;
-- OIDC login, RBAC, audit and just-in-time/elevated production access where required;
-- topology intent such as standard versus enterprise/HA without changing logical application resource identity;
-- external/customer-managed provider bindings;
-- stable machine-readable BaseHarbor API for application/platform operations;
-- lightweight Web UI for plan/apply/status/doctor/logs/inputs/backup/restore/update without duplicating lifecycle logic;
-- shared authorization/policy boundaries for CLI, API and Web UI.
+### v0.4.15 – Audit and evidence semantics
 
-### v0.7 – Kubernetes provider
+- secret-safe lifecycle/policy/verification events;
+- desired/enforced/observed/verified distinction;
+- generic evidence export boundary without vendor lock-in.
 
-Map the same portable application requirements to Kubernetes primitives where applicable and introduce the BaseHarbor Operator as the cluster-native control surface over the same shared core:
+### v0.4.16 – Capability Provider SDK, starter kit and conformance
 
-- Deployments and StatefulSets;
-- Services;
-- Gateway/Ingress;
-- PVCs/storage classes;
-- workload secret delivery/provider integration;
-- NetworkPolicies;
-- readiness/liveness probes;
-- PodDisruptionBudgets where required by topology/policy;
-- provider-conformance and migration tests;
-- BaseHarbor CRDs/controller reconciliation;
-- shared status/condition mapping from BaseHarbor readiness and diagnostics;
-- `baha`/API interaction with cluster-managed applications without wrapping imperative CLI commands inside the Operator.
+- practical third-party capability-provider authoring path;
+- conformance against the now-complete lifecycle, ownership, security and evidence semantics;
+- no runtime-provider SDK and no Kubernetes-specific types.
 
-Applications keep the same `baha` lifecycle and logical resources rather than gaining a second Kubernetes-specific operational contract.
+### v0.4.17 – Runtime boundary and semantic full-stack acceptance
 
-### v0.8 – OpenShift / enterprise provider
+- classify all important state as portable, deployment/operator, runtime, provider or protected/generated;
+- prove the full Compose reference lifecycle;
+- prove CLI/JSON/MCP semantic consistency;
+- close all blockers before the v0.5 freeze.
 
-Add OpenShift-specific behavior where Kubernetes-generic mapping is insufficient:
+## v0.5 – Contract freeze and compatibility
 
-- Routes/Gateway integrations;
-- SCC/security constraints;
-- Operator integrations where appropriate;
-- OpenShift identity/policy integration points;
-- enterprise registry, proxy and offline constraints;
-- customer-managed infrastructure capability providers.
+v0.5 adds no new platform primitive. It freezes, versions and proves the contracts completed in v0.4.
+
+- **v0.5.0** complete agent-native core and contract freeze;
+- **v0.5.1** state versioning and migration compatibility;
+- **v0.5.2** cross-component compatibility contracts;
+- **v0.5.3** upgrade, recovery and deprecation behavior;
+- **v0.5.4** portability and compatibility acceptance.
+
+Before v0.5 closes, the deployment/runtime boundary must be able to represent a future restricted runtime target, secret-safe runtime access references and platform-owned resource references without adding Kubernetes-specific fields to portable application intent.
+
+The BaseHarbor MCP/JSON control surface must also cover the complete useful Compose lifecycle before the machine contract is considered frozen.
+
+## v0.6 – Availability, topology and portable guarantees
+
+v0.6 defines portable availability semantics before any Kubernetes implementation.
+
+- **v0.6.0** availability and portable guarantee semantics;
+- **v0.6.1** runtime and capability guarantee negotiation;
+- **v0.6.2** truthful Compose realization and verification;
+- **v0.6.3** topology and portability acceptance.
+
+Environment, runtime and availability remain independent. Compose may satisfy only the guarantees it can actually prove; there is no silent downgrade or invented HA.
+
+Human OIDC/RBAC/JIT access, remote-management UI and other platform-access concerns are separate later tracks and do not define v0.6.
+
+## v0.7 – Kubernetes Runtime
+
+v0.7 implements Kubernetes as a BaseHarbor Runtime Provider. Namespace-only operation with a pre-provisioned target namespace is the primary enterprise-compatible design target.
+
+- **v0.7.0** Runtime foundation and namespace-only access model;
+- **v0.7.1** namespaced security, identity and networking;
+- **v0.7.2** platform-owned HTTP exposure with Gateway API;
+- **v0.7.3** namespace-only persistent storage realization;
+- **v0.7.4** stateful runtime support without capability-provider leakage;
+- **v0.7.5** availability realization with permission-aware verification;
+- **v0.7.6** Runtime conformance across restricted-access profiles;
+- **v0.7.7** Compose-to-Kubernetes portability proof under namespace-only constraints.
+
+Cluster-admin, namespace creation and cluster-wide discovery are not normal application-lifecycle requirements. Platform-owned resources such as namespaces, Gateway/GatewayClass, StorageClass, CRDs and admission policy remain consumable without BaseHarbor owning them.
+
+The normal path uses the Kubernetes API directly. kubectl, Helm, CRDs and a BaseHarbor Operator are not required runtime engines for v0.7.
+
+## v0.8 – Kubernetes Complete
+
+v0.8 closes the product-level parity gap and makes Kubernetes a fully first-class BaseHarbor production runtime.
+
+- **v0.8.0** full application lifecycle parity;
+- **v0.8.1** capability and provider-placement parity;
+- **v0.8.2** backup, restore and disaster-recovery parity;
+- **v0.8.3** observability, diagnostics and evidence parity;
+- **v0.8.4** update, migration and recovery parity;
+- **v0.8.5** agent-native and developer-experience parity;
+- **v0.8.6** production hardening and complete conformance matrix;
+- **v0.8.7** Kubernetes Complete first-class runtime acceptance.
+
+The completion gate is that every BaseHarbor core feature applicable to Kubernetes works through BaseHarbor semantics, including namespace-only operation, without a Kubernetes-specific portable application contract or normal raw-Kubernetes fallback.
+
+Only after Kubernetes Complete does the roadmap move into OpenShift/Enterprise-specific behavior. Operator/OLM, SCC/Route-specific integration, enterprise proxy/registry/disconnected flows and human OIDC/JIT access remain separate later tracks unless a demonstrated prerequisite is discovered.
 
 ## Long-term success criterion
 
