@@ -36,6 +36,11 @@ type WorkloadSecurityReport struct {
 	Findings []WorkloadSecurityFinding `json:"findings"`
 }
 
+type WorkloadSecurityPolicy struct {
+	Mode             string   `json:"mode"`
+	AllowedOverrides []string `json:"allowed_overrides,omitempty"`
+}
+
 func (r WorkloadSecurityReport) Denied() bool {
 	for _, finding := range r.Findings {
 		if finding.Decision == WorkloadSecurityDeny {
@@ -72,21 +77,14 @@ type renderedComposeMount struct {
 }
 
 func AnalyzeRenderedComposeSecurity(m Manifest, rendered []byte) (WorkloadSecurityReport, error) {
-	mode, err := workloadSecurityMode(m)
+	policy, err := ResolveWorkloadSecurityPolicy(m)
 	if err != nil {
 		return WorkloadSecurityReport{}, err
 	}
+	mode := policy.Mode
 	allowed := map[string]bool{}
-	if raw := strings.TrimSpace(os.Getenv(WorkloadSecurityAllowEnv)); raw != "" {
-		if mode != "development" {
-			return WorkloadSecurityReport{}, fmt.Errorf("%s is permitted only in development mode", WorkloadSecurityAllowEnv)
-		}
-		for _, value := range strings.Split(raw, ",") {
-			code := strings.TrimSpace(strings.ToLower(value))
-			if code != "" {
-				allowed[code] = true
-			}
-		}
+	for _, code := range policy.AllowedOverrides {
+		allowed[code] = true
 	}
 
 	var config renderedSecurityCompose
@@ -151,21 +149,57 @@ func AnalyzeRenderedComposeSecurity(m Manifest, rendered []byte) (WorkloadSecuri
 	return report, nil
 }
 
-func workloadSecurityMode(m Manifest) (string, error) {
+func ResolveWorkloadSecurityPolicy(m Manifest) (WorkloadSecurityPolicy, error) {
+	baseMode := "managed"
+	switch strings.ToLower(strings.TrimSpace(m.Environment)) {
+	case "dev", "development":
+		baseMode = "development"
+	}
+
+	mode := baseMode
 	if raw := strings.ToLower(strings.TrimSpace(os.Getenv(WorkloadSecurityModeEnv))); raw != "" {
 		switch raw {
 		case "development", "managed":
-			return raw, nil
 		default:
-			return "", fmt.Errorf("%s must be development or managed", WorkloadSecurityModeEnv)
+			return WorkloadSecurityPolicy{}, fmt.Errorf("%s must be development or managed", WorkloadSecurityModeEnv)
 		}
+		if baseMode != "development" && raw == "development" {
+			return WorkloadSecurityPolicy{}, fmt.Errorf("%s cannot weaken managed policy for environment %q", WorkloadSecurityModeEnv, m.Environment)
+		}
+		mode = raw
 	}
-	switch strings.ToLower(strings.TrimSpace(m.Environment)) {
-	case "dev", "development":
-		return "development", nil
-	default:
-		return "managed", nil
+
+	policy := WorkloadSecurityPolicy{Mode: mode}
+	if raw := strings.TrimSpace(os.Getenv(WorkloadSecurityAllowEnv)); raw != "" {
+		if mode != "development" {
+			return WorkloadSecurityPolicy{}, fmt.Errorf("%s is permitted only in development mode", WorkloadSecurityAllowEnv)
+		}
+		seen := map[string]struct{}{}
+		for _, value := range strings.Split(raw, ",") {
+			code := strings.TrimSpace(strings.ToLower(value))
+			if code == "" {
+				continue
+			}
+			if code != "host-device" {
+				return WorkloadSecurityPolicy{}, fmt.Errorf("%s cannot override non-overridable policy %q", WorkloadSecurityAllowEnv, code)
+			}
+			if _, ok := seen[code]; ok {
+				continue
+			}
+			seen[code] = struct{}{}
+			policy.AllowedOverrides = append(policy.AllowedOverrides, code)
+		}
+		sort.Strings(policy.AllowedOverrides)
 	}
+	return policy, nil
+}
+
+func workloadSecurityMode(m Manifest) (string, error) {
+	policy, err := ResolveWorkloadSecurityPolicy(m)
+	if err != nil {
+		return "", err
+	}
+	return policy.Mode, nil
 }
 
 func dangerousLinuxCapability(value string) bool {
