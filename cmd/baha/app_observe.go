@@ -392,11 +392,11 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				if format == outputJSON {
 					payload := struct {
 						ContractVersion string             `json:"contract_version"`
-						Application string             `json:"application"`
-						Environment string             `json:"environment"`
-						State       string             `json:"state"`
-						Healthy     bool               `json:"healthy"`
-						Checks      []preflight.Result `json:"checks"`
+						Application     string             `json:"application"`
+						Environment     string             `json:"environment"`
+						State           string             `json:"state"`
+						Healthy         bool               `json:"healthy"`
+						Checks          []preflight.Result `json:"checks"`
 					}{ContractVersion: "v1", Application: m.Name, Environment: m.Environment, State: "not_applied", Healthy: false, Checks: []preflight.Result{}}
 					return writeJSON(out, payload)
 				}
