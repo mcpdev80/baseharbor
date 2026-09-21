@@ -19,25 +19,15 @@
   </a>
 </p>
 
-- **Inspect existing repositories**
+## Why developers care
 
-  Discover infrastructure requirements from code, dependencies, Compose files, ports and configuration.
-
-- **Declare needs, not products.**
-
-  Keep infrastructure intent portable instead of coupling the app to a specific implementation.
-
-- **Use standard interfaces.**
-
-  PostgreSQL, Redis/Valkey, S3, HTTP, OTLP, environment variables and files. No proprietary SDK in your business code.
-
-- **Zero-trust by default.**
-
-  Least privilege, scoped credentials, explicit trust boundaries and fail-closed behavior.
-
-- **Built for humans and AI agents.**
-
-  Structured, secret-safe JSON plus a bounded MCP interface without generic shell or Docker access.
+| Capability | What it means |
+| --- | --- |
+| **Inspect existing repositories** | Discover infrastructure requirements from code, dependencies, Compose files, ports and configuration. |
+| **Declare needs, not products** | Keep infrastructure intent portable instead of coupling the app to a specific implementation. |
+| **Use standard interfaces** | `PostgreSQL` · `Redis/Valkey` · `S3` · `HTTP` · `OTLP` · environment variables · files |
+| **Zero-trust by default** | Least privilege, scoped credentials, explicit trust boundaries and fail-closed behavior. |
+| **Built for humans and AI agents** | Structured, secret-safe JSON plus a bounded MCP interface without generic shell or Docker access. |
 
 ```bash
 baha app inspect .
