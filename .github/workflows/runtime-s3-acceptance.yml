@@ -102,7 +102,7 @@ jobs:
           EOF
 
           /tmp/baha app apply | tee /tmp/runtime-s3-a-apply.out
-          grep -q "Application runtime-s3-a is ready" /tmp/runtime-s3-a-apply.out
+          grep -q "application and requested infrastructure verified" /tmp/runtime-s3-a-apply.out
 
           app_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-runtime-s3-a-dev --filter label=com.docker.compose.service=api)"
           broker_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-runtime-s3-a-dev --filter label=com.docker.compose.service=broker)"
