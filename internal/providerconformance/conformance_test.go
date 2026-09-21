@@ -32,8 +32,8 @@ func TestExecutableProviderConformanceLifecycle(t *testing.T) {
 		t.Fatalf("conformance: %v (%#v)", err, report)
 	}
 	stats := driver.Stats()
-	if stats.Creates != 1 || stats.Noops != 1 {
-		t.Fatalf("expected CREATE then NOOP, got %#v", stats)
+	if stats.Creates != 1 || stats.Noops != 0 {
+		t.Fatalf("expected one CREATE and core-level NOOP without provider mutation, got %#v", stats)
 	}
 }
 
