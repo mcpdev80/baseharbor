@@ -180,7 +180,28 @@ Implemented:
 - first-class local Compose Playground documentation;
 - five-minute onboarding.
 
-The structured result work is deliberately a foundation only. Versioned agent contracts, semantic agent commands and MCP remain v0.4.12 work.
+The structured result work was deliberately a foundation for the next machine-facing layer.
+
+## v0.4.12 agent-native machine interface and MCP
+
+Implemented/completed in v0.4.12:
+
+- versioned BaseHarbor machine contract `v1` for inspect/plan/status/doctor results;
+- structured secret-safe error envelopes for JSON automation failures;
+- explicit semantic operation safety metadata;
+- `baha agent describe` / `baha agent describe -o json` discovery;
+- official Model Context Protocol Go SDK v1.8.0;
+- MCP specification `2026-07-28` as the current protocol target, with SDK-negotiated `2025-11-25` compatibility;
+- local stdio-only `baha mcp serve`;
+- four read-only MCP tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`;
+- explicit MCP read-only/destructive/open-world annotations;
+- shared typed status+TLS and doctor result paths consumed directly by CLI, TUI and MCP;
+- generic MCP-client acceptance proving discovery and semantic execution without a BaseHarbor-specific plugin;
+- secret-leak acceptance and explicit rejection of generic shell/Docker/Compose execution primitives;
+- bounded/idempotent `AGENTS.md` guidance extended toward structured BaseHarbor interfaces.
+
+Remote MCP transport/authentication, mutating/destructive MCP tools, embedded LLM logic, vendor-specific agent integrations and application-provided MCP capabilities remain out of scope.
+
 
 ## Next architecture tracks
 
