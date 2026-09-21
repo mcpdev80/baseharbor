@@ -76,7 +76,7 @@ func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApp
 		write(filepath.ToSlash(rel), data)
 	}
 
-	if data, err := os.ReadFile(repositoryInitEnvPath(repoRoot)); err == nil {
+	if data, err := os.ReadFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err == nil {
 		write(".baseharbor/init.env", data)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("read repository deployment state: %w", err)
