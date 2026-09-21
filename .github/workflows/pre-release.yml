@@ -20,6 +20,9 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+  push:
+    branches:
+      - 'release-candidate/**'
 
 permissions:
   contents: read
@@ -27,7 +30,7 @@ permissions:
 jobs:
   validate:
     name: pre-release-validation
-    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'develop' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.head_ref == 'develop' || startsWith(github.ref, 'refs/heads/release-candidate/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
 
@@ -35,7 +38,7 @@ jobs:
       - name: Checkout candidate source
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
           fetch-depth: 0
 
       - name: Resolve release candidate
