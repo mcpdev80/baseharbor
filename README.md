@@ -523,7 +523,8 @@ BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 - backup/restore and update lifecycle;
 - provider placement/ownership registry;
 - executable provider conformance;
-- Compose workload security preflight.
+- Compose workload security preflight;
+- versioned agent/machine contract with local stdio MCP for inspect, plan, status and doctor.
 
 ### Planned / future runtime tracks
 
@@ -545,6 +546,7 @@ Start here:
 - [Capability / provider model](docs/capability-provider-model.md)
 - [Provider Integration Contract](docs/provider-integration-contract.md)
 - [CLI reference](docs/cli.md)
+- [Agent-native machine interface](docs/agent-machine-interface.md)
 - [Roadmap](docs/roadmap.md)
 - [Release policy](docs/releases.md)
 
