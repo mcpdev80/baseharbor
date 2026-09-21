@@ -6,6 +6,10 @@ on:
     branches:
       - fix/v0414-ci-runner-hygiene
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
