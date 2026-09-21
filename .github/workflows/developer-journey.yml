@@ -54,7 +54,8 @@ jobs:
 
           /tmp/baha app status | tee /tmp/journey-status.out
           grep -Eq '^  READY +workload/api +running health=healthy$' /tmp/journey-status.out
-          grep -Eq '^  READY +workload/edge +running .*http://localhost:8080 HTTP 30[1278].*https://localhost:8443 HTTP 2[0-9][0-9]$' /tmp/journey-status.out
+          grep -Eq '^  READY +workload/edge +running exposure=http://localhost:8080 HTTP 30[1278]$' /tmp/journey-status.out
+          grep -Eq '^ +exposure=https://localhost:8443 HTTP 2[0-9][0-9]$' /tmp/journey-status.out
           grep -Eq '^  READY +workload/web +running$' /tmp/journey-status.out
           grep -Eq '^  READY +workload/worker +running$' /tmp/journey-status.out
           grep -Eq '^  READY +workload +4/4 selected Compose service\(s\) ready$' /tmp/journey-status.out
