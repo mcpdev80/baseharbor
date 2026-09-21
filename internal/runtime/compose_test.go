@@ -13,45 +13,36 @@ func TestRunningServicesProjectUsesRuntimeContainerState(t *testing.T) {
 	runtimePath := filepath.Join(dir, "runtime")
 	script := `#!/bin/sh
 set -eu
-case "$*" in
-  "container ls -a --format {{.Names}}")
-    printf '%s
-' demo-api demo-worker other-api stopped-api
-    ;;
-  "container inspect --format {{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }} demo-api")
-    printf '%s
-' 'baseharbor-demo-dev|api'
-    ;;
-  "container inspect --format {{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }} demo-worker")
-    printf '%s
-' 'baseharbor-demo-dev|worker'
-    ;;
-  "container inspect --format {{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }} other-api")
-    printf '%s
-' 'baseharbor-other-dev|api'
-    ;;
-  "container inspect --format {{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }} stopped-api")
-    printf '%s
-' 'baseharbor-demo-dev|stopped'
-    ;;
-  "container inspect --format {{.State.Running}} demo-api")
-    printf '%s
-' true
-    ;;
-  "container inspect --format {{.State.Running}} demo-worker")
-    printf '%s
-' true
-    ;;
-  "container inspect --format {{.State.Running}} stopped-api")
-    printf '%s
-' false
-    ;;
-  *)
-    printf 'unexpected arguments: %s
-' "$*" >&2
-    exit 2
-    ;;
-esac
+
+if [ "$1" = "container" ] && [ "$2" = "ls" ]; then
+	printf '%s\n' demo-api demo-worker other-api stopped-api
+	exit 0
+fi
+
+if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
+	template="$4"
+	name="$5"
+	if [ "$template" = "{{.State.Running}}" ]; then
+		case "$name" in
+		  demo-api|demo-worker) printf '%s\n' true ;;
+		  stopped-api) printf '%s\n' false ;;
+		  *) printf 'unexpected running-state container: %s\n' "$name" >&2; exit 2 ;;
+		esac
+		exit 0
+	fi
+
+	case "$name" in
+	  demo-api) printf '%s\n' 'baseharbor-demo-dev|api' ;;
+	  demo-worker) printf '%s\n' 'baseharbor-demo-dev|worker' ;;
+	  other-api) printf '%s\n' 'baseharbor-other-dev|api' ;;
+	  stopped-api) printf '%s\n' 'baseharbor-demo-dev|stopped' ;;
+	  *) printf 'unexpected label container: %s\n' "$name" >&2; exit 2 ;;
+	esac
+	exit 0
+fi
+
+printf 'unexpected arguments: %s\n' "$*" >&2
+exit 2
 `
 	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
