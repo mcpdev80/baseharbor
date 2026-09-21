@@ -16,6 +16,8 @@ The same logical application can therefore be instantiated as `dev`, `test`, `st
 
 Provider-specific implementation details such as Compose project names, networks, host ports, volumes or OpenBao paths are not portable application requirements and must not become application dependencies.
 
+Runtime selection, capability-provider selection, Delivery Provider selection and reconciliation ownership are deployment/operator concerns. Direct delivery or delegated/GitOps delivery must not require rewriting portable application intent. Argo CD, Flux, Git repository layout, Helm values and runtime-specific reconciliation resources remain outside the application contract.
+
 ## Portable application contract versus deployment state
 
 `baseharbor.yaml` Manifest v1 is the supported repository-owned compatibility contract. BaseHarbor translates its portable application intent into the provider-neutral `PortableContract`; Compose-specific compatibility fields are not part of that portable view.
