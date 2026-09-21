@@ -11,11 +11,11 @@ import (
 )
 
 type agentDescription struct {
-	ContractVersion string              `json:"contract_version"`
-	BaseHarborVersion string            `json:"baseharbor_version"`
-	Operations      []machine.Operation `json:"operations"`
-	Capabilities    []string            `json:"capability_specifications"`
-	MCP             agentMCPDescription `json:"mcp"`
+	ContractVersion   string              `json:"contract_version"`
+	BaseHarborVersion string              `json:"baseharbor_version"`
+	Operations        []machine.Operation `json:"operations"`
+	Capabilities      []string            `json:"capability_specifications"`
+	MCP               agentMCPDescription `json:"mcp"`
 }
 
 type agentMCPDescription struct {
@@ -68,10 +68,10 @@ func agentCommand() *cli.Command {
 
 func currentAgentDescription() agentDescription {
 	return agentDescription{
-		ContractVersion:  machine.ContractVersion,
+		ContractVersion:   machine.ContractVersion,
 		BaseHarborVersion: version,
-		Operations:       machine.Operations(),
-		Capabilities:     machine.CapabilitySpecifications(),
+		Operations:        machine.Operations(),
+		Capabilities:      machine.CapabilitySpecifications(),
 		MCP: agentMCPDescription{
 			Transport:       "stdio",
 			ProtocolVersion: "2026-07-28",
