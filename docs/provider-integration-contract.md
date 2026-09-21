@@ -45,6 +45,32 @@ These building blocks do not replace BaseHarbor's own capability, lifecycle, own
 
 The public compatibility contract must not depend on HashiCorp go-plugin, Kubernetes, Docker, GitHub, a specific cloud provider or a BaseHarbor-operated registry.
 
+## Provider implementation freedom and ecosystem boundary
+
+The Provider Integration Contract exists so community, vendors and companies can integrate with BaseHarbor without patching BaseHarbor Core.
+
+The open ecosystem direction remains:
+
+```text
+versioned BaseHarbor Capability Specification
+        ↓
+Provider Integration Contract
+        ↓
+gRPC / Protocol Buffers where a process boundary is required
+        ↓
+OCI distribution
+        ↓
+independent provider implementation
+```
+
+A provider implementation may internally use the smallest mature mechanism that satisfies the BaseHarbor contract, including open standards, mature OSS, standard APIs/SDKs, controllers/operators/CRDs or managed-service APIs.
+
+Those choices are provider implementation details. They do not replace the BaseHarbor provider boundary and must not cause product-specific integration code to accumulate in BaseHarbor Core.
+
+BaseHarbor should provide reference providers where useful, but the ecosystem must not depend on BaseHarbor maintainers implementing every product integration.
+
+The same principle applies to future provider families such as Delivery Providers: stable BaseHarbor semantics outside, implementation freedom inside.
+
 ## GraphQL boundary
 
 GraphQL is **not** the BaseHarbor provider lifecycle protocol.
