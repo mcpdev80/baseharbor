@@ -1,6 +1,6 @@
 # BaseHarbor
 
-[![CI](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/ci.yml)
+[![Release](https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml/badge.svg)](https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver)](https://github.com/mcpdev80/baseharbor/releases)
 [![License](https://img.shields.io/github/license/mcpdev80/baseharbor)](LICENSE)
 
