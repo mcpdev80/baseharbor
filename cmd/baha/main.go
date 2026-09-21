@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 var (
@@ -37,6 +38,10 @@ func main() {
 	if errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "Interrupted.")
 		os.Exit(130)
+	}
+	if requestsJSONOutput(os.Args[1:]) && !cli.IsPresented(err) {
+		_ = writeJSON(os.Stderr, machine.ResultError(classifyMachineCLIError(err)))
+		os.Exit(cli.ExitCode(err))
 	}
 	formatCLIError(os.Stderr, err)
 	os.Exit(cli.ExitCode(err))
@@ -174,4 +179,16 @@ func formatCLIError(w io.Writer, err error) {
 	fmt.Fprintln(w, "\nNext:")
 	fmt.Fprintln(w, "  baha doctor")
 	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
+}
+
+
+func classifyMachineCLIError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var usage *cli.UsageError
+	if errors.As(err, &usage) {
+		return machine.Wrap(machine.ErrorValidationFailed, err, usage.Hint, false)
+	}
+	return machine.Classify(err)
 }
