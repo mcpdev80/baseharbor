@@ -336,11 +336,17 @@ func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
 		request := e.requests[i]
 		driver := request.Driver
 		started := time.Now()
-		if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
-			observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
-			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
-			e.result.Status = StatusFailed
-			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+		decision := reconciliation.Result{}
+		if i < len(e.decisions) {
+			decision = e.decisions[i]
+		}
+		if decision.Action != reconciliation.ActionNoop && decision.Action != reconciliation.ActionObserve {
+			if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
+				observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
+				e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
 		}
 		observeProviderOperation(request, item, PhaseApply, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseApply, item))
