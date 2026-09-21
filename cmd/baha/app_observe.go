@@ -37,12 +37,12 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
 			ContractVersion: "v1",
-			Application: m.Name,
-			Environment: m.Environment,
-			Project:     application.RuntimeProjectName(m),
-			State:       "not_applied",
-			Ready:       false,
-			Checks:      []application.StatusCheck{},
+			Application:     m.Name,
+			Environment:     m.Environment,
+			Project:         application.RuntimeProjectName(m),
+			State:           "not_applied",
+			Ready:           false,
+			Checks:          []application.StatusCheck{},
 		}
 		if resolved.FromRepository {
 			result.Manifest = resolved.ManifestPath
@@ -63,12 +63,12 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 	result := application.StatusResult{
 		ContractVersion: "v1",
-		Application: m.Name,
-		Environment: m.Environment,
-		Project:     project,
-		State:       "running",
-		Ready:       true,
-		Checks:      []application.StatusCheck{},
+		Application:     m.Name,
+		Environment:     m.Environment,
+		Project:         project,
+		State:           "running",
+		Ready:           true,
+		Checks:          []application.StatusCheck{},
 	}
 	if resolved.FromRepository {
 		result.Manifest = resolved.ManifestPath
