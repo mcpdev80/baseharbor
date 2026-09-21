@@ -160,7 +160,6 @@ func TestFakeProviderPreflightFailureHasNoMutation(t *testing.T) {
 	}
 }
 
-
 func TestTypedReconciliationBlocksForeignOwnershipBeforeMutation(t *testing.T) {
 	driver := NewFakeDriver(capability.Prometheus)
 	target := fakeTarget(driver)
