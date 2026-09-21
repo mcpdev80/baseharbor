@@ -267,11 +267,12 @@ v0.7 implementiert Kubernetes als BaseHarbor Runtime Provider. Namespace-only mi
 - **v0.7.4** Stateful Runtime Support ohne Capability-Provider-Leakage;
 - **v0.7.5** Availability-Realisierung mit permission-aware Verification;
 - **v0.7.6** Runtime Conformance ueber Restricted-Access-Profile;
-- **v0.7.7** Compose-to-Kubernetes-Portability-Proof unter Namespace-only-Bedingungen.
+- **v0.7.7** Compose-to-Kubernetes-Portability-Proof unter Namespace-only-Bedingungen;
+- **v0.7.8** delegierte Delivery- und GitOps-Provider-Architektur mit Argo CD als erster Referenzimplementierung ohne Argo-spezifischen portablen Application Contract.
 
 Cluster-Admin, Namespace-Erstellung und cluster-weite Discovery sind keine normalen Application-Lifecycle-Anforderungen. Platform-owned Ressourcen wie Namespaces, Gateway/GatewayClass, StorageClass, CRDs und Admission Policy bleiben nutzbar, ohne dass BaseHarbor sie besitzen muss.
 
-Der normale Pfad verwendet direkt die Kubernetes API. kubectl, Helm, CRDs und ein BaseHarbor Operator sind keine notwendigen Runtime-Engines fuer v0.7.
+v0.7.0 startet mit direkter Kubernetes-API-Delivery als Referenzpfad. Das ist nicht das einzige dauerhafte Reconciliation-Modell: v0.7.8 ergänzt delegierte/GitOps-Delivery über einen providerneutralen Delivery-Provider-Contract. kubectl, Helm, CRDs und ein BaseHarbor Operator sind keine notwendigen anwendungsseitigen Runtime-Engines.
 
 ## v0.8 - Kubernetes Complete
 
