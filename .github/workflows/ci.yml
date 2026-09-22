@@ -2,6 +2,9 @@ name: ci
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/ci/**'
 
 concurrency:
   group: ci-${{ github.ref }}
