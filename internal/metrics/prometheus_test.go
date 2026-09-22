@@ -50,7 +50,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	}
 	configText := string(config)
 	if !strings.Contains(configText, "file_sd_configs:") ||
-		!strings.Contains(configText, "/etc/prometheus/targets/*.json") ||
+		!strings.Contains(configText, "/etc/prometheus/targets/*--*--*.json") ||
 		!strings.Contains(configText, "target_label: __metrics_path__") {
 		t.Fatalf("Prometheus config does not use dynamic file discovery/path relabeling:\n%s", configText)
 	}
@@ -294,7 +294,7 @@ func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 		{Application: "gamma", Environment: "dev", RuntimeVolume: "runtime-gamma"},
 	})
 	for _, want := range []string{
-		"/etc/prometheus/targets/*.json",
+		"/etc/prometheus/targets/*--*--*.json",
 		"/etc/prometheus/runtime-targets/0/*.json",
 		"/etc/prometheus/runtime-targets/2/*.json",
 	} {
