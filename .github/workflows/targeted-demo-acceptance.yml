@@ -113,6 +113,15 @@ jobs:
             ARTIFACT_DIR="$ARTIFACT_DIR" \
             bash scripts/acceptance.sh "$DEMO_GATE"
 
+      - name: Snapshot demo artifacts
+        id: snapshot
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/targeted-demo-raw"
+          mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
+          cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
+
       - name: Cleanup runtime state
         id: cleanup
         if: always()
@@ -133,7 +142,7 @@ jobs:
           Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF
           mkdir -p "$out/demo"
-          cp -a /tmp/baseharbor-demo-targeted/. "$out/demo/" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/targeted-demo-raw/." "$out/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$out" \
             "BaseHarbor Targeted Demo Evidence" \
