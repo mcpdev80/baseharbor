@@ -3,12 +3,15 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 var projectEnvironmentCache = struct {
@@ -57,7 +60,25 @@ func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir str
 }
 
 func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) (string, error) {
-	return c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
+	rendered, jsonErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
+	if jsonErr == nil {
+		return rendered, nil
+	}
+
+	renderedYAML, yamlErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config")
+	if yamlErr != nil {
+		return "", fmt.Errorf("%v; YAML fallback: %w", jsonErr, yamlErr)
+	}
+
+	var model any
+	if err := yaml.Unmarshal([]byte(renderedYAML), &model); err != nil {
+		return "", fmt.Errorf("decode Compose YAML fallback after %v: %w", jsonErr, err)
+	}
+	normalized, err := json.Marshal(model)
+	if err != nil {
+		return "", fmt.Errorf("encode Compose YAML fallback as JSON after %v: %w", jsonErr, err)
+	}
+	return string(normalized), nil
 }
 
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
