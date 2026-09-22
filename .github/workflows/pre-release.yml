@@ -218,6 +218,52 @@ jobs:
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
 
+  demo_docker:
+    name: pre-release-demo-docker
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - init
+          - lifecycle
+          - policy
+          - capabilities
+          - connectivity
+          - security
+          - reconciliation
+          - machine
+          - failure
+          - recovery
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+      runtime: docker
+      gate: ${{ matrix.gate }}
+
+  demo_podman:
+    name: pre-release-demo-podman
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - init
+          - lifecycle
+          - policy
+          - capabilities
+          - connectivity
+          - security
+          - reconciliation
+          - machine
+          - failure
+          - recovery
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+      runtime: podman
+      gate: ${{ matrix.gate }}
+
   evidence:
     name: pre-release-evidence
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository)) }}
@@ -225,6 +271,8 @@ jobs:
       - validate
       - docker_runtime
       - podman
+      - demo_docker
+      - demo_podman
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence generator
@@ -239,8 +287,10 @@ jobs:
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
           Source/build validation	${{ needs.validate.result }}	Formatting, source tests, docs, workflow syntax, snapshot and runtime image build
-          Docker runtime acceptance	${{ needs.docker_runtime.result }}	Runtime integration, recovery, observability and full external demo
-          Podman runtime acceptance	${{ needs.podman.result }}	Same runtime contract on dedicated Podman runner
+          Docker runtime core	${{ needs.docker_runtime.result }}	Runtime integration, recovery and observability
+          Podman runtime core	${{ needs.podman.result }}	Runtime integration, recovery and observability
+          Docker demo gates	${{ needs.demo_docker.result }}	Independent consumer-contract gate matrix
+          Podman demo gates	${{ needs.demo_podman.result }}	Independent consumer-contract gate matrix
           EOF
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/release-gate-evidence" \
@@ -264,3 +314,5 @@ jobs:
           test "${{ needs.validate.result }}" = "success"
           test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
+          test "${{ needs.demo_docker.result }}" = "success"
+          test "${{ needs.demo_podman.result }}" = "success"
