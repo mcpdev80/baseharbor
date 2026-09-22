@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -43,22 +44,63 @@ func (s ServiceState) Ready() bool {
 // compatible implementations fall back to the portable running-service query;
 // in that case Health and Publishers remain empty rather than inventing state.
 func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
-	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
-	if err != nil {
-		fallback, fallbackErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--services", "--status", "running")
-		if fallbackErr != nil {
-			return nil, err
+	out, composeErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
+	if composeErr == nil {
+		states, parseErr := parseComposeServiceStates(out)
+		if parseErr == nil && len(states) > 0 {
+			return states, nil
 		}
-		services := nonEmptyLines(fallback)
-		states := make([]ServiceState, 0, len(services))
-		for _, service := range services {
-			states = append(states, ServiceState{Service: service, State: "running"})
-		}
+	}
+
+	states, fallbackErr := c.serviceStatesFromRuntimeLabels(ctx, project)
+	if fallbackErr == nil {
 		return states, nil
 	}
-	states, err := parseComposeServiceStates(out)
+	if composeErr != nil {
+		return nil, fmt.Errorf("%v; runtime-label fallback: %w", composeErr, fallbackErr)
+	}
+	return nil, fmt.Errorf("compose service state unavailable; runtime-label fallback: %w", fallbackErr)
+}
+
+func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
+	containers, err := c.ListComposeContainers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("parse compose service state: %w", err)
+		return nil, err
+	}
+
+	byService := map[string]ServiceState{}
+	for _, container := range containers {
+		if container.Project != project {
+			continue
+		}
+		out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`, container.Name)
+		if err != nil {
+			return nil, fmt.Errorf("inspect state for %s: %w", container.Name, err)
+		}
+		runningRaw, healthRaw, _ := strings.Cut(strings.TrimSpace(out), "|")
+		state := "exited"
+		if strings.EqualFold(strings.TrimSpace(runningRaw), "true") {
+			state = "running"
+		}
+		health := strings.TrimSpace(healthRaw)
+		current, exists := byService[container.Service]
+		if !exists || (current.State != "running" && state == "running") {
+			byService[container.Service] = ServiceState{
+				Service: container.Service,
+				State:   state,
+				Health:  health,
+			}
+		}
+	}
+
+	names := make([]string, 0, len(byService))
+	for service := range byService {
+		names = append(names, service)
+	}
+	sort.Strings(names)
+	states := make([]ServiceState, 0, len(names))
+	for _, service := range names {
+		states = append(states, byService[service])
 	}
 	return states, nil
 }
