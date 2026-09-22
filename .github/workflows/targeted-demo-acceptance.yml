@@ -1,0 +1,110 @@
+name: targeted-demo-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: BaseHarbor ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+      runtime:
+        description: Container runtime
+        required: true
+        default: docker
+        type: choice
+        options:
+          - docker
+          - podman
+      groups:
+        description: Comma-separated demo groups; empty runs full acceptance
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: [self-hosted, Linux, X64, baseharbor, ${{ inputs.runtime }}]
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
+      ARTIFACT_DIR: /tmp/baseharbor-demo-targeted-${{ inputs.runtime }}
+      DEMO_GROUPS: ${{ inputs.groups }}
+
+    steps:
+      - name: Checkout BaseHarbor
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reset runtime state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+
+      - name: Run selected demo acceptance
+        id: demo
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/baseharbor-demo-targeted "$ARTIFACT_DIR"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted
+          cd /tmp/baseharbor-demo-targeted
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+            DEMO_GROUPS="$DEMO_GROUPS" \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+
+      - name: Generate targeted demo evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/targeted-demo-evidence.tsv"
+          printf 'External demo acceptance\t%s\tselected groups: %s\n' '${{ steps.demo.outcome }}' "${DEMO_GROUPS:-all}" >"$rows"
+          if [ -s "$ARTIFACT_DIR/groups.tsv" ]; then
+            while IFS=$'\t' read -r group status detail; do
+              printf 'Demo %s\t%s\t%s\n' "$group" "$status" "$detail" >>"$rows"
+            done <"$ARTIFACT_DIR/groups.tsv"
+          fi
+          printf 'Cleanup\t%s\truntime state reset\n' '${{ steps.cleanup.outcome }}' >>"$rows"
+          mkdir -p "$RUNNER_TEMP/targeted-demo-evidence/demo"
+          cp -a "$ARTIFACT_DIR/." "$RUNNER_TEMP/targeted-demo-evidence/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/targeted-demo-evidence" \
+            "BaseHarbor Targeted Demo Evidence" \
+            "targeted-demo/${{ inputs.runtime }}" \
+            "${{ inputs.ref }}" \
+            "${{ steps.candidate.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload targeted demo evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: targeted-demo-${{ inputs.runtime }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/targeted-demo-evidence
+          if-no-files-found: error
+          retention-days: 30
