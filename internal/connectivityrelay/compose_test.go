@@ -79,3 +79,28 @@ func TestEnsureFilesRejectsUnsafeRelayID(t *testing.T) {
 		t.Fatal("expected unsafe relay id rejection")
 	}
 }
+
+
+func TestRelayHealthPortDoesNotCollideWithTargetPort(t *testing.T) {
+	rendered := composeYAML(RuntimeSpec{
+		ID:            "abc123",
+		SourceNetwork: "source",
+		SourceAlias:   "target",
+		TargetNetwork: "target",
+		TargetHost:    "companion-app",
+		TargetPort:    8081,
+	}, "baseharbor-runtime:test")
+
+	for _, want := range []string{
+		`BASEHARBOR_RELAY_LISTEN_ADDR: "0.0.0.0:8081"`,
+		`BASEHARBOR_RELAY_HEALTH_ADDR: "127.0.0.1:8082"`,
+		`"http://127.0.0.1:8082/readyz"`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("relay compose missing %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, `BASEHARBOR_RELAY_HEALTH_ADDR: "127.0.0.1:8081"`) {
+		t.Fatalf("relay health address collides with target listen port:\n%s", rendered)
+	}
+}
