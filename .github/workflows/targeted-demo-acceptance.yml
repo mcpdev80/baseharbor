@@ -48,7 +48,7 @@ jobs:
     env:
       INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
       INPUT_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || '' }}
-      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || '' }}
+      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}
 
     steps:
       - name: Resolve targeted gate
@@ -66,7 +66,7 @@ jobs:
               runtime-validation/targeted-docker) runtime="docker" ;;
               *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
             esac
-            gate="$(awk 'NF {print $1; exit}' .ci/targeted-gate-trigger)"
+            gate="${INPUT_GATE##* }"
             ref="$GITHUB_SHA"
           fi
 
