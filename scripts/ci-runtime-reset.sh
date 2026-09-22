@@ -10,7 +10,10 @@ remove_containers() {
     [ -n "$id" ] || continue
     project="$("$engine" container inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$id" 2>/dev/null || true)"
     case "$project" in
-      baseharbor*) "$engine" container rm -f "$id" >/dev/null 2>&1 || true ;;
+      baseharbor*)
+        "$engine" container stop -t 2 "$id" >/dev/null 2>&1 || true
+        "$engine" container rm "$id" >/dev/null 2>&1 || "$engine" container rm -f "$id" >/dev/null 2>&1 || true
+        ;;
     esac
   done < <("$engine" container ls -aq --filter label=com.docker.compose.project 2>/dev/null || true)
 }
