@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: targeted-podman-runtime-integration
+  cancel-in-progress: true
+
 jobs:
   runtime-integration:
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
