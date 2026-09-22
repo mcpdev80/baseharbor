@@ -1,16 +1,25 @@
 # BaseHarbor-Dokumentation
 
-Die englische Dokumentation ist die kanonische Quelle für normative Verträge und technische Referenzen.
+Die englische Dokumentation ist die kanonische Quelle für technische Referenzen und normative Verträge.
 
-Für deutschsprachige Leser sollen vor allem leicht verständliche, menschliche Einstiegs- und How-to-Dokumente gepflegt werden.
+Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche menschliche Erklärungen.
 
-Bei Abweichungen gilt die englische kanonische Quelle.
+## Neu bei BaseHarbor?
 
-Start:
+[Einstieg](tutorials/getting-started.md)
 
-- [Englische Dokumentation](../index.md)
-- [Five-minute onboarding](five-minute-onboarding.md)
-- [Architektur](architecture.md)
-- [Application Contract](application-contract.md)
+## Verstehen
 
-Normative Specs werden nicht unabhängig auf Deutsch gepflegt, damit keine zweite widersprüchliche Vertragsquelle entsteht.
+- [Architektur](explanation/architecture.md)
+- [Application Contract](explanation/application-contract.md)
+- [Provider](explanation/providers.md)
+- [Security](explanation/security.md)
+
+## Exakte technische Details
+
+Nutze die englischen kanonischen Bereiche:
+
+- [Reference](../reference/cli.md)
+- [Specs](../spec/README.md)
+
+Übersetzungen dürfen normative Semantik nicht neu definieren.

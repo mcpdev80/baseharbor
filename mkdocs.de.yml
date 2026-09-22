@@ -49,19 +49,9 @@ extra:
 
 nav:
   - Start: index.md
-  - Einstieg: five-minute-onboarding.md
-  - Repository-Workflow: repository-application-workflow.md
-  - Anwendungsvertrag: application-contract.md
-  - CLI: cli.md
-  - Agent & MCP: agent-machine-interface.md
-  - Input-Aufloesung: input-resolution.md
-  - Entwicklerzugriff: developer-access.md
-  - Control Plane: runtime-compose.md
-  - Secrets: secrets-and-openbao.md
-  - Backup & Restore: backup-and-restore.md
-  - Releases: releases.md
-  - Architektur: architecture.md
-  - Application Runtime Broker: application-runtime-broker.md
-  - Runtime Resource API: runtime-resource-api.md
-  - Provider Integration Contract: provider-integration-contract.md
-  - Roadmap: roadmap.md
+  - Einstieg: tutorials/getting-started.md
+  - Verstehen:
+      - Architektur: explanation/architecture.md
+      - Application Contract: explanation/application-contract.md
+      - Provider: explanation/providers.md
+      - Security: explanation/security.md

@@ -100,7 +100,7 @@ application secret handler
 
 The resolver fails closed when there is no membership, an invalid principal, or memberships spanning more than one tenant. Multiple roles inside the same tenant are resolved by the existing `tenancy.Resolve` rules.
 
-See [authentication.md](authentication.md) for the complete trust-boundary description.
+See [Authentication](../explanation/authentication.md) for the complete trust-boundary description.
 
 ## Current exposure status
 
