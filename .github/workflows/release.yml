@@ -17,6 +17,13 @@ permissions:
   attestations: write
 
 jobs:
+  docker_runtime:
+    name: release-docker-runtime
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/docker-runtime-acceptance.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
   podman:
     name: release-podman
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
@@ -27,6 +34,7 @@ jobs:
   runtime-image:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs:
+      - docker_runtime
       - podman
     permissions:
       contents: read
@@ -39,6 +47,7 @@ jobs:
   release:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs:
+      - docker_runtime
       - podman
       - runtime-image
     runs-on: ubuntu-latest
@@ -183,6 +192,7 @@ jobs:
     name: release-gate-evidence
     if: always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
     needs:
+      - docker_runtime
       - podman
       - runtime-image
       - release
@@ -199,7 +209,8 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Podman release gate	${{ needs.podman.result }}	Dedicated self-hosted Podman lifecycle acceptance
+          Docker runtime gate	${{ needs.docker_runtime.result }}	Dedicated self-hosted Docker runtime acceptance
+          Podman runtime gate	${{ needs.podman.result }}	Dedicated self-hosted Podman runtime acceptance
           Runtime image publish	${{ needs.runtime-image.result }}	Multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	Tagged-source tests, archives and attestations
           EOF
@@ -222,6 +233,7 @@ jobs:
       - name: Enforce complete release gate
         shell: bash
         run: |
+          test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
           test "${{ needs.runtime-image.result }}" = "success"
           test "${{ needs.release.result }}" = "success"
