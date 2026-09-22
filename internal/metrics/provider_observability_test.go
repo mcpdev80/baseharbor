@@ -34,7 +34,6 @@ func TestProviderTargetFileNameIsStableAndNamespaced(t *testing.T) {
 	}
 }
 
-
 func TestPrometheusConfigSeparatesApplicationAndProviderTargets(t *testing.T) {
 	rendered := prometheusConfig(nil)
 	for _, want := range []string{
