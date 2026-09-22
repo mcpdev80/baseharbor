@@ -40,6 +40,14 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
       - name: Reset persistent runner state
         id: reset
         shell: bash
@@ -121,6 +129,7 @@ jobs:
           cat >"$rows" <<EOF
           Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
           Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
           Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
           Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
           BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
