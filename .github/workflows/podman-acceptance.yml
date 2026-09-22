@@ -23,6 +23,8 @@ permissions:
 
 jobs:
   podman-compose:
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 75
 
