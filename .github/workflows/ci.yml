@@ -1,4 +1,6 @@
-name: ci
+name: "CI · Source & Quality"
+
+run-name: "CI · Source & Quality · ${{ github.ref_name }}"
 
 on:
   workflow_dispatch:
