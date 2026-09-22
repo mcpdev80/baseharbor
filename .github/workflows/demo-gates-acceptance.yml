@@ -1,4 +1,6 @@
-name: demo-gates-acceptance
+name: "Demo · Docker + Podman Gates"
+
+run-name: "Demo Gates · Docker + Podman · ${{ inputs.ref || github.ref_name }}"
 
 on:
   workflow_dispatch:
