@@ -24,7 +24,7 @@ permissions:
 jobs:
   podman-compose:
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
-    timeout-minutes: 25
+    timeout-minutes: 75
 
     steps:
       - name: Checkout requested ref
@@ -111,6 +111,181 @@ jobs:
           grep -q '^READY$' /tmp/podman-resume-doctor.txt
 
           /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+
+      - name: Run runtime integration tests serially on Podman
+        id: runtime_integration
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
+          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          External demo acceptance	${{ steps.demo.outcome }}	full consumer acceptance against exact candidate SHA
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs" "$RUNNER_TEMP/podman-evidence/demo"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          cp -a /tmp/baseharbor-demo-podman-acceptance/. "$RUNNER_TEMP/podman-evidence/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/podman-evidence"             "BaseHarbor Podman Acceptance Evidence"             "podman-acceptance"             "$EVIDENCE_REF"             "$(git rev-parse HEAD)"             "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30
+ -count=1 -v
+
+      - name: Verify control-plane recovery on Podman
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/podman-evidence"             "BaseHarbor Podman Acceptance Evidence"             "podman-acceptance"             "$EVIDENCE_REF"             "$(git rev-parse HEAD)"             "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30
+ -count=1 -v
+
+      - name: Verify real workload log ingestion on Podman
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/podman-evidence"             "BaseHarbor Podman Acceptance Evidence"             "podman-acceptance"             "$EVIDENCE_REF"             "$(git rev-parse HEAD)"             "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30
+ -count=1 -v
+
+      - name: Verify real trace ingestion on Podman
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/podman-evidence"             "BaseHarbor Podman Acceptance Evidence"             "podman-acceptance"             "$EVIDENCE_REF"             "$(git rev-parse HEAD)"             "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30
+ -count=1 -v
+
+      - name: Run external demo acceptance on Podman
+        id: demo
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.ref || github.sha }}
+          ARTIFACT_DIR: /tmp/baseharbor-demo-podman-acceptance
+          BASEHARBOR_TEST_RUNTIME: podman
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/baseharbor-demo-podman "$ARTIFACT_DIR"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-podman
+          cd /tmp/baseharbor-demo-podman
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            BASEHARBOR_TEST_RUNTIME=podman \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh
 
       - name: Cleanup Podman runtime
         id: cleanup
