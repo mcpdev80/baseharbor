@@ -142,7 +142,6 @@ func TestWorkloadOnlyPlanContainsOnlyRepositoryWorkload(t *testing.T) {
 	}
 }
 
-
 func TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes(t *testing.T) {
 	m := workloadOnlyManifest()
 	m = WithOTLPTelemetry(m, "traces")

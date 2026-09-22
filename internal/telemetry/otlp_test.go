@@ -140,7 +140,6 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 	}
 }
 
-
 func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 	config := collectorConfigWithTraceBackend("")
 	for _, want := range []string{
