@@ -24,6 +24,8 @@ on:
   push:
     branches:
       - 'runtime-validation/targeted/**'
+    paths:
+      - '.ci/targeted-gate-trigger'
 
 concurrency:
   group: targeted-demo-${{ github.ref }}
@@ -34,7 +36,6 @@ permissions:
 
 jobs:
   selected-gate:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'ci: run targeted gate') }}
     name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, '/podman/') && 'podman' || 'docker') }}
     runs-on:
       - self-hosted
