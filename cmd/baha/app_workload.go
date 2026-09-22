@@ -156,8 +156,10 @@ type renderedComposeConfig struct {
 }
 
 func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, environment map[string]string) (application.WorkloadBindingPlan, error) {
-	baseFiles := []string{workload.Compose, workload.Override}
-	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, baseFiles...)
+	// Binding discovery inspects the repository-owned Compose model only.
+	// BaseHarbor-generated overrides add platform bindings after discovery and
+	// must not change which bindings the application itself declared.
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, workload.Compose)
 	if err != nil {
 		return application.WorkloadBindingPlan{}, fmt.Errorf("render application workload for binding discovery: %w", err)
 	}
