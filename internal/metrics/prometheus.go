@@ -888,7 +888,7 @@ scrape_configs:
   - job_name: baseharbor-applications
     file_sd_configs:
       - files:
-          - /etc/prometheus/targets/*.json
+          - /etc/prometheus/targets/*--*--*.json
 `)
 	for i, registration := range registrations {
 		if registration.RuntimeVolume == "" {
@@ -897,6 +897,17 @@ scrape_configs:
 		fmt.Fprintf(&b, "          - /etc/prometheus/runtime-targets/%d/*.json\n", i)
 	}
 	b.WriteString(`        refresh_interval: 2s
+    relabel_configs:
+      - source_labels: [baseharbor_metrics_path]
+        target_label: __metrics_path__
+      - action: labeldrop
+        regex: baseharbor_metrics_path
+
+  - job_name: baseharbor-providers
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/provider--*.json
+        refresh_interval: 2s
     relabel_configs:
       - source_labels: [baseharbor_metrics_path]
         target_label: __metrics_path__

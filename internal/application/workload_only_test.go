@@ -141,3 +141,22 @@ func TestWorkloadOnlyPlanContainsOnlyRepositoryWorkload(t *testing.T) {
 		t.Fatalf("unexpected workload-only plan action %#v", plan.Actions[0])
 	}
 }
+
+
+func TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes(t *testing.T) {
+	m := workloadOnlyManifest()
+	m = WithOTLPTelemetry(m, "traces")
+	override, err := workloadOverrideYAML(m, []string{"coordinator"}, map[string]string{
+		"OTLP_CONTAINER_ENDPOINT": "http://otel-collector:4318",
+		"OTLP_PROVIDER":           "otel-collector",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(override, "OTEL_RESOURCE_ATTRIBUTES:"); got != 1 {
+		t.Fatalf("expected exactly one OTEL_RESOURCE_ATTRIBUTES entry, got %d:\n%s", got, override)
+	}
+	if got := strings.Count(override, "OTEL_SERVICE_NAME:"); got != 1 {
+		t.Fatalf("expected exactly one OTEL_SERVICE_NAME entry, got %d:\n%s", got, override)
+	}
+}

@@ -280,17 +280,21 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		fmt.Fprintf(&b, "  %s:\n", service)
 		if len(env) > 0 || HasOTLPTelemetry(m) {
 			b.WriteString("    environment:\n")
-			keys := make([]string, 0, len(env))
-			for key := range env {
+			serviceEnv := make(map[string]string, len(env)+2)
+			for key, value := range env {
+				serviceEnv[key] = value
+			}
+			if HasOTLPTelemetry(m) {
+				serviceEnv["OTEL_SERVICE_NAME"] = service
+				serviceEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])
+			}
+			keys := make([]string, 0, len(serviceEnv))
+			for key := range serviceEnv {
 				keys = append(keys, key)
 			}
 			sort.Strings(keys)
 			for _, key := range keys {
-				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(env[key]))
-			}
-			if HasOTLPTelemetry(m) {
-				fmt.Fprintf(&b, "      OTEL_SERVICE_NAME: %s\n", strconv.Quote(service))
-				fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote(telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])))
+				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
 		_, exposed := exposedServices[service]

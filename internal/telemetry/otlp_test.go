@@ -139,3 +139,21 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 		t.Fatalf("deprecated otlphttp exporter alias rendered:\n%s", config)
 	}
 }
+
+
+func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
+	config := collectorConfigWithTraceBackend("")
+	for _, want := range []string{
+		"telemetry:",
+		"metrics:",
+		"readers:",
+		"pull:",
+		"prometheus:",
+		"host: 0.0.0.0",
+		"port: 8888",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("collector config missing %q:\n%s", want, config)
+		}
+	}
+}
