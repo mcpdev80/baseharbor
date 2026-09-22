@@ -146,9 +146,7 @@ jobs:
           EOF
           demo_groups_file="/tmp/baseharbor-demo-docker-acceptance/groups.tsv"
           if [ -s "$demo_groups_file" ]; then
-            while IFS=	${{ steps.cleanup.outcome }}	Persistent Docker runner returned to clean state
-          EOF
-\t' read -r group status detail; do
+            while IFS=$'\t' read -r group status detail; do
               printf 'Demo %s\t%s\t%s\n' "$group" "$status" "$detail" >>"$rows"
             done <"$demo_groups_file"
           fi
