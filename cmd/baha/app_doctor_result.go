@@ -79,7 +79,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 	var workloadStatusErr error
 	var workloadSecurity application.WorkloadSecurityReport
 
-	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	checks := []preflight.Check{
@@ -259,12 +259,14 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			}},
 		)
 		if len(application.RequiredSecretNames(m)) > 0 {
-			checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+			checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(context.Context) error {
 				if runtimeErr != nil {
 					return runtimeErr
 				}
+				secretCtx, secretCancel := context.WithTimeout(ctx, 20*time.Second)
+				defer secretCancel()
 				var err error
-				requiredStatuses, err = inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+				requiredStatuses, err = inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
 				if err != nil {
 					return err
 				}
