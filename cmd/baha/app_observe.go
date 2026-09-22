@@ -20,8 +20,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
+const applicationStatusTimeout = 90 * time.Second
+
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
-	statusCtx, cancelStatus := context.WithTimeout(ctx, 30*time.Second)
+	statusCtx, cancelStatus := context.WithTimeout(ctx, applicationStatusTimeout)
 	defer cancelStatus()
 	ctx = statusCtx
 
