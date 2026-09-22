@@ -228,7 +228,7 @@ The MCP server uses stdio only and exposes six read-only semantic tools: `baseha
 
 There is no generic shell, exec, Docker or Compose tool. MCP calls route into the same typed result collectors used by the CLI/TUI and therefore preserve BaseHarbor ownership, isolation and verification semantics.
 
-See [Agent-native machine interface](agent-machine-interface.md).
+See [Agent-native machine interface](mcp.md).
 
 ## Control-plane startup
 
@@ -440,7 +440,7 @@ baha app env --path
 
 Credential-bearing values are masked by default. Revealing them is an explicit operation.
 
-See [application-contract.md](application-contract.md).
+See [Application contract](../explanation/application-contract.md).
 
 ## Trusted-local developer access
 
@@ -459,7 +459,7 @@ baha app exec SERVICE COMMAND [ARG...]
 
 Database/cache commands avoid placing passwords in normal command arguments. Credential output is masked by default; explicit reveal is separate. Compose container selection remains an internal provider detail rather than a developer-facing identity.
 
-See [developer-access.md](developer-access.md).
+See [Developer access](../how-to/developer-access.md).
 
 ## Managed secrets
 
