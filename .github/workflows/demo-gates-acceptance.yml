@@ -1,0 +1,89 @@
+name: demo-gates-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: BaseHarbor ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/demo/**'
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    name: demo-gate-catalog
+    uses: ./.github/workflows/demo-gate-catalog.yml
+
+  docker:
+    name: demo-docker
+    needs: catalog
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.catalog.outputs.matrix) }}
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+      runtime: docker
+      gate: ${{ matrix.gate }}
+
+  podman:
+    name: demo-podman
+    needs: catalog
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.catalog.outputs.matrix) }}
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+      runtime: podman
+      gate: ${{ matrix.gate }}
+
+  evidence:
+    name: demo-gates-evidence
+    if: always()
+    needs:
+      - docker
+      - podman
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout evidence generator
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Generate demo gate summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/demo-gates-summary.tsv"
+          cat >"$rows" <<EOF
+          Docker demo matrix	${{ needs.docker.result }}	All registered demo gates on Docker
+          Podman demo matrix	${{ needs.podman.result }}	All registered demo gates on Podman
+          EOF
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/demo-gates-evidence" \
+            "BaseHarbor Demo Gates Evidence" \
+            "demo/all" \
+            "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}" \
+            "${{ github.sha }}" \
+            "$rows"
+
+      - name: Upload demo gate summary
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-gates-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-gates-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce all demo gates
+        shell: bash
+        run: |
+          test "${{ needs.docker.result }}" = "success"
+          test "${{ needs.podman.result }}" = "success"
