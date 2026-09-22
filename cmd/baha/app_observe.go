@@ -21,12 +21,12 @@ import (
 )
 
 const (
-	applicationStatusTimeout          = 120 * time.Second
-	applicationOpenBaoStatusTimeout   = 30 * time.Second
+	applicationStatusTimeout         = 120 * time.Second
+	applicationOpenBaoStatusTimeout  = 30 * time.Second
 	applicationRequiredSecretTimeout = 40 * time.Second
-	applicationBrokerStatusTimeout    = 10 * time.Second
-	applicationPostgresStatusTimeout  = 15 * time.Second
-	applicationValkeyStatusTimeout    = 10 * time.Second
+	applicationBrokerStatusTimeout   = 10 * time.Second
+	applicationPostgresStatusTimeout = 15 * time.Second
+	applicationValkeyStatusTimeout   = 10 * time.Second
 )
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
