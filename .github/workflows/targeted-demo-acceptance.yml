@@ -64,6 +64,7 @@ jobs:
             runtime="${branch%%/*}"
             gate="${branch#*/}"
             gate="${gate%%/*}"
+            gate="${gate%%__*}"
             ref="$GITHUB_SHA"
           fi
 
