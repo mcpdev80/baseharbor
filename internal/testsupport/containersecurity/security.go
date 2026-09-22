@@ -17,7 +17,7 @@ type Requirements struct {
 
 type inspectRecord struct {
 	EffectiveCaps []string
-	Config struct {
+	Config        struct {
 		User   string
 		Labels map[string]string
 	}
