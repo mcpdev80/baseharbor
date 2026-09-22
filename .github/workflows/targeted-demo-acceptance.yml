@@ -63,6 +63,7 @@ jobs:
             branch="${GITHUB_REF_NAME#runtime-validation/targeted/}"
             runtime="${branch%%/*}"
             gate="${branch#*/}"
+            gate="${gate%%/*}"
             ref="$GITHUB_SHA"
           fi
 
