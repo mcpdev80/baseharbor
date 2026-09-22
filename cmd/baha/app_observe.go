@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	applicationStatusTimeout          = 90 * time.Second
-	applicationOpenBaoStatusTimeout   = 20 * time.Second
+	applicationStatusTimeout          = 120 * time.Second
+	applicationOpenBaoStatusTimeout   = 30 * time.Second
 	applicationBrokerStatusTimeout    = 10 * time.Second
 )
 
