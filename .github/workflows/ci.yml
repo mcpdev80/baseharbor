@@ -37,13 +37,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: requirements-docs.txt
 
       - name: Reset persistent runner state
         shell: bash
