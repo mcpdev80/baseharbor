@@ -80,7 +80,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	workdir := t.TempDir()
 	composeFile := filepath.Join(workdir, "compose.yaml")
 	envFile := filepath.Join(workdir, "runtime.env")
-	project := "baseharbor-logs-acceptance-workload"
+	project := application.WorkloadProjectName(m)
 	yaml := `services:
   api:
     image: busybox:1.37
