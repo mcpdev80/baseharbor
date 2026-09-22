@@ -117,7 +117,7 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 	if len(services) == 0 {
 		return nil
 	}
-	args := []string{"rm", "-f", "-s"}
+	args := []string{"stop"}
 	args = append(args, services...)
 	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err == nil {
 		return nil
@@ -137,8 +137,8 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 			if _, ok := selected[container.Service]; !ok {
 				continue
 			}
-			if _, removeErr := c.directOutput(ctx, "container", "rm", "-f", container.Name); removeErr != nil {
-				return fmt.Errorf("%v; remove selected service %s via runtime engine: %w", err, container.Service, removeErr)
+			if _, stopErr := c.directOutput(ctx, "container", "stop", container.Name); stopErr != nil {
+				return fmt.Errorf("%v; stop selected service %s via runtime engine: %w", err, container.Service, stopErr)
 			}
 		}
 		return nil
