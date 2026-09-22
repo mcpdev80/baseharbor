@@ -119,7 +119,7 @@ func alloyJournalConfig(registrations []Registration) string {
 		b.WriteString("}\n")
 
 		fmt.Fprintf(&b, "\nloki.source.journal %s {\n", strconv.Quote(label))
-		b.WriteString("  path          = \"/run/log/journal\"\n")
+		b.WriteString("  path          = \"/var/log/journal\"\n")
 		b.WriteString("  max_age       = \"1h\"\n")
 		fmt.Fprintf(&b, "  relabel_rules = loki.relabel.%s.rules\n", label)
 		b.WriteString("  labels        = { baseharbor_source_class = \"application\" }\n")
@@ -166,7 +166,7 @@ func providerComposeYAMLForRuntime(placement Placement, registrations []Registra
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
-		b.WriteString("      - /run/log/journal:/run/log/journal:ro\n")
+		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
 	} else {
 		b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
