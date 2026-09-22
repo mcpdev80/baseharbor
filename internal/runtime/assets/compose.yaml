@@ -59,6 +59,7 @@ volumes:
   openbao-data:
 
 networks:
+  default: {}
   secrets:
     name: baseharbor-secrets
     internal: true
