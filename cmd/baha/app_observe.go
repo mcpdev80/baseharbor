@@ -165,7 +165,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			} else {
 				result.AddCheck("secrets", true, "isolated OpenBao AppRole authentication succeeded")
 				if len(application.RequiredSecretNames(m)) > 0 {
-					secretCtx, secretCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
+					secretCtx, secretCancel := context.WithTimeout(ctx, applicationRequiredSecretTimeout)
 					statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
 					secretCancel()
 					if statusErr != nil {
