@@ -150,7 +150,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
-			scopeCtx, scopeCancel := context.WithTimeout(ctx, 2*time.Second)
+			scopeCtx, scopeCancel := context.WithTimeout(ctx, 8*time.Second)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 			err := openbao.InspectApplicationScope(scopeCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 			scopeCancel()
