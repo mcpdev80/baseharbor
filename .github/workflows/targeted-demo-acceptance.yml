@@ -25,11 +25,16 @@ on:
     branches:
       - 'runtime-validation/targeted/**'
 
+concurrency:
+  group: targeted-demo-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   selected-gate:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'ci: run targeted gate') }}
     name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, '/podman/') && 'podman' || 'docker') }}
     runs-on:
       - self-hosted
