@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Build BaseHarbor control-plane image
         run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Prove CLI destroy recreate restore

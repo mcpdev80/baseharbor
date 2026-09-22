@@ -17,8 +17,17 @@ permissions:
   attestations: write
 
 jobs:
+  podman:
+    name: release-podman
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/podman-acceptance.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
   runtime-image:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - podman
     permissions:
       contents: read
       packages: write
@@ -29,6 +38,9 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - podman
+      - runtime-image
     runs-on: ubuntu-latest
     steps:
       - name: Resolve release tag
@@ -50,12 +62,14 @@ jobs:
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout tagged source
+        id: checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.release_ref.outputs.tag }}
           fetch-depth: 0
 
       - name: Validate release tag and source
+        id: validate_source
         shell: bash
         env:
           TAG: ${{ steps.release_ref.outputs.tag }}
@@ -78,32 +92,38 @@ jobs:
           }
 
       - name: Set up Go
+        id: setup_go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Test release source
+        id: source_tests
         run: |
           go test ./internal/... ./spec/...
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
 
       - name: Verify control-plane restart and operator-held unseal recovery
+        id: recovery
         env:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
       - name: Verify real Loki and Alloy workload log ingestion
+        id: log_ingestion
         env:
           BASEHARBOR_LOGS_INTEGRATION: "1"
         run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
 
       - name: Verify real OpenTelemetry to Tempo trace ingestion
+        id: trace_ingestion
         env:
           BASEHARBOR_TRACES_INTEGRATION: "1"
         run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
 
       - name: Run GoReleaser
+        id: goreleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -113,11 +133,95 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Attest release archives
+        id: attest_archives
         uses: actions/attest@v4
         with:
           subject-path: 'dist/baseharbor_linux_*.tar.gz'
 
       - name: Attest checksum manifest
+        id: attest_checksums
         uses: actions/attest@v4
         with:
           subject-path: 'dist/checksums.txt'
+
+      - name: Generate release evidence
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/release-evidence.tsv"
+          cat >"$rows" <<EOF
+          Release tag/source	${{ steps.validate_source.outcome }}	Tag is SemVer, contained in main, changelog and release notes present
+          Release-source tests	${{ steps.source_tests.outcome }}	internal/spec/cmd test suites
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
+          Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	OpenTelemetry to managed Tempo
+          GoReleaser publish	${{ steps.goreleaser.outcome }}	release archives and GitHub release
+          Archive attestation	${{ steps.attest_archives.outcome }}	artifact provenance
+          Checksum attestation	${{ steps.attest_checksums.outcome }}	checksum provenance
+          EOF
+          mkdir -p "$RUNNER_TEMP/release-evidence/dist"
+          cp dist/checksums.txt "$RUNNER_TEMP/release-evidence/dist/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/release-evidence" \
+            "BaseHarbor Release Evidence" \
+            "release/publish" \
+            "${{ steps.release_ref.outputs.tag }}" \
+            "$(git rev-parse HEAD)" \
+            "$rows"
+
+      - name: Upload release evidence
+        if: always() && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-evidence
+          if-no-files-found: error
+          retention-days: 90
+
+  evidence:
+    name: release-gate-evidence
+    if: always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    needs:
+      - podman
+      - runtime-image
+      - release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - name: Generate combined release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/release-gate-evidence.tsv"
+          cat >"$rows" <<EOF
+          Podman release gate	${{ needs.podman.result }}	Dedicated self-hosted Podman lifecycle acceptance
+          Runtime image publish	${{ needs.runtime-image.result }}	Multi-arch runtime image and attestation
+          Release publish	${{ needs.release.result }}	Tagged-source tests, archives and attestations
+          EOF
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/release-gate-evidence" \
+            "BaseHarbor Final Release Gate Evidence" \
+            "release/combined" \
+            "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" \
+            "$(git rev-parse HEAD)" \
+            "$rows"
+
+      - name: Upload combined release-gate evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-gate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-gate-evidence
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce complete release gate
+        shell: bash
+        run: |
+          test "${{ needs.podman.result }}" = "success"
+          test "${{ needs.runtime-image.result }}" = "success"
+          test "${{ needs.release.result }}" = "success"

@@ -1,6 +1,12 @@
 name: podman-acceptance
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref or commit SHA to test
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       ref:
@@ -22,20 +28,33 @@ jobs:
 
     steps:
       - name: Checkout requested ref
+        id: checkout
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+          ref: ${{ inputs.ref || github.sha }}
 
-      - uses: actions/setup-go@v7
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
 
       - name: Reset persistent runner state
+        id: reset
         shell: bash
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Verify Podman runner
+        id: verify_runner
         shell: bash
         run: |
           set -euo pipefail
@@ -50,9 +69,11 @@ jobs:
           echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
 
       - name: Build BaseHarbor
+        id: build
         run: go build -trimpath -o /tmp/baha ./cmd/baha
 
       - name: Verify Podman runtime detection
+        id: runtime_detection
         shell: bash
         run: |
           set -euo pipefail
@@ -62,6 +83,7 @@ jobs:
           grep -q '^READY$' /tmp/podman-doctor.txt
 
       - name: Verify application lifecycle on Podman Compose
+        id: lifecycle
         shell: bash
         run: |
           set -euo pipefail
@@ -91,6 +113,39 @@ jobs:
           /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
 
       - name: Cleanup Podman runtime
+        id: cleanup
         if: always()
         shell: bash
         run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/podman-evidence"             "BaseHarbor Podman Acceptance Evidence"             "podman-acceptance"             "$EVIDENCE_REF"             "$(git rev-parse HEAD)"             "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30
