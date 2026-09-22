@@ -160,7 +160,6 @@ func TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes(t *testing.T) {
 	}
 }
 
-
 func TestWorkloadOnlyOverrideUsesExplicitEmptyService(t *testing.T) {
 	m := workloadOnlyManifest()
 	override, err := workloadOverrideYAML(m, []string{"app"}, map[string]string{})
