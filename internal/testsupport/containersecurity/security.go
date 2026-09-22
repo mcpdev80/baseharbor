@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -31,7 +32,7 @@ type inspectRecord struct {
 }
 
 func VerifyComposeService(ctx context.Context, project, service string, req Requirements) error {
-	idOut, err := exec.CommandContext(ctx, "docker", "ps", "-q",
+	idOut, err := exec.CommandContext(ctx, containerRuntime(), "ps", "-q",
 		"--filter", "label=com.docker.compose.project="+project,
 		"--filter", "label=com.docker.compose.service="+service,
 	).Output()
@@ -46,7 +47,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 		return fmt.Errorf("multiple running containers found for %s/%s", project, service)
 	}
 
-	raw, err := exec.CommandContext(ctx, "docker", "inspect", id).Output()
+	raw, err := exec.CommandContext(ctx, containerRuntime(), "inspect", id).Output()
 	if err != nil {
 		return fmt.Errorf("inspect %s/%s: %w", project, service, err)
 	}
@@ -108,4 +109,18 @@ func containsSecurityOpt(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+
+func containerRuntime() string {
+	if runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")); runtime == "docker" || runtime == "podman" {
+		return runtime
+	}
+	if err := exec.Command("docker", "info").Run(); err == nil {
+		return "docker"
+	}
+	if err := exec.Command("podman", "info").Run(); err == nil {
+		return "podman"
+	}
+	return "docker"
 }
