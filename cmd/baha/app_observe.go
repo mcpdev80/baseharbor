@@ -20,7 +20,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
-const applicationStatusTimeout = 90 * time.Second
+const (
+	applicationStatusTimeout          = 90 * time.Second
+	applicationOpenBaoStatusTimeout   = 20 * time.Second
+	applicationBrokerStatusTimeout    = 10 * time.Second
+)
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
 	statusCtx, cancelStatus := context.WithTimeout(ctx, applicationStatusTimeout)
@@ -152,7 +156,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
-			scopeCtx, scopeCancel := context.WithTimeout(ctx, 8*time.Second)
+			scopeCtx, scopeCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 			err := openbao.InspectApplicationScope(scopeCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 			scopeCancel()
@@ -161,7 +165,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			} else {
 				result.AddCheck("secrets", true, "isolated OpenBao AppRole authentication succeeded")
 				if len(application.RequiredSecretNames(m)) > 0 {
-					secretCtx, secretCancel := context.WithTimeout(ctx, 8*time.Second)
+					secretCtx, secretCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
 					statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
 					secretCancel()
 					if statusErr != nil {
@@ -174,7 +178,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 				}
 			}
 		}
-		brokerCtx, brokerCancel := context.WithTimeout(ctx, 2*time.Second)
+		brokerCtx, brokerCancel := context.WithTimeout(ctx, applicationBrokerStatusTimeout)
 		brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
 		brokerCancel()
 		if brokerErr != nil {
