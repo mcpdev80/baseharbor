@@ -41,7 +41,7 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	keys, err := openbao.ListApplicationSecretKeys(checkCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *Service) Get(ctx context.Context, name, key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	readCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	return openbao.GetApplicationSecret(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, key)
 }
@@ -107,7 +107,7 @@ func (s *Service) GetMany(ctx context.Context, name string, keys []string) (map[
 	if err != nil {
 		return nil, err
 	}
-	readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	readCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	return openbao.GetApplicationSecrets(readCtx, resolved.compose, resolved.platformFiles, resolved.identity, resolved.credentialsPath, keys)
 }
