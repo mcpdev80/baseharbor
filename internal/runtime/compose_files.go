@@ -119,8 +119,30 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 	}
 	args := []string{"rm", "-f", "-s"}
 	args = append(args, services...)
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
-	return err
+	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err == nil {
+		return nil
+	} else {
+		containers, listErr := c.ListComposeContainers(ctx)
+		if listErr != nil {
+			return fmt.Errorf("%v; engine-level selected-service fallback: %w", err, listErr)
+		}
+		selected := make(map[string]struct{}, len(services))
+		for _, service := range services {
+			selected[service] = struct{}{}
+		}
+		for _, container := range containers {
+			if container.Project != project {
+				continue
+			}
+			if _, ok := selected[container.Service]; !ok {
+				continue
+			}
+			if _, removeErr := c.directOutput(ctx, "container", "rm", "-f", container.Name); removeErr != nil {
+				return fmt.Errorf("%v; remove selected service %s via runtime engine: %w", err, container.Service, removeErr)
+			}
+		}
+		return nil
+	}
 }
 
 func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) (string, error) {
