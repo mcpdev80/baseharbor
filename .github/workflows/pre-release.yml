@@ -149,6 +149,7 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements-docs.txt
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
 
       - name: Validate workflow syntax
         id: workflow_syntax
@@ -223,7 +224,7 @@ jobs:
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
           Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
-          Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
+          Documentation	${{ steps.docs.outcome }}	strict EN/DE MkDocs builds plus documentation architecture audit
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
           Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives and checksums

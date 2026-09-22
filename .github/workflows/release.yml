@@ -104,6 +104,11 @@ jobs:
           go test ./internal/... ./spec/...
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
 
+      - name: Audit release documentation
+        id: docs
+        shell: bash
+        run: bash scripts/documentation-audit.sh
+
       - name: Verify control-plane restart and operator-held unseal recovery
         id: recovery
         env:
@@ -153,6 +158,7 @@ jobs:
           cat >"$rows" <<EOF
           Release tag/source	${{ steps.validate_source.outcome }}	Tag is SemVer, contained in main, changelog and release notes present
           Release-source tests	${{ steps.source_tests.outcome }}	internal/spec/cmd test suites
+          Documentation audit	${{ steps.docs.outcome }}	documentation structure, ownership and human-readability guardrails
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
           Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	OpenTelemetry to managed Tempo

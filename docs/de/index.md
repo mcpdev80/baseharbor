@@ -1,24 +1,25 @@
 # BaseHarbor-Dokumentation
 
-BaseHarbor ist eine sichere, modulare und selbst gehostete Backend-Infrastruktur für unabhängige Anwendungen. `baha` übernimmt Bereitstellung, Isolation, Secrets, Lebenszyklus und Wiederherstellung; die Anwendung selbst verwendet weiterhin Standardprotokolle, Umgebungsvariablen und Dateien.
+Die englische Dokumentation ist die kanonische Quelle für technische Referenzen und normative Verträge.
 
-> BaseHarbor soll operative Komplexität verbergen, aber keine Standard-Schnittstellen verstecken.
+Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche menschliche Erklärungen.
 
-## Einstieg
+## Neu bei BaseHarbor?
 
-- [Repository-Workflow](repository-application-workflow.md)
-- [Anwendungsvertrag](application-contract.md)
-- [`baha` CLI](cli.md)
-- [Deklarative Input-Aufloesung](input-resolution.md)
-- [Control Plane](runtime-compose.md)
-- [Secrets und OpenBao](secrets-and-openbao.md)
-- [Backup und Restore](backup-and-restore.md)
-- [Releases](releases.md)
-- [Architektur](architecture.md)
-- [Capability- und Provider-Modell](capability-provider-model.md)
-- [ADR: Application Contracts beschreiben Capabilities statt Produkte](decisions/0005-capabilities-not-products.md)
-- [ADR: gemeinsamer Core fuer CLI, API/WebGUI und Operator](https://github.com/mcpdev80/baseharbor/blob/main/docs/decisions/0009-shared-core-multiple-control-surfaces.md)
-- [Agent-native Machine Interface](agent-machine-interface.md)
-- [Roadmap](roadmap.md)
+[Einstieg](tutorials/getting-started.md)
 
-Die englische Dokumentation ist die kanonische Quelle für den öffentlichen Vertrag. Diese deutsche Fassung wird zusammen mit ihr gepflegt. Bei Abweichungen gelten Code, Acceptance-Tests und die englische Release-Dokumentation als unmittelbare Referenz.
+## Verstehen
+
+- [Architektur](explanation/architecture.md)
+- [Application Contract](explanation/application-contract.md)
+- [Provider](explanation/providers.md)
+- [Security](explanation/security.md)
+
+## Exakte technische Details
+
+Nutze die englischen kanonischen Bereiche:
+
+- [Reference](https://mcpdev80.github.io/baseharbor/reference/cli/)
+- [Specs](https://mcpdev80.github.io/baseharbor/spec/)
+
+Übersetzungen dürfen normative Semantik nicht neu definieren.
