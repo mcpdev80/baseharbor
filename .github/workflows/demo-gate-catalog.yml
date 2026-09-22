@@ -1,0 +1,35 @@
+name: demo-gate-catalog
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: BaseHarbor ref or commit SHA containing the gate registry
+        required: true
+        type: string
+    outputs:
+      matrix:
+        description: Demo gate matrix
+        value: ${{ jobs.catalog.outputs.matrix }}
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gates.outputs.matrix }}
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Read demo gate registry
+        id: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' .github/demo-gates.json >/dev/null
+          printf 'matrix=%s\n' "$(jq -c '{gate:.}' .github/demo-gates.json)" >> "$GITHUB_OUTPUT"
