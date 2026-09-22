@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   validate:
-    name: pre-release-validation
+    name: pre-release-source-build
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
@@ -112,30 +112,6 @@ jobs:
           go vet ./...
           go build ./cmd/baha
 
-      - name: Run runtime integration tests serially
-        id: runtime_integration
-        env:
-          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
-
-      - name: Verify control-plane recovery
-        id: recovery
-        env:
-          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
-
-      - name: Verify real workload log ingestion
-        id: log_ingestion
-        env:
-          BASEHARBOR_LOGS_INTEGRATION: "1"
-        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
-
-      - name: Verify real trace ingestion
-        id: trace_ingestion
-        env:
-          BASEHARBOR_TRACES_INTEGRATION: "1"
-        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
-
       - name: Set up Python
         id: setup_python
         uses: actions/setup-python@v7
@@ -188,67 +164,52 @@ jobs:
             VERSION=${{ steps.release.outputs.tag }}
             COMMIT=${{ steps.release.outputs.candidate_sha }}
 
-      - name: Run external demo acceptance against candidate SHA
-        id: demo
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
-          ARTIFACT_DIR: /tmp/baseharbor-demo-acceptance
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/baseharbor-demo "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo
-          cd /tmp/baseharbor-demo
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh
-
       - name: Cleanup persistent runner state
         id: cleanup
         if: always()
         shell: bash
         run: bash scripts/ci-runtime-reset.sh docker
 
-      - name: Generate Docker pre-release evidence
+      - name: Generate Source/Build pre-release evidence
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          rows="$RUNNER_TEMP/pre-release-evidence.tsv"
+          rows="$RUNNER_TEMP/pre-release-source-evidence.tsv"
           cat >"$rows" <<EOF
           Candidate resolution	${{ steps.release.outcome }}	SemVer, changelog, release notes and develop ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
-          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
-          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
-          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
-          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
           Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
           Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives and checksums
           Runtime image build	${{ steps.runtime_image.outcome }}	linux/amd64 image build without publish
-          External demo acceptance	${{ steps.demo.outcome }}	consumer acceptance against exact candidate SHA
           Runner cleanup	${{ steps.cleanup.outcome }}	persistent Docker runner reset
           EOF
-          mkdir -p "$RUNNER_TEMP/pre-release-evidence/demo"
-          cp -a /tmp/baseharbor-demo-acceptance/. "$RUNNER_TEMP/pre-release-evidence/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/pre-release-evidence" \
-            "BaseHarbor Pre-Release Evidence" \
-            "pre-release/docker" \
+            "BaseHarbor Source/Build Pre-Release Evidence" \
+            "pre-release/source-build" \
             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}" \
             "${{ steps.release.outputs.candidate_sha || github.sha }}" \
             "$rows"
 
-      - name: Upload Docker pre-release evidence
+      - name: Upload Source/Build pre-release evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: pre-release-docker-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pre-release-source-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-evidence
           if-no-files-found: error
           retention-days: 30
+
+  docker_runtime:
+    name: pre-release-docker-runtime
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/docker-runtime-acceptance.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
 
   podman:
     name: pre-release-podman
@@ -262,6 +223,7 @@ jobs:
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     needs:
       - validate
+      - docker_runtime
       - podman
     runs-on: ubuntu-latest
     steps:
@@ -276,8 +238,9 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Docker pre-release validation	${{ needs.validate.result }}	Full source, runtime, docs, build and external consumer validation
-          Podman acceptance	${{ needs.podman.result }}	Full application lifecycle on dedicated Podman runner
+          Source/build validation	${{ needs.validate.result }}	Formatting, source tests, docs, workflow syntax, snapshot and runtime image build
+          Docker runtime acceptance	${{ needs.docker_runtime.result }}	Runtime integration, recovery, observability and full external demo
+          Podman runtime acceptance	${{ needs.podman.result }}	Same runtime contract on dedicated Podman runner
           EOF
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/release-gate-evidence" \
@@ -299,4 +262,5 @@ jobs:
         shell: bash
         run: |
           test "${{ needs.validate.result }}" = "success"
+          test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
