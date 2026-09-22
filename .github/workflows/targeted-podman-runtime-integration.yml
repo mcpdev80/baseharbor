@@ -45,6 +45,23 @@ jobs:
             -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' \
             -count=1 -v
 
+      - name: Capture Podman state diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo '=== podman ps ==='
+          podman ps -a
+          echo '=== podman ps json ==='
+          podman ps -a --format json
+          echo '=== compose labels ==='
+          podman ps -a --format '{{.ID}} {{.Names}} {{.Labels}}'
+          echo '=== running compose services via labels ==='
+          for id in $(podman ps -q); do
+            echo "--- $id"
+            podman inspect "$id" --format '{{json .Config.Labels}}'
+          done
+
       - name: Cleanup Podman state
         if: always()
         shell: bash
