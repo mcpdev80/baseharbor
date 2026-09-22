@@ -23,7 +23,8 @@ on:
         type: string
   push:
     branches:
-      - 'runtime-validation/targeted/**'
+      - 'runtime-validation/targeted-podman'
+      - 'runtime-validation/targeted-docker'
     paths:
       - '.ci/targeted-gate-trigger'
 
@@ -36,13 +37,13 @@ permissions:
 
 jobs:
   selected-gate:
-    name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, '/podman/') && 'podman' || 'docker') }}
+    name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (endsWith(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
     runs-on:
       - self-hosted
       - Linux
       - X64
       - baseharbor
-      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, '/podman/') && 'podman' || 'docker') }}
+      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (endsWith(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
     timeout-minutes: 60
     env:
       INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
@@ -60,11 +61,12 @@ jobs:
           ref="$INPUT_REF"
 
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            branch="${GITHUB_REF_NAME#runtime-validation/targeted/}"
-            runtime="${branch%%/*}"
-            gate="${branch#*/}"
-            gate="${gate%%/*}"
-            gate="${gate%%__*}"
+            case "$GITHUB_REF_NAME" in
+              runtime-validation/targeted-podman) runtime="podman" ;;
+              runtime-validation/targeted-docker) runtime="docker" ;;
+              *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
+            esac
+            gate="$(awk 'NF {print $1; exit}' .ci/targeted-gate-trigger)"
             ref="$GITHUB_SHA"
           fi
 
