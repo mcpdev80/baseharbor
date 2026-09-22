@@ -23,7 +23,7 @@ import (
 const (
 	applicationStatusTimeout          = 120 * time.Second
 	applicationOpenBaoStatusTimeout   = 30 * time.Second
-	applicationRequiredSecretTimeout  = 40 * time.Second
+	applicationRequiredSecretTimeout = 40 * time.Second
 	applicationBrokerStatusTimeout    = 10 * time.Second
 )
 
