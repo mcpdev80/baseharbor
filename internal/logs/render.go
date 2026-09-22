@@ -161,13 +161,23 @@ func providerComposeYAMLForRuntime(placement Placement, registrations []Registra
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		b.WriteString("    tmpfs:\n")
+		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("      - /var/lib/alloy/data:rw,noexec,nosuid,nodev\n")
+	} else {
+		b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+	}
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
-	b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		b.WriteString("      - /run/log/journal:/run/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
+	} else {
+		b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
+	}
+	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		// Journal collection does not need a host-published syslog listener.
 	} else if len(registrations) > 0 {
 		b.WriteString("    ports:\n")
 		for _, registration := range registrations {
