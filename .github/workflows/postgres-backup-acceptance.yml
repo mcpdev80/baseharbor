@@ -17,5 +17,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Prove multi-instance PostgreSQL destroy recreate restore
         run: go test ./internal/application -run '^TestPostgresBackupDisasterRecovery$' -count=1 -v
