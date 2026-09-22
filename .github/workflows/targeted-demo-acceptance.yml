@@ -27,7 +27,12 @@ permissions:
 
 jobs:
   demo:
-    runs-on: [self-hosted, Linux, X64, baseharbor, ${{ inputs.runtime }}]
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - baseharbor
+      - ${{ inputs.runtime }}
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
