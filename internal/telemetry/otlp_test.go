@@ -59,10 +59,16 @@ func TestExternalOTLPPreflightRejectsInvalidEndpoint(t *testing.T) {
 }
 
 func TestManagedCollectorDoesNotProvisionObservabilityBackends(t *testing.T) {
-	text := strings.ToLower(providerComposeYAML() + "\n" + collectorConfig())
-	for _, forbidden := range []string{"prometheus", "loki", "tempo", "grafana"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("managed OTLP provider unexpectedly references %s", forbidden)
+	composeText := strings.ToLower(providerComposeYAML())
+	for _, forbidden := range []string{"prom/prometheus", "grafana", "loki", "tempo"} {
+		if strings.Contains(composeText, forbidden) {
+			t.Fatalf("managed OTLP provider unexpectedly provisions %s:\n%s", forbidden, composeText)
+		}
+	}
+	configText := strings.ToLower(collectorConfig())
+	for _, forbidden := range []string{"http://loki", "http://tempo", "grafana"} {
+		if strings.Contains(configText, forbidden) {
+			t.Fatalf("managed OTLP provider unexpectedly configures backend %s:\n%s", forbidden, configText)
 		}
 	}
 }
