@@ -125,6 +125,7 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements-docs.txt
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
 
       - name: Validate workflow syntax
         id: workflow_syntax
@@ -180,7 +181,7 @@ jobs:
           Candidate resolution	${{ steps.release.outcome }}	SemVer, changelog, release notes and develop ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
-          Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
+          Documentation	${{ steps.docs.outcome }}	strict EN/DE MkDocs builds plus documentation architecture audit
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
           Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives and checksums
