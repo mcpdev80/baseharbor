@@ -117,18 +117,18 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 	if len(services) == 0 {
 		return nil
 	}
+
+	selected := make(map[string]struct{}, len(services))
+	for _, service := range services {
+		selected[service] = struct{}{}
+	}
+
 	args := []string{"stop"}
 	args = append(args, services...)
-	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err == nil {
-		return nil
-	} else {
+	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err != nil {
 		containers, listErr := c.ListComposeContainers(ctx)
 		if listErr != nil {
 			return fmt.Errorf("%v; engine-level selected-service fallback: %w", err, listErr)
-		}
-		selected := make(map[string]struct{}, len(services))
-		for _, service := range services {
-			selected[service] = struct{}{}
 		}
 		for _, container := range containers {
 			if container.Project != project {
@@ -141,8 +141,24 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 				return fmt.Errorf("%v; stop selected service %s via runtime engine: %w", err, container.Service, stopErr)
 			}
 		}
-		return nil
 	}
+
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("list selected workload containers after stop: %w", err)
+	}
+	for _, container := range containers {
+		if container.Project != project {
+			continue
+		}
+		if _, ok := selected[container.Service]; !ok {
+			continue
+		}
+		if _, removeErr := c.directOutput(ctx, "container", "rm", container.Name); removeErr != nil {
+			return fmt.Errorf("remove stopped selected service %s via runtime engine: %w", container.Service, removeErr)
+		}
+	}
+	return nil
 }
 
 func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) (string, error) {
