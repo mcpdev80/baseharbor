@@ -31,11 +31,59 @@ jobs:
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
+  demo_docker:
+    name: release-demo-docker
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - init
+          - lifecycle
+          - policy
+          - capabilities
+          - connectivity
+          - security
+          - reconciliation
+          - machine
+          - failure
+          - recovery
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      runtime: docker
+      gate: ${{ matrix.gate }}
+
+  demo_podman:
+    name: release-demo-podman
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - init
+          - lifecycle
+          - policy
+          - capabilities
+          - connectivity
+          - security
+          - reconciliation
+          - machine
+          - failure
+          - recovery
+    uses: ./.github/workflows/demo-gate.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      runtime: podman
+      gate: ${{ matrix.gate }}
+
   runtime-image:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs:
       - docker_runtime
       - podman
+      - demo_docker
+      - demo_podman
     permissions:
       contents: read
       packages: write
@@ -49,6 +97,8 @@ jobs:
     needs:
       - docker_runtime
       - podman
+      - demo_docker
+      - demo_podman
       - runtime-image
     runs-on: ubuntu-latest
     steps:
@@ -194,6 +244,8 @@ jobs:
     needs:
       - docker_runtime
       - podman
+      - demo_docker
+      - demo_podman
       - runtime-image
       - release
     runs-on: ubuntu-latest
@@ -209,8 +261,10 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Docker runtime gate	${{ needs.docker_runtime.result }}	Dedicated self-hosted Docker runtime acceptance
-          Podman runtime gate	${{ needs.podman.result }}	Dedicated self-hosted Podman runtime acceptance
+          Docker runtime core	${{ needs.docker_runtime.result }}	Dedicated self-hosted Docker runtime core
+          Podman runtime core	${{ needs.podman.result }}	Dedicated self-hosted Podman runtime core
+          Docker demo gates	${{ needs.demo_docker.result }}	Independent consumer-contract gate matrix
+          Podman demo gates	${{ needs.demo_podman.result }}	Independent consumer-contract gate matrix
           Runtime image publish	${{ needs.runtime-image.result }}	Multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	Tagged-source tests, archives and attestations
           EOF
@@ -235,5 +289,7 @@ jobs:
         run: |
           test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
+          test "${{ needs.demo_docker.result }}" = "success"
+          test "${{ needs.demo_podman.result }}" = "success"
           test "${{ needs.runtime-image.result }}" = "success"
           test "${{ needs.release.result }}" = "success"
