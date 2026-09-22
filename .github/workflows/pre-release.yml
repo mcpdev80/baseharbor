@@ -1,4 +1,6 @@
-name: pre-release
+name: "Release · Pre-Release Validation"
+
+run-name: "Pre-Release · ${{ inputs.tag || github.ref_name }}"
 
 on:
   workflow_dispatch:
