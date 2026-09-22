@@ -80,7 +80,6 @@ func TestEnsureFilesRejectsUnsafeRelayID(t *testing.T) {
 	}
 }
 
-
 func TestRelayHealthPortDoesNotCollideWithTargetPort(t *testing.T) {
 	rendered := composeYAML(RuntimeSpec{
 		ID:            "abc123",
