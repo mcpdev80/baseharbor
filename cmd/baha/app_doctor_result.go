@@ -259,14 +259,12 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			}},
 		)
 		if len(application.RequiredSecretNames(m)) > 0 {
-			checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(context.Context) error {
+			checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(checkCtx context.Context) error {
 				if runtimeErr != nil {
 					return runtimeErr
 				}
-				secretCtx, secretCancel := context.WithTimeout(ctx, 20*time.Second)
-				defer secretCancel()
 				var err error
-				requiredStatuses, err = inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
+				requiredStatuses, err = inspectRequiredApplicationSecrets(checkCtx, compose, platformFiles, m, files)
 				if err != nil {
 					return err
 				}
