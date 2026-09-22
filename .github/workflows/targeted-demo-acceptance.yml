@@ -1,4 +1,6 @@
-name: targeted-demo-acceptance
+name: "Demo · Targeted Gate"
+
+run-name: "Targeted Demo Gate · ${{ github.ref_name }}"
 
 on:
   workflow_dispatch:
