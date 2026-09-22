@@ -1,0 +1,31 @@
+name: targeted-podman-journal-path
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/podman-journal-path/**'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Inspect journal storage
+        shell: bash
+        run: |
+          set -euxo pipefail
+          id
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}"
+          ls -ld /run/log/journal || true
+          find /run/log/journal -maxdepth 2 -type f -o -type s 2>/dev/null | head -100 || true
+          ls -ld "/run/user/$(id -u)" || true
+          ls -ld "/run/user/$(id -u)/systemd" || true
+          ls -ld "/run/user/$(id -u)/systemd/journal" || true
+          find "/run/user/$(id -u)/systemd/journal" -maxdepth 2 -type f -o -type s 2>/dev/null | head -100 || true
+          ls -ld /var/log/journal || true
+          find /var/log/journal -maxdepth 2 -type f 2>/dev/null | head -100 || true
+          journalctl --user --no-pager -n 3 -o json || true
