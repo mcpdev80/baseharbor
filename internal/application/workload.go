@@ -277,8 +277,20 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, service := range services {
+		_, exposed := exposedServices[service]
+		_, metricsSource := metricsServices[service]
+		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
+		serviceObjectStorage := objectStorage || runtimeObjectStorage
+		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
+		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+
+		if !hasEnvironment && !hasNetworks {
+			fmt.Fprintf(&b, "  %s: {}\n", service)
+			continue
+		}
+
 		fmt.Fprintf(&b, "  %s:\n", service)
-		if len(env) > 0 || HasOTLPTelemetry(m) {
+		if hasEnvironment {
 			b.WriteString("    environment:\n")
 			serviceEnv := make(map[string]string, len(env)+2)
 			for key, value := range env {
@@ -297,12 +309,20 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
-		_, exposed := exposedServices[service]
-		_, metricsSource := metricsServices[service]
-		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
-		serviceObjectStorage := objectStorage || runtimeObjectStorage
-		if backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed {
+		if hasNetworks {
 			b.WriteString("    networks:\n")
+			if !metricsSource && !exposed {
+				if backendNetwork {
+					b.WriteString("      - baseharbor-backend\n")
+				}
+				if serviceObjectStorage {
+					b.WriteString("      - baseharbor-object-storage\n")
+				}
+				if telemetryManaged {
+					b.WriteString("      - baseharbor-telemetry\n")
+				}
+				continue
+			}
 			if backendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
 			}
