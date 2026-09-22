@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 type Check struct {
@@ -18,10 +19,27 @@ type Result struct {
 }
 
 func Run(ctx context.Context, checks []Check) ([]Result, bool) {
+	return run(ctx, checks, 0)
+}
+
+// RunWithTimeout gives every check its own timeout budget. A single shared
+// deadline makes later checks fail only because earlier runtime checks were
+// slow, which is especially visible with external Compose providers.
+func RunWithTimeout(ctx context.Context, checks []Check, timeout time.Duration) ([]Result, bool) {
+	return run(ctx, checks, timeout)
+}
+
+func run(ctx context.Context, checks []Check, timeout time.Duration) ([]Result, bool) {
 	results := make([]Result, 0, len(checks))
 	allOK := true
 	for _, check := range checks {
-		err := check.Run(ctx)
+		checkCtx := ctx
+		cancel := func() {}
+		if timeout > 0 {
+			checkCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
+		err := check.Run(checkCtx)
+		cancel()
 		result := Result{Name: check.Name, OK: err == nil}
 		if err != nil {
 			result.Detail = err.Error()
