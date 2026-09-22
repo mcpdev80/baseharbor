@@ -16,6 +16,7 @@ type Requirements struct {
 }
 
 type inspectRecord struct {
+	EffectiveCaps []string
 	Config struct {
 		User string
 	}
@@ -74,8 +75,14 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	if req.ReadOnlyRootfs && !r.HostConfig.ReadonlyRootfs {
 		return fmt.Errorf("%s/%s root filesystem is writable", project, service)
 	}
-	if req.DropAllCaps && !containsFold(r.HostConfig.CapDrop, "ALL") {
-		return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
+	if req.DropAllCaps {
+		if containerRuntime() == "podman" {
+			if len(r.EffectiveCaps) != 0 {
+				return fmt.Errorf("%s/%s retains effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
+			}
+		} else if !containsFold(r.HostConfig.CapDrop, "ALL") {
+			return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
+		}
 	}
 	if req.NoNewPrivs && !containsSecurityOpt(r.HostConfig.SecurityOpt, "no-new-privileges") {
 		return fmt.Errorf("%s/%s does not enable no-new-privileges: %v", project, service, r.HostConfig.SecurityOpt)
