@@ -52,11 +52,14 @@ func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string
 }
 
 func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
-	if err == nil {
-		cacheProjectEnvironment(project, environment)
+	_, quietErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
+	if quietErr != nil {
+		if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config"); err != nil {
+			return fmt.Errorf("%v; plain config fallback: %w", quietErr, err)
+		}
 	}
-	return err
+	cacheProjectEnvironment(project, environment)
+	return nil
 }
 
 func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) (string, error) {
