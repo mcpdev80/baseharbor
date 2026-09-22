@@ -154,20 +154,15 @@ func providerComposeYAMLForRuntime(placement Placement, registrations []Registra
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		b.WriteString("    user: \"0:0\"\n")
+		b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/tmp/alloy-data\", \"/etc/alloy/config.alloy\"]\n")
 	} else {
 		fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", AlloyRuntimeUID, AlloyRuntimeGID)))
+		b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/var/lib/alloy/data\", \"/etc/alloy/config.alloy\"]\n")
 	}
-	b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/var/lib/alloy/data\", \"/etc/alloy/config.alloy\"]\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
-		b.WriteString("    tmpfs:\n")
-		b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
-		b.WriteString("      - /var/lib/alloy/data:rw,noexec,nosuid,nodev\n")
-	} else {
-		b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
-	}
+	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
