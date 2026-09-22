@@ -133,7 +133,6 @@ func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
 	}
 }
 
-
 func TestSeaweedFSProviderUsesQualifiedImageReference(t *testing.T) {
 	text := providerComposeYAML()
 	if !strings.Contains(text, "image: "+ProviderImage) {
