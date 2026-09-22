@@ -1,0 +1,12 @@
+[
+  "init",
+  "lifecycle",
+  "policy",
+  "capabilities",
+  "connectivity",
+  "security",
+  "reconciliation",
+  "machine",
+  "failure",
+  "recovery"
+]
