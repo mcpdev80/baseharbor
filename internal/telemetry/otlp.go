@@ -360,6 +360,14 @@ exporters:
   debug:
     verbosity: basic
 %sservice:
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
