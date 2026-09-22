@@ -1,0 +1,26 @@
+name: cancel-stale-runtime-validation
+
+on:
+  push:
+    branches:
+      - 'runtime-maintenance/cancel-stale/**'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel-stale:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    steps:
+      - name: Cancel stale Podman validation runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in 35723600861 35723606245 35723748759 35723752908; do
+            echo "Cancelling stale run $id"
+            gh api -X POST "repos/$GH_REPO/actions/runs/$id/cancel" || true
+          done
