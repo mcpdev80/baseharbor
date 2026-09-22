@@ -14,6 +14,8 @@ required=(
   docs/spec/reconciliation-v1.md
   docs/spec/machine-interface-v1.md
   docs/spec/security-invariants.md
+  docs/decisions/index.md
+  docs/releases/index.md
   docs/pre-release-documentation-audit.md
 )
 

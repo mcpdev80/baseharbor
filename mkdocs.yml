@@ -96,6 +96,7 @@ nav:
       - Application Runtime Broker: spec/application-runtime-broker.md
       - Application runtime identity: spec/application-runtime-identity.md
       - Runtime broker security: spec/runtime-secret-broker-security.md
-  - Decisions: decisions/0005-capabilities-not-products.md
+  - Decisions: decisions/index.md
+  - Release notes: releases/index.md
   - Roadmap: roadmap.md
   - Documentation style: STYLE_GUIDE.md
