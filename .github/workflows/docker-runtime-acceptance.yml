@@ -24,6 +24,8 @@ permissions:
 
 jobs:
   docker-runtime:
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
 
