@@ -1,0 +1,58 @@
+name: targeted-podman-logs
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/podman-logs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_LOGS_INTEGRATION: "1"
+
+    steps:
+      - name: Checkout tested source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Validate formatting and workflow syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l internal/runtime/compose.go internal/logs/driver.go internal/logs/state.go internal/logs/render.go internal/logs/loki_integration_test.go cmd/baha/app_logs.go)"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
+      - name: Reset Podman state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Run Loki ingestion on Podman only
+        shell: bash
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Capture provider diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          podman ps -a
+          podman logs baseharbor-logs_alloy_1 2>&1 || true
+          podman logs baseharbor-logs_loki_1 2>&1 || true
+          journalctl --no-pager --since '-10 minutes' CONTAINER_NAME=baseharbor-logs-acceptance-workload_api_1 | tail -n 100 || true
+
+      - name: Cleanup Podman state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
