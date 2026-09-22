@@ -31,23 +31,18 @@ jobs:
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
+  demo_catalog:
+    name: release-demo-catalog
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/demo-gate-catalog.yml
+
   demo_docker:
     name: release-demo-docker
+    needs: demo_catalog
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
-      matrix:
-        gate:
-          - init
-          - lifecycle
-          - policy
-          - capabilities
-          - connectivity
-          - security
-          - reconciliation
-          - machine
-          - failure
-          - recovery
+      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
     uses: ./.github/workflows/demo-gate.yml
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -56,21 +51,11 @@ jobs:
 
   demo_podman:
     name: release-demo-podman
+    needs: demo_catalog
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
-      matrix:
-        gate:
-          - init
-          - lifecycle
-          - policy
-          - capabilities
-          - connectivity
-          - security
-          - reconciliation
-          - machine
-          - failure
-          - recovery
+      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
     uses: ./.github/workflows/demo-gate.yml
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
