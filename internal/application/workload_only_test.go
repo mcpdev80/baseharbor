@@ -159,3 +159,44 @@ func TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes(t *testing.T) {
 		t.Fatalf("expected exactly one OTEL_SERVICE_NAME entry, got %d:\n%s", got, override)
 	}
 }
+
+
+func TestWorkloadOnlyOverrideUsesExplicitEmptyService(t *testing.T) {
+	m := workloadOnlyManifest()
+	override, err := workloadOverrideYAML(m, []string{"app"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(override, "  app: {}\n") {
+		t.Fatalf("expected explicit empty service override for Compose portability:\n%s", override)
+	}
+}
+
+func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "portable-networks",
+		Environment: "dev",
+		Services: Services{
+			Postgres: true,
+		},
+		Workload: WorkloadConfig{
+			Compose:  "compose.yaml",
+			Services: []string{"api"},
+		},
+	}
+	override, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{
+		"POSTGRES_DB":       "app",
+		"POSTGRES_USER":     "app",
+		"POSTGRES_PASSWORD": "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(override, "    networks:\n      - baseharbor-backend\n") {
+		t.Fatalf("expected alias-free networks as a Compose sequence:\n%s", override)
+	}
+	if strings.Contains(override, "      baseharbor-backend: {}") {
+		t.Fatalf("alias-free network must not require mapping syntax:\n%s", override)
+	}
+}
