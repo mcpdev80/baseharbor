@@ -128,7 +128,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if !containsString(services, "postgres") {
 			result.AddCheck("postgres", false, "not running")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
 			err := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
 			cancel()
 			if err != nil {
@@ -142,7 +142,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if !containsString(services, "valkey") {
 			result.AddCheck("valkey", false, "not running")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
 			err := application.VerifyValkeyRuntime(checkCtx, compose, m, files)
 			cancel()
 			if err != nil {
