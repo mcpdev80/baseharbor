@@ -1,49 +1,52 @@
 # BaseHarbor documentation
 
-This directory is the canonical documentation source for BaseHarbor.
+BaseHarbor keeps documentation separated by purpose so you can find the right level quickly.
 
-The README is a product overview and quick entry point. Detailed behavior, operational contracts and security guarantees belong here. The GitHub Pages site is generated from these documents rather than maintaining a second independent copy.
+## New to BaseHarbor?
 
-## Start here
+Start with [Getting started](tutorials/getting-started.md).
 
-- [Application contract](application-contract.md)
-- [Repository application workflow](repository-application-workflow.md)
-- [`baha` CLI](cli.md)
-- [Declarative input resolution](input-resolution.md)
-- [Local control-plane runtime](runtime-compose.md)
-- [Secrets and OpenBao](secrets-and-openbao.md)
-- [Backup and restore](backup-and-restore.md)
-- [Releases and versioning](releases.md)
+## Trying to do something?
 
-## Architecture and security
+Use a task guide:
 
-- [Architecture](architecture.md)
-- [Capability and provider model](capability-provider-model.md)
-- [ADR: application contracts describe capabilities, not products](decisions/0005-capabilities-not-products.md)
-- [ADR: portable contract/provider seam](decisions/0006-portable-contract-provider-seam.md)
-- [ADR: runtime provider selection](decisions/0007-runtime-provider-selection.md)
-- [ADR: application contract evolution](decisions/0008-application-contract-evolution.md)
-- [ADR: shared core with CLI, API/Web UI and Operator control surfaces](decisions/0009-shared-core-multiple-control-surfaces.md)
-- [Authentication](authentication.md)
-- [Authentication and API errors](authentication-and-api-errors.md)
-- [Application runtime identity](application-runtime-identity.md)
-- [Application secret API](application-secret-api.md)
-- [Dynamic application secrets](dynamic-application-secrets.md)
-- [PostgreSQL and migrations](postgresql-and-migrations.md)
-- [Service-instance and HA decisions](decisions/0001-service-instances-and-ha-intent.md)
+- [Choose an environment](how-to/environments.md)
+- [Use PostgreSQL](how-to/postgres.md)
+- [Use cache](how-to/cache.md)
+- [Use secrets](how-to/secrets.md)
+- [Use object storage](how-to/object-storage.md)
+- [Use observability](how-to/observability.md)
+- [Back up and restore](how-to/backup-restore.md)
 
-## Project operation
+## Trying to understand how it works?
 
-- [Agent-native machine interface](agent-machine-interface.md)
-- [Roadmap](roadmap.md)
-- [Dependency updates](dependency-updates.md)
-- [Development guidelines](DEVELOPMENT_GUIDELINES.md)
-- [Pre-release documentation audit](pre-release-documentation-audit.md)
+Read the short explanations:
 
-## Documentation contract
+- [Architecture](explanation/architecture.md)
+- [Application contract](explanation/application-contract.md)
+- [Providers](explanation/providers.md)
+- [Security](explanation/security.md)
 
-Documentation describes behavior that exists on the default branch unless explicitly marked as planned. Code and executable acceptance tests are the immediate source of truth when documentation drifts.
+## Looking up exact behavior?
 
-Public documentation distinguishes between implemented behavior, published release contracts and planned work.
+Use reference documentation:
 
-English is canonical/default. GitHub Pages publishes English at `/` and maintained German documentation at `/de/`.
+- [CLI](reference/cli.md)
+- [Manifest](reference/manifest.md)
+- [MCP](reference/mcp.md)
+- [Errors](reference/errors.md)
+
+## Implementing or validating BaseHarbor?
+
+Use normative specifications:
+
+- [Specification index](spec/README.md)
+- [Application contract v1](spec/application-contract-v1.md)
+- [Provider contract v1](spec/provider-contract-v1.md)
+- [Reconciliation v1](spec/reconciliation-v1.md)
+- [Machine interface v1](spec/machine-interface-v1.md)
+- [Security invariants](spec/security-invariants.md)
+
+Architecture rationale lives in [ADRs](decisions/). Detailed future work lives in GitHub Issues. Release history lives in [releases](releases/).
+
+English is canonical. German documentation may provide maintained human-facing guidance, but it does not redefine normative behavior.

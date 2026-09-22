@@ -150,15 +150,14 @@ baha version
 
 ## Learn more
 
-- [Five-minute onboarding](docs/five-minute-onboarding.md)
-- [Architecture](docs/architecture.md)
-- [Application contract](docs/application-contract.md)
-- [Capability / provider model](docs/capability-provider-model.md)
-- [Provider Integration Contract](docs/provider-integration-contract.md)
-- [CLI reference](docs/cli.md)
-- [Agent-native machine interface](docs/agent-machine-interface.md)
+- [Documentation home](docs/index.md)
+- [Getting started](docs/tutorials/getting-started.md)
+- [Architecture](docs/explanation/architecture.md)
+- [Application contract](docs/explanation/application-contract.md)
+- [Providers](docs/explanation/providers.md)
+- [CLI reference](docs/reference/cli.md)
+- [Normative specifications](docs/spec/README.md)
 - [Roadmap](docs/roadmap.md)
-- [Release policy](docs/releases.md)
 
 ## Project status
 

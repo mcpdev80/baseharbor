@@ -69,6 +69,7 @@ jobs:
         run: |
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
 
       - name: Check formatting
         id: formatting
