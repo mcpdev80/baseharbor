@@ -15,6 +15,10 @@ on:
         default: develop
         type: string
 
+  push:
+    branches:
+      - 'runtime-validation/docker/**'
+
 permissions:
   contents: read
 
