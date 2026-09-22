@@ -165,7 +165,6 @@ func containsSecurityOpt(values []string, want string) bool {
 	return false
 }
 
-
 func rootlessPodman() bool {
 	if containerRuntime() != "podman" {
 		return false
