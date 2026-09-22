@@ -38,8 +38,10 @@ jobs:
           podman ps -a
           podman ps -a --format json
           for id in $(podman ps -aq); do
-            echo "--- $id"
+            echo "--- $id labels"
             podman inspect "$id" --format '{{json .Config.Labels}}'
+            echo "--- $id logs"
+            podman logs "$id" || true
           done
 
       - name: Cleanup Podman state
