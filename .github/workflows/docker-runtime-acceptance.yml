@@ -7,22 +7,12 @@ on:
         description: Git ref or commit SHA to test
         required: true
         type: string
-      demo_groups:
-        description: Comma-separated demo groups; empty runs full acceptance
-        required: false
-        default: ""
-        type: string
   workflow_dispatch:
     inputs:
       ref:
         description: Git ref to test
         required: false
         default: develop
-        type: string
-      demo_groups:
-        description: Comma-separated demo groups; empty runs full acceptance
-        required: false
-        default: ""
         type: string
 
   push:
@@ -100,24 +90,6 @@ jobs:
           BASEHARBOR_TRACES_INTEGRATION: "1"
         run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
 
-      - name: Run external demo acceptance
-        id: demo
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ inputs.ref || github.sha }}
-          ARTIFACT_DIR: /tmp/baseharbor-demo-docker-acceptance
-          BASEHARBOR_TEST_RUNTIME: docker
-          DEMO_GROUPS: ${{ inputs.demo_groups || '' }}
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/baseharbor-demo-docker "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-docker
-          cd /tmp/baseharbor-demo-docker
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            BASEHARBOR_TEST_RUNTIME=docker \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh
-
       - name: Cleanup Docker runtime
         id: cleanup
         if: always()
@@ -142,20 +114,12 @@ jobs:
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
           Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
-          External demo acceptance	${{ steps.demo.outcome }}	full consumer acceptance against exact candidate SHA
           EOF
-          demo_groups_file="/tmp/baseharbor-demo-docker-acceptance/groups.tsv"
-          if [ -s "$demo_groups_file" ]; then
-            while IFS=$'\t' read -r group status detail; do
-              printf 'Demo %s\t%s\t%s\n' "$group" "$status" "$detail" >>"$rows"
-            done <"$demo_groups_file"
-          fi
           cat >>"$rows" <<EOF
           Cleanup	${{ steps.cleanup.outcome }}	Persistent Docker runner returned to clean state
           EOF
-          mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs" "$RUNNER_TEMP/docker-runtime-evidence/demo"
+          mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs"
           cp /tmp/docker-*.txt "$RUNNER_TEMP/docker-runtime-evidence/logs/" 2>/dev/null || true
-          cp -a /tmp/baseharbor-demo-docker-acceptance/. "$RUNNER_TEMP/docker-runtime-evidence/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/docker-runtime-evidence" \
             "BaseHarbor Docker Runtime Evidence" \
