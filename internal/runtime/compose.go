@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -31,6 +32,18 @@ type ComposeContainer struct {
 type Compose struct {
 	command string
 	prefix  []string
+}
+
+func (c Compose) Engine() string {
+	base := filepath.Base(strings.TrimSpace(c.command))
+	switch base {
+	case "podman":
+		return "podman"
+	case "docker":
+		return "docker"
+	default:
+		return base
+	}
 }
 
 // DetectCompose remains the compatibility entry point for existing v0.3
