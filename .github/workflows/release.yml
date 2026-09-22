@@ -1,4 +1,6 @@
-name: release
+name: "Release · Publish"
+
+run-name: "Release · ${{ inputs.tag || github.ref_name }}"
 
 on:
   push:
