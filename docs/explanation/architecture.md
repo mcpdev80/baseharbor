@@ -67,3 +67,20 @@ Reconciliation compares desired state with observed provider/runtime state and f
 CLI, JSON and MCP are adapters over the same semantic core. No interface may bypass policy, ownership, verification or secret safety.
 
 For normative behavior, use [Specs](../spec/README.md). For design rationale, use [ADRs](../decisions/).
+
+
+## Documentation boundaries
+
+Documentation follows the same responsibility discipline as code:
+
+```text
+Human docs      -> explain use and concepts
+Reference       -> exact public behavior
+Specs           -> normative contracts
+Schemas/code    -> machine-readable authority
+ADRs            -> decisions and rationale
+GitHub Issues   -> future planning
+Releases        -> delivered history
+```
+
+A detailed fact should have one authoritative home. Human documentation links to deeper reference/spec material instead of duplicating it.
