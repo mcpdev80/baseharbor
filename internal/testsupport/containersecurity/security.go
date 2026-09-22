@@ -54,7 +54,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	if !r.State.Running {
 		return fmt.Errorf("%s/%s is not running", project, service)
 	}
-	if isRootUser(r.Config.User) {
+	if isRootUser(r.Config.User) && !rootlessPodman() {
 		return fmt.Errorf("%s/%s runs as root (Config.User=%q)", project, service, r.Config.User)
 	}
 	if r.HostConfig.Privileged {
@@ -165,6 +165,17 @@ func containsSecurityOpt(values []string, want string) bool {
 	return false
 }
 
+
+func rootlessPodman() bool {
+	if containerRuntime() != "podman" {
+		return false
+	}
+	out, err := exec.Command("podman", "info", "--format", "{{.Host.Security.Rootless}}").Output()
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(string(out)), "true")
+}
 
 func containerRuntime() string {
 	if runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")); runtime == "docker" || runtime == "podman" {
