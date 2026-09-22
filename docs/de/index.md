@@ -19,7 +19,7 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 
 Nutze die englischen kanonischen Bereiche:
 
-- [Reference](../reference/cli.md)
-- [Specs](../spec/README.md)
+- [Reference](https://mcpdev80.github.io/baseharbor/reference/cli/)
+- [Specs](https://mcpdev80.github.io/baseharbor/spec/)
 
 Übersetzungen dürfen normative Semantik nicht neu definieren.

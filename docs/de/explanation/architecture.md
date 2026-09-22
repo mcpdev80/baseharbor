@@ -50,4 +50,4 @@ plan -> preflight -> apply -> verify
 
 CLI, JSON und MCP benutzen dieselbe Semantik.
 
-Normative Details stehen ausschließlich in den englischen [Specs](../../spec/README.md).
+Normative Details stehen ausschließlich in den englischen [Specs](https://mcpdev80.github.io/baseharbor/spec/).

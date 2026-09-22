@@ -14,4 +14,4 @@ Die wichtigsten Regeln:
 
 Dev darf bequem sein, aber nicht Isolation, Ownership oder Secret-Sicherheit abschalten.
 
-Normative Security-Regeln stehen in den englischen [Security Invariants](../../spec/security-invariants.md).
+Normative Security-Regeln stehen in den englischen [Security Invariants](https://mcpdev80.github.io/baseharbor/spec/security-invariants/).
