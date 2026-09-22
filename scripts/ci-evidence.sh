@@ -34,13 +34,13 @@ fi
   echo
   echo "| Field | Value |"
   echo "| --- | --- |"
-  printf '| Phase | \`%s\` |\\n' "$phase"
-  printf '| Repository | \`%s\` |\\n' "${GITHUB_REPOSITORY:-unknown}"
-  printf '| Ref | \`%s\` |\\n' "$ref"
-  printf '| Commit | \`%s\` |\\n' "$sha"
-  printf '| Run | \`%s\` |\\n' "${GITHUB_RUN_ID:-unknown}"
-  printf '| Attempt | \`%s\` |\\n' "${GITHUB_RUN_ATTEMPT:-1}"
-  printf '| Generated | \`%s\` |\\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  printf '| Phase | `%s` |\n' "$phase"
+  printf '| Repository | `%s` |\n' "${GITHUB_REPOSITORY:-unknown}"
+  printf '| Ref | `%s` |\n' "$ref"
+  printf '| Commit | `%s` |\n' "$sha"
+  printf '| Run | `%s` |\n' "${GITHUB_RUN_ID:-unknown}"
+  printf '| Attempt | `%s` |\n' "${GITHUB_RUN_ATTEMPT:-1}"
+  printf '| Generated | `%s` |\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   if [ -n "$run_url" ]; then
     echo "| GitHub Actions | $run_url |"
   fi
