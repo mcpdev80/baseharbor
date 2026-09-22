@@ -17,21 +17,10 @@ on:
           - docker
           - podman
       gate:
-        description: Demo gate to run
+        description: Demo gate name from baseharbor-demo/tests/gates.json
         required: true
         default: lifecycle
-        type: choice
-        options:
-          - init
-          - lifecycle
-          - policy
-          - capabilities
-          - connectivity
-          - security
-          - reconciliation
-          - machine
-          - failure
-          - recovery
+        type: string
 
 permissions:
   contents: read
