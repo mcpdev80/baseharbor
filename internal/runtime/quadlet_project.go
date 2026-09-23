@@ -279,7 +279,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 		if actual == "" {
 			actual = project + "_" + name
 		}
-		result.Files[unit+".volume"] = "[Volume]\nVolumeName=" + actual + "\n"
+		result.Files[unit+".volume"] = "[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n"
 	}
 	for name, network := range model.Networks {
 		if network.External {
@@ -292,6 +292,8 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 		}
 		var b strings.Builder
 		b.WriteString("[Network]\nNetworkName=" + actual + "\n")
+		b.WriteString("Label=com.docker.compose.project=" + project + "\n")
+		b.WriteString("Label=io.podman.compose.project=" + project + "\n")
 		if network.Internal {
 			b.WriteString("Internal=true\n")
 		}
