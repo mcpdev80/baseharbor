@@ -110,6 +110,7 @@ type ProviderFiles struct {
 	Config        string
 	TargetsDir    string
 	Registrations string
+	RuntimeCA     string
 }
 
 type sourceRegistration struct {
@@ -120,16 +121,22 @@ type sourceRegistration struct {
 }
 
 type Driver struct {
-	runtime Runtime
-	app     application.Manifest
-	client  *http.Client
+	runtime   Runtime
+	app       application.Manifest
+	runtimeCA string
+	client    *http.Client
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
+func NewDriver(runtime Runtime, app application.Manifest, runtimeCA ...string) *Driver {
+	caPath := ""
+	if len(runtimeCA) > 0 {
+		caPath = strings.TrimSpace(runtimeCA[0])
+	}
 	return &Driver{
-		runtime: runtime,
-		app:     app,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		runtime:   runtime,
+		app:       app,
+		runtimeCA: caPath,
+		client:    &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -174,7 +181,7 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
-	files, err := EnsureProviderFiles(d.app)
+	files, err := EnsureProviderFilesWithRuntimeCA(d.app, d.runtimeCA)
 	if err != nil {
 		return err
 	}
@@ -387,6 +394,10 @@ func providerMetricNetworks(sources []observability.MetricsSource) []string {
 }
 
 func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
+	return EnsureProviderFilesWithRuntimeCA(m, "")
+}
+
+func EnsureProviderFilesWithRuntimeCA(m application.Manifest, runtimeCASource string) (ProviderFiles, error) {
 	placement, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -403,6 +414,7 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
 		Registrations: filepath.Join(dir, "registrations.json"),
+		RuntimeCA: filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
 	registrations := []sourceRegistration{registrationFor(m)}
 	if placement.Scope == capability.ScopeShared {
@@ -441,6 +453,24 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
 
+	if strings.TrimSpace(runtimeCASource) != "" {
+		caData, err := os.ReadFile(runtimeCASource)
+		if err != nil {
+			return ProviderFiles{}, fmt.Errorf("read BaseHarbor runtime CA for Prometheus: %w", err)
+		}
+		if len(caData) == 0 {
+			return ProviderFiles{}, errors.New("BaseHarbor runtime CA for Prometheus is empty")
+		}
+		if err := os.WriteFile(files.RuntimeCA, caData, 0o644); err != nil {
+			return ProviderFiles{}, fmt.Errorf("persist BaseHarbor runtime CA for Prometheus: %w", err)
+		}
+	}
+	_, caErr := os.Stat(files.RuntimeCA)
+	hasRuntimeCA := caErr == nil
+	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
+		return ProviderFiles{}, caErr
+	}
+
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -461,13 +491,13 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_PROMETHEUS_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations)), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, providerNetworks)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, providerNetworks, hasRuntimeCA)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -519,13 +549,18 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m applica
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations)), 0o644); err != nil {
+	_, caErr := os.Stat(files.RuntimeCA)
+	hasRuntimeCA := caErr == nil
+	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
+		return caErr
+	}
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA)), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(placement, registrations)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, nil, hasRuntimeCA)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
@@ -651,6 +686,7 @@ func providerFilesAt(dir string) (ProviderFiles, error) {
 		Config:        filepath.Join(dir, "prometheus.yml"),
 		TargetsDir:    filepath.Join(dir, "targets"),
 		Registrations: filepath.Join(dir, "registrations.json"),
+		RuntimeCA:     filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
 		if _, err := os.Stat(path); err != nil {
@@ -821,10 +857,10 @@ func targetFileName(m application.Manifest, source string) string {
 }
 
 func providerComposeYAML(placement Placement, registrations []sourceRegistration) string {
-	return providerComposeYAMLWithProviderNetworks(placement, registrations, nil)
+	return providerComposeYAMLWithProviderNetworks(placement, registrations, nil, false)
 }
 
-func providerComposeYAMLWithProviderNetworks(placement Placement, registrations []sourceRegistration, providerNetworks []string) string {
+func providerComposeYAMLWithProviderNetworks(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA bool) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -847,6 +883,9 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
 	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
+	if hasRuntimeCA {
+		b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
+	}
 	b.WriteString("      - prometheus-data:/prometheus\n")
 	for i, registration := range registrations {
 		if registration.RuntimeVolume != "" {
@@ -882,7 +921,7 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	return b.String()
 }
 
-func prometheusConfig(registrations []sourceRegistration) string {
+func prometheusConfig(registrations []sourceRegistration, hasRuntimeCA bool) string {
 	var b strings.Builder
 	b.WriteString(`global:
   scrape_interval: 5s
@@ -901,7 +940,13 @@ scrape_configs:
 		fmt.Fprintf(&b, "          - /etc/prometheus/runtime-targets/%d/*.json\n", i)
 	}
 	b.WriteString(`        refresh_interval: 2s
-    relabel_configs:
+`)
+	if hasRuntimeCA {
+		b.WriteString(`    tls_config:
+      ca_file: /etc/prometheus/baseharbor-runtime-ca.pem
+`)
+	}
+	b.WriteString(`    relabel_configs:
       - source_labels: [baseharbor_metrics_path]
         target_label: __metrics_path__
       - source_labels: [baseharbor_metrics_scheme]
