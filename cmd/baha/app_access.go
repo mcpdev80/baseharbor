@@ -193,9 +193,9 @@ func resolveAccessBinding(store application.Store, appName, kind, instance strin
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
-	instances := application.RedisInstanceNames(resolved.Manifest)
+	instances := application.CacheInstanceNames(resolved.Manifest)
 	if kind == "postgres" {
-		instances = application.PostgresInstanceNames(resolved.Manifest)
+		instances = application.SQLInstanceNames(resolved.Manifest)
 	}
 	selected, err := selectAccessInstance(instances, instance, kind)
 	if err != nil {
