@@ -93,12 +93,17 @@ func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir st
 	return c.UpProjectFilesSelectedProgress(ctx, project, workdir, environment, services, nil, composeFiles...)
 }
 
-func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
-	args := []string{"up", "-d"}
+func composeUpArgs(services []string) []string {
+	args := []string{"up", "-d", "--build"}
 	if len(services) > 0 {
 		args = append(args, "--no-deps")
 		args = append(args, services...)
 	}
+	return args
+}
+
+func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	args := composeUpArgs(services)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
 }
