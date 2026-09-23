@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Podman runtime execution now uses native Quadlets instead of the external `podman-compose` provider. BaseHarbor keeps Compose-based workload/provider definitions as the compatibility input, translates them into Quadlet units, and manages the Podman lifecycle through rootless `systemd --user`; Docker continues to use Docker Compose.
+- Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
+
 ## [0.4.14]
 
 ### Added
