@@ -6,60 +6,43 @@ Date: 2026-09-23
 
 ## Context
 
-BaseHarbor already separates application intent from provider products and uses open building blocks such as gRPC/Protocol Buffers, OCI and OpenTelemetry. Several shipped v0.4 capability specifications were created before the full standards inventory was made explicit.
+BaseHarbor already uses several open standards and mature ecosystem patterns, but some capability and binding semantics evolved locally before the service/provider boundary was fully frozen.
 
-Without a permanent rule, later service kinds could accidentally duplicate existing standards or encode provider products into the BaseHarbor core.
+The v0.5.x line is the contract-freeze track. The architecture therefore needs one explicit rule for deciding when BaseHarbor adopts an existing standard and when it defines BaseHarbor-specific semantics.
 
 ## Decision
 
 BaseHarbor is standards-first.
 
-- Established open standards are preferred whenever they cover the required semantics.
+- Established open standards are preferred over proprietary contracts.
 - Established de-facto standards and ecosystem conventions are preferred where no suitable formal standard exists.
-- BaseHarbor-specific contracts define only missing semantics.
+- BaseHarbor-specific contracts define only semantics not reasonably covered by an existing standard.
 - BaseHarbor extensions are explicit, versioned and provider-neutral.
-- Product-specific provider contracts never become portable BaseHarbor application contracts.
+- Provider-specific contracts stay behind the provider boundary.
 
-The canonical architecture distinguishes:
+The initial adopted baseline is:
 
-```text
-service contract
-  -> protocol/semantic compatibility
-  -> provider implementation
-  -> product/engine realization
-```
+- JSON Schema 2020-12 for portable schemas and provider configuration;
+- Service Binding Specification 1.1 well-known names for service connection outputs;
+- Crossplane resource/provider/reconciliation concepts as architecture guidance;
+- Open Service Broker lifecycle concepts where applicable;
+- gRPC/Protocol Buffers for external provider process boundaries;
+- OCI for provider artifact distribution and digest identity;
+- OpenTelemetry/OTLP for observability data;
+- OIDC/OAuth for identity;
+- AsyncAPI and CloudEvents for messaging/event contracts where applicable;
+- RESP as a compatibility property of Redis/Valkey-like cache providers;
+- S3 API compatibility as a property of object-storage providers.
 
-These layers are independently versioned.
+Service contract, provider protocol, provider implementation version, product/engine version and artifact digest are separate compatibility axes.
 
-JSON Schema 2020-12 is the machine-readable service/provider configuration schema language.
-
-Service connection outputs use Service Binding Specification 1.1 well-known names where applicable.
-
-Crossplane and Open Service Broker API are architecture/lifecycle references, not imported public BaseHarbor APIs.
-
-OCI is the provider artifact/distribution boundary.
-
-OpenTelemetry/OTLP is the observability data-plane standard.
-
-OIDC/OAuth is the identity baseline.
-
-AsyncAPI and CloudEvents are the messaging/event baselines.
-
-RESP and S3 are protocol/de-facto compatibility declarations, not generic service identities.
-
-## Compatibility
-
-Existing v0.4 specification IDs are not silently renamed.
-
-Before v0.5 freeze, each existing specification is classified as:
-
-- canonical service contract;
-- protocol/semantic capability under a broader service kind; or
-- compatibility alias with an explicit migration path.
+Existing v0.4 capability IDs remain supported until an explicit migration is documented and tested. Standards-first alignment is not permission to perform breaking renames.
 
 ## Consequences
 
-- Provider implementations remain replaceable.
-- Existing BaseHarbor lifecycle/ownership/reconciliation semantics remain valid.
-- `secure-binding/v1` remains for BaseHarbor security/lifecycle extensions but no longer competes with standard Service Binding connection names.
-- Future providers must document standards adoption and deviations before implementation.
+- Service kinds stay product-neutral.
+- Protocol compatibility does not become service identity.
+- Runtime provider-instance state remains separate from provider catalog/distribution metadata.
+- New service kinds/providers require a standards audit before implementation.
+- Conformance can test adopted standards separately from BaseHarbor extensions.
+- Future provider repositories can be extracted without changing application intent.
