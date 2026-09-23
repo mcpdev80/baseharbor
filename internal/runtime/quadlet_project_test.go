@@ -225,3 +225,12 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 		t.Fatalf("service was not attached to implicit default network:\n%s", unit)
 	}
 }
+
+func TestQuadletSystemdJoinPreservesContainerDollarExpansion(t *testing.T) {
+	got := quadletSystemdJoin([]string{"sh", "-ec", "echo $VALKEY_PASSWORD && echo ${OTHER}"})
+	for _, want := range []string{"$$VALKEY_PASSWORD", "$$${OTHER}"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("systemd command lost escaped dollar %q: %s", want, got)
+		}
+	}
+}
