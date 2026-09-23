@@ -670,7 +670,7 @@ func renderQuadletHealthCommand(test []string) (string, error) {
 
 func quadletSystemdValue(value string) string {
 	value = strings.ReplaceAll(value, "%", "%%")
-	return strings.ReplaceAll(value, "$", "$")
+	return strings.ReplaceAll(value, "$", "$$")
 }
 
 func quadletSystemdJoin(values []string) string {
