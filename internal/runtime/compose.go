@@ -25,6 +25,7 @@ type ComposeContainer struct {
 	Project string
 	Service string
 	Running bool
+	Health  string
 }
 
 // Compose provides the small lifecycle surface BaseHarbor needs from a
@@ -331,7 +332,7 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 
 	args := []string{
 		"container", "inspect", "--format",
-		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}`,
+		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`,
 	}
 	args = append(args, ids...)
 	inspected, err := c.directOutput(ctx, args...)
@@ -342,7 +343,7 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 	var result []ComposeContainer
 	for _, line := range strings.Split(inspected, "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "|")
-		if len(parts) != 6 {
+		if len(parts) != 7 {
 			continue
 		}
 		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
@@ -356,6 +357,7 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 			Project: project,
 			Service: service,
 			Running: strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
+			Health:  strings.TrimSpace(parts[6]),
 		})
 	}
 	return result, nil
