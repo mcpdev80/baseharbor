@@ -21,6 +21,7 @@ type applicationStatusResult struct {
 	application.StatusResult
 	TLS             *applicationTLSObservation `json:"tls,omitempty"`
 	RuntimeArtifact *runtimeArtifactObservation `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL  string                      `json:"runtime_docs_url,omitempty"`
 
 	tlsStatus *applicationTLSStatus
 	tlsErr    error
@@ -41,9 +42,11 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	}
 
 	var runtimeArtifact *runtimeArtifactObservation
+	var runtimeDocsURL string
 	if application.RequiresRuntimeBroker(resolved.Manifest) && result.State != "not_applied" {
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
 			if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
+				runtimeDocsURL = strings.TrimSpace(brokerFiles.DocsURL)
 				runtimeArtifact = &runtimeArtifactObservation{
 					Reference:       strings.TrimSpace(brokerFiles.Image),
 					ExpectedVersion: strings.TrimSpace(version),
@@ -67,6 +70,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		StatusResult:    result,
 		TLS:             tlsObservation,
 		RuntimeArtifact: runtimeArtifact,
+		RuntimeDocsURL:  runtimeDocsURL,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
 	}, nil
