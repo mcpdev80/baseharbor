@@ -103,3 +103,49 @@ Provider artifacts SHOULD use OCI-compatible distribution. Artifact digest is im
 ## Extensibility
 
 Provider implementations MAY use mature OSS, standard APIs/SDKs, controllers/operators or managed-service APIs behind the BaseHarbor contract.
+
+
+## Standards-first provider metadata
+
+Provider metadata MUST keep these version axes independent:
+
+```text
+BaseHarbor service contract version
+Provider protocol version
+Provider implementation version
+Product/engine version
+Artifact digest
+```
+
+A provider descriptor SHOULD identify:
+
+- stable provider ID and provider version;
+- supported service kinds and BaseHarbor service/capability contract versions;
+- protocol/semantic capabilities;
+- supported product/engine versions where relevant;
+- supported platforms;
+- OCI artifact reference and immutable digest when distributed as an artifact;
+- JSON Schema 2020-12 provider configuration schema;
+- standard signature/SBOM/provenance references where available.
+
+The canonical target schema is `contracts/provider/v1/provider-descriptor.schema.json`.
+
+## Service bindings
+
+Provider connection outputs MUST use Service Binding Specification 1.1 well-known entry names where their semantics apply.
+
+BaseHarbor-specific binding extensions MUST remain in a distinct versioned extension namespace and MUST NOT redefine standard names.
+
+Secret-bearing values may remain opaque references until the trusted workload projection boundary; this does not justify alternative field names.
+
+## Service versus protocol
+
+A provider implements a BaseHarbor service contract and MAY declare protocol compatibility.
+
+Examples:
+
+- `cache` is the service; RESP is a protocol compatibility property.
+- `object-storage` is the service; S3 API compatibility is a protocol/API property.
+- `observability` is the service family; OpenTelemetry/OTLP is the standard telemetry protocol/data path.
+
+Provider product names never become portable application service kinds.
