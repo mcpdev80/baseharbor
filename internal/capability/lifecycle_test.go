@@ -253,4 +253,7 @@ func TestBuildPlanMetricsBindingIsTypedAndProviderNeutral(t *testing.T) {
 	if got := plan.Items[0].Resource.Provider; got != ProviderPrometheus {
 		t.Fatalf("metrics provider = %q, want %q", got, ProviderPrometheus)
 	}
+	if got := plan.Items[0].Binding.Metrics.Scheme; got != "http" {
+		t.Fatalf("metrics scheme = %q, want http", got)
+	}
 }
