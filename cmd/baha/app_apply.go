@@ -196,9 +196,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 				}); err != nil {
 					return err
 				}
-				if term.Verbose() {
-					printRuntimeBrokerDocs(out, files)
-				}
+				printRuntimeBrokerDocs(out, files)
 			}
 
 			renderRuntimeReady(term, m)
