@@ -114,18 +114,6 @@ func Operations() []Operation {
 	}
 }
 
-func ServiceContracts() []string {
-	return []string{
-		"cache/v1",
-		"identity/v1",
-		"messaging/v1",
-		"object-storage/v1",
-		"observability/v1",
-		"secrets/v1",
-		"sql/v1",
-		"vector/v1",
-	}
-}
 
 func CapabilitySpecifications() []string {
 	return []string{
