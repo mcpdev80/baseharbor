@@ -35,9 +35,9 @@ func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
 	_, _, postgres, redis, objectStorage, _, postgresInstances, redisInstances, objectStorageBuckets, _, err := parseCreateArgs([]string{
 		"mailflow",
 		"--sql-instance", "primary",
-		"--postgres-instance=analytics",
+		"--sql-instance=analytics",
 		"--cache-instance", "cache",
-		"--redis-instance=sessions",
+		"--cache-instance=sessions",
 	})
 	if err != nil {
 		t.Fatal(err)
