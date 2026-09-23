@@ -267,9 +267,9 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 		ProviderProtocol: bundled.Integration.Protocol,
 		Provider:         bundled.Integration.Provider,
 		Scope:            placement.Scope,
-		SharingBoundary: placement.SharingBoundary,
-		Ownership:       placement.Ownership,
-		Reference:       placement.ExternalReference,
+		SharingBoundary:  placement.SharingBoundary,
+		Ownership:        placement.Ownership,
+		Reference:        placement.ExternalReference,
 	}
 	if instance.Provider.Kind == "" {
 		return capability.ProviderInstance{}, fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
