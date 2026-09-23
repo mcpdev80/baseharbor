@@ -2,19 +2,19 @@
 
 This matrix is the pre-v0.5 standards baseline for service/provider work.
 
-| Area | Standard / pattern | Current version | Classification | BaseHarbor use |
-| --- | --- | --- | --- | --- |
-| Schemas | JSON Schema | 2020-12 | open standard | canonical machine-readable portable service/provider configuration schema |
-| Service connection output | Service Binding Specification | 1.1.0 | open ecosystem specification | well-known connection entry names and workload projection semantics |
-| Provider/resource architecture | Crossplane | v2.4 reference | established architecture pattern | desired/observed managed-resource/provider/reconciliation concepts; no Kubernetes API leakage into portable intent |
-| Broker lifecycle | Open Service Broker API | 2.17 | open API specification | catalog/plan/provision/bind/unbind/deprovision/async lifecycle concepts where useful |
-| Artifact distribution | OCI Image/Distribution | 1.1 family | open standard | registry-neutral provider artifacts, digest-first identity, multi-platform distribution |
-| Observability | OpenTelemetry / OTLP | OTel 1.61.0 / OTLP 1.11.0 | open standard/ecosystem specification | traces/metrics/logs data plane and standard workload variables |
-| Identity | OpenID Connect Core | 1.0 + Errata Set 2 | open identity standard | authentication/identity baseline; OAuth-based authorization where applicable |
-| Messaging description | AsyncAPI | 3.1.0 | open specification | message/channel API description |
-| Event envelope | CloudEvents | 1.0.2 | CNCF specification | event envelope where event semantics apply |
-| Cache wire compatibility | RESP | RESP2/RESP3 | de-facto protocol standard | provider compatibility declaration for Redis/Valkey-compatible implementations |
-| Object storage API | Amazon S3 REST API | API 2006-03-01 | de-facto ecosystem API | optional protocol compatibility declaration; never generic object-storage identity |
+| Area | Standard / pattern | Current version | Classification | Governance / license | Maturity | BaseHarbor use |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Schemas | JSON Schema | 2020-12 | open standard | community specification project; open specification repository | high | canonical machine-readable portable service/provider configuration schema |
+| Service connection output | Service Binding Specification | 1.1.0 | open ecosystem specification | community project; Apache-2.0 repository | medium/high | well-known connection entry names and workload projection semantics |
+| Provider/resource architecture | Crossplane | v2.4 reference | established architecture pattern | CNCF project; Apache-2.0 | high | desired/observed managed-resource/provider/reconciliation concepts; no Kubernetes API leakage into portable intent |
+| Broker lifecycle | Open Service Broker API | 2.17 | open API specification | community specification; Apache-2.0 | mature | catalog/plan/provision/bind/unbind/deprovision/async lifecycle concepts where useful |
+| Artifact distribution | OCI Image/Distribution | 1.1 family | open standard | Open Container Initiative / Linux Foundation; Apache-2.0 | very high | registry-neutral provider artifacts, digest-first identity, multi-platform distribution |
+| Observability | OpenTelemetry / OTLP | OTel 1.61.0 / OTLP 1.11.0 | open specification/ecosystem standard | CNCF; Apache-2.0 | very high | traces/metrics/logs data plane and standard workload variables |
+| Identity | OpenID Connect Core | 1.0 + Errata Set 2 | open identity standard | OpenID Foundation IPR/process | very high | authentication/identity baseline; OAuth-based authorization where applicable |
+| Messaging description | AsyncAPI | 3.1.0 | open specification | AsyncAPI Initiative; Apache-2.0 | high | message/channel API description |
+| Event envelope | CloudEvents | 1.0.2 | CNCF specification | CNCF; Apache-2.0 | high | event envelope where event semantics apply |
+| Cache wire compatibility | RESP | RESP2/RESP3 | de-facto protocol standard | ecosystem protocol documented by Redis/Valkey projects | very high in Redis-compatible ecosystem | provider compatibility declaration for Redis/Valkey-compatible implementations |
+| Object storage API | Amazon S3 REST API | API 2006-03-01 | de-facto ecosystem API | AWS-defined API | very high | optional protocol compatibility declaration; never generic object-storage identity |
 
 ## Service-family decisions
 
