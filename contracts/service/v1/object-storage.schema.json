@@ -27,6 +27,12 @@
     },
     "extensions": {
       "type": "object",
+      "patternProperties": {
+        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
       "description": "Versioned provider-neutral BaseHarbor extensions only."
     }
   }
