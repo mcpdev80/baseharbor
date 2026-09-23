@@ -11,11 +11,11 @@ func TestPortableContractFromManifestMapsLogicalCapabilities(t *testing.T) {
 		Name:        "mailflow",
 		Environment: "production",
 		Services: Services{
-			PostgresInstances: map[string]ServiceInstance{
+			SQLInstances: map[string]ServiceInstance{
 				"primary":   {},
 				"analytics": {},
 			},
-			RedisInstances: map[string]ServiceInstance{
+			CacheInstances: map[string]ServiceInstance{
 				"cache":    {},
 				"sessions": {},
 			},
@@ -173,7 +173,7 @@ func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *te
 
 func TestPortableContractCarriesExplicitLogsIntent(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithLogsCollection(m, "application")
 
@@ -217,7 +217,7 @@ func TestPortableContractDoesNotInventProviderCapabilities(t *testing.T) {
 
 func TestCapabilityBindingsIncludeLogsOnlyWhenDeclared(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 
 	bindings, err := CapabilityBindings(m)
