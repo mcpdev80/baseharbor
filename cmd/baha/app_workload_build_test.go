@@ -60,7 +60,7 @@ func TestFingerprintRepositoryBuildContextTracksBuildDefinition(t *testing.T) {
 
 func TestChangedRepositoryWorkloadBuildServicesIsSelective(t *testing.T) {
 	previous := repositoryWorkloadBuildState{
-		Version: 1,
+		Version:  1,
 		Services: map[string]string{"api": "same", "worker": "old"},
 	}
 	got := changedRepositoryWorkloadBuildServices(map[string]string{
