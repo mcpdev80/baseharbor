@@ -4,10 +4,10 @@ import "testing"
 
 func TestQuadletProjectResourceUnitsOrdersPrerequisites(t *testing.T) {
 	project := QuadletProject{Files: map[string]string{
-		"demo-z.network":   "",
-		"demo-a.network":   "",
-		"demo-data.volume": "",
-		"demo-api.build":   "",
+		"demo-z.network":     "",
+		"demo-a.network":     "",
+		"demo-data.volume":   "",
+		"demo-api.build":     "",
 		"demo-api.container": "",
 	}}
 	networks, volumes, builds := quadletProjectResourceUnits(project)
