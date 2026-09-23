@@ -62,15 +62,14 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	if err := os.MkdirAll(bindingDir, 0o700); err != nil {
 		return RuntimeMTLSFiles{}, false, fmt.Errorf("create runtime mTLS binding directory: %w", err)
 	}
-	files := RuntimeMTLSFiles{
-		CA:         filepath.Join(bindingDir, "ca.pem"),
-		BrokerCert: filepath.Join(bindingDir, "broker-cert.pem"),
-		BrokerKey:  filepath.Join(bindingDir, "broker-key.pem"),
-		ClientCert: filepath.Join(bindingDir, "client-cert.pem"),
-		ClientKey:  filepath.Join(bindingDir, "client-key.pem"),
-		WorkloadCert: filepath.Join(bindingDir, "workload-cert.pem"),
-		WorkloadKey:  filepath.Join(bindingDir, "workload-key.pem"),
-	}
+	files := RuntimeMTLSFiles{}
+	files.CA = filepath.Join(bindingDir, "ca.pem")
+	files.BrokerCert = filepath.Join(bindingDir, "broker-cert.pem")
+	files.BrokerKey = filepath.Join(bindingDir, "broker-key.pem")
+	files.ClientCert = filepath.Join(bindingDir, "client-cert.pem")
+	files.ClientKey = filepath.Join(bindingDir, "client-key.pem")
+	files.WorkloadCert = filepath.Join(bindingDir, "workload-cert.pem")
+	files.WorkloadKey = filepath.Join(bindingDir, "workload-key.pem")
 	valid, err := runtimeMTLSIdentityValid(files, caCert, identity)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
@@ -90,15 +89,15 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
-	for path, data := range map[string][]byte{
-		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw}),
-		files.BrokerCert: brokerCert,
-		files.BrokerKey:  brokerKey,
-		files.ClientCert: clientCert,
-		files.ClientKey:  clientKey,
-		files.WorkloadCert: workloadCert,
-		files.WorkloadKey:  workloadKey,
-	} {
+	identityFiles := map[string][]byte{}
+	identityFiles[files.CA] = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw})
+	identityFiles[files.BrokerCert] = brokerCert
+	identityFiles[files.BrokerKey] = brokerKey
+	identityFiles[files.ClientCert] = clientCert
+	identityFiles[files.ClientKey] = clientKey
+	identityFiles[files.WorkloadCert] = workloadCert
+	identityFiles[files.WorkloadKey] = workloadKey
+	for path, data := range identityFiles {
 		if err := writeRuntimeIdentityFile(path, data); err != nil {
 			return RuntimeMTLSFiles{}, false, err
 		}
