@@ -1,8 +1,6 @@
 package repositoryinspect
 
-import (
-	"context"
-)
+import "context"
 
 type Confidence string
 
