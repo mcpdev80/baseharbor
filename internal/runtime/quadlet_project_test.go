@@ -101,6 +101,19 @@ networks:
 	if !strings.Contains(got.Files["baseharbor-demo-internal.network"], "Internal=true") {
 		t.Fatalf("internal network lost semantics:\n%s", got.Files["baseharbor-demo-internal.network"])
 	}
+	for name, content := range map[string]string{
+		"network": got.Files["baseharbor-demo-internal.network"],
+		"volume":  got.Files["baseharbor-demo-db-data.volume"],
+	} {
+		for _, want := range []string{
+			"Label=com.docker.compose.project=baseharbor-demo",
+			"Label=io.podman.compose.project=baseharbor-demo",
+		} {
+			if !strings.Contains(content, want) {
+				t.Fatalf("%s Quadlet missing project ownership label %q:\n%s", name, want, content)
+			}
+		}
+	}
 	worker := got.Files["baseharbor-demo-worker.container"]
 	for _, want := range []string{
 		"Requires=baseharbor-demo-db.service",
