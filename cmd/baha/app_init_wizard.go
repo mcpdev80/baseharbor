@@ -33,10 +33,13 @@ type appProjectDetection struct {
 	RedisSource            string
 	RedisInstances         []string
 	ObjectStorage          bool
+	ObjectStorageSuggested bool
 	ObjectStorageSource    string
 	Metrics                bool
+	MetricsSuggested       bool
 	MetricsSource          string
 	OTLP                   bool
+	OTLPSuggested          bool
 	OTLPSource             string
 	LogsSuggested          bool
 	RuntimeAPI             bool
