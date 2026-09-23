@@ -28,11 +28,13 @@ const (
 )
 
 type RuntimeMTLSFiles struct {
-	CA         string
-	BrokerCert string
-	BrokerKey  string
-	ClientCert string
-	ClientKey  string
+	CA           string
+	BrokerCert   string
+	BrokerKey    string
+	ClientCert   string
+	ClientKey    string
+	WorkloadCert string
+	WorkloadKey  string
 }
 
 // EnsureRuntimeMTLSIdentity issues a per-application broker/server identity and
@@ -65,7 +67,9 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		BrokerCert: filepath.Join(bindingDir, "broker-cert.pem"),
 		BrokerKey:  filepath.Join(bindingDir, "broker-key.pem"),
 		ClientCert: filepath.Join(bindingDir, "client-cert.pem"),
-		ClientKey:  filepath.Join(bindingDir, "client-key.pem"),
+		ClientKey:    filepath.Join(bindingDir, "client-key.pem"),
+		WorkloadCert: filepath.Join(bindingDir, "workload-cert.pem"),
+		WorkloadKey:  filepath.Join(bindingDir, "workload-key.pem"),
 	}
 	valid, err := runtimeMTLSIdentityValid(files, caCert, identity)
 	if err != nil {
@@ -82,12 +86,18 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
+	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(caCert, caKey, identity)
+	if err != nil {
+		return RuntimeMTLSFiles{}, false, err
+	}
 	for path, data := range map[string][]byte{
 		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw}),
 		files.BrokerCert: brokerCert,
 		files.BrokerKey:  brokerKey,
-		files.ClientCert: clientCert,
-		files.ClientKey:  clientKey,
+		files.ClientCert:   clientCert,
+		files.ClientKey:    clientKey,
+		files.WorkloadCert: workloadCert,
+		files.WorkloadKey:  workloadKey,
 	} {
 		if err := writeRuntimeIdentityFile(path, data); err != nil {
 			return RuntimeMTLSFiles{}, false, err
@@ -120,6 +130,10 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 	expectedURI := "spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment
 	clientOK, err := runtimeIdentityPairValid(files.ClientCert, files.ClientKey, ca, x509.ExtKeyUsageClientAuth, "", expectedURI)
 	if err != nil || !clientOK {
+		return false, err
+	}
+	workloadOK, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, ca, x509.ExtKeyUsageServerAuth, "localhost", "")
+	if err != nil || !workloadOK {
 		return false, err
 	}
 	return true, nil
@@ -296,6 +310,38 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		return nil, nil, fmt.Errorf("encode runtime identity key: %w", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
+}
+
+
+func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, identity ApplicationIdentity) ([]byte, []byte, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate workload TLS key: %w", err)
+	}
+	serial, err := randomSerial()
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now().UTC()
+	commonName := identity.Name + "." + identity.Environment + ".baseharbor"
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: commonName, Organization: []string{"BaseHarbor"}},
+		NotBefore:    now.Add(-5 * time.Minute),
+		NotAfter:     now.Add(30 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost", identity.Name, commonName},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("issue workload TLS certificate: %w", err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode workload TLS key: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
 }
