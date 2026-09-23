@@ -137,7 +137,7 @@ func TestApplicationUpdateDurableStateDetection(t *testing.T) {
 	if applicationUpdateHasDurableState(application.Manifest{}) {
 		t.Fatal("empty manifest should not require a recovery point")
 	}
-	if !applicationUpdateHasDurableState(application.Manifest{Services: application.Services{Postgres: true}}) {
+	if !applicationUpdateHasDurableState(application.Manifest{Services: application.Services{SQL: true}}) {
 		t.Fatal("PostgreSQL should be durable")
 	}
 	if !applicationUpdateHasDurableState(application.Manifest{Services: application.Services{Secrets: true}}) {
