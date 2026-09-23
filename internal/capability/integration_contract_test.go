@@ -35,6 +35,14 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 	}
 }
 
+func TestIntegrationDescriptorRejectsServiceCapabilityMismatch(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.Services = []ServiceKind{ServiceCache}
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider service/capability mismatch accepted")
+	}
+}
+
 func TestIntegrationDescriptorRequiresProviderImplementationVersion(t *testing.T) {
 	descriptor := PostgreSQLIntegration
 	descriptor.Version = ""
