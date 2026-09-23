@@ -474,7 +474,6 @@ func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
 	t.Fatalf("explicit OTLP traces finding missing: %#v", result.Findings)
 }
 
-
 func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `services:

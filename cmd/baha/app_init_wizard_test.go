@@ -324,7 +324,6 @@ func provision(client *S3Client) { client.CreateBucket("tenant") }
 	}
 }
 
-
 func TestQuickInitFailsClosedOnAmbiguousComposeServiceRole(t *testing.T) {
 	root := t.TempDir()
 	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:

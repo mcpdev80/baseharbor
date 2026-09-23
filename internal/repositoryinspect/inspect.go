@@ -281,16 +281,16 @@ func classifyFile(rel string) (string, bool) {
 }
 
 type composeService struct {
-	Name          string
-	Postgres      bool
-	Redis         bool
-	ObjectStorage          bool
+	Name                    string
+	Postgres                bool
+	Redis                   bool
+	ObjectStorage           bool
 	AmbiguousInfrastructure bool
 	HasBuild                bool
-	HasImage      bool
-	HasPorts      bool
-	Ports         []string
-	HealthCheck   bool
+	HasImage                bool
+	HasPorts                bool
+	Ports                   []string
+	HealthCheck             bool
 }
 
 func detectComposeServices(data []byte) []composeService {
