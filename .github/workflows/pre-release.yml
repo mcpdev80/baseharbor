@@ -257,6 +257,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: docker
       DEMO_GATE: ${{ matrix.gate }}
       ARTIFACT_DIR: /tmp/baseharbor-demo-docker-${{ matrix.gate }}
+      DEMO_SHA: ${{ needs.demo_catalog.outputs.demo_sha }}
 
     steps:
       - name: Checkout BaseHarbor
@@ -291,7 +292,9 @@ jobs:
           set -euo pipefail
           workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
           rm -rf "$workdir" "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_SHA"
+          git -C "$workdir" checkout --detach FETCH_HEAD
           cd "$workdir"
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
@@ -355,6 +358,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: podman
       DEMO_GATE: ${{ matrix.gate }}
       ARTIFACT_DIR: /tmp/baseharbor-demo-podman-${{ matrix.gate }}
+      DEMO_SHA: ${{ needs.demo_catalog.outputs.demo_sha }}
 
     steps:
       - name: Checkout BaseHarbor
@@ -418,7 +422,9 @@ jobs:
           set -euo pipefail
           workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
           rm -rf "$workdir" "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_SHA"
+          git -C "$workdir" checkout --detach FETCH_HEAD
           cd "$workdir"
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
@@ -472,6 +478,7 @@ jobs:
       - validate
       - docker_runtime
       - podman
+      - demo_catalog
       - demo_docker
       - demo_podman
     runs-on: ubuntu-latest
@@ -490,6 +497,7 @@ jobs:
           Source/build validation	${{ needs.validate.result }}	Formatting, source tests, docs, workflow syntax, snapshot and runtime image build
           Docker runtime core	${{ needs.docker_runtime.result }}	Runtime integration, recovery and observability
           Podman runtime core	${{ needs.podman.result }}	Runtime integration, recovery and observability
+          External demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
           Docker demo gates	${{ needs.demo_docker.result }}	Independent consumer-contract gate matrix
           Podman demo gates	${{ needs.demo_podman.result }}	Independent consumer-contract gate matrix
           EOF
@@ -528,6 +536,7 @@ jobs:
             "schema": 1,
             "tag": "${{ needs.validate.outputs.tag }}",
             "candidate_sha": "${{ needs.validate.outputs.candidate_sha }}",
+            "demo_sha": "${{ needs.demo_catalog.outputs.demo_sha }}",
             "pre_release_run_id": ${{ github.run_id }},
             "pre_release_run_attempt": ${{ github.run_attempt }},
             "workflow": ".github/workflows/pre-release.yml",
