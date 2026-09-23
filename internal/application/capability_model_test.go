@@ -13,9 +13,9 @@ func TestResolveCapabilityResourcesUsesReferenceProviders(t *testing.T) {
 		Name:        "mailflow",
 		Environment: "dev",
 		Services: Services{
-			SQL:      true,
-			Cache:    true,
-			Secrets:  true,
+			SQL:     true,
+			Cache:   true,
+			Secrets: true,
 		},
 	}
 	contract, err := PortableContractFromManifest(m)
@@ -41,7 +41,7 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "mailflow",
 		Environment: "production",
-		Services:    Services{SQL:      true},
+		Services:    Services{SQL: true},
 	}
 	bindings, err := CapabilityBindings(m)
 	if err != nil {
