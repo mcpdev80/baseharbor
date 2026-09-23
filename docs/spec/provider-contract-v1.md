@@ -14,6 +14,21 @@ runtime != capability != delivery
 
 Implementations MUST NOT make one axis a hidden requirement of another.
 
+## Provider identity and versioning
+
+A provider implementation MUST expose a stable provider ID and implementation version independently from BaseHarbor and independently from capability specification versions.
+
+For example:
+
+```text
+provider: baseharbor/postgresql
+provider version: 0.1.0
+protocol: baseharbor.provider/v1
+capability: database.sql/v1
+```
+
+A concrete product version or image digest is realization metadata. It MUST NOT replace the provider implementation version or the capability specification version.
+
 ## Capabilities
 
 A provider MUST declare the semantics it supports.
