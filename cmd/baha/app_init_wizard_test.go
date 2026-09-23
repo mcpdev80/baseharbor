@@ -37,7 +37,7 @@ PUBLIC_WEB_URL=http://localhost:8080
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !d.Postgres || !d.Redis {
+	if !d.SQL || !d.Cache {
 		t.Fatalf("expected postgres and redis detection, got %+v", d)
 	}
 	if d.Compose != "compose.yaml" {
@@ -76,8 +76,8 @@ SECRET_KEY=also-must-not-be-copied
 	}
 	manifest := string(data)
 	for _, want := range []string{
-		"postgres:",
-		"redis:",
+		"sql:",
+		"cache:",
 		"compose: docker-compose.yml",
 		"- web",
 	} {
@@ -132,7 +132,7 @@ func TestGuidedInitExplicitFlagsKeepDeterministicPath(t *testing.T) {
 	dir := t.TempDir()
 	withWizardTestDir(t, dir)
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--postgres", "--redis", "--require-secret", "API_TOKEN"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--cache", "--require-secret", "API_TOKEN"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "baseharbor.yaml"))
@@ -140,7 +140,7 @@ func TestGuidedInitExplicitFlagsKeepDeterministicPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := string(data)
-	for _, want := range []string{"name: demo", "postgres:", "redis:", "- name: API_TOKEN"} {
+	for _, want := range []string{"name: demo", "sql:", "cache:", "- name: API_TOKEN"} {
 		if !strings.Contains(manifest, want) {
 			t.Fatalf("deterministic manifest missing %q:\n%s", want, manifest)
 		}
@@ -448,7 +448,7 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 
 	var out bytes.Buffer
 	printAdoptionSummary(&out, m, appProjectDetection{
-		Postgres: true, Redis: true, ObjectStorage: true,
+		SQL: true, Cache: true, ObjectStorage: true,
 	}, policies)
 	text := out.String()
 	for _, want := range []string{
