@@ -47,7 +47,7 @@ func (f *fakePostgresBackupRuntime) ExecProjectInput(_ context.Context, _, _, _ 
 	return "", nil
 }
 
-func TestDumpSQLInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
+func TestDumpPostgresInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
 	m := WithSQLInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
 	runtime := &fakePostgresBackupRuntime{dumps: map[string]string{
 		"postgres-analytics": "-- analytics dump\nCREATE TABLE analytics_probe(id integer);\n",
@@ -55,9 +55,9 @@ func TestDumpSQLInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
 	}}
 	files := RuntimeFiles{Compose: "/runtime/compose.yaml", Env: "/runtime/runtime.env"}
 
-	backups, err := DumpSQLInstances(context.Background(), runtime, m, files)
+	backups, err := DumpPostgresInstances(context.Background(), runtime, m, files)
 	if err != nil {
-		t.Fatalf("DumpSQLInstances() error = %v", err)
+		t.Fatalf("DumpPostgresInstances() error = %v", err)
 	}
 	if got, want := []string{backups[0].Instance, backups[1].Instance}, []string{"analytics", "primary"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("instances = %v, want %v", got, want)
@@ -82,7 +82,7 @@ func TestDumpSQLInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
 	}
 }
 
-func TestRestoreSQLInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) {
+func TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) {
 	m := WithSQLInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
 	runtime := &fakePostgresBackupRuntime{verifyResult: map[string]string{
 		"postgres-analytics": "1\n",
@@ -94,8 +94,8 @@ func TestRestoreSQLInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) {
 		{Instance: "analytics", SQL: []byte("CREATE TABLE analytics_probe(id integer);\n")},
 	}
 
-	if err := RestoreSQLInstances(context.Background(), runtime, m, files, backups); err != nil {
-		t.Fatalf("RestoreSQLInstances() error = %v", err)
+	if err := RestorePostgresInstances(context.Background(), runtime, m, files, backups); err != nil {
+		t.Fatalf("RestorePostgresInstances() error = %v", err)
 	}
 	if len(runtime.calls) != 4 {
 		t.Fatalf("calls = %d, want 4", len(runtime.calls))
@@ -141,12 +141,12 @@ func TestValidatePostgresBackupSetFailsClosed(t *testing.T) {
 	}
 }
 
-func TestRestoreSQLInstancesStopsOnRestoreFailure(t *testing.T) {
+func TestRestorePostgresInstancesStopsOnRestoreFailure(t *testing.T) {
 	m := New("mailflow", "dev", true, false, false)
 	runtime := &fakePostgresBackupRuntime{restoreErr: map[string]error{"postgres": errors.New("restore failed")}}
-	err := RestoreSQLInstances(context.Background(), runtime, m, RuntimeFiles{}, []PostgresBackup{{Instance: "default", SQL: []byte("SELECT 1;")}})
+	err := RestorePostgresInstances(context.Background(), runtime, m, RuntimeFiles{}, []PostgresBackup{{Instance: "default", SQL: []byte("SELECT 1;")}})
 	if err == nil || !strings.Contains(err.Error(), "restore postgres instance default") {
-		t.Fatalf("RestoreSQLInstances() error = %v", err)
+		t.Fatalf("RestorePostgresInstances() error = %v", err)
 	}
 	if len(runtime.calls) != 1 {
 		t.Fatalf("calls after failed restore = %d, want 1", len(runtime.calls))
