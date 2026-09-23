@@ -427,6 +427,11 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	for _, state := range beforeStates {
 		beforeServices[state.Service] = struct{}{}
 	}
+	if len(beforeStates) == 0 {
+		if err := preflightRepositoryWorkloadPublishedPorts(ctx, runtimeInput, out, workload, files, environment); err != nil {
+			return false, err
+		}
+	}
 
 	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
 	if err != nil {
