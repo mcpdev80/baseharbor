@@ -20,6 +20,7 @@ type ConformanceReport struct {
 	ProviderVersion string             `json:"provider_version"`
 	Protocol        string             `json:"protocol"`
 	Provider        ProviderKind       `json:"provider"`
+	Services        []ServiceKind      `json:"services,omitempty"`
 	Status          ConformanceStatus  `json:"status"`
 	Checks          []ConformanceCheck `json:"checks"`
 }
@@ -44,7 +45,19 @@ func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceRepor
 		})
 		return report
 	}
+	services, err := descriptor.EffectiveServices()
+	if err != nil {
+		report.Status = ConformanceFail
+		report.Checks = append(report.Checks, ConformanceCheck{
+			Name:    "service-declarations",
+			Status:  ConformanceFail,
+			Message: err.Error(),
+		})
+		return report
+	}
+	report.Services = services
 	report.Checks = append(report.Checks,
+		ConformanceCheck{Name: "service-declarations", Status: ConformancePass},
 		ConformanceCheck{Name: "provider-protocol", Status: ConformancePass},
 		ConformanceCheck{Name: "capability-declarations", Status: ConformancePass},
 	)
