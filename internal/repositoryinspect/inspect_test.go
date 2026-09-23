@@ -473,3 +473,25 @@ func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
 	}
 	t.Fatalf("explicit OTLP traces finding missing: %#v", result.Findings)
 }
+
+
+func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+  database:
+    image: company/custom-database
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "api" {
+		t.Fatalf("WorkloadServices = %q, want api", got)
+	}
+	if got := strings.Join(result.AmbiguousServices, ","); got != "database" {
+		t.Fatalf("AmbiguousServices = %q, want database", got)
+	}
+}
