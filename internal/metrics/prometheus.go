@@ -146,6 +146,9 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	if value.Direction != "provide" || value.Format != "openmetrics" {
 		return errors.New("Prometheus provider requires provide/openmetrics metrics binding")
 	}
+	if value.Scheme != "http" && value.Scheme != "https" {
+		return fmt.Errorf("Prometheus metrics binding has unsupported scheme %q", value.Scheme)
+	}
 	if value.Service == "" || value.Port < 1 || value.Port > 65535 || !strings.HasPrefix(value.Path, "/") {
 		return errors.New("Prometheus metrics binding is incomplete")
 	}
@@ -206,6 +209,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 			"baseharbor_source":       resource.Name,
 			"baseharbor_source_class": string(application.MetricsSourceApplication),
 			"baseharbor_metrics_path": binding.Metrics.Path,
+			"baseharbor_metrics_scheme": binding.Metrics.Scheme,
 		},
 	}
 	data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
@@ -900,8 +904,10 @@ scrape_configs:
     relabel_configs:
       - source_labels: [baseharbor_metrics_path]
         target_label: __metrics_path__
+      - source_labels: [baseharbor_metrics_scheme]
+        target_label: __scheme__
       - action: labeldrop
-        regex: baseharbor_metrics_path
+        regex: baseharbor_metrics_(path|scheme)
 
   - job_name: baseharbor-providers
     file_sd_configs:
