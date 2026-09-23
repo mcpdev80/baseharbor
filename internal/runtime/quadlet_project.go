@@ -118,6 +118,10 @@ func RenderComposeProjectQuadlets(composePath, envFile, project string, selected
 }
 
 func RenderComposeProjectFilesQuadlets(composePaths []string, envFile, project string, selectedServices ...string) (QuadletProject, error) {
+	return RenderComposeProjectFilesQuadletsEnv(composePaths, envFile, nil, project, selectedServices...)
+}
+
+func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string, environment map[string]string, project string, selectedServices ...string) (QuadletProject, error) {
 	project = sanitizeQuadletName(project)
 	if project == "" {
 		return QuadletProject{}, errors.New("Quadlet project name is empty")
@@ -129,6 +133,12 @@ func RenderComposeProjectFilesQuadlets(composePaths []string, envFile, project s
 	env, err := quadletComposeEnvironment(envFile)
 	if err != nil {
 		return QuadletProject{}, err
+	}
+	for key, value := range environment {
+		if strings.TrimSpace(key) == "" || strings.ContainsRune(key, '=') || strings.ContainsRune(value, 0) {
+			return QuadletProject{}, errors.New("invalid Compose process environment")
+		}
+		env[key] = value
 	}
 
 	var document yaml.Node
