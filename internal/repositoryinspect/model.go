@@ -62,6 +62,8 @@ type Evidence struct {
 }
 
 type Finding struct {
+	Service    string             `json:"service,omitempty"`
+	Protocol   string             `json:"protocol,omitempty"`
 	Capability string             `json:"capability"`
 	Name       string             `json:"name,omitempty"`
 	Direction  Direction          `json:"direction,omitempty"`
