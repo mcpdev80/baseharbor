@@ -675,3 +675,21 @@ The current Compose adapter collects selected repository workload services. Prov
 `app apply` and `app up` provision/reuse the selected Loki/Alloy provider before workload start, generate a BaseHarbor-owned logging override, start the workload and require a successful Loki query before reporting the logs path ready. `status` and `doctor` re-query Loki.
 
 Repository workload mutation also passes the v0.4.9 security preflight. `privileged: true`, container-runtime sockets, host network/PID/IPC, dangerous capabilities and critical host mounts are denied in managed environments. Development-only explicit acknowledgements use `BASEHARBOR_WORKLOAD_SECURITY_ALLOW=<comma-separated-codes>`; `BASEHARBOR_WORKLOAD_SECURITY_MODE=development|managed` is an operator policy override. Managed mode never accepts development-only acknowledgement bypasses.
+
+## Guided repository adoption
+
+`baha app init` uses the same read-only inspection result as `baha app inspect`.
+
+The guided flow is capability-first:
+
+- SQL Database; PostgreSQL may be shown as detected provider/product evidence.
+- Cache; Redis/Valkey may be shown as compatibility/provider evidence.
+- Object Storage with S3 API compatibility.
+- Metrics from an unambiguous `/metrics` endpoint.
+- Observability through OTLP when signal evidence is available.
+- Application log collection as an explicit opt-in proposal.
+- Runtime API permissions only from concrete runtime-operation evidence.
+
+Repository Compose files are never rewritten. Supported backend services discovered in a mixed Compose file are classified as replaceable infrastructure and excluded from BaseHarbor `workload.services`; the original Compose file remains usable independently.
+
+`baha app init --quick` is deterministic and fail-closed. It refuses ambiguous Compose selection, metrics service/port mapping, OTLP signal mapping, or Runtime API service scope instead of guessing.
