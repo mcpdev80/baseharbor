@@ -103,8 +103,8 @@ networks:
 	}
 	worker := got.Files["baseharbor-demo-worker.container"]
 	for _, want := range []string{
-		"Requires=baseharbor-demo-db.container",
-		"After=baseharbor-demo-db.container",
+		"Requires=baseharbor-demo-db.service",
+		"After=baseharbor-demo-db.service",
 		"Exec=sh -c \"sleep 60\"",
 	} {
 		if !strings.Contains(worker, want) {
