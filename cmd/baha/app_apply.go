@@ -277,9 +277,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 	}
 }
 
+type applicationSecretSetter interface {
+	Set(context.Context, string, string, []byte) error
+}
+
 func resolveMissingRequiredSecretsInteractive(
 	ctx context.Context,
-	service *applicationsecret.Service,
+	service applicationSecretSetter,
 	compose bhruntime.Compose,
 	platformFiles bhruntime.Files,
 	m application.Manifest,
@@ -301,6 +305,19 @@ func resolveMissingRequiredSecretsInteractive(
 		return nil
 	}
 
+	return promptAndStoreMissingRequiredSecrets(ctx, service, m.Name, missing, out)
+}
+
+func promptAndStoreMissingRequiredSecrets(
+	ctx context.Context,
+	service applicationSecretSetter,
+	applicationName string,
+	missing []openbao.RequiredSecretStatus,
+	out io.Writer,
+) error {
+	if len(missing) == 0 {
+		return nil
+	}
 	if noInput(ctx) || !appInitReaderIsTerminal(appApplySecretInput) {
 		return fmt.Errorf("missing required application secret %s; run 'baha app secret set %s' interactively or use --stdin for automation", missing[0].Name, missing[0].Name)
 	}
@@ -323,7 +340,7 @@ func resolveMissingRequiredSecretsInteractive(
 		if err != nil {
 			return err
 		}
-		if err := service.Set(ctx, m.Name, status.Name, value); err != nil {
+		if err := service.Set(ctx, applicationName, status.Name, value); err != nil {
 			zeroBytes(value)
 			return fmt.Errorf("store application secret %s: %w", status.Name, err)
 		}
