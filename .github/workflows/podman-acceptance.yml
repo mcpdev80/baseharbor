@@ -209,7 +209,7 @@ jobs:
           Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
           Podman runner	${{ steps.verify_runner.outcome }}	podman info and Quadlet generator available; Compose provider blocked
           BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
-          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Quadlet and reports READY
           Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
           Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Quadlet lifecycle integration
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
