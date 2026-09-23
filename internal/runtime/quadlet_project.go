@@ -361,7 +361,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 					continue
 				}
 			}
-			depUnit := project + "-" + sanitizeQuadletName(dep) + ".container"
+			depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
 			fmt.Fprintf(&unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
 		}
 
