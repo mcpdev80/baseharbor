@@ -56,10 +56,32 @@ type IntegrationDescriptor struct {
 	Version         string                   `json:"version"`
 	Protocol        string                   `json:"protocol"`
 	Provider        Provider                 `json:"provider"`
+	Services        []ServiceKind            `json:"services,omitempty"`
 	Capabilities    []SpecificationID        `json:"capabilities"`
 	SupportedScopes []ProviderScope          `json:"supported_scopes"`
 	Optional        OptionalLifecycleSupport `json:"optional_lifecycle"`
 	Observability   ProviderObservability    `json:"observability,omitempty"`
+}
+
+func (d IntegrationDescriptor) EffectiveServices() ([]ServiceKind, error) {
+	if len(d.Services) > 0 {
+		result := append([]ServiceKind(nil), d.Services...)
+		return result, nil
+	}
+	seen := map[ServiceKind]struct{}{}
+	var result []ServiceKind
+	for _, kind := range d.Provider.Capabilities {
+		service, err := ServiceKindForCapability(kind)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[service]; ok {
+			continue
+		}
+		seen[service] = struct{}{}
+		result = append(result, service)
+	}
+	return result, nil
 }
 
 func (d IntegrationDescriptor) Validate() error {
@@ -80,6 +102,13 @@ func (d IntegrationDescriptor) Validate() error {
 	}
 	if len(d.Capabilities) == 0 {
 		return fmt.Errorf("provider %q must declare versioned capability specifications", d.Provider.Kind)
+	}
+	services, err := d.EffectiveServices()
+	if err != nil {
+		return fmt.Errorf("provider %q service mapping: %w", d.Provider.Kind, err)
+	}
+	if len(services) == 0 {
+		return fmt.Errorf("provider %q must declare at least one service kind", d.Provider.Kind)
 	}
 	if len(d.SupportedScopes) == 0 {
 		return fmt.Errorf("provider %q must declare at least one supported placement scope", d.Provider.Kind)
