@@ -26,6 +26,7 @@ type appProjectDetection struct {
 	Compose                string
 	WorkloadServices       []string
 	InfrastructureServices []string
+	AmbiguousServices      []string
 	Postgres               bool
 	PostgresSource         string
 	PostgresInstances      []string
@@ -123,6 +124,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		Compose:                result.SelectedCompose,
 		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
 		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
+		AmbiguousServices:      append([]string(nil), result.AmbiguousServices...),
 		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
 		SecretCandidates:       append([]string(nil), result.SecretCandidates...),
 		SecretSources:          map[string]string{},
@@ -396,6 +398,7 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 
 	compose := d.Compose
 	workloadServices := append([]string(nil), d.WorkloadServices...)
+	ambiguousServices := append([]string(nil), d.AmbiguousServices...)
 	if len(d.ComposeCandidates) > 1 {
 		compose, err = promptCompose(reader, out, d.ComposeCandidates)
 		if err != nil {
@@ -406,6 +409,14 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 			return err
 		}
 		workloadServices = append([]string(nil), analysis.WorkloadServices...)
+		ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
+	}
+	if len(ambiguousServices) > 0 {
+		confirmedWorkload, err := promptAmbiguousComposeServices(reader, out, ambiguousServices)
+		if err != nil {
+			return err
+		}
+		workloadServices = uniqueSorted(append(workloadServices, confirmedWorkload...))
 	}
 
 	defaults := []bool{
@@ -556,6 +567,9 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.ComposeCandidates) > 1 {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
+	if quick && len(d.AmbiguousServices) > 0 {
+		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
+	}
 	postgres, redis, objectStorage := d.Postgres, d.Redis, d.ObjectStorage
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
@@ -622,6 +636,9 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	}
 	if len(d.InfrastructureServices) > 0 {
 		fmt.Fprintf(out, "✓ Replaceable repository infrastructure: %s\n", strings.Join(d.InfrastructureServices, ", "))
+	}
+	if len(d.AmbiguousServices) > 0 {
+		fmt.Fprintf(out, "? Compose services need classification: %s\n", strings.Join(d.AmbiguousServices, ", "))
 	}
 	if d.Postgres {
 		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
@@ -826,6 +843,34 @@ func runtimePermissionServices(reader *bufio.Reader, out io.Writer, workloadServ
 		}
 	}
 	return selected, nil
+}
+
+func promptAmbiguousComposeServices(reader *bufio.Reader, out io.Writer, services []string) ([]string, error) {
+	services = uniqueSorted(services)
+	if len(services) == 0 {
+		return nil, nil
+	}
+	fmt.Fprintln(out, "\nThese Compose services look infrastructure-like but could not be classified safely.")
+	fmt.Fprintln(out, "Select any that are application workload services (Enter = none; remaining services stay replaceable infrastructure):")
+	for i, service := range services {
+		fmt.Fprintf(out, "  %d. %s\n", i+1, service)
+	}
+	line, err := readPrompt(reader, out, "> ")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(line) == "" {
+		return nil, nil
+	}
+	var selected []string
+	for _, raw := range strings.Split(line, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || n < 1 || n > len(services) {
+			return nil, fmt.Errorf("invalid ambiguous service selection %q", raw)
+		}
+		selected = append(selected, services[n-1])
+	}
+	return uniqueSorted(selected), nil
 }
 
 func promptServiceInstances(reader *bufio.Reader, out io.Writer, label string, detected []string) ([]string, error) {
