@@ -278,7 +278,7 @@ When an existing `baseharbor.yaml` is present, `baha app inspect` also compares 
 
 Current semantic detectors include SQL/cache product evidence, S3-compatible object-storage usage, likely runtime bucket creation, OpenMetrics `/metrics` endpoints, explicit OTLP signal evidence, application log-collection proposals and BaseHarbor Runtime API usage. Product evidence is normalized to generic service families such as `sql`, `cache`, `object-storage` and `observability`; protocol compatibility such as RESP, S3, OpenMetrics and OTLP stays separate.
 
-Normal human output collapses repeated evidence into one capability summary and classifies ambiguous Compose candidates by workload versus replaceable infrastructure. `--verbose` shows the underlying evidence; JSON always preserves the complete machine-readable evidence.
+Normal human output collapses repeated evidence into one capability summary and classifies Compose services as workload, replaceable infrastructure or ambiguous. Infrastructure-shaped services whose role cannot be determined safely are never silently selected as workload: `app init --quick` fails closed and interactive init asks for explicit classification. `--verbose` shows the underlying evidence; JSON always preserves the complete machine-readable evidence.
 
 Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
 
