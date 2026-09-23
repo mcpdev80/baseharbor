@@ -103,6 +103,7 @@ type ServiceInstance struct{}
 // BaseHarbor to create a missing value directly in the managed secret backend.
 type SecretRequirements struct {
 	Required []SecretRequirement
+	Optional []SecretRequirement
 }
 
 type SecretRequirement struct {
@@ -274,7 +275,25 @@ func WithRequiredSecrets(m Manifest, names ...string) Manifest {
 	return m
 }
 
+func WithOptionalSecrets(m Manifest, names ...string) Manifest {
+	for _, name := range names {
+		m.Secrets.Optional = append(m.Secrets.Optional, SecretRequirement{Name: name})
+	}
+	if len(names) > 0 {
+		m.Services.Secrets = true
+	}
+	return m
+}
+
 func WithGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, true, name, generationType, size)
+}
+
+func WithOptionalGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, false, name, generationType, size)
+}
+
+func withGeneratedSecret(m Manifest, required bool, name, generationType string, size int) Manifest {
 	generation := &SecretGeneration{Type: generationType}
 	switch generationType {
 	case "random":
@@ -282,7 +301,12 @@ func WithGeneratedSecret(m Manifest, name, generationType string, size int) Mani
 	case "hex":
 		generation.Bytes = size
 	}
-	m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name, Generate: generation})
+	requirement := SecretRequirement{Name: name, Generate: generation}
+	if required {
+		m.Secrets.Required = append(m.Secrets.Required, requirement)
+	} else {
+		m.Secrets.Optional = append(m.Secrets.Optional, requirement)
+	}
 	m.Services.Secrets = true
 	return m
 }
@@ -295,9 +319,17 @@ func RequiredSecretNames(m Manifest) []string {
 	return names
 }
 
+func OptionalSecretNames(m Manifest) []string {
+	names := make([]string, 0, len(m.Secrets.Optional))
+	for _, requirement := range m.Secrets.Optional {
+		names = append(names, requirement.Name)
+	}
+	return names
+}
+
 func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
 	var generated []SecretRequirement
-	for _, requirement := range m.Secrets.Required {
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
 		if requirement.Generate != nil {
 			generated = append(generated, requirement)
 		}
@@ -307,7 +339,7 @@ func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
 }
 
 func SecretRequirementByName(m Manifest, name string) (SecretRequirement, bool) {
-	for _, requirement := range m.Secrets.Required {
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
 		if requirement.Name == name {
 			return requirement, true
 		}
