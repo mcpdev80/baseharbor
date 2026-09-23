@@ -12,8 +12,8 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
 		"mailflow",
 		"--environment", "production",
-		"--postgres",
-		"--redis",
+		"--sql",
+		"--cache",
 		"--require-secret", "OPENAI_API_KEY",
 		"--require-secret=SMTP_PASSWORD",
 	})
@@ -34,9 +34,9 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
 	_, _, postgres, redis, objectStorage, _, postgresInstances, redisInstances, objectStorageBuckets, _, err := parseCreateArgs([]string{
 		"mailflow",
-		"--postgres-instance", "primary",
+		"--sql-instance", "primary",
 		"--postgres-instance=analytics",
-		"--redis-instance", "cache",
+		"--cache-instance", "cache",
 		"--redis-instance=sessions",
 	})
 	if err != nil {
