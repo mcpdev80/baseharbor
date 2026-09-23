@@ -39,6 +39,36 @@ message DescribeResponse {
   // Provider-neutral service families, for example sql, cache or object-storage.
   // These are broader than protocol/capability specifications.
   repeated string service_kinds = 9;
+  // Optional concrete product/engine compatibility metadata.
+  repeated ProductSupport product_support = 10;
+  // Supported artifact platforms where the provider is distributed.
+  repeated Platform platforms = 11;
+  // OCI artifact identity for an externally distributed provider.
+  OCIArtifact artifact = 12;
+  // Standard signature/SBOM/provenance references associated with the artifact.
+  ProviderProvenance provenance = 13;
+}
+
+message ProductSupport {
+  string product = 1;
+  repeated string versions = 2;
+}
+
+message Platform {
+  string os = 1;
+  string arch = 2;
+}
+
+message OCIArtifact {
+  string reference = 1;
+  string digest = 2;
+  string media_type = 3;
+}
+
+message ProviderProvenance {
+  string signature_ref = 1;
+  string sbom_ref = 2;
+  string attestation_ref = 3;
 }
 
 message ProviderObservability {
@@ -69,6 +99,8 @@ message JsonSchema {
   // UTF-8 encoded JSON Schema document. Secrets and credential values are
   // forbidden in provider configuration schemas.
   bytes document = 2;
+  // Optional registry-neutral reference to the schema document.
+  string uri = 3;
 }
 
 enum ProviderScope {
