@@ -57,7 +57,7 @@ func TestPortableContractExcludesDeploymentContext(t *testing.T) {
 		Version: CurrentVersion,
 		Name:    "mailflow",
 		Services: Services{
-			Postgres: true,
+			SQL: true,
 		},
 	}
 	dev := base
@@ -106,7 +106,7 @@ func TestPortableContractCopiesSecretGeneration(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "mailflow",
 		Environment: "dev",
-		Services:    Services{Postgres: true, Secrets: true},
+		Services:    Services{SQL: true, Secrets: true},
 		Secrets: SecretRequirements{Required: []SecretRequirement{
 			{Name: "SESSION_SECRET", Generate: &SecretGeneration{Type: "random", Length: 32}},
 		}},
