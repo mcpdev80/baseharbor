@@ -183,12 +183,12 @@ func RenderComposeServiceQuadlet(composePath, serviceName, unitPrefix string) (Q
 	container.WriteString("TimeoutStartSec=900\n")
 
 	return QuadletWorkload{
-		ServiceName: serviceName,
-		UnitBase: unitBase,
-		Build: build,
-		Container: container.String(),
-		Environment: env.String(),
-		ServiceUnit: unitBase + ".service",
+		ServiceName:   serviceName,
+		UnitBase:      unitBase,
+		Build:         build,
+		Container:     container.String(),
+		Environment:   env.String(),
+		ServiceUnit:   unitBase + ".service",
 		ContainerName: unitBase,
 	}, nil
 }
