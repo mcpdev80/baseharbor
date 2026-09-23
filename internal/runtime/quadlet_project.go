@@ -59,7 +59,6 @@ type quadletComposeSecret struct {
 	External bool   `yaml:"external"`
 }
 
-
 type quadletSecretRef struct {
 	Source string
 	Target string
