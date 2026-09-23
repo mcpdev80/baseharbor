@@ -223,7 +223,7 @@ func (otlpDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, e
 		findings = append(findings, Finding{
 			Capability: "telemetry.otlp", Direction: DirectionExport,
 			Confidence: ConfidenceDetected,
-			Evidence: uniqueEvidence(append(genericDetected, genericSuggested...)),
+			Evidence:   uniqueEvidence(append(genericDetected, genericSuggested...)),
 		})
 	} else if len(genericSuggested) > 0 && len(findings) == 0 {
 		findings = append(findings, Finding{
@@ -267,8 +267,8 @@ func (runtimeAPIDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Find
 	}
 	return []Finding{{
 		Capability: "runtime-api",
-		Direction: DirectionConsume,
+		Direction:  DirectionConsume,
 		Confidence: ConfidenceDetected,
-		Evidence: uniqueEvidence(evidence),
+		Evidence:   uniqueEvidence(evidence),
 	}}, nil
 }
