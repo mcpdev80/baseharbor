@@ -180,14 +180,23 @@ func quadletRenderProjectFiles(composeFiles []string, environment map[string]str
 }
 
 func quadletInstallProject(ctx context.Context, project QuadletProject) error {
-	if err := quadletValidateProject(ctx, project); err != nil {
-		return err
-	}
 	dir, err := quadletUserUnitDir()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+
+	unchanged, err := quadletProjectInstalledUnchanged(dir, project)
+	if err != nil {
+		return err
+	}
+	if unchanged {
+		return nil
+	}
+
+	if err := quadletValidateProject(ctx, project); err != nil {
 		return err
 	}
 
@@ -217,6 +226,31 @@ func quadletInstallProject(ctx context.Context, project QuadletProject) error {
 	return err
 }
 
+func quadletProjectInstalledUnchanged(dir string, project QuadletProject) (bool, error) {
+	existing, err := quadletInstalledProjectFiles(dir, project.Project)
+	if err != nil {
+		return false, err
+	}
+	if len(existing) != len(project.Files) {
+		return false, nil
+	}
+
+	for _, name := range existing {
+		desired, ok := project.Files[name]
+		if !ok {
+			return false, nil
+		}
+		actual, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return false, err
+		}
+		if string(actual) != desired {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func quadletStartProject(ctx context.Context, project QuadletProject, selected []string) error {
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
@@ -227,7 +261,7 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 		if len(units) == 0 {
 			continue
 		}
-		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...); err != nil {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
 			return err
 		}
 	}
