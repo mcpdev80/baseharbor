@@ -97,7 +97,7 @@ func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir
 
 	var model any
 	if err := yaml.Unmarshal([]byte(renderedYAML), &model); err != nil {
-		return "", fmt.Errorf("decode Compose YAML fallback after %v: %w", jsonErr, yamlErr)
+		return "", fmt.Errorf("decode Compose YAML fallback after %v: %w", jsonErr, err)
 	}
 	normalized, err := json.Marshal(model)
 	if err != nil {
@@ -107,8 +107,7 @@ func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir
 }
 
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "up", "-d")
-	return err
+	return c.UpProjectFilesSelected(ctx, project, workdir, nil, nil, composeFiles...)
 }
 
 func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
@@ -259,11 +258,7 @@ func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service
 }
 
 func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--services")
-	if err != nil {
-		return nil, err
-	}
-	return nonEmptyLines(out), nil
+	return c.ServicesProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
 
 func (c Compose) ServicesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]string, error) {
@@ -344,6 +339,9 @@ func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
 }
 
 func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, onProgress func(string), args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -391,6 +389,9 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 }
 
 func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
