@@ -127,7 +127,7 @@ func New(name, environment string, postgres, redis, secrets bool) Manifest {
 	return Manifest{Version: CurrentVersion, Name: name, Environment: environment, Services: Services{Postgres: postgres, Redis: redis, Secrets: secrets}}
 }
 
-func WithPostgresInstances(m Manifest, names ...string) Manifest {
+func WithSQLInstances(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
 		return m
 	}
@@ -141,7 +141,11 @@ func WithPostgresInstances(m Manifest, names ...string) Manifest {
 	return m
 }
 
-func WithRedisInstances(m Manifest, names ...string) Manifest {
+func WithPostgresInstances(m Manifest, names ...string) Manifest {
+	return WithSQLInstances(m, names...)
+}
+
+func WithCacheInstances(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
 		return m
 	}
@@ -153,6 +157,10 @@ func WithRedisInstances(m Manifest, names ...string) Manifest {
 	}
 	m.Services.Redis = true
 	return m
+}
+
+func WithRedisInstances(m Manifest, names ...string) Manifest {
+	return WithCacheInstances(m, names...)
 }
 
 func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
@@ -242,12 +250,20 @@ func RuntimePermissionFor(m Manifest, capabilityID, operation string) bool {
 	return false
 }
 
-func PostgresInstanceNames(m Manifest) []string {
+func SQLInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.Postgres, m.Services.PostgresInstances)
 }
 
-func RedisInstanceNames(m Manifest) []string {
+func PostgresInstanceNames(m Manifest) []string {
+	return SQLInstanceNames(m)
+}
+
+func CacheInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.Redis, m.Services.RedisInstances)
+}
+
+func RedisInstanceNames(m Manifest) []string {
+	return CacheInstanceNames(m)
 }
 
 func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {
@@ -713,10 +729,10 @@ func (m Manifest) YAML() string {
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.Postgres || len(m.Services.PostgresInstances) > 0 {
-			writeServiceYAML(&b, "postgres", m.Services.Postgres, m.Services.PostgresInstances)
+			writeServiceYAML(&b, "sql", m.Services.Postgres, m.Services.PostgresInstances)
 		}
 		if m.Services.Redis || len(m.Services.RedisInstances) > 0 {
-			writeServiceYAML(&b, "redis", m.Services.Redis, m.Services.RedisInstances)
+			writeServiceYAML(&b, "cache", m.Services.Redis, m.Services.RedisInstances)
 		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
@@ -895,6 +911,7 @@ func ParseYAML(input string) (Manifest, error) {
 	runtimeField := ""
 	runtimePermissionIndex := -1
 	runtimePermissionList := ""
+	serviceSeen := map[string]string{}
 	s := bufio.NewScanner(strings.NewReader(input))
 	lineNo := 0
 	for s.Scan() {
@@ -971,10 +988,21 @@ func ParseYAML(input string) (Manifest, error) {
 				continue
 			}
 			if section == "services" && strings.HasSuffix(trim, ":") {
-				service = strings.TrimSuffix(trim, ":")
-				if service != "postgres" && service != "redis" && service != "object_storage" && service != "secrets" {
-					return Manifest{}, fmt.Errorf("line %d: unsupported service %q", lineNo, service)
+				rawService := strings.TrimSuffix(trim, ":")
+				switch rawService {
+				case "sql", "postgres":
+					service = "sql"
+				case "cache", "redis":
+					service = "cache"
+				case "object_storage", "secrets":
+					service = rawService
+				default:
+					return Manifest{}, fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
 				}
+				if previous, exists := serviceSeen[service]; exists {
+					return Manifest{}, fmt.Errorf("line %d: service %q duplicates semantic service %q", lineNo, rawService, previous)
+				}
+				serviceSeen[service] = rawService
 				continue
 			}
 			if section == "secrets" && (trim == "required:" || trim == "optional:") {
@@ -1018,7 +1046,7 @@ func ParseYAML(input string) (Manifest, error) {
 		case 4:
 			secretGenerate = false
 			if section == "services" && service != "" {
-				if trim == "instances:" && (service == "postgres" || service == "redis") {
+				if trim == "instances:" && (service == "sql" || service == "cache") {
 					serviceField = "instances"
 					continue
 				}
@@ -1035,9 +1063,9 @@ func ParseYAML(input string) (Manifest, error) {
 					return Manifest{}, fmt.Errorf("line %d: invalid enabled value", lineNo)
 				}
 				switch service {
-				case "postgres":
+				case "sql":
 					m.Services.Postgres = enabled
-				case "redis":
+				case "cache":
 					m.Services.Redis = enabled
 				case "object_storage":
 					m.Services.ObjectStorage = enabled
