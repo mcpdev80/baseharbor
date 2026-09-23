@@ -83,7 +83,10 @@ jobs:
             --out /tmp/baseharbor-quadlets
 
           ls -la /tmp/baseharbor-quadlets
-          grep -R . /tmp/baseharbor-quadlets
+          for file in /tmp/baseharbor-quadlets/*.build /tmp/baseharbor-quadlets/*.container; do
+            echo "--- $file"
+            cat "$file"
+          done
 
       - name: Validate generated Quadlets
         shell: bash
@@ -101,11 +104,29 @@ jobs:
           set -euo pipefail
 
           units_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
-          mkdir -p "$units_dir"
+          mkdir -p "$units_dir" /tmp/quadlet-evidence
+
+          elapsed_ms() {
+            local start_ns="$1" end_ns="$2"
+            echo $(( (end_ns - start_ns) / 1000000 ))
+          }
+
+          wait_http() {
+            local url="$1"
+            for _ in $(seq 1 50); do
+              if curl -fsS "$url" >/dev/null; then
+                return 0
+              fi
+              sleep 0.1
+            done
+            return 1
+          }
 
           cleanup() {
             set +e
             systemctl --user stop "$QUADLET_PREFIX-demo-app.service" "$QUADLET_PREFIX-companion-app.service" >/dev/null 2>&1
+            podman compose --project-name bha-compose-benchmark --file /tmp/baseharbor-quadlet-demo/compose.yaml stop demo-app >/dev/null 2>&1
+            podman compose --project-name bha-compose-benchmark --file /tmp/baseharbor-quadlet-demo/compose.yaml rm -f demo-app >/dev/null 2>&1
             rm -f \
               "$units_dir/$QUADLET_PREFIX-demo-app.build" \
               "$units_dir/$QUADLET_PREFIX-demo-app.container" \
@@ -122,51 +143,88 @@ jobs:
           cp /tmp/baseharbor-quadlets/* "$units_dir/"
           chmod 600 "$units_dir/$QUADLET_PREFIX-"*.env 2>/dev/null || true
 
-          reload_start="$(date +%s%3N)"
+          begin="$(date +%s%N)"
           systemctl --user daemon-reload
-          reload_end="$(date +%s%3N)"
+          end="$(date +%s%N)"
+          reload_ms="$(elapsed_ms "$begin" "$end")"
 
-          start_begin="$(date +%s%3N)"
+          begin="$(date +%s%N)"
           systemctl --user start "$QUADLET_PREFIX-demo-app.service" "$QUADLET_PREFIX-companion-app.service"
-          start_end="$(date +%s%3N)"
+          end="$(date +%s%N)"
+          cold_start_ms="$(elapsed_ms "$begin" "$end")"
 
           systemctl --user is-active "$QUADLET_PREFIX-demo-app.service"
           systemctl --user is-active "$QUADLET_PREFIX-companion-app.service"
+          wait_http http://127.0.0.1:8080/health
+          wait_http http://127.0.0.1:8081/health
 
-          for url in http://127.0.0.1:8080/health http://127.0.0.1:8081/health; do
-            ok=0
-            for _ in $(seq 1 30); do
-              if curl -fsS "$url" >/dev/null; then
-                ok=1
-                break
-              fi
-              sleep 0.2
-            done
-            test "$ok" = 1
+          systemctl --user status "$QUADLET_PREFIX-demo-app.service" --no-pager > /tmp/quadlet-evidence/demo-app-running.txt
+          systemctl --user status "$QUADLET_PREFIX-companion-app.service" --no-pager > /tmp/quadlet-evidence/companion-running.txt
+          podman inspect "$QUADLET_PREFIX-demo-app" "$QUADLET_PREFIX-companion-app" > /tmp/quadlet-evidence/inspect-running.json
+
+          systemctl --user stop "$QUADLET_PREFIX-demo-app.service" "$QUADLET_PREFIX-companion-app.service"
+
+          printf 'runtime\tcycle\tstart_ms\tstatus_ms\tstop_ms\n' > /tmp/quadlet-evidence/benchmark.tsv
+
+          for cycle in 1 2 3; do
+            begin="$(date +%s%N)"
+            systemctl --user start "$QUADLET_PREFIX-demo-app.service"
+            wait_http http://127.0.0.1:8080/health
+            end="$(date +%s%N)"
+            q_start="$(elapsed_ms "$begin" "$end")"
+
+            begin="$(date +%s%N)"
+            systemctl --user is-active "$QUADLET_PREFIX-demo-app.service" >/dev/null
+            podman inspect "$QUADLET_PREFIX-demo-app" >/dev/null
+            end="$(date +%s%N)"
+            q_status="$(elapsed_ms "$begin" "$end")"
+
+            begin="$(date +%s%N)"
+            systemctl --user stop "$QUADLET_PREFIX-demo-app.service"
+            end="$(date +%s%N)"
+            q_stop="$(elapsed_ms "$begin" "$end")"
+
+            printf 'quadlet\t%s\t%s\t%s\t%s\n' "$cycle" "$q_start" "$q_status" "$q_stop" >> /tmp/quadlet-evidence/benchmark.tsv
           done
 
-          status_begin="$(date +%s%3N)"
-          systemctl --user is-active "$QUADLET_PREFIX-demo-app.service" "$QUADLET_PREFIX-companion-app.service" >/dev/null
-          podman inspect "$QUADLET_PREFIX-demo-app" "$QUADLET_PREFIX-companion-app" >/dev/null
-          status_end="$(date +%s%3N)"
+          for cycle in 1 2 3; do
+            begin="$(date +%s%N)"
+            (
+              cd /tmp/baseharbor-quadlet-demo
+              podman compose --project-name bha-compose-benchmark --file compose.yaml up -d --build --no-deps demo-app >/dev/null
+            )
+            wait_http http://127.0.0.1:8080/health
+            end="$(date +%s%N)"
+            c_start="$(elapsed_ms "$begin" "$end")"
 
-          stop_begin="$(date +%s%3N)"
-          systemctl --user stop "$QUADLET_PREFIX-demo-app.service" "$QUADLET_PREFIX-companion-app.service"
-          stop_end="$(date +%s%3N)"
+            begin="$(date +%s%N)"
+            (
+              cd /tmp/baseharbor-quadlet-demo
+              podman compose --project-name bha-compose-benchmark --file compose.yaml ps --format json >/dev/null
+            )
+            end="$(date +%s%N)"
+            c_status="$(elapsed_ms "$begin" "$end")"
 
-          mkdir -p /tmp/quadlet-evidence
-          cat > /tmp/quadlet-evidence/timing.tsv <<EOF
-          phase	milliseconds
-          daemon_reload	$((reload_end-reload_start))
-          start_both_workloads	$((start_end-start_begin))
-          status_both_workloads	$((status_end-status_begin))
-          stop_both_workloads	$((stop_end-stop_begin))
-          EOF
+            begin="$(date +%s%N)"
+            (
+              cd /tmp/baseharbor-quadlet-demo
+              podman compose --project-name bha-compose-benchmark --file compose.yaml stop demo-app >/dev/null
+              podman compose --project-name bha-compose-benchmark --file compose.yaml rm -f demo-app >/dev/null
+            )
+            end="$(date +%s%N)"
+            c_stop="$(elapsed_ms "$begin" "$end")"
+
+            printf 'podman-compose\t%s\t%s\t%s\t%s\n' "$cycle" "$c_start" "$c_status" "$c_stop" >> /tmp/quadlet-evidence/benchmark.tsv
+          done
+
+          {
+            printf 'phase\tmilliseconds\n'
+            printf 'daemon_reload\t%s\n' "$reload_ms"
+            printf 'quadlet_cold_start_two_workloads_with_build\t%s\n' "$cold_start_ms"
+          } > /tmp/quadlet-evidence/timing.tsv
+
           cat /tmp/quadlet-evidence/timing.tsv
-
-          systemctl --user status "$QUADLET_PREFIX-demo-app.service" --no-pager > /tmp/quadlet-evidence/demo-app-status.txt || true
-          systemctl --user status "$QUADLET_PREFIX-companion-app.service" --no-pager > /tmp/quadlet-evidence/companion-status.txt || true
-          podman inspect "$QUADLET_PREFIX-demo-app" "$QUADLET_PREFIX-companion-app" > /tmp/quadlet-evidence/inspect.json || true
+          cat /tmp/quadlet-evidence/benchmark.tsv
 
           trap - EXIT
           cleanup
