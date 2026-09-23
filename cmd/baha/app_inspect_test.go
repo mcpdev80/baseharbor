@@ -75,7 +75,6 @@ func mustWriteInspectTestFile(t *testing.T, root, rel, content string) {
 	}
 }
 
-
 func TestAppInspectVerboseKeepsDetailedEvidence(t *testing.T) {
 	root := t.TempDir()
 	mustWriteInspectTestFile(t, root, "compose.yaml", `services:
