@@ -396,9 +396,9 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	changedBuildServices := changedRepositoryWorkloadBuildServices(buildFingerprints, buildState)
 	if len(buildFingerprints) > 0 {
 		if len(changedBuildServices) == 0 {
-			fmt.Fprintln(out, "[OK] workload            source unchanged")
+			cli.ReportActivityDetail(out, "source unchanged")
 		} else {
-			fmt.Fprintf(out, "[INFO] workload          source changes detected: %s\n", strings.Join(changedBuildServices, ", "))
+			cli.ReportActivityDetail(out, "source changes detected: "+strings.Join(changedBuildServices, ", "))
 			if err := compose.BuildProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, changedBuildServices, func(detail string) {
 				cli.ReportActivityDetail(out, detail)
 			}, composeFiles...); err != nil {
@@ -415,7 +415,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 					return false, fmt.Errorf("replace changed application workload services: %w", err)
 				}
 			}
-			fmt.Fprintf(out, "[OK] workload            rebuilt %s\n", strings.Join(changedBuildServices, ", "))
+			cli.ReportActivityDetail(out, "rebuilt "+strings.Join(changedBuildServices, ", "))
 		}
 	}
 
