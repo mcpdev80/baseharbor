@@ -104,7 +104,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "demo", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "init", "demo", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat("baseharbor.yaml")
