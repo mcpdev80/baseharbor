@@ -3,9 +3,6 @@ name: demo-gate-catalog
 on:
   workflow_call:
     outputs:
-      matrix:
-        description: Demo gate matrix discovered from baseharbor-demo
-        value: ${{ jobs.catalog.outputs.matrix }}
       demo_sha:
         description: Exact baseharbor-demo revision used for the matrix
         value: ${{ jobs.catalog.outputs.demo_sha }}
@@ -17,7 +14,6 @@ jobs:
   catalog:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.gates.outputs.matrix }}
       demo_sha: ${{ steps.gates.outputs.demo_sha }}
     steps:
       - name: Read demo gate registry
@@ -35,5 +31,4 @@ jobs:
               (.requires | type == "array")
             )
           ' "$tmp/demo/tests/gates.json" >/dev/null
-          printf 'matrix=%s\n' "$(jq -c '{gate:[.[].name]}' "$tmp/demo/tests/gates.json")" >> "$GITHUB_OUTPUT"
           printf 'demo_sha=%s\n' "$demo_sha" >> "$GITHUB_OUTPUT"
