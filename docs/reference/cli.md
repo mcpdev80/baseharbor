@@ -258,6 +258,7 @@ Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/r
 
 ```bash
 baha app inspect .
+baha app inspect . --verbose
 baha app inspect . -o json
 ```
 
@@ -275,7 +276,9 @@ The JSON form is the canonical machine-readable result intended for reuse by fut
 
 When an existing `baseharbor.yaml` is present, `baha app inspect` also compares repository evidence with the declared contract. Human and JSON output can distinguish `satisfied`, `new`, `ambiguous` and `stale` capability state.
 
-Current semantic detectors include PostgreSQL/Redis consumption plus S3-compatible usage, likely S3 runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export. Findings include capability direction and may include runtime-operation hints such as `runtime.create`.
+Current semantic detectors include SQL/cache product evidence, S3-compatible object-storage usage, likely runtime bucket creation, OpenMetrics `/metrics` endpoints, explicit OTLP signal evidence, application log-collection proposals and BaseHarbor Runtime API usage. Product evidence is normalized to generic service families such as `sql`, `cache`, `object-storage` and `observability`; protocol compatibility such as RESP, S3, OpenMetrics and OTLP stays separate.
+
+Normal human output collapses repeated evidence into one capability summary and classifies Compose services as workload, replaceable infrastructure or ambiguous. Infrastructure-shaped services whose role cannot be determined safely are never silently selected as workload: `app init --quick` fails closed and interactive init asks for explicit classification. `--verbose` shows the underlying evidence; JSON always preserves the complete machine-readable evidence.
 
 Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
 
@@ -333,10 +336,11 @@ baha app init
 
 Before asking setup questions, `baha` analyzes the repository read-only and detects as much as it can safely derive, including:
 
-- common Compose files in the repository root and supported conventional subdirectories;
-- PostgreSQL and Redis/Valkey usage;
-- likely application workload services;
-- infrastructure variables from common example/template env files;
+- common Compose files and application workload services;
+- replaceable PostgreSQL, Redis/Valkey and supported S3-compatible infrastructure without editing Compose;
+- generic SQL, cache and object-storage intent from product/protocol evidence;
+- OpenMetrics `/metrics`, explicit OTLP signal usage and application log-collection intent;
+- explicit BaseHarbor Runtime API usage and concrete runtime-operation evidence;
 - likely required application secret names.
 
 Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
@@ -675,3 +679,21 @@ The current Compose adapter collects selected repository workload services. Prov
 `app apply` and `app up` provision/reuse the selected Loki/Alloy provider before workload start, generate a BaseHarbor-owned logging override, start the workload and require a successful Loki query before reporting the logs path ready. `status` and `doctor` re-query Loki.
 
 Repository workload mutation also passes the v0.4.9 security preflight. `privileged: true`, container-runtime sockets, host network/PID/IPC, dangerous capabilities and critical host mounts are denied in managed environments. Development-only explicit acknowledgements use `BASEHARBOR_WORKLOAD_SECURITY_ALLOW=<comma-separated-codes>`; `BASEHARBOR_WORKLOAD_SECURITY_MODE=development|managed` is an operator policy override. Managed mode never accepts development-only acknowledgement bypasses.
+
+## Guided repository adoption
+
+`baha app init` uses the same read-only inspection result as `baha app inspect`.
+
+The guided flow is capability-first:
+
+- SQL Database; PostgreSQL may be shown as detected provider/product evidence.
+- Cache; Redis/Valkey may be shown as compatibility/provider evidence.
+- Object Storage with S3 API compatibility.
+- Metrics from an unambiguous `/metrics` endpoint.
+- Observability through OTLP when signal evidence is available.
+- Application log collection as an explicit opt-in proposal.
+- Runtime API permissions only from concrete runtime-operation evidence.
+
+Repository Compose files are never rewritten. Supported backend services discovered in a mixed Compose file are classified as replaceable infrastructure and excluded from BaseHarbor `workload.services`; the original Compose file remains usable independently.
+
+`baha app init --quick` is deterministic and fail-closed. It refuses ambiguous Compose selection, metrics service/port mapping, OTLP signal mapping, or Runtime API service scope instead of guessing.

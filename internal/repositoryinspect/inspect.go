@@ -30,6 +30,7 @@ func DefaultEngine() Engine {
 		objectStorageDetector{},
 		openMetricsDetector{},
 		otlpDetector{},
+		runtimeAPIDetector{},
 	}}
 }
 
@@ -113,9 +114,14 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	for _, rel := range result.ComposeCandidates {
 		services := detectComposeServices(snapshot.Files[rel])
 		for _, service := range services {
-			if manifest == nil && rel == result.SelectedCompose && !service.Postgres && !service.Redis &&
-				(service.HasBuild || service.HasImage || service.HasPorts) {
-				result.WorkloadServices = append(result.WorkloadServices, service.Name)
+			if manifest == nil && rel == result.SelectedCompose {
+				if service.Postgres || service.Redis || service.ObjectStorage {
+					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
+				} else if service.AmbiguousInfrastructure {
+					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
+				} else if service.HasBuild || service.HasImage || service.HasPorts {
+					result.WorkloadServices = append(result.WorkloadServices, service.Name)
+				}
 			}
 			for _, port := range service.Ports {
 				result.Ports = append(result.Ports, PortEvidence{
@@ -148,6 +154,20 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	}
 	result.SecretCandidates = uniqueSorted(result.SecretCandidates)
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
+	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
+	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
+	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
+		result.Findings = mergeFindings(result.Findings, []Finding{{
+			Capability: "logs",
+			Direction:  DirectionExport,
+			Confidence: ConfidenceSuggested,
+			Evidence: []Evidence{{
+				Kind:   EvidenceCompose,
+				Path:   result.SelectedCompose,
+				Detail: "application workload can opt into managed stdout/stderr log collection",
+			}},
+		}})
+	}
 
 	for _, detector := range e.Detectors {
 		if detector == nil {
@@ -158,6 +178,9 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 			return Result{}, fmt.Errorf("repository detector %s: %w", detector.Name(), err)
 		}
 		result.Findings = mergeFindings(result.Findings, findings)
+	}
+	for i := range result.Findings {
+		normalizeFindingService(&result.Findings[i])
 	}
 	result.Declared, result.Reconciliation = Reconcile(result.Findings, manifest)
 	sortResult(&result)
@@ -258,14 +281,16 @@ func classifyFile(rel string) (string, bool) {
 }
 
 type composeService struct {
-	Name        string
-	Postgres    bool
-	Redis       bool
-	HasBuild    bool
-	HasImage    bool
-	HasPorts    bool
-	Ports       []string
-	HealthCheck bool
+	Name                    string
+	Postgres                bool
+	Redis                   bool
+	ObjectStorage           bool
+	AmbiguousInfrastructure bool
+	HasBuild                bool
+	HasImage                bool
+	HasPorts                bool
+	Ports                   []string
+	HealthCheck             bool
 }
 
 func detectComposeServices(data []byte) []composeService {
@@ -300,6 +325,8 @@ func detectComposeServices(data []byte) []composeService {
 			lowerName := strings.ToLower(name)
 			item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
 			item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
+			item.ObjectStorage = composeObjectStorageMarker(lowerName)
+			item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.ObjectStorage && composeAmbiguousInfrastructureMarker(lowerName)
 			items[name] = item
 			inPorts = false
 			continue
@@ -315,6 +342,10 @@ func detectComposeServices(data []byte) []composeService {
 			image := strings.TrimSpace(strings.TrimPrefix(lower, "image:"))
 			item.Postgres = item.Postgres || strings.Contains(image, "postgres") || strings.Contains(image, "postgresql")
 			item.Redis = item.Redis || strings.Contains(image, "redis") || strings.Contains(image, "valkey")
+			item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(image)
+			if item.Postgres || item.Redis || item.ObjectStorage {
+				item.AmbiguousInfrastructure = false
+			}
 		case strings.HasPrefix(lower, "build:"):
 			item.HasBuild = true
 		case lower == "ports:" || strings.HasPrefix(lower, "ports:"):
@@ -484,6 +515,25 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
 	}
 	return nil
+}
+
+func composeAmbiguousInfrastructureMarker(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "db", "database", "cache", "storage", "object-storage", "s3":
+		return true
+	default:
+		return false
+	}
+}
+
+func composeObjectStorageMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{"minio/minio", "seaweedfs", "chrislusf/seaweedfs", "radosgw", "ceph-rgw"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return value == "minio" || value == "seaweedfs" || value == "radosgw"
 }
 
 func readEnvNames(data []byte) []string {
@@ -692,6 +742,36 @@ func uniqueSorted(items []string) []string {
 	return result
 }
 
+func normalizeFindingService(finding *Finding) {
+	switch finding.Capability {
+	case "database.sql":
+		finding.Service = "sql"
+	case "cache.key-value":
+		finding.Service = "cache"
+		finding.Protocol = "RESP"
+	case "object-storage.s3":
+		finding.Service = "object-storage"
+		finding.Protocol = "S3"
+	case "secrets":
+		finding.Service = "secrets"
+	case "metrics":
+		finding.Service = "observability"
+		finding.Protocol = "OpenMetrics"
+	case "telemetry.otlp":
+		finding.Service = "observability"
+		finding.Protocol = "OTLP"
+	case "logs", "traces":
+		finding.Service = "observability"
+	case "identity":
+		finding.Service = "identity"
+		finding.Protocol = "OIDC/OAuth"
+	case "messaging":
+		finding.Service = "messaging"
+	case "vector":
+		finding.Service = "vector"
+	}
+}
+
 func sortResult(result *Result) {
 	sort.Slice(result.Findings, func(i, j int) bool {
 		if result.Findings[i].Capability != result.Findings[j].Capability {
@@ -806,7 +886,14 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		if service.Redis {
 			analysis.RedisInstances = append(analysis.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
 		}
-		if !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
+		if service.ObjectStorage {
+			analysis.ObjectStorageServices = append(analysis.ObjectStorageServices, service.Name)
+		}
+		if service.Postgres || service.Redis || service.ObjectStorage {
+			analysis.InfrastructureServices = append(analysis.InfrastructureServices, service.Name)
+		} else if service.AmbiguousInfrastructure {
+			analysis.AmbiguousServices = append(analysis.AmbiguousServices, service.Name)
+		} else if service.HasBuild || service.HasImage || service.HasPorts {
 			analysis.WorkloadServices = append(analysis.WorkloadServices, service.Name)
 		}
 		for _, port := range service.Ports {
@@ -823,6 +910,9 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	}
 	analysis.PostgresInstances = uniqueSorted(analysis.PostgresInstances)
 	analysis.RedisInstances = uniqueSorted(analysis.RedisInstances)
+	analysis.ObjectStorageServices = uniqueSorted(analysis.ObjectStorageServices)
+	analysis.InfrastructureServices = uniqueSorted(analysis.InfrastructureServices)
+	analysis.AmbiguousServices = uniqueSorted(analysis.AmbiguousServices)
 	analysis.WorkloadServices = uniqueSorted(analysis.WorkloadServices)
 	sort.Slice(analysis.Ports, func(i, j int) bool {
 		if analysis.Ports[i].Service != analysis.Ports[j].Service {

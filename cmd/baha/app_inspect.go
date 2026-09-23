@@ -14,10 +14,10 @@ func appInspectCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "inspect",
 		Summary: "Inspect a repository without changing it",
-		Usage:   "baha app inspect [PATH] [-o json|--output json|--json]",
-		Long:    "Analyzes a local repository/path or remote Git URL read-only and reports deterministic capability findings as detected, suggested or possible. -o json, --output json and the compatibility alias --json emit the shared machine-readable result used by future API/Web UI/Operator adapters.",
+		Usage:   "baha app inspect [PATH] [--verbose] [-o json|--output json|--json]",
+		Long:    "Analyzes a local repository/path or remote Git URL read-only. Human output summarizes detected service intent and Compose roles; --verbose adds detailed evidence. -o json, --output json and --json emit the complete shared machine-readable result.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			root, format, err := parseAppInspectArgs(args)
+			root, format, verbose, err := parseAppInspectArgs(args)
 			if err != nil {
 				return err
 			}
@@ -33,30 +33,39 @@ func appInspectCommand() *cli.Command {
 				fmt.Fprintln(out, string(data))
 				return nil
 			}
-			printRepositoryInspection(out, result)
+			printRepositoryInspection(out, result, verbose)
 			return nil
 		},
 	}
 }
 
-func parseAppInspectArgs(args []string) (string, cliOutputFormat, error) {
-	filtered, format, err := parseReadOutputArgs(args, "app inspect")
+func parseAppInspectArgs(args []string) (string, cliOutputFormat, bool, error) {
+	verbose := false
+	filteredArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--verbose" {
+			verbose = true
+			continue
+		}
+		filteredArgs = append(filteredArgs, arg)
+	}
+	filtered, format, err := parseReadOutputArgs(filteredArgs, "app inspect")
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	root := "."
 	if len(filtered) > 1 {
-		return "", "", usageError("baha app inspect accepts at most one PATH", "Example: baha app inspect . -o json")
+		return "", "", false, usageError("baha app inspect accepts at most one PATH", "Example: baha app inspect . --verbose")
 	}
 	if len(filtered) == 1 {
 		if strings.HasPrefix(filtered[0], "-") {
-			return "", "", usageError("unknown option "+filtered[0], "Run 'baha app inspect --help' for usage.")
+			return "", "", false, usageError("unknown option "+filtered[0], "Run 'baha app inspect --help' for usage.")
 		}
 		root = filtered[0]
 	}
-	return root, format, nil
+	return root, format, verbose, nil
 }
-func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
+func printRepositoryInspection(out io.Writer, result repositoryinspect.Result, verbose bool) {
 	fmt.Fprintf(out, "Repository inspection: %s\n", result.Root)
 	fmt.Fprintf(out, "Application: %s\n", result.Application)
 	if result.ExistingManifest != "" {
@@ -66,9 +75,25 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 	if len(result.ComposeCandidates) == 1 {
 		fmt.Fprintf(out, "Compose: %s\n", result.ComposeCandidates[0])
 	} else if len(result.ComposeCandidates) > 1 {
-		fmt.Fprintf(out, "Compose: %d candidates (no automatic selection)\n", len(result.ComposeCandidates))
+		fmt.Fprintf(out, "Compose: %d candidates (confirmation required)\n", len(result.ComposeCandidates))
 		for _, path := range result.ComposeCandidates {
-			fmt.Fprintf(out, "  - %s\n", path)
+			analysis, err := repositoryinspect.AnalyzeComposeFile(result.Root, path)
+			if err != nil {
+				fmt.Fprintf(out, "  - %s\n", path)
+				continue
+			}
+			roles := []string{}
+			if len(analysis.WorkloadServices) > 0 {
+				roles = append(roles, "workload: "+strings.Join(analysis.WorkloadServices, ", "))
+			}
+			if len(analysis.InfrastructureServices) > 0 {
+				roles = append(roles, "infrastructure: "+strings.Join(analysis.InfrastructureServices, ", "))
+			}
+			if len(roles) == 0 {
+				fmt.Fprintf(out, "  - %s\n", path)
+			} else {
+				fmt.Fprintf(out, "  - %s (%s)\n", path, strings.Join(roles, "; "))
+			}
 		}
 	}
 	if len(result.WorkloadServices) > 0 {
@@ -81,10 +106,13 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 		}
 	}
 
-	printInspectionFindings(out, result, repositoryinspect.ConfidenceDetected, "Detected")
-	printInspectionFindings(out, result, repositoryinspect.ConfidenceSuggested, "Suggested")
-	printInspectionFindings(out, result, repositoryinspect.ConfidencePossible, "Possible")
-	printInspectionReconciliation(out, result)
+	printInspectionSummary(out, result)
+	if verbose {
+		printInspectionFindings(out, result, repositoryinspect.ConfidenceDetected, "Detected evidence")
+		printInspectionFindings(out, result, repositoryinspect.ConfidenceSuggested, "Suggested evidence")
+		printInspectionFindings(out, result, repositoryinspect.ConfidencePossible, "Possible evidence")
+		printInspectionReconciliation(out, result)
+	}
 
 	if len(result.RequiredSecrets) > 0 {
 		fmt.Fprintln(out, "\nRequired secrets from BaseHarbor contract:")
@@ -115,6 +143,62 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result) {
 		}
 	}
 	fmt.Fprintln(out, "\nNo changes were made.")
+}
+
+func printInspectionSummary(out io.Writer, result repositoryinspect.Result) {
+	if len(result.Findings) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nCapabilities:")
+	for _, finding := range result.Findings {
+		label := inspectionFindingLabel(finding)
+		detail := string(finding.Confidence)
+		if finding.Protocol != "" {
+			detail += ", " + finding.Protocol
+		}
+		if finding.Name != "" {
+			detail += ", " + finding.Name
+		}
+		if len(finding.Operations) > 0 {
+			values := make([]string, 0, len(finding.Operations))
+			for _, operation := range finding.Operations {
+				values = append(values, string(operation))
+			}
+			detail += ", operations: " + strings.Join(values, ", ")
+		}
+		fmt.Fprintf(out, "  %-18s %s\n", label, detail)
+	}
+}
+
+func inspectionFindingLabel(finding repositoryinspect.Finding) string {
+	switch finding.Service {
+	case "sql":
+		return "SQL Database"
+	case "cache":
+		return "Cache"
+	case "object-storage":
+		return "Object Storage"
+	case "observability":
+		if finding.Capability == "metrics" {
+			return "Metrics"
+		}
+		if finding.Capability == "logs" {
+			return "Logs"
+		}
+		return "Observability"
+	case "secrets":
+		return "Secrets"
+	case "identity":
+		return "Identity"
+	case "messaging":
+		return "Messaging"
+	case "vector":
+		return "Vector"
+	}
+	if finding.Capability == "runtime-api" {
+		return "Runtime API"
+	}
+	return finding.Capability
 }
 
 func printInspectionReconciliation(out io.Writer, result repositoryinspect.Result) {

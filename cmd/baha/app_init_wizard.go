@@ -21,19 +21,35 @@ import (
 var appInitInput io.Reader = os.Stdin
 
 type appProjectDetection struct {
-	Name              string
-	ComposeCandidates []string
-	Compose           string
-	WorkloadServices  []string
-	Postgres          bool
-	PostgresSource    string
-	PostgresInstances []string
-	Redis             bool
-	RedisSource       string
-	RedisInstances    []string
-	SecretCandidates  []string
-	SecretSources     map[string]string
-	EnvFiles          []string
+	Name                   string
+	ComposeCandidates      []string
+	Compose                string
+	WorkloadServices       []string
+	InfrastructureServices []string
+	AmbiguousServices      []string
+	Postgres               bool
+	PostgresSource         string
+	PostgresInstances      []string
+	Redis                  bool
+	RedisSource            string
+	RedisInstances         []string
+	ObjectStorage          bool
+	ObjectStorageSuggested bool
+	ObjectStorageSource    string
+	Metrics                bool
+	MetricsSuggested       bool
+	MetricsSource          string
+	OTLP                   bool
+	OTLPSuggested          bool
+	OTLPSignals            []string
+	OTLPSource             string
+	LogsSuggested          bool
+	RuntimeAPI             bool
+	RuntimePermissions     map[string][]string
+	Ports                  []repositoryinspect.PortEvidence
+	SecretCandidates       []string
+	SecretSources          map[string]string
+	EnvFiles               []string
 }
 
 type composeServiceDetection struct {
@@ -103,12 +119,16 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		return appProjectDetection{}, err
 	}
 	d := appProjectDetection{
-		Name:              result.Application,
-		ComposeCandidates: append([]string(nil), result.ComposeCandidates...),
-		Compose:           result.SelectedCompose,
-		WorkloadServices:  append([]string(nil), result.WorkloadServices...),
-		SecretCandidates:  append([]string(nil), result.SecretCandidates...),
-		SecretSources:     map[string]string{},
+		Name:                   result.Application,
+		ComposeCandidates:      append([]string(nil), result.ComposeCandidates...),
+		Compose:                result.SelectedCompose,
+		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
+		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
+		AmbiguousServices:      append([]string(nil), result.AmbiguousServices...),
+		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
+		SecretCandidates:       append([]string(nil), result.SecretCandidates...),
+		SecretSources:          map[string]string{},
+		RuntimePermissions:     map[string][]string{},
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
@@ -119,15 +139,17 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 	}
 	for _, finding := range result.Findings {
-		if finding.Confidence != repositoryinspect.ConfidenceDetected {
-			continue
-		}
 		source := ""
 		if len(finding.Evidence) > 0 {
 			source = finding.Evidence[0].Path + " " + finding.Evidence[0].Detail
 		}
+		detected := finding.Confidence == repositoryinspect.ConfidenceDetected
+		suggested := finding.Confidence == repositoryinspect.ConfidenceSuggested
 		switch finding.Capability {
 		case "database.sql":
+			if !detected {
+				continue
+			}
 			d.Postgres = true
 			if finding.Name != "" {
 				d.PostgresInstances = append(d.PostgresInstances, finding.Name)
@@ -136,6 +158,9 @@ func detectAppProject(root string) (appProjectDetection, error) {
 				d.PostgresSource = source
 			}
 		case "cache.key-value":
+			if !detected {
+				continue
+			}
 			d.Redis = true
 			if finding.Name != "" {
 				d.RedisInstances = append(d.RedisInstances, finding.Name)
@@ -143,11 +168,55 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			if d.RedisSource == "" {
 				d.RedisSource = source
 			}
+		case "object-storage.s3":
+			staticObjectStorageEvidence := false
+			for _, evidence := range finding.Evidence {
+				if evidence.Kind == repositoryinspect.EvidenceCompose || evidence.Kind == repositoryinspect.EvidenceEnv {
+					staticObjectStorageEvidence = true
+					break
+				}
+			}
+			d.ObjectStorage = d.ObjectStorage || (detected && staticObjectStorageEvidence)
+			d.ObjectStorageSuggested = d.ObjectStorageSuggested || suggested
+			if d.ObjectStorageSource == "" {
+				d.ObjectStorageSource = source
+			}
+			if len(finding.Operations) > 0 {
+				for _, operation := range finding.Operations {
+					d.RuntimePermissions["object-storage.s3/v1"] = append(
+						d.RuntimePermissions["object-storage.s3/v1"],
+						string(operation),
+					)
+				}
+			}
+		case "metrics":
+			d.Metrics = d.Metrics || detected
+			d.MetricsSuggested = d.MetricsSuggested || suggested
+			if d.MetricsSource == "" {
+				d.MetricsSource = source
+			}
+		case "telemetry.otlp":
+			d.OTLP = d.OTLP || detected
+			d.OTLPSuggested = d.OTLPSuggested || suggested
+			if finding.Name != "" && (detected || suggested) {
+				d.OTLPSignals = append(d.OTLPSignals, finding.Name)
+			}
+			if d.OTLPSource == "" {
+				d.OTLPSource = source
+			}
+		case "logs":
+			d.LogsSuggested = d.LogsSuggested || detected || suggested
+		case "runtime-api":
+			d.RuntimeAPI = d.RuntimeAPI || detected
 		}
 	}
 	d.EnvFiles = uniqueSorted(d.EnvFiles)
 	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
 	d.RedisInstances = uniqueSorted(d.RedisInstances)
+	d.OTLPSignals = uniqueSorted(d.OTLPSignals)
+	for capabilityID, operations := range d.RuntimePermissions {
+		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
+	}
 	return d, nil
 }
 
@@ -336,6 +405,7 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 
 	compose := d.Compose
 	workloadServices := append([]string(nil), d.WorkloadServices...)
+	ambiguousServices := append([]string(nil), d.AmbiguousServices...)
 	if len(d.ComposeCandidates) > 1 {
 		compose, err = promptCompose(reader, out, d.ComposeCandidates)
 		if err != nil {
@@ -346,9 +416,25 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 			return err
 		}
 		workloadServices = append([]string(nil), analysis.WorkloadServices...)
+		ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
+	}
+	if len(ambiguousServices) > 0 {
+		confirmedWorkload, err := promptAmbiguousComposeServices(reader, out, ambiguousServices)
+		if err != nil {
+			return err
+		}
+		workloadServices = uniqueSorted(append(workloadServices, confirmedWorkload...))
 	}
 
-	defaults := []bool{d.Postgres, d.Redis, false, len(d.SecretCandidates) > 0}
+	defaults := []bool{
+		d.Postgres,
+		d.Redis,
+		d.ObjectStorage,
+		len(d.SecretCandidates) > 0,
+		d.Metrics,
+		d.OTLP && len(d.OTLPSignals) > 0,
+		false,
+	}
 	allowNone := len(workloadServices) > 0
 	selected, err := promptCapabilityList(reader, out, defaults, allowNone)
 	if err != nil {
@@ -411,6 +497,43 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	if compose != "" && len(workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(compose), workloadServices...)
 	}
+	if selected[4] {
+		service, port, ok := detectedMetricsTarget(d, workloadServices)
+		if !ok {
+			service, port, err = promptMetricsTarget(reader, out, workloadServices)
+			if err != nil {
+				return err
+			}
+		}
+		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
+	}
+	if selected[5] {
+		defaultSignals := strings.Join(d.OTLPSignals, ",")
+		if defaultSignals == "" {
+			defaultSignals = "traces"
+		}
+		value, err := promptLine(reader, out, "OTLP signals (comma-separated)", defaultSignals)
+		if err != nil {
+			return err
+		}
+		signals := uniqueSorted(strings.Split(value, ","))
+		if len(signals) == 0 {
+			return errors.New("OTLP telemetry requires at least one signal")
+		}
+		m = application.WithOTLPTelemetry(m, signals...)
+	}
+	if selected[6] {
+		m = application.WithLogsCollection(m, "application")
+	}
+	if len(d.RuntimePermissions) > 0 {
+		services, err := runtimePermissionServices(reader, out, workloadServices)
+		if err != nil {
+			return err
+		}
+		for capabilityID, operations := range d.RuntimePermissions {
+			m = application.WithRuntimePermission(m, capabilityID, services, operations...)
+		}
+	}
 	if err := m.Validate(); err != nil {
 		return err
 	}
@@ -451,19 +574,22 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.ComposeCandidates) > 1 {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
-	postgres, redis := d.Postgres, d.Redis
+	if quick && len(d.AmbiguousServices) > 0 {
+		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
+	}
+	postgres, redis, objectStorage := d.Postgres, d.Redis, d.ObjectStorage
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
 	secrets := false
 	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
-	if quick && !postgres && !redis && !secrets && !hasWorkload {
+	if quick && !postgres && !redis && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
 			"no unambiguous application requirements were detected",
 			"Run 'baha app init' interactively or use explicit capability flags.",
 		)
 	}
-	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, false, secrets, hasWorkload)
+	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, objectStorage, secrets, hasWorkload)
 	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
 		m = application.WithPostgresInstances(m, postgresNamed...)
 	}
@@ -476,6 +602,27 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if d.Compose != "" && len(d.WorkloadServices) > 0 {
 		m = application.WithWorkload(m, d.Compose, d.WorkloadServices...)
 	}
+	if quick && d.Metrics {
+		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)
+		if !ok {
+			return application.Manifest{}, usageError("metrics endpoint was detected but its workload service/port is ambiguous", "Run 'baha app init' interactively to confirm the metrics target.")
+		}
+		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
+	}
+	if quick && d.OTLP {
+		if len(d.OTLPSignals) == 0 {
+			return application.Manifest{}, usageError("OTLP export was detected but the signal set is ambiguous", "Run 'baha app init' interactively to confirm traces, metrics and/or logs.")
+		}
+		m = application.WithOTLPTelemetry(m, d.OTLPSignals...)
+	}
+	if quick && len(d.RuntimePermissions) > 0 {
+		if len(d.WorkloadServices) != 1 {
+			return application.Manifest{}, usageError("runtime capability use was detected but the workload service scope is ambiguous", "Run 'baha app init' interactively to confirm the authorized workload service.")
+		}
+		for capabilityID, operations := range d.RuntimePermissions {
+			m = application.WithRuntimePermission(m, capabilityID, d.WorkloadServices, operations...)
+		}
+	}
 	if err := m.Validate(); err != nil {
 		return application.Manifest{}, err
 	}
@@ -485,30 +632,67 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 func printProjectDetection(out io.Writer, d appProjectDetection) {
 	fmt.Fprintf(out, "✓ Application name: %s\n", d.Name)
 	if d.Compose != "" {
-		fmt.Fprintf(out, "✓ Compose file: %s\n", d.Compose)
+		fmt.Fprintf(out, "✓ Compose file: %s (read-only)\n", d.Compose)
 	} else if len(d.ComposeCandidates) > 1 {
 		fmt.Fprintf(out, "? Compose file: %d candidates need confirmation\n", len(d.ComposeCandidates))
 	} else {
 		fmt.Fprintln(out, "- Compose file: not detected")
 	}
 	if len(d.WorkloadServices) > 0 {
-		fmt.Fprintf(out, "✓ Workload services: %s\n", strings.Join(d.WorkloadServices, ", "))
+		fmt.Fprintf(out, "✓ Application workload: %s\n", strings.Join(d.WorkloadServices, ", "))
+	}
+	if len(d.InfrastructureServices) > 0 {
+		fmt.Fprintf(out, "✓ Replaceable repository infrastructure: %s\n", strings.Join(d.InfrastructureServices, ", "))
+	}
+	if len(d.AmbiguousServices) > 0 {
+		fmt.Fprintf(out, "? Compose services need classification: %s\n", strings.Join(d.AmbiguousServices, ", "))
 	}
 	if d.Postgres {
-		fmt.Fprintf(out, "✓ PostgreSQL detected from %s\n", d.PostgresSource)
+		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
 		if len(d.PostgresInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.PostgresInstances, ", "))
 		}
 	} else {
-		fmt.Fprintln(out, "- PostgreSQL not detected")
+		fmt.Fprintln(out, "- SQL Database not detected")
 	}
 	if d.Redis {
-		fmt.Fprintf(out, "✓ Redis/Valkey detected from %s\n", d.RedisSource)
+		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.RedisSource)
 		if len(d.RedisInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.RedisInstances, ", "))
 		}
 	} else {
-		fmt.Fprintln(out, "- Redis/Valkey not detected")
+		fmt.Fprintln(out, "- Cache not detected")
+	}
+	switch {
+	case d.ObjectStorage:
+		fmt.Fprintf(out, "✓ Object Storage detected (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	case d.ObjectStorageSuggested:
+		fmt.Fprintf(out, "? Object Storage suggested (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	default:
+		fmt.Fprintln(out, "- Object Storage not detected")
+	}
+	switch {
+	case d.Metrics:
+		fmt.Fprintf(out, "✓ Metrics detected at /metrics (%s)\n", d.MetricsSource)
+	case d.MetricsSuggested:
+		fmt.Fprintf(out, "? Metrics suggested (%s)\n", d.MetricsSource)
+	}
+	switch {
+	case d.OTLP && len(d.OTLPSignals) > 0:
+		fmt.Fprintf(out, "✓ Observability detected (OTLP: %s)\n", strings.Join(d.OTLPSignals, ", "))
+	case d.OTLP:
+		fmt.Fprintln(out, "? Observability detected via OTLP; signal set needs confirmation")
+	case d.OTLPSuggested:
+		fmt.Fprintln(out, "? Observability via OTLP suggested")
+	}
+	if d.LogsSuggested {
+		fmt.Fprintln(out, "? Application log collection available for the selected workload")
+	}
+	if d.RuntimeAPI {
+		fmt.Fprintln(out, "✓ BaseHarbor Runtime API usage detected")
+	}
+	for capabilityID, operations := range d.RuntimePermissions {
+		fmt.Fprintf(out, "✓ Runtime operations for %s: %s\n", capabilityID, strings.Join(operations, ", "))
 	}
 	if len(d.SecretCandidates) > 0 {
 		fmt.Fprintln(out, "✓ Potential required secret names:")
@@ -521,8 +705,16 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 }
 
 func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
-	labels := []string{"PostgreSQL", "Valkey / Redis", "S3-compatible Object Storage", "Managed Secrets"}
-	fmt.Fprintln(out, "\nSelect required services (Enter keeps detected/default selection; otherwise enter numbers such as 1,3):")
+	labels := []string{
+		"SQL Database (PostgreSQL-compatible evidence)",
+		"Cache (Redis/Valkey-compatible evidence)",
+		"Object Storage (S3-compatible)",
+		"Managed Secrets",
+		"Metrics (/metrics)",
+		"OTLP telemetry",
+		"Application logs",
+	}
+	fmt.Fprintln(out, "\nSelect application capabilities (Enter keeps detected defaults; suggested capabilities remain opt-in):")
 	for i, label := range labels {
 		mark := " "
 		if defaults[i] {
@@ -536,7 +728,7 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 	}
 	if strings.TrimSpace(line) == "" {
 		selected := append([]bool(nil), defaults...)
-		if !selected[0] && !selected[1] && !selected[2] && !selected[3] && !allowNone {
+		if !anySelected(selected) && !allowNone {
 			return nil, errors.New("select at least one backend capability or configure an application workload")
 		}
 		return selected, nil
@@ -549,10 +741,143 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		}
 		selected[n-1] = true
 	}
-	if !selected[0] && !selected[1] && !selected[2] && !selected[3] && !allowNone {
+	if !anySelected(selected) && !allowNone {
 		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
+}
+
+func anySelected(values []bool) bool {
+	for _, value := range values {
+		if value {
+			return true
+		}
+	}
+	return false
+}
+
+func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (string, int, bool) {
+	allowed := map[string]struct{}{}
+	for _, service := range workloadServices {
+		allowed[service] = struct{}{}
+	}
+	type target struct {
+		service string
+		port    int
+	}
+	var targets []target
+	for _, item := range d.Ports {
+		if _, ok := allowed[item.Service]; !ok {
+			continue
+		}
+		port, ok := composeTargetPort(item.Value)
+		if !ok {
+			continue
+		}
+		targets = append(targets, target{service: item.Service, port: port})
+	}
+	if len(targets) != 1 {
+		return "", 0, false
+	}
+	return targets[0].service, targets[0].port, true
+}
+
+func composeTargetPort(value string) (int, bool) {
+	value = strings.TrimSpace(strings.Trim(value, "\"'"))
+	parts := strings.Split(value, ":")
+	target := parts[len(parts)-1]
+	target = strings.TrimSuffix(target, "/tcp")
+	target = strings.TrimSuffix(target, "/udp")
+	if strings.Contains(target, "-") {
+		return 0, false
+	}
+	port, err := strconv.Atoi(target)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, false
+	}
+	return port, true
+}
+
+func promptMetricsTarget(reader *bufio.Reader, out io.Writer, workloadServices []string) (string, int, error) {
+	if len(workloadServices) == 0 {
+		return "", 0, errors.New("metrics collection requires an application workload service")
+	}
+	defaultService := workloadServices[0]
+	service, err := promptLine(reader, out, "Metrics workload service", defaultService)
+	if err != nil {
+		return "", 0, err
+	}
+	found := false
+	for _, candidate := range workloadServices {
+		if candidate == service {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", 0, fmt.Errorf("metrics service %q is not a selected workload service", service)
+	}
+	value, err := promptLine(reader, out, "Metrics container port", "")
+	if err != nil {
+		return "", 0, err
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || port < 1 || port > 65535 {
+		return "", 0, fmt.Errorf("invalid metrics container port %q", value)
+	}
+	return service, port, nil
+}
+
+func runtimePermissionServices(reader *bufio.Reader, out io.Writer, workloadServices []string) ([]string, error) {
+	if len(workloadServices) == 0 {
+		return nil, errors.New("runtime capability permissions require an application workload service")
+	}
+	if len(workloadServices) == 1 {
+		return append([]string(nil), workloadServices...), nil
+	}
+	value, err := promptLine(reader, out, "Workload services allowed to use detected Runtime API operations (comma-separated)", strings.Join(workloadServices, ","))
+	if err != nil {
+		return nil, err
+	}
+	selected := uniqueSorted(strings.Split(value, ","))
+	known := map[string]struct{}{}
+	for _, service := range workloadServices {
+		known[service] = struct{}{}
+	}
+	for _, service := range selected {
+		if _, ok := known[service]; !ok {
+			return nil, fmt.Errorf("runtime permission service %q is not a selected workload service", service)
+		}
+	}
+	return selected, nil
+}
+
+func promptAmbiguousComposeServices(reader *bufio.Reader, out io.Writer, services []string) ([]string, error) {
+	services = uniqueSorted(services)
+	if len(services) == 0 {
+		return nil, nil
+	}
+	fmt.Fprintln(out, "\nThese Compose services look infrastructure-like but could not be classified safely.")
+	fmt.Fprintln(out, "Select any that are application workload services (Enter = none; remaining services stay replaceable infrastructure):")
+	for i, service := range services {
+		fmt.Fprintf(out, "  %d. %s\n", i+1, service)
+	}
+	line, err := readPrompt(reader, out, "> ")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(line) == "" {
+		return nil, nil
+	}
+	var selected []string
+	for _, raw := range strings.Split(line, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || n < 1 || n > len(services) {
+			return nil, fmt.Errorf("invalid ambiguous service selection %q", raw)
+		}
+		selected = append(selected, services[n-1])
+	}
+	return uniqueSorted(selected), nil
 }
 
 func promptServiceInstances(reader *bufio.Reader, out io.Writer, label string, detected []string) ([]string, error) {
