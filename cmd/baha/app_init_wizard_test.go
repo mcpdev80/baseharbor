@@ -224,3 +224,102 @@ func TestQuickInitDoesNotPromoteSuggestedCapability(t *testing.T) {
 		t.Fatalf("manifest should not be written from suggested evidence, stat err=%v", statErr)
 	}
 }
+
+
+func TestQuickInitIsolatesMixedComposeInfrastructureAndGeneratesDetectedIntent(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  demo-app:
+    build: .
+    ports:
+      - "8080:8080"
+  postgres:
+    image: postgres:18
+  valkey:
+    image: valkey/valkey:8
+  object-storage:
+    image: quay.io/minio/minio:latest
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, "main.go"), `package main
+func metrics() string { return "/metrics" }
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, ".env.example"), "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\n")
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := string(data)
+	for _, want := range []string{
+		"- demo-app",
+		"object_storage:",
+		"metrics:",
+		"path: /metrics",
+		"telemetry:",
+		"- traces",
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("manifest missing %q:\n%s", want, manifest)
+		}
+	}
+	for _, forbidden := range []string{"- postgres", "- valkey", "- object-storage"} {
+		if strings.Contains(manifest, forbidden) {
+			t.Fatalf("repository infrastructure leaked into workload %q:\n%s", forbidden, manifest)
+		}
+	}
+}
+
+func TestQuickInitFailsClosedOnAmbiguousMetricsTarget(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+    ports:
+      - "8080:8080"
+  worker:
+    image: example/worker
+    ports:
+      - "9090:9090"
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, "main.go"), `package main
+const metricsPath = "/metrics"
+`)
+	withWizardTestDir(t, root)
+
+	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "metrics endpoint was detected") {
+		t.Fatalf("expected fail-closed metrics ambiguity, got %v", err)
+	}
+}
+
+func TestQuickInitScopesConcreteRuntimePermissionToSingleWorkload(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+`)
+	mustWriteWizardTestFile(t, filepath.Join(root, "storage.go"), `package main
+func provision(client *S3Client) { client.CreateBucket("tenant") }
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := string(data)
+	for _, want := range []string{"runtime:", "object-storage.s3/v1", "runtime.create", "- api"} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("runtime intent missing %q:\n%s", want, manifest)
+		}
+	}
+}
