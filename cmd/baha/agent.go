@@ -14,6 +14,7 @@ type agentDescription struct {
 	ContractVersion   string              `json:"contract_version"`
 	BaseHarborVersion string              `json:"baseharbor_version"`
 	Operations        []machine.Operation `json:"operations"`
+	ServiceContracts  []string            `json:"service_contracts"`
 	Capabilities      []string            `json:"capability_specifications"`
 	MCP               agentMCPDescription `json:"mcp"`
 }
@@ -71,6 +72,7 @@ func currentAgentDescription() agentDescription {
 		ContractVersion:   machine.ContractVersion,
 		BaseHarborVersion: version,
 		Operations:        machine.Operations(),
+		ServiceContracts:  machine.ServiceContracts(),
 		Capabilities:      machine.CapabilitySpecifications(),
 		MCP: agentMCPDescription{
 			Transport:       "stdio",
