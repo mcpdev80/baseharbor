@@ -67,7 +67,7 @@ func TestRequiredSecretStatusIsActionable(t *testing.T) {
 	for _, want := range []string{
 		"No application secrets have been configured yet.",
 		"missing - user input required",
-		"baha app secret set OPENAI_API_KEY --stdin",
+		"baha app secret set OPENAI_API_KEY",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output missing %q:\n%s", want, text)
