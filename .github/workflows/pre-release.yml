@@ -240,23 +240,19 @@ jobs:
     uses: ./.github/workflows/demo-gate-catalog.yml
 
   demo_docker:
-    name: Docker · ${{ matrix.gate }}
+    name: pre-release-docker-demo
     needs: demo_catalog
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
     runs-on:
       - self-hosted
       - Linux
       - X64
       - baseharbor
       - docker
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       BASEHARBOR_TEST_RUNTIME: docker
-      DEMO_GATE: ${{ matrix.gate }}
-      ARTIFACT_DIR: /tmp/baseharbor-demo-docker-${{ matrix.gate }}
+      ARTIFACT_DIR: /tmp/baseharbor-demo-docker-pre-release
       DEMO_SHA: ${{ needs.demo_catalog.outputs.demo_sha }}
 
     steps:
@@ -283,14 +279,14 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
-      - name: Run demo gate
+      - name: Run full demo acceptance suite
         id: demo
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
-          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
+          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-pre-release-repo"
           rm -rf "$workdir" "$ARTIFACT_DIR"
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
           git -C "$workdir" fetch --depth 1 origin "$DEMO_SHA"
@@ -299,7 +295,7 @@ jobs:
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
             ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
+            bash scripts/acceptance.sh
 
       - name: Cleanup runtime state
         id: cleanup
@@ -307,57 +303,54 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
-      - name: Generate gate evidence
+      - name: Generate Docker demo evidence
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/demo-gate-evidence"
-          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
+          out="$RUNNER_TEMP/demo-docker-evidence"
+          rows="$RUNNER_TEMP/demo-docker-evidence.tsv"
           cat >"$rows" <<EOF
           Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
           Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
-          Runtime reset	${{ steps.reset.outcome }}	Clean docker runner state
-          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate
+          Runtime reset	${{ steps.reset.outcome }}	Clean Docker runner state
+          Demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
+          Full demo acceptance	${{ steps.demo.outcome }}	All registered gates executed once in registry order on one persistent environment
           Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF
           mkdir -p "$out/demo"
           cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$out" \
-            "BaseHarbor Demo Gate Evidence" \
-            "demo/docker/${{ matrix.gate }}" \
+            "BaseHarbor Docker Demo Pre-Release Evidence" \
+            "pre-release/demo/docker" \
             "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}" \
             "${{ steps.candidate.outputs.sha || github.sha }}" \
             "$rows"
 
-      - name: Upload gate evidence
+      - name: Upload Docker demo evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: demo-docker-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/demo-gate-evidence
+          name: demo-docker-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-docker-evidence
           if-no-files-found: error
           retention-days: 30
 
   demo_podman:
-    name: Podman · ${{ matrix.gate }}
+    name: pre-release-podman-demo
     needs: demo_catalog
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
     runs-on:
       - self-hosted
       - Linux
       - X64
       - baseharbor
       - podman
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       BASEHARBOR_TEST_RUNTIME: podman
-      DEMO_GATE: ${{ matrix.gate }}
-      ARTIFACT_DIR: /tmp/baseharbor-demo-podman-${{ matrix.gate }}
+      ARTIFACT_DIR: /tmp/baseharbor-demo-podman-pre-release
       DEMO_SHA: ${{ needs.demo_catalog.outputs.demo_sha }}
 
     steps:
@@ -413,14 +406,14 @@ jobs:
           chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
           echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
 
-      - name: Run demo gate
+      - name: Run full demo acceptance suite
         id: demo
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
-          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
+          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-pre-release-repo"
           rm -rf "$workdir" "$ARTIFACT_DIR"
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
           git -C "$workdir" fetch --depth 1 origin "$DEMO_SHA"
@@ -429,7 +422,7 @@ jobs:
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
             ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
+            bash scripts/acceptance.sh
 
       - name: Cleanup runtime state
         id: cleanup
@@ -437,37 +430,38 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
-      - name: Generate gate evidence
+      - name: Generate Podman demo evidence
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/demo-gate-evidence"
-          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
+          out="$RUNNER_TEMP/demo-podman-evidence"
+          rows="$RUNNER_TEMP/demo-podman-evidence.tsv"
           cat >"$rows" <<EOF
           Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
           Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
           Runtime reset	${{ steps.reset.outcome }}	Clean Podman runner and Quadlet state
           Podman Quadlet runtime	${{ steps.quadlet.outcome }}	Quadlet generator required; podman compose provider explicitly blocked
-          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate on Quadlet-only Podman runtime
+          Demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
+          Full demo acceptance	${{ steps.demo.outcome }}	All registered gates executed once in registry order on one persistent environment
           Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF
           mkdir -p "$out/demo"
           cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$out" \
-            "BaseHarbor Demo Gate Evidence" \
-            "demo/podman/${{ matrix.gate }}" \
+            "BaseHarbor Podman Demo Pre-Release Evidence" \
+            "pre-release/demo/podman" \
             "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}" \
             "${{ steps.candidate.outputs.sha || github.sha }}" \
             "$rows"
 
-      - name: Upload gate evidence
+      - name: Upload Podman demo evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: demo-podman-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/demo-gate-evidence
+          name: demo-podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-podman-evidence
           if-no-files-found: error
           retention-days: 30
 
@@ -498,8 +492,8 @@ jobs:
           Docker runtime core	${{ needs.docker_runtime.result }}	Runtime integration, recovery and observability
           Podman runtime core	${{ needs.podman.result }}	Runtime integration, recovery and observability
           External demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
-          Docker demo gates	${{ needs.demo_docker.result }}	Independent consumer-contract gate matrix
-          Podman demo gates	${{ needs.demo_podman.result }}	Independent consumer-contract gate matrix
+          Docker demo acceptance	${{ needs.demo_docker.result }}	All registered gates once on one persistent Docker environment
+          Podman demo acceptance	${{ needs.demo_podman.result }}	All registered gates once on one persistent Podman/Quadlet environment
           EOF
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/release-gate-evidence" \
