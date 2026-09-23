@@ -1,17 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:provider:v1:descriptor",
-  "title": "BaseHarbor provider descriptor v1",
+  "$id": "https://schemas.baseharbor.dev/provider/v1/provider-descriptor.schema.json",
+  "title": "BaseHarbor Provider Descriptor v1",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "id",
-    "version",
-    "protocol",
-    "serviceKinds",
-    "contracts",
-    "distribution"
-  ],
   "properties": {
     "id": {
       "type": "string",
@@ -21,7 +13,7 @@
       "type": "string",
       "minLength": 1
     },
-    "protocol": {
+    "providerProtocol": {
       "const": "baseharbor.provider/v1"
     },
     "serviceKinds": {
@@ -38,17 +30,15 @@
           "identity"
         ]
       },
-      "uniqueItems": true,
-      "minItems": 1
+      "uniqueItems": true
     },
-    "contracts": {
+    "serviceContracts": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
       },
-      "uniqueItems": true,
-      "minItems": 1
+      "uniqueItems": true
     },
     "capabilities": {
       "type": "array",
@@ -63,9 +53,6 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "product"
-        ],
         "properties": {
           "product": {
             "type": "string",
@@ -79,16 +66,54 @@
             },
             "uniqueItems": true
           }
-        }
+        },
+        "required": [
+          "product"
+        ]
       }
     },
     "platforms": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "os": {
+            "type": "string",
+            "minLength": 1
+          },
+          "arch": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "os",
+          "arch"
+        ]
       },
       "uniqueItems": true
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ociReference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ociReference"
+      ]
     },
     "configurationSchema": {
       "type": "object",
@@ -97,67 +122,39 @@
         "dialect": {
           "const": "https://json-schema.org/draft/2020-12/schema"
         },
-        "reference": {
-          "type": "string"
-        }
-      }
-    },
-    "extensions": {
-      "type": "object",
-      "patternProperties": {
-        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
-          "type": "object"
+        "uri": {
+          "type": "string",
+          "format": "uri-reference"
         }
       },
-      "additionalProperties": false,
-      "description": "Versioned BaseHarbor extensions only."
-    },
-    "distribution": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "kind"
-          ],
-          "properties": {
-            "kind": {
-              "const": "builtin"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "kind",
-            "reference",
-            "digest"
-          ],
-          "properties": {
-            "kind": {
-              "const": "oci"
-            },
-            "reference": {
-              "type": "string",
-              "minLength": 1
-            },
-            "digest": {
-              "type": "string",
-              "pattern": "^sha256:[a-f0-9]{64}$"
-            },
-            "mediaType": {
-              "type": "string"
-            },
-            "signature": {
-              "type": "string"
-            },
-            "provenance": {
-              "type": "string"
-            }
-          }
-        }
+      "required": [
+        "dialect"
       ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signatureRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sbomRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attestationRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
-  }
+  },
+  "required": [
+    "id",
+    "version",
+    "providerProtocol",
+    "serviceKinds",
+    "serviceContracts"
+  ]
 }
