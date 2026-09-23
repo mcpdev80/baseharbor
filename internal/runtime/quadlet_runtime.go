@@ -223,11 +223,16 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	}
 
 	networks, volumes, builds := quadletProjectResourceUnits(project)
-	for _, units := range [][]string{networks, volumes, builds} {
+	for _, units := range [][]string{networks, volumes} {
 		if len(units) == 0 {
 			continue
 		}
-		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...); err != nil {
+			return err
+		}
+	}
+	if len(builds) > 0 {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, builds...)...); err != nil {
 			return err
 		}
 	}
