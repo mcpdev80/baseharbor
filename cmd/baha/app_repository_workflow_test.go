@@ -66,7 +66,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := application.New("mailflow", "dev", false, false, false)
-	m = application.WithPostgresInstances(m, "primary", "analytics")
+	m = application.WithSQLInstances(m, "primary", "analytics")
 	if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "demo" || len(application.PostgresInstanceNames(m)) != 1 || len(application.RedisInstanceNames(m)) != 1 {
+	if m.Name != "demo" || len(application.SQLInstanceNames(m)) != 1 || len(application.CacheInstanceNames(m)) != 1 {
 		t.Fatalf("unexpected generated manifest: %#v", m)
 	}
 	if err := runWithIO(context.Background(), []string{"app", "init", "demo"}, &out, &out); err == nil {
