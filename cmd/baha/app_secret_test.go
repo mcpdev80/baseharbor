@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
 func TestParseSecretSetArgsSupportsInteractiveOrExplicitInput(t *testing.T) {
@@ -152,7 +154,7 @@ func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *te
 }
 
 func TestReadSecretSetValueInteractiveNoInputRequiresExplicitSource(t *testing.T) {
-	ctx := withNoInput(context.Background())
+	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{NonInteractive: true})
 	_, err := readSecretSetValueInteractive(ctx, []string{"API_TOKEN"}, strings.NewReader("secret"), &bytes.Buffer{}, "API_TOKEN")
 	if err == nil || !strings.Contains(err.Error(), "--stdin") {
 		t.Fatalf("expected deterministic no-input remediation, got %v", err)
