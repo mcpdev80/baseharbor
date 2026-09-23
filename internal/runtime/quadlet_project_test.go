@@ -202,3 +202,26 @@ secrets:
 		t.Fatalf("Quadlet secret mapping missing %q:\n%s", want, unit)
 	}
 }
+
+func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "implicit-network")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.Files["implicit-network-default.network"]; !ok {
+		t.Fatalf("implicit default network was not rendered")
+	}
+	unit := got.Files["implicit-network-api.container"]
+	if !strings.Contains(unit, "Network=implicit-network-default.network") {
+		t.Fatalf("service was not attached to implicit default network:\n%s", unit)
+	}
+}
