@@ -488,7 +488,6 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			if strings.TrimSpace(service.Healthcheck.StartPeriod) != "" {
 				fmt.Fprintf(&unit, "HealthStartPeriod=%s\n", service.Healthcheck.StartPeriod)
 			}
-			unit.WriteString("Notify=healthy\n")
 		}
 		if driver := strings.TrimSpace(service.Logging.Driver); driver != "" {
 			fmt.Fprintf(&unit, "LogDriver=%s\n", driver)
