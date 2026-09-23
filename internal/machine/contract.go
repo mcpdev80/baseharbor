@@ -29,6 +29,8 @@ type ErrorCode string
 
 const (
 	ErrorValidationFailed    ErrorCode = "validation_failed"
+	ErrorPortConflict        ErrorCode = "port_conflict"
+	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
 	ErrorPolicyDenied        ErrorCode = "policy_denied"
 	ErrorConflict            ErrorCode = "conflict"
 	ErrorOwnershipAmbiguous  ErrorCode = "ownership_ambiguous"
@@ -41,11 +43,13 @@ const (
 )
 
 type Error struct {
-	Code      ErrorCode `json:"code"`
-	Message   string    `json:"message"`
-	Retryable bool      `json:"retryable,omitempty"`
-	Next      string    `json:"next,omitempty"`
-	Cause     error     `json:"-"`
+	Code        ErrorCode `json:"code"`
+	Message     string    `json:"message"`
+	Retryable   bool      `json:"retryable,omitempty"`
+	Next        string    `json:"next,omitempty"`
+	Resource    string    `json:"resource,omitempty"`
+	Remediation string    `json:"remediation_class,omitempty"`
+	Cause       error     `json:"-"`
 }
 
 func (e *Error) Error() string {
