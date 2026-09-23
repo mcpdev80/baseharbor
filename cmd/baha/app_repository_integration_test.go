@@ -13,8 +13,8 @@ import (
 )
 
 func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
-	if os.Getenv("CI") == "" {
-		t.Skip("real repository lifecycle runs in CI")
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

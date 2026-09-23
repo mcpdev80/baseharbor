@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.14]
+
+### Added
+
+- Shared runtime-neutral reconciliation domain with typed desired, observed, diff and ownership state.
+- Typed reconciliation states for `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` and `degraded`.
+- Typed reconciliation actions for `create`, `noop`, `repair`, `destroy`, `observe` and `blocked`.
+- Optional provider-native reconciliation observation integrated into the existing capability lifecycle without creating a second lifecycle engine.
+
+### Changed
+
+- Semantic providers are observed after preflight and before mutation; blocked ownership/conflict/unsupported/degraded states fail closed before `Provision`.
+- Stable resources can resolve to a core-level NOOP without calling provider mutation hooks.
+- BaseHarbor-owned drift resolves to minimal repair and is observed again after provider verification.
+- Provider conformance now validates typed reconciliation results and verified convergence in addition to existing lifecycle/fault-injection coverage.
+
+### Security
+
+- Foreign ownership and competing reconciliation ownership block mutation.
+- External ownership remains observe-only.
+- Post-verification observation prevents successful lifecycle completion when BaseHarbor-owned desired state did not actually converge.
+- No Kubernetes/OpenShift implementation, product-specific delivery mechanism or portable-contract expansion is introduced.
+
 ## [0.4.13] - 2026-09-21
 
 ### Added

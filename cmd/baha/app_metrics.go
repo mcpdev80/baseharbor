@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -66,8 +67,20 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return nil, fmt.Errorf("external Prometheus placement is selected but no external metrics collection adapter is configured")
 	}
 
+	runtimeTLS := make(map[string]struct{})
+	for _, service := range application.RuntimeAuthorizedServices(m) {
+		runtimeTLS[service] = struct{}{}
+	}
+	runtimeCA := ""
+	for _, source := range m.Metrics.Sources {
+		if _, ok := runtimeTLS[source.Service]; ok {
+			runtimeFiles := application.RuntimeFilesFor(resolved.Store, m)
+			runtimeCA = filepath.Join(application.RuntimeMTLSHostDir(runtimeFiles), "ca.pem")
+			break
+		}
+	}
 	prepared := &managedMetricsExecution{
-		driver:              metricsprovider.NewDriver(compose, m),
+		driver:              metricsprovider.NewDriver(compose, m, runtimeCA),
 		runtime:             compose,
 		manifest:            m,
 		enabled:             true,
@@ -81,9 +94,12 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	if len(m.Metrics.Sources) == 0 && runtimeMetrics {
 		return prepared, nil
 	}
-
 	requests := make([]capability.Request, 0, len(m.Metrics.Sources))
 	for _, source := range m.Metrics.Sources {
+		scheme := "http"
+		if _, ok := runtimeTLS[source.Service]; ok {
+			scheme = "https"
+		}
 		requests = append(requests, capability.Request{
 			Requirement: capability.Requirement{Kind: capability.Metrics, Name: source.Name},
 			Workload:    "service/" + source.Service,
@@ -91,6 +107,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 				Direction: "provide",
 				Format:    "openmetrics",
 				Service:   source.Service,
+				Scheme:    scheme,
 				Port:      source.Port,
 				Path:      source.Path,
 			},

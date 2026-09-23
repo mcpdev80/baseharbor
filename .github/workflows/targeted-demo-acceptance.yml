@@ -1,0 +1,167 @@
+name: "Demo · Targeted Gate"
+
+run-name: "Targeted Demo Gate · ${{ github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: BaseHarbor ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+      runtime:
+        description: Container runtime
+        required: true
+        default: docker
+        type: choice
+        options:
+          - docker
+          - podman
+      gate:
+        description: Demo gate name from baseharbor-demo/tests/gates.json
+        required: true
+        default: lifecycle
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/targeted-podman'
+      - 'runtime-validation/targeted-docker'
+    paths:
+      - '.ci/targeted-gate-trigger'
+
+concurrency:
+  group: targeted-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  selected-gate:
+    name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (endsWith(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - baseharbor
+      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (endsWith(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
+    timeout-minutes: 60
+    env:
+      INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+      INPUT_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || '' }}
+      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}
+
+    steps:
+      - name: Resolve targeted gate
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$INPUT_RUNTIME"
+          gate="$INPUT_GATE"
+          ref="$INPUT_REF"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            case "$GITHUB_REF_NAME" in
+              runtime-validation/targeted-podman) runtime="podman" ;;
+              runtime-validation/targeted-docker) runtime="docker" ;;
+              *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
+            esac
+            gate="${INPUT_GATE##* }"
+            ref="$GITHUB_SHA"
+          fi
+
+          case "$runtime" in docker|podman) ;; *) echo "Unsupported runtime: $runtime" >&2; exit 2 ;; esac
+          test -n "$gate"
+          printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
+          printf 'gate=%s\n' "$gate" >> "$GITHUB_OUTPUT"
+          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout BaseHarbor
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.target.outputs.ref }}
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reset runtime state
+        id: reset
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
+
+      - name: Run selected demo gate
+        id: demo
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          BASEHARBOR_TEST_RUNTIME: ${{ steps.target.outputs.runtime }}
+          DEMO_GATE: ${{ steps.target.outputs.gate }}
+          ARTIFACT_DIR: /tmp/baseharbor-demo-targeted
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/baseharbor-demo-targeted-repo "$ARTIFACT_DIR"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted-repo
+          cd /tmp/baseharbor-demo-targeted-repo
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh "$DEMO_GATE"
+
+      - name: Snapshot demo artifacts
+        id: snapshot
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/targeted-demo-raw"
+          mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
+          cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
+
+      - name: Generate targeted gate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/targeted-demo-evidence"
+          rows="$RUNNER_TEMP/targeted-demo-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
+          Runtime reset	${{ steps.reset.outcome }}	Clean ${{ steps.target.outputs.runtime }} state
+          Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Single targeted acceptance gate
+          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
+          EOF
+          mkdir -p "$out/demo"
+          cp -a "$RUNNER_TEMP/targeted-demo-raw/." "$out/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$out" \
+            "BaseHarbor Targeted Demo Evidence" \
+            "targeted/${{ steps.target.outputs.runtime }}/${{ steps.target.outputs.gate }}" \
+            "${{ steps.target.outputs.ref }}" \
+            "${{ steps.candidate.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload targeted gate evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: targeted-${{ steps.target.outputs.runtime }}-${{ steps.target.outputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/targeted-demo-evidence
+          if-no-files-found: error
+          retention-days: 30

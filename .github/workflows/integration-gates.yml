@@ -13,17 +13,14 @@ on:
           - postgres-valkey
           - s3
           - openbao
-  push:
-    branches:
-      - feature/v0.4.13-environment-policy-semantics
 
 permissions:
   contents: read
 
 jobs:
   postgres-valkey:
-    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.gate == 'all' || inputs.gate == 'postgres-valkey')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[gate:all]') || contains(github.event.head_commit.message, '[gate:postgres-valkey]'))) }}
-    runs-on: ubuntu-latest
+    if: ${{ inputs.gate == 'all' || inputs.gate == 'postgres-valkey' }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
@@ -32,6 +29,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Build baha
         run: go build -o /tmp/baha ./cmd/baha
       - name: Verify application PostgreSQL and Valkey lifecycle
@@ -78,8 +76,8 @@ jobs:
           test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
 
   s3:
-    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.gate == 'all' || inputs.gate == 's3')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[gate:all]') || contains(github.event.head_commit.message, '[gate:s3]'))) }}
-    runs-on: ubuntu-latest
+    if: ${{ inputs.gate == 'all' || inputs.gate == 's3' }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
@@ -88,6 +86,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Build baha
         run: go build -o /tmp/baha ./cmd/baha
       - name: Verify S3 object-storage lifecycle
@@ -132,8 +131,8 @@ jobs:
           rm -rf "$BASEHARBOR_STATE_DIR"
 
   openbao:
-    if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.gate == 'all' || inputs.gate == 'openbao')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[gate:all]') || contains(github.event.head_commit.message, '[gate:openbao]'))) }}
-    runs-on: ubuntu-latest
+    if: ${{ inputs.gate == 'all' || inputs.gate == 'openbao' }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 30
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
@@ -142,6 +141,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Build baha
         run: go build -o /tmp/baha ./cmd/baha
       - name: Build runtime broker image

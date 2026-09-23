@@ -40,9 +40,6 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-
-			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
 			checks := []preflight.Check{
@@ -68,7 +65,7 @@ func appDownCommand(store application.Store) *cli.Command {
 					return err
 				}},
 			}
-			results, ok := preflight.Run(checkCtx, checks)
+			results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 			renderPreflightUX(term, results)
 			if !ok {
 				return errors.New("application down preflight failed")
@@ -170,9 +167,6 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				return runtimeErr
 			}
 			composeRequired := runtimeErr == nil || resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m)
-
-			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
 			var compose bhruntime.Compose
 			var existing []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
@@ -238,7 +232,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					}},
 				)
 			}
-			results, ok := preflight.Run(checkCtx, checks)
+			results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 			renderPreflightUX(term, results)
 			if !ok {
 				return errors.New("application destroy preflight failed; nothing was deleted")

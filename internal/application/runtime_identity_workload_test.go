@@ -96,6 +96,10 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 		"BASEHARBOR_RUNTIME_CA_FILE: \"/run/secrets/baseharbor-runtime-ca\"",
 		"BASEHARBOR_RUNTIME_CLIENT_CERT_FILE: \"/run/secrets/baseharbor-runtime-client-cert\"",
 		"BASEHARBOR_RUNTIME_CLIENT_KEY_FILE: \"/run/secrets/baseharbor-runtime-client-key\"",
+		"TLS_CERT_FILE: \"/run/secrets/baseharbor-tls-cert\"",
+		"TLS_KEY_FILE: \"/run/secrets/baseharbor-tls-key\"",
+		"baseharbor-tls-cert:",
+		"baseharbor-tls-key:",
 		"baseharbor-runtime-token:",
 		"baseharbor-runtime-client-key:",
 		":/run/baseharbor/bindings/secrets/TLS_KEY_FILE:ro",
@@ -129,6 +133,8 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 		"baseharbor-runtime-ca",
 		"baseharbor-runtime-client-cert",
 		"baseharbor-runtime-client-key",
+		"baseharbor-tls-cert",
+		"baseharbor-tls-key",
 	} {
 		projectedInfo, err := os.Stat(filepath.Join(projectionDir, name))
 		if err != nil {
@@ -153,7 +159,7 @@ func materializeRuntimeMTLSTestFiles(t *testing.T, files RuntimeFiles) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"ca.pem", "client-cert.pem", "client-key.pem"} {
+	for _, name := range []string{"ca.pem", "client-cert.pem", "client-key.pem", "workload-cert.pem", "workload-key.pem"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("test"), 0o600); err != nil {
 			t.Fatal(err)
 		}

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,8 +14,8 @@ import (
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
-	if os.Getenv("CI") == "" && os.Getenv("BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE") != "1" {
-		t.Skip("real multi-instance runtime verification requires CI or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1")
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" && os.Getenv("BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE") != "1" {
+		t.Skip("real multi-instance runtime verification requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1 or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -25,7 +26,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	}
 
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
-	m := New("multi-ci", "dev", false, false, false)
+	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
 	m = WithPostgresInstances(m, "primary", "analytics")
 	m = WithRedisInstances(m, "cache", "sessions")
 	files, err := EnsureRuntime(store, m)

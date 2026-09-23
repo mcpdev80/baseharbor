@@ -207,10 +207,21 @@ Kubernetes/OpenShift bleiben Future Work. Diese Semantik ist bewusst so gebaut, 
 
 ### v0.4.14 - Reconciliation-, Security- und Lifecycle-Semantik
 
-- Desired/Observed/Diff/Ownership-Modell;
-- typisierte Drift-, Conflict-, Foreign-Ownership-, Unsupported- und Degraded-Zustaende;
-- idempotente Konvergenz und minimale Reparatur;
-- ownership-sicheres Destroy und verifizierte Recovery.
+In v0.4.14 umgesetzt/abgeschlossen:
+
+- runtime-neutrales typisiertes Desired/Observed/Diff/Ownership-Reconciliation-Modell im gemeinsamen Core;
+- typisierte Zustaende `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` und `degraded`;
+- typisierte Reconciliation-Aktionen `create`, `noop`, `repair`, `destroy`, `observe` und `blocked`;
+- provider-native Observation vor Mutation und eine zweite Observation nach der Verifikation;
+- fail-closed Behandlung von Conflict, Unsupported, Degraded und Foreign Ownership vor jeder Provider-Mutation;
+- Core-seitige NOOP-Erkennung ohne unnoetige Provider-Mutation;
+- minimale Reparatur bei BaseHarbor-owned Drift unter Erhalt stabiler logischer Resource-Identitaet;
+- extern verwaltete Ressourcen bleiben observe-only und werden niemals zu BaseHarbor-Mutationszielen;
+- die vorhandene Provider-Integration-Contract-Conformance prueft jetzt die gemeinsame typisierte Reconciliation-Semantik;
+- ownership-sichere Destroy-Semantik bleibt explizit und wiederverwendbar;
+- keine Kubernetes-/OpenShift-Runtime-Implementierung und kein produktspezifischer Delivery-Mechanismus.
+
+Das Modell liegt bewusst unterhalb von CLI-/Runtime-Praesentation. Spaetere Compose-, Kubernetes-, OpenShift- und delegierte Delivery-Adapter koennen dieselbe Semantik verwenden, ohne Runtime-spezifische Felder in den portablen Application Intent aufzunehmen.
 
 ### v0.4.15 - Audit- und Evidence-Semantik
 

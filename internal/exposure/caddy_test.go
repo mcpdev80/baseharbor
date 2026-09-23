@@ -81,7 +81,7 @@ func TestComposePublicAndInternalBindings(t *testing.T) {
 }
 
 func TestCaddyReferenceImageIsPinned(t *testing.T) {
-	if caddyImage != "caddy:2.11.4-alpine" {
+	if caddyImage != "docker.io/library/caddy:2.11.4-alpine" {
 		t.Fatalf("unexpected Caddy reference image %q", caddyImage)
 	}
 }

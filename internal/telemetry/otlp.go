@@ -26,7 +26,7 @@ const (
 	ProviderProject    = "baseharbor-telemetry"
 	ProviderService    = "otel-collector"
 	ProviderNetwork    = "baseharbor-telemetry"
-	ProviderImage      = "otel/opentelemetry-collector-contrib:0.161.0"
+	ProviderImage      = "docker.io/otel/opentelemetry-collector-contrib:0.161.0"
 	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
 	ProbeTraceIDHex    = "42617365486172626f72303430370001"
 )
@@ -360,6 +360,14 @@ exporters:
   debug:
     verbosity: basic
 %sservice:
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]

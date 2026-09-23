@@ -141,3 +141,61 @@ func TestWorkloadOnlyPlanContainsOnlyRepositoryWorkload(t *testing.T) {
 		t.Fatalf("unexpected workload-only plan action %#v", plan.Actions[0])
 	}
 }
+
+func TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes(t *testing.T) {
+	m := workloadOnlyManifest()
+	m = WithOTLPTelemetry(m, "traces")
+	override, err := workloadOverrideYAML(m, []string{"coordinator"}, map[string]string{
+		"OTLP_CONTAINER_ENDPOINT": "http://otel-collector:4318",
+		"OTLP_PROVIDER":           "otel-collector",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(override, "OTEL_RESOURCE_ATTRIBUTES:"); got != 1 {
+		t.Fatalf("expected exactly one OTEL_RESOURCE_ATTRIBUTES entry, got %d:\n%s", got, override)
+	}
+	if got := strings.Count(override, "OTEL_SERVICE_NAME:"); got != 1 {
+		t.Fatalf("expected exactly one OTEL_SERVICE_NAME entry, got %d:\n%s", got, override)
+	}
+}
+
+func TestWorkloadOnlyOverrideUsesExplicitEmptyService(t *testing.T) {
+	m := workloadOnlyManifest()
+	override, err := workloadOverrideYAML(m, []string{"app"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(override, "  app: {}\n") {
+		t.Fatalf("expected explicit empty service override for Compose portability:\n%s", override)
+	}
+}
+
+func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
+	m := Manifest{
+		Version:     CurrentVersion,
+		Name:        "portable-networks",
+		Environment: "dev",
+		Services: Services{
+			Postgres: true,
+		},
+		Workload: WorkloadConfig{
+			Compose:  "compose.yaml",
+			Services: []string{"api"},
+		},
+	}
+	override, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{
+		"POSTGRES_DB":       "app",
+		"POSTGRES_USER":     "app",
+		"POSTGRES_PASSWORD": "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(override, "    networks:\n      - baseharbor-backend\n") {
+		t.Fatalf("expected alias-free networks as a Compose sequence:\n%s", override)
+	}
+	if strings.Contains(override, "      baseharbor-backend: {}") {
+		t.Fatalf("alias-free network must not require mapping syntax:\n%s", override)
+	}
+}

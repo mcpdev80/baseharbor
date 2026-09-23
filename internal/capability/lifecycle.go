@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/reconciliation"
 )
 
 type Phase string
@@ -12,6 +14,7 @@ type Phase string
 const (
 	PhaseResolve   Phase = "resolve"
 	PhasePreflight Phase = "preflight"
+	PhaseObserve   Phase = "observe"
 	PhaseApply     Phase = "apply"
 	PhaseBind      Phase = "bind"
 	PhaseVerify    Phase = "verify"
@@ -75,6 +78,7 @@ type MetricsBinding struct {
 	Direction string `json:"direction"`
 	Format    string `json:"format"`
 	Service   string `json:"service"`
+	Scheme    string `json:"scheme"`
 	Port      int    `json:"port"`
 	Path      string `json:"path"`
 }
@@ -106,6 +110,11 @@ type Plan struct {
 	Items       []PlanItem `json:"items"`
 }
 
+type ReconciliationResult struct {
+	Resource Resource              `json:"resource"`
+	Result   reconciliation.Result `json:"result"`
+}
+
 type StepResult struct {
 	Phase       Phase        `json:"phase"`
 	Status      Status       `json:"status"`
@@ -115,10 +124,11 @@ type StepResult struct {
 }
 
 type Result struct {
-	Application string       `json:"application"`
-	Status      Status       `json:"status"`
-	Plan        Plan         `json:"plan"`
-	Steps       []StepResult `json:"steps"`
+	Application    string                 `json:"application"`
+	Status         Status                 `json:"status"`
+	Plan           Plan                   `json:"plan"`
+	Steps          []StepResult           `json:"steps"`
+	Reconciliation []ReconciliationResult `json:"reconciliation,omitempty"`
 }
 
 type Driver interface {
@@ -127,6 +137,11 @@ type Driver interface {
 	Provision(context.Context, Resource, Binding) error
 	Bind(context.Context, Resource, Binding) error
 	Verify(context.Context, Resource, Binding) error
+}
+
+type ReconciliationDriver interface {
+	DesiredState(Resource, Binding) reconciliation.Desired
+	Observe(context.Context, Resource, Binding) (reconciliation.Observed, error)
 }
 
 type Request struct {
@@ -213,12 +228,19 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			value.Direction = strings.TrimSpace(value.Direction)
 			value.Format = strings.TrimSpace(value.Format)
 			value.Service = strings.TrimSpace(value.Service)
+			value.Scheme = strings.TrimSpace(value.Scheme)
 			value.Path = strings.TrimSpace(value.Path)
+			if value.Scheme == "" {
+				value.Scheme = "http"
+			}
 			if value.Direction != "provide" {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: direction must be provide", application, request.Requirement.Name)
 			}
 			if value.Format != "openmetrics" {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: unsupported format %q", application, request.Requirement.Name, value.Format)
+			}
+			if value.Scheme != "http" && value.Scheme != "https" {
+				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: unsupported scheme %q", application, request.Requirement.Name, value.Scheme)
 			}
 			if value.Service == "" || value.Port < 1 || value.Port > 65535 || !strings.HasPrefix(value.Path, "/") {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s is incomplete", application, request.Requirement.Name)
@@ -261,8 +283,9 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 // then be coordinated around runtime/workload convergence without duplicating
 // provider lifecycle semantics.
 type Execution struct {
-	requests []Request
-	result   Result
+	requests  []Request
+	result    Result
+	decisions []reconciliation.Result
 }
 
 func Prepare(ctx context.Context, application string, requests []Request) (*Execution, Result, error) {
@@ -275,6 +298,7 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 	for _, item := range plan.Items {
 		result.Steps = append(result.Steps, readyStep(PhaseResolve, item))
 	}
+	decisions := make([]reconciliation.Result, len(plan.Items))
 	for i, item := range plan.Items {
 		started := time.Now()
 		if err := requests[i].Driver.Preflight(ctx, item.Resource, item.Binding); err != nil {
@@ -285,8 +309,31 @@ func Prepare(ctx context.Context, application string, requests []Request) (*Exec
 		}
 		observeProviderOperation(requests[i], item, PhasePreflight, StatusReady, time.Since(started))
 		result.Steps = append(result.Steps, readyStep(PhasePreflight, item))
+
+		if driver, ok := requests[i].Driver.(ReconciliationDriver); ok {
+			started = time.Now()
+			observed, err := driver.Observe(ctx, item.Resource, item.Binding)
+			if err != nil {
+				observeProviderOperation(requests[i], item, PhaseObserve, StatusFailed, time.Since(started))
+				result.Steps = append(result.Steps, failedStep(PhaseObserve, item, "provider-observe-failed", err))
+				result.Status = StatusFailed
+				return nil, result, fmt.Errorf("capability observation failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
+			decision := reconciliation.Evaluate(driver.DesiredState(item.Resource, item.Binding), observed)
+			decisions[i] = decision
+			result.Reconciliation = append(result.Reconciliation, ReconciliationResult{Resource: item.Resource, Result: decision})
+			if decision.Action == reconciliation.ActionBlocked {
+				err := fmt.Errorf("%s", decision.Message)
+				observeProviderOperation(requests[i], item, PhaseObserve, StatusFailed, time.Since(started))
+				result.Steps = append(result.Steps, failedStep(PhaseObserve, item, "provider-reconciliation-blocked", err))
+				result.Status = StatusFailed
+				return nil, result, fmt.Errorf("capability reconciliation blocked for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
+			observeProviderOperation(requests[i], item, PhaseObserve, StatusReady, time.Since(started))
+			result.Steps = append(result.Steps, readyStep(PhaseObserve, item))
+		}
 	}
-	return &Execution{requests: requests, result: result}, result, nil
+	return &Execution{requests: requests, result: result, decisions: decisions}, result, nil
 }
 
 func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
@@ -297,11 +344,17 @@ func (e *Execution) ProvisionAndBind(ctx context.Context) (Result, error) {
 		request := e.requests[i]
 		driver := request.Driver
 		started := time.Now()
-		if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
-			observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
-			e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
-			e.result.Status = StatusFailed
-			return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+		decision := reconciliation.Result{}
+		if i < len(e.decisions) {
+			decision = e.decisions[i]
+		}
+		if decision.Action != reconciliation.ActionNoop && decision.Action != reconciliation.ActionObserve {
+			if err := driver.Provision(ctx, item.Resource, item.Binding); err != nil {
+				observeProviderOperation(request, item, PhaseApply, StatusFailed, time.Since(started))
+				e.result.Steps = append(e.result.Steps, failedStep(PhaseApply, item, "provider-apply-failed", err))
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability apply failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, err)
+			}
 		}
 		observeProviderOperation(request, item, PhaseApply, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseApply, item))
@@ -333,6 +386,26 @@ func (e *Execution) Verify(ctx context.Context) (Result, error) {
 		}
 		observeProviderOperation(request, item, PhaseVerify, StatusReady, time.Since(started))
 		e.result.Steps = append(e.result.Steps, readyStep(PhaseVerify, item))
+		if driver, ok := request.Driver.(ReconciliationDriver); ok {
+			observed, observeErr := driver.Observe(ctx, item.Resource, item.Binding)
+			if observeErr != nil {
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability post-verification observation failed for %s/%s: %w", item.Resource.Kind, item.Resource.Name, observeErr)
+			}
+			decision := reconciliation.Evaluate(driver.DesiredState(item.Resource, item.Binding), observed)
+			if i < len(e.decisions) {
+				e.decisions[i] = decision
+			}
+			for j := range e.result.Reconciliation {
+				if e.result.Reconciliation[j].Resource == item.Resource {
+					e.result.Reconciliation[j].Result = decision
+				}
+			}
+			if decision.Ownership == reconciliation.OwnershipBaseHarbor && decision.State != reconciliation.StateInSync {
+				e.result.Status = StatusFailed
+				return e.result, fmt.Errorf("capability failed to converge for %s/%s: state=%s", item.Resource.Kind, item.Resource.Name, decision.State)
+			}
+		}
 	}
 	e.result.Status = StatusReady
 	return e.result, nil

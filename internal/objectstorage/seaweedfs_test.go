@@ -132,3 +132,13 @@ func TestSeaweedFSProviderRunsUnprivileged(t *testing.T) {
 		}
 	}
 }
+
+func TestSeaweedFSProviderUsesQualifiedImageReference(t *testing.T) {
+	text := providerComposeYAML()
+	if !strings.Contains(text, "image: "+ProviderImage) {
+		t.Fatalf("SeaweedFS provider compose does not use qualified ProviderImage %q:\n%s", ProviderImage, text)
+	}
+	if strings.Contains(text, "image: chrislusf/seaweedfs:") {
+		t.Fatalf("SeaweedFS provider compose contains unqualified image reference:\n%s", text)
+	}
+}

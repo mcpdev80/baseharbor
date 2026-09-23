@@ -41,9 +41,6 @@ func appUpCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-
-			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
 			var compose bhruntime.Compose
 			var before []bhruntime.ProjectResource
 			var platformFiles bhruntime.Files
@@ -134,7 +131,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			var results []preflight.Result
 			var ok bool
 			if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
-				results, ok = preflight.Run(checkCtx, checks)
+				results, ok = preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 				return nil
 			}); err != nil {
 				return err
