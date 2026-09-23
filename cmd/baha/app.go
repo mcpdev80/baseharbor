@@ -267,7 +267,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "-e", "--sql-instance", "--sql-instance", "--cache-instance", "--cache-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--sql-instance", "--cache-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
@@ -337,8 +337,6 @@ func parseCreateArgs(args []string) (name, environment string, sql, cache, objec
 			sqlInstances = append(sqlInstances, args[i])
 		case strings.HasPrefix(arg, "--sql-instance="):
 			sqlInstances = append(sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
-		case strings.HasPrefix(arg, "--sql-instance="):
-			sqlInstances = append(sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
 		case arg == "--cache":
 			cache = true
 		case arg == "--cache-instance":
@@ -347,8 +345,6 @@ func parseCreateArgs(args []string) (name, environment string, sql, cache, objec
 			}
 			i++
 			cacheInstances = append(cacheInstances, args[i])
-		case strings.HasPrefix(arg, "--cache-instance="):
-			cacheInstances = append(cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
 		case strings.HasPrefix(arg, "--cache-instance="):
 			cacheInstances = append(cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
 		case arg == "--s3":
