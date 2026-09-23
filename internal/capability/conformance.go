@@ -16,8 +16,10 @@ type ConformanceCheck struct {
 }
 
 type ConformanceReport struct {
-	Protocol string             `json:"protocol"`
-	Provider ProviderKind       `json:"provider"`
+	ProviderID      string             `json:"provider_id"`
+	ProviderVersion string             `json:"provider_version"`
+	Protocol        string             `json:"protocol"`
+	Provider        ProviderKind       `json:"provider"`
 	Status   ConformanceStatus  `json:"status"`
 	Checks   []ConformanceCheck `json:"checks"`
 }
@@ -27,8 +29,10 @@ type ConformanceReport struct {
 // build on this report as reference providers are added.
 func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceReport {
 	report := ConformanceReport{
-		Protocol: descriptor.Protocol,
-		Provider: descriptor.Provider.Kind,
+		ProviderID:      descriptor.ID,
+		ProviderVersion: descriptor.Version,
+		Protocol:        descriptor.Protocol,
+		Provider:        descriptor.Provider.Kind,
 		Status:   ConformancePass,
 	}
 	if err := descriptor.Validate(); err != nil {
