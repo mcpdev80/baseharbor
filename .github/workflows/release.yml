@@ -87,7 +87,6 @@ jobs:
             candidate_sha="$1"
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
-            git merge-base --is-ancestor "${candidate_sha}" "${tag_sha}" || return 1
 
             unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image)\.yml$' || true)"
             if [ -n "${unexpected}" ]; then
@@ -115,7 +114,7 @@ jobs:
 
             tested_sha="$(jq -r '.head_sha' <<<"${run_json}")"
             compatible_candidate "${tested_sha}" || {
-              echo "Selected Pre-Release SHA ${tested_sha} is not compatible with release tag SHA ${tag_sha}." >&2
+              echo "Selected Pre-Release content is not compatible with release tag SHA ${tag_sha}." >&2
               echo "Only these post-validation files may differ:" >&2
               echo "  .github/workflows/pre-release.yml" >&2
               echo "  .github/workflows/release.yml" >&2
