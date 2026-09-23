@@ -122,8 +122,14 @@ jobs:
           set -euo pipefail
           diagnose_quadlet() {
             echo "::group::Quadlet diagnostics"
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
             systemctl --user --failed --no-pager || true
             systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            systemctl --user status baseharbor-podman-ci-dev-postgres.service --no-pager -l || true
+            systemctl --user status baseharbor-podman-ci-dev-valkey.service --no-pager -l || true
+            journalctl --user -u baseharbor-podman-ci-dev-postgres.service -n 80 --no-pager || true
+            journalctl --user -u baseharbor-podman-ci-dev-valkey.service -n 80 --no-pager || true
             podman ps -a || true
             unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
             if [ -d "$unit_dir" ]; then
