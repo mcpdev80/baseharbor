@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -324,7 +325,13 @@ func promptAndStoreMissingRequiredSecrets(
 		return nil
 	}
 	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
-		return fmt.Errorf("missing required application secret %s; run 'baha app secret set %s' interactively or use --stdin for automation", missing[0].Name, missing[0].Name)
+		return &machine.Error{
+			Code:        machine.ErrorRequiredSecretMissing,
+			Message:     "Required application secret " + missing[0].Name + " is missing.",
+			Resource:    missing[0].Name,
+			Remediation: "requires developer input",
+			Next:        "Run 'baha app secret set " + missing[0].Name + "' interactively or use --stdin for automation.",
+		}
 	}
 
 	fmt.Fprintln(out, "\nMissing required application secrets")
@@ -337,7 +344,13 @@ func promptAndStoreMissingRequiredSecrets(
 		return err
 	}
 	if !confirmed {
-		return fmt.Errorf("required application secrets remain unresolved; next: baha app secret set %s", missing[0].Name)
+		return &machine.Error{
+			Code:        machine.ErrorRequiredSecretMissing,
+			Message:     "Required application secret " + missing[0].Name + " remains unresolved.",
+			Resource:    missing[0].Name,
+			Remediation: "requires developer input",
+			Next:        "Run 'baha app secret set " + missing[0].Name + "' and retry.",
+		}
 	}
 
 	for _, status := range missing {
