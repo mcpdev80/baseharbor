@@ -120,3 +120,51 @@ func TestExpandQuadletComposeStringSupportsComposeDefaultsAndDollarEscape(t *tes
 		t.Fatalf("expanded = %q", got)
 	}
 }
+
+func TestRenderComposeProjectFilesQuadletsMergesBaseHarborOverride(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "compose.yaml")
+	override := filepath.Join(root, "override.yaml")
+	if err := os.WriteFile(base, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    ports:
+      - "8080:8080"
+    environment:
+      ORIGINAL: base
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`services:
+  api:
+    environment:
+      MANAGED: yes
+    networks:
+      baseharbor-backend: {}
+networks:
+  baseharbor-backend:
+    external: true
+    name: baseharbor-demo-backend
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectFilesQuadlets([]string{base, override}, "", "baseharbor-workload-demo", "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := got.Files["baseharbor-workload-demo-api.container"]
+	for _, want := range []string{
+		"PublishPort=8080:8080",
+		"Network=baseharbor-demo-backend",
+		"EnvironmentFile=./baseharbor-workload-demo-api.env",
+	} {
+		if !strings.Contains(api, want) {
+			t.Fatalf("merged api Quadlet missing %q:\n%s", want, api)
+		}
+	}
+	env := got.Files["baseharbor-workload-demo-api.env"]
+	if !strings.Contains(env, "ORIGINAL=base") || !strings.Contains(env, "MANAGED=yes") {
+		t.Fatalf("merged environment incomplete:\n%s", env)
+	}
+}
