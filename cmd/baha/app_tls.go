@@ -258,6 +258,22 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 			}
 		} else {
 			renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+				if term.Verbose() && result.RuntimeArtifact != nil {
+					term.Section("Runtime artifact")
+					term.Info("reference", result.RuntimeArtifact.Reference)
+					if result.RuntimeArtifact.ExpectedVersion != "" {
+						term.Info("expected version", result.RuntimeArtifact.ExpectedVersion)
+					}
+					if result.RuntimeArtifact.ImageID != "" {
+						term.Info("image id", result.RuntimeArtifact.ImageID)
+					}
+					if result.RuntimeArtifact.Digest != "" {
+						term.Info("digest", result.RuntimeArtifact.Digest)
+					}
+					if result.RuntimeArtifact.Detail != "" {
+						term.Info("provenance", result.RuntimeArtifact.Detail)
+					}
+				}
 				if result.tlsStatus == nil && result.tlsErr == nil {
 					return
 				}
