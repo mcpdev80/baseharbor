@@ -262,6 +262,9 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 		}
 	}
 	if defaultNetworkNeeded {
+		if model.Networks == nil {
+			model.Networks = map[string]quadletComposeResource{}
+		}
 		if _, ok := model.Networks["default"]; !ok {
 			model.Networks["default"] = quadletComposeResource{}
 		}
