@@ -28,6 +28,12 @@ type ComposeContainer struct {
 	Health  string
 }
 
+type ImageIdentity struct {
+	Reference string
+	ImageID   string
+	Digest    string
+}
+
 // Compose provides the small lifecycle surface BaseHarbor needs from a
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
@@ -551,6 +557,51 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 		})
 	}
 	return result, nil
+}
+
+func (c Compose) ProjectServiceImageIdentity(ctx context.Context, project, service string) (ImageIdentity, error) {
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return ImageIdentity{}, errors.New("project and service are required for image identity")
+	}
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return ImageIdentity{}, err
+	}
+	containerName := ""
+	for _, container := range containers {
+		if container.Project == project && container.Service == service {
+			containerName = container.Name
+			break
+		}
+	}
+	if containerName == "" {
+		return ImageIdentity{}, fmt.Errorf("service %s is not realized in project %s", service, project)
+	}
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{.Config.Image}}|{{.Image}}`, containerName)
+	if err != nil {
+		return ImageIdentity{}, fmt.Errorf("inspect image identity for %s/%s: %w", project, service, err)
+	}
+	parts := strings.SplitN(strings.TrimSpace(out), "|", 2)
+	if len(parts) != 2 {
+		return ImageIdentity{}, errors.New("runtime returned invalid container image identity")
+	}
+	identity := ImageIdentity{Reference: strings.TrimSpace(parts[0]), ImageID: strings.TrimSpace(parts[1])}
+	if identity.ImageID == "" {
+		return ImageIdentity{}, errors.New("runtime returned empty container image identity")
+	}
+	digests, err := c.directOutput(ctx, "image", "inspect", "--format", `{{range .RepoDigests}}{{.}}{{"\n"}}{{end}}`, identity.ImageID)
+	if err == nil {
+		for _, line := range strings.Split(digests, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				identity.Digest = line
+				break
+			}
+		}
+	}
+	return identity, nil
 }
 
 func firstRuntimeLabel(values ...string) string {
