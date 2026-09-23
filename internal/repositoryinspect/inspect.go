@@ -117,6 +117,8 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 			if manifest == nil && rel == result.SelectedCompose {
 				if service.Postgres || service.Redis || service.ObjectStorage {
 					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
+				} else if service.AmbiguousInfrastructure {
+					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
 				} else if service.HasBuild || service.HasImage || service.HasPorts {
 					result.WorkloadServices = append(result.WorkloadServices, service.Name)
 				}
@@ -153,6 +155,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.SecretCandidates = uniqueSorted(result.SecretCandidates)
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
+	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
 	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
 		result.Findings = mergeFindings(result.Findings, []Finding{{
 			Capability: "logs",
@@ -281,8 +284,9 @@ type composeService struct {
 	Name          string
 	Postgres      bool
 	Redis         bool
-	ObjectStorage bool
-	HasBuild      bool
+	ObjectStorage          bool
+	AmbiguousInfrastructure bool
+	HasBuild                bool
 	HasImage      bool
 	HasPorts      bool
 	Ports         []string
@@ -322,6 +326,7 @@ func detectComposeServices(data []byte) []composeService {
 			item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
 			item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
 			item.ObjectStorage = composeObjectStorageMarker(lowerName)
+			item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.ObjectStorage && composeAmbiguousInfrastructureMarker(lowerName)
 			items[name] = item
 			inPorts = false
 			continue
@@ -338,6 +343,9 @@ func detectComposeServices(data []byte) []composeService {
 			item.Postgres = item.Postgres || strings.Contains(image, "postgres") || strings.Contains(image, "postgresql")
 			item.Redis = item.Redis || strings.Contains(image, "redis") || strings.Contains(image, "valkey")
 			item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(image)
+			if item.Postgres || item.Redis || item.ObjectStorage {
+				item.AmbiguousInfrastructure = false
+			}
 		case strings.HasPrefix(lower, "build:"):
 			item.HasBuild = true
 		case lower == "ports:" || strings.HasPrefix(lower, "ports:"):
@@ -507,6 +515,15 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
 	}
 	return nil
+}
+
+func composeAmbiguousInfrastructureMarker(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "db", "database", "cache", "storage", "object-storage", "s3":
+		return true
+	default:
+		return false
+	}
 }
 
 func composeObjectStorageMarker(value string) bool {
@@ -874,6 +891,8 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		}
 		if service.Postgres || service.Redis || service.ObjectStorage {
 			analysis.InfrastructureServices = append(analysis.InfrastructureServices, service.Name)
+		} else if service.AmbiguousInfrastructure {
+			analysis.AmbiguousServices = append(analysis.AmbiguousServices, service.Name)
 		} else if service.HasBuild || service.HasImage || service.HasPorts {
 			analysis.WorkloadServices = append(analysis.WorkloadServices, service.Name)
 		}
@@ -893,6 +912,7 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	analysis.RedisInstances = uniqueSorted(analysis.RedisInstances)
 	analysis.ObjectStorageServices = uniqueSorted(analysis.ObjectStorageServices)
 	analysis.InfrastructureServices = uniqueSorted(analysis.InfrastructureServices)
+	analysis.AmbiguousServices = uniqueSorted(analysis.AmbiguousServices)
 	analysis.WorkloadServices = uniqueSorted(analysis.WorkloadServices)
 	sort.Slice(analysis.Ports, func(i, j int) bool {
 		if analysis.Ports[i].Service != analysis.Ports[j].Service {
