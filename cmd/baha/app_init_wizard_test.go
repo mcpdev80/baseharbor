@@ -115,7 +115,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Analyzing repository") || !strings.Contains(text, "Manifest preview") {
+	if !strings.Contains(text, "Analyzing repository") || !strings.Contains(text, "Adoption summary") {
 		t.Fatalf("wizard output missing expected sections:\n%s", text)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "baseharbor.yaml"))
@@ -407,6 +407,65 @@ func TestGuidedSecretSummaryShowsPolicyWithoutValues(t *testing.T) {
 		"API_TOKEN: required for startup; ask securely during first apply",
 		"SESSION_SECRET: required for startup; generate automatically",
 		"OPTIONAL_TOKEN: optional; configure later",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary missing %q:\n%s", want, text)
+		}
+	}
+}
+
+
+func TestAdoptionSummaryMinimal(t *testing.T) {
+	m := detectedApplicationManifest("demo", "dev", false, false, false, false, true)
+	m = application.WithWorkload(m, "compose.yaml", "api")
+	var out bytes.Buffer
+	printAdoptionSummary(&out, m, appProjectDetection{}, nil)
+	text := out.String()
+	for _, want := range []string{
+		"Adoption summary",
+		"Application",
+		"Name          demo",
+		"Environment   dev",
+		"Workload",
+		"compose.yaml (repository-owned, read-only)",
+		"Services      api",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "version: 1") {
+		t.Fatalf("normal summary unexpectedly dumped YAML:\n%s", text)
+	}
+}
+
+func TestAdoptionSummaryFullyPopulated(t *testing.T) {
+	m := detectedApplicationManifest("demo", "dev", true, true, true, true, true)
+	m = application.WithWorkload(m, "compose.yaml", "api")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	m = application.WithOTLPTelemetry(m, "traces")
+	m = application.WithLogsCollection(m, "application")
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
+	policies := []guidedSecretPolicy{{Name: "APP_SECRET", Required: true, Provision: "prompt"}}
+
+	var out bytes.Buffer
+	printAdoptionSummary(&out, m, appProjectDetection{
+		Postgres: true, Redis: true, ObjectStorage: true,
+	}, policies)
+	text := out.String()
+	for _, want := range []string{
+		"Managed services",
+		"SQL Database  detected and confirmed",
+		"Cache         detected and confirmed",
+		"Object Storage detected and confirmed",
+		"Observability",
+		"Metrics       /metrics",
+		"OTLP          traces",
+		"Logs          application",
+		"APP_SECRET: required for startup; ask securely during first apply",
+		"Runtime permissions",
+		"object-storage.s3/v1",
+		"operations: runtime.create",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
