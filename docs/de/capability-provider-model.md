@@ -13,7 +13,7 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 3. Ein mitgelieferter oder bevorzugter Provider ist eine Implementierungsentscheidung, keine Eigenschaft der Anwendung.
 4. Fuer jeden Default-Provider muss mindestens ein dokumentierter Austauschpfad existieren.
 5. Ein Provider-Wechsel muss den angeforderten Contract erfuellen oder klar fehlschlagen; Security, Haltbarkeit oder Verfuegbarkeit duerfen nie still reduziert werden.
-6. Compose bleibt in v0.4 die vollstaendige Runtime-Implementierung, jetzt hinter einer expliziten Runtime-Provider-/Capability-Negotiation-Grenze. Kubernetes/OpenShift folgen spaeter und muessen denselben logischen Intent erhalten.
+6. Die lokale Runtime bleibt in v0.4 vollstaendig: Docker fuehrt ueber Docker Compose aus, Podman uebersetzt dieselben Compose-basierten Definitionen in native Quadlets. Beide bleiben hinter derselben Runtime-Provider-/Capability-Negotiation-Grenze; Kubernetes/OpenShift folgen spaeter und muessen denselben logischen Intent erhalten.
 7. Deployment-spezifische Umsetzung erzeugt nicht automatisch eine neue portable Application Capability; `PortableContract` wird nur bewusst und versioniert erweitert.
 
 ## Komponentenmatrix
@@ -38,7 +38,8 @@ Die verbindliche Architekturregel steht in ADR [0005-capabilities-not-products](
 Ein **Runtime Provider** entscheidet, wo und wie Workloads laufen:
 
 ```text
-Compose
+Docker Compose
+Podman Quadlet
 Kubernetes
 OpenShift
 ```
@@ -131,9 +132,9 @@ Ein zukuenftiges Provider-Interface muss mehr ausdruecken als einen Produktnamen
 
 Kann ein gewaehlter Provider eine angeforderte Garantie nicht erfuellen, muss BaseHarbor den Plan ablehnen statt die Garantie still abzusenken.
 
-## v0.4.10-Grenze
+## v0.4-Grenze
 
-v0.4.10 bleibt zur Laufzeit Compose-only. Die v0.4-Linie umfasst den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, `secure-binding/v1`, `object-storage.s3/v1`, providerneutrales `telemetry.otlp/v1`, `metrics/v1`, `logs/v1` und `traces/v1`. Provider-Descriptoren koennen Observability-Signale generisch deklarieren; Collection-Policy und Placement entscheiden, welche Signale verbunden werden. Explizite gerichtete Cross-Application-Connectivity bleibt eine getrennte deny-by-default Platform-Policy.
+Die v0.4-Linie verwendet weiterhin Compose-basierte Runtime-/Workload-Definitionen als lokale Kompatibilitaetsoberflaeche. Docker fuehrt diese direkt mit Docker Compose aus; Podman rendert sie in Quadlet und fuehrt sie ueber rootless `systemd --user` aus. Die v0.4-Linie umfasst den gemeinsamen Capability-/Provider-/Resource-/Binding-Core, geschuetzte Provider-Platzierung und Ownership, den Provider Integration Contract v1, deterministische Repository-Inspection, Managed Traffic ueber `exposure.http/v1`, `secure-binding/v1`, `object-storage.s3/v1`, providerneutrales `telemetry.otlp/v1`, `metrics/v1`, `logs/v1` und `traces/v1`. Provider-Descriptoren koennen Observability-Signale generisch deklarieren; Collection-Policy und Placement entscheiden, welche Signale verbunden werden. Explizite gerichtete Cross-Application-Connectivity bleibt eine getrennte deny-by-default Platform-Policy.
 
 Manifest v1 bleibt die unterstuetzte Kompatibilitaetsoberflaeche. Managed Exposure und Metrics-Sources sind additiv und explizit; app-eigene Publisher bleiben app-eigener Observation-/Readiness-State. Provider-Sharing erzeugt niemals automatisch Cross-Application-Connectivity.
 
