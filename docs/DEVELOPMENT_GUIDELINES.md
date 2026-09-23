@@ -14,7 +14,17 @@ Ambiguous ownership, missing authorization, invalid state, unsupported semantics
 
 Applications describe capabilities. Provider/runtime product choices stay behind BaseHarbor boundaries.
 
-## 4. Keep provider axes separate
+## 4. Standards first
+
+BaseHarbor MUST prefer established open standards over proprietary contracts.
+
+- De-facto standards and established ecosystem conventions SHOULD be used where no suitable formal standard exists.
+- Baha-specific contracts MUST define only semantics that cannot reasonably be represented by an existing standard.
+- Baha extensions MUST be clearly separated, versioned and provider-neutral.
+- Provider products MUST NOT pull product-specific contracts into the BaseHarbor core.
+- Every new service kind or capability provider MUST document: Existing Standards, Adopted Standards, Deviations, Baha Extensions and Compatibility Impact before implementation.
+
+## 5. Keep provider axes separate
 
 ```text
 runtime != capability != delivery
@@ -22,17 +32,17 @@ runtime != capability != delivery
 
 Do not hide one provider axis inside another.
 
-## 5. Secrets never enter normal data paths
+## 6. Secrets never enter normal data paths
 
 Do not expose passwords, tokens, private keys, secret values or credential-bearing URLs through logs, errors, metrics labels, audit records, machine output or committed manifests.
 
-## 6. One authoritative source of truth
+## 7. One authoritative source of truth
 
 Do not maintain the same detailed contract manually in several places.
 
 Prefer schema/OpenAPI/Protobuf/typed definitions where appropriate.
 
-## 7. Mutations follow one lifecycle
+## 8. Mutations follow one lifecycle
 
 ```text
 plan -> preflight -> apply -> verify
@@ -40,19 +50,19 @@ plan -> preflight -> apply -> verify
 
 Planning and preflight do not mutate. Do not report success before required verification succeeds.
 
-## 8. CLI, JSON and MCP share one semantic core
+## 9. CLI, JSON and MCP share one semantic core
 
 Presentation differs. Domain behavior does not.
 
 No interface may bypass policy, ownership, reconciliation, verification or evidence.
 
-## 9. Tests prove invariants
+## 10. Tests prove invariants
 
 Test security, ownership, compatibility, failure and recovery behavior, not only happy-path function output.
 
 Use local/repository validation first. Use GitHub Actions where required by the release gate.
 
-## 10. Keep changes scoped
+## 11. Keep changes scoped
 
 Do not refactor unrelated code in the same change. Preserve current architecture unless the task demonstrates a missing primitive.
 
