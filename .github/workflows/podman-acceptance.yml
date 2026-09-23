@@ -143,7 +143,7 @@ jobs:
           printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
           cd "$workdir"
 
-          /tmp/baha app create podman-ci --postgres --redis | tee /tmp/podman-create.txt
+          /tmp/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
           /tmp/baha app plan podman-ci | tee /tmp/podman-plan.txt
           grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
 
