@@ -170,7 +170,7 @@ func (c Compose) UpProjectFilesSelectedNoBuildProgress(ctx context.Context, proj
 		if onProgress != nil {
 			onProgress("rendered Podman Quadlet workload")
 		}
-		if err := quadletStartProject(ctx, q, services); err != nil {
+		if err := quadletStartProjectNoBuild(ctx, q, services); err != nil {
 			return err
 		}
 		cacheProjectEnvironment(project, environment)
