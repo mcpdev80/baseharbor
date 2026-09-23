@@ -9,6 +9,19 @@ Run this check before every release. Keep the result short.
 - [ ] Examples match shipped behavior.
 - [ ] Future behavior is clearly marked.
 
+## Standards-first contract review
+
+When a release adds or changes a service kind, capability/provider contract or workload binding:
+
+- [ ] Existing Standards are documented.
+- [ ] Adopted Standards are documented.
+- [ ] Deviations are explicit.
+- [ ] BaseHarbor Extensions are explicit, versioned and provider-neutral.
+- [ ] Compatibility Impact is documented.
+- [ ] JSON Schema 2020-12 remains the machine-readable portable schema language.
+- [ ] Service connection outputs use Service Binding 1.1 well-known names when semantically applicable.
+- [ ] Provider/product-specific fields do not enter portable application intent.
+
 ## Reference
 
 - [ ] CLI reference/help matches implementation.

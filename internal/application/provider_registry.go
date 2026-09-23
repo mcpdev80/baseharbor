@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -256,12 +257,19 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 		return capability.ProviderInstance{}, err
 	}
 
+	bundled, err := builtin.Lookup(resource.Provider)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
 	instance := capability.ProviderInstance{
-		Provider:        providerDescriptor(resource.Provider),
-		Scope:           placement.Scope,
-		SharingBoundary: placement.SharingBoundary,
-		Ownership:       placement.Ownership,
-		Reference:       placement.ExternalReference,
+		ProviderID:       bundled.ID,
+		ProviderVersion:  bundled.Version,
+		ProviderProtocol: bundled.Integration.Protocol,
+		Provider:         bundled.Integration.Provider,
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		Ownership:        placement.Ownership,
+		Reference:        placement.ExternalReference,
 	}
 	if instance.Provider.Kind == "" {
 		return capability.ProviderInstance{}, fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
@@ -279,14 +287,6 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
 	}
 	return instance, nil
-}
-
-func providerDescriptor(provider capability.ProviderKind) capability.Provider {
-	descriptor, err := capability.ReferenceIntegration(provider)
-	if err != nil {
-		return capability.Provider{}
-	}
-	return descriptor.Provider
 }
 
 func sharedProviderInstanceID(provider capability.ProviderKind, boundary string) string {

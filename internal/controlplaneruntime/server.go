@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -55,6 +56,8 @@ type Config struct {
 	RuntimeOperationsDir     string
 	RuntimeMetricsTargetsDir string
 	RuntimeDocsListenAddr    string
+	RuntimeBuildVersion      string
+	RuntimeBuildCommit       string
 	ShutdownTimeout          time.Duration
 }
 
@@ -245,7 +248,16 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
+		response := struct {
+			Status  string `json:"status"`
+			Version string `json:"version,omitempty"`
+			Commit  string `json:"commit,omitempty"`
+		}{Status: "ready"}
+		if cfg.boundRuntimeEnabled() {
+			response.Version = strings.TrimSpace(cfg.RuntimeBuildVersion)
+			response.Commit = strings.TrimSpace(cfg.RuntimeBuildCommit)
+		}
+		_ = json.NewEncoder(w).Encode(response)
 	})
 	mux.Handle("/runtime/", runtimeHandler)
 
@@ -301,11 +313,12 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
+			TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 		}
 		ch := make(chan error, 1)
 		docsErrCh = ch
 		go func() {
-			err := docsServer.ListenAndServe()
+			err := docsServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				ch <- err
 				return

@@ -281,3 +281,157 @@ networks:
 		t.Fatalf("repository manifest not preserved: %v", err)
 	}
 }
+
+func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository build convergence requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		t.Fatalf("detect runtime: %v", err)
+	}
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: build-convergence-ci
+  environment: dev
+services:
+  postgres:
+    enabled: false
+  redis:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  compose: compose.yaml
+  services:
+    - app
+`
+	composeYAML := `services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sh", "-ec", "sleep infinity"]
+`
+	dockerfile := "FROM alpine:3.22\nCOPY message.txt /message.txt\n"
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("Dockerfile", []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".dockerignore", []byte("ignored.txt\n.baseharbor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("message.txt", []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("ignored.txt", []byte("ignored-one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+		t.Fatalf("initial build apply: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "rebuilt app") {
+		t.Fatalf("initial build did not report build realization:\n%s", out.String())
+	}
+
+	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	m, _, err := store.Load("build-convergence-ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := application.ExistingRuntimeFiles(store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize build workload: found=%v err=%v", found, err)
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+	assertMessage := func(want string) {
+		t.Helper()
+		got, err := compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "cat", "/message.txt")
+		if err != nil {
+			t.Fatalf("read realized message: %v", err)
+		}
+		if strings.TrimSpace(got) != want {
+			t.Fatalf("realized message = %q, want %q", strings.TrimSpace(got), want)
+		}
+	}
+	assertMessage("one")
+	firstIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect first workload image: %v", err)
+	}
+
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+		t.Fatalf("unchanged app up: %v\n%s", err, out.String())
+	}
+	unchangedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect unchanged workload image: %v", err)
+	}
+	if unchangedIdentity.ImageID != firstIdentity.ImageID {
+		t.Fatalf("unchanged workload image changed: %s -> %s", firstIdentity.ImageID, unchangedIdentity.ImageID)
+	}
+
+	if err := os.WriteFile("ignored.txt", []byte("ignored-two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+		t.Fatalf("ignored-input app up: %v\n%s", err, out.String())
+	}
+	ignoredIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect ignored-input workload image: %v", err)
+	}
+	if ignoredIdentity.ImageID != firstIdentity.ImageID {
+		t.Fatalf("ignored input changed workload image: %s -> %s", firstIdentity.ImageID, ignoredIdentity.ImageID)
+	}
+
+	if err := os.WriteFile("message.txt", []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "rebuilt app") {
+		t.Fatalf("source change did not report selective rebuild:\n%s", out.String())
+	}
+	assertMessage("two")
+	changedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
+	if err != nil {
+		t.Fatalf("inspect changed workload image: %v", err)
+	}
+	if changedIdentity.ImageID == firstIdentity.ImageID {
+		t.Fatalf("source change retained stale workload image %s", changedIdentity.ImageID)
+	}
+
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+		t.Fatalf("destroy build workload: %v\n%s", err, out.String())
+	}
+}

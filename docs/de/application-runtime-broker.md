@@ -67,7 +67,7 @@ Wenn der Broker in einer dev- oder development-Umgebung benoetigt wird, aktivier
 Der Docs-Listener ist vom mTLS-Runtime-API-Listener getrennt und wird nur auf Host-Loopback veroeffentlicht:
 
 ~~~text
-http://127.0.0.1:<automatisch-vergebener-port>/
+https://127.0.0.1:<automatisch-vergebener-port>/
 ~~~
 
 Der Port wird einmal pro Anwendung vergeben und owner-only im BaseHarbor-State gespeichert. baha app apply, baha app up und baha app status zeigen die URL an.
@@ -86,4 +86,4 @@ Operatoren koennen die Deployment-Policy explizit mit BASEHARBOR_RUNTIME_DOCS_EN
 
 Der Broker laeuft weiterhin ohne Docker-/Podman-Socket und ohne providerweite Administrator-Credentials.
 
-Der Development-Docs-Listener liefert nur Dokumentation. Er umgeht die authentifizierte Runtime API nicht und gibt weder Application Credentials noch OpenBao-Credentials, Runtime Bearer Tokens oder Secure Bindings aus.
+Der Development-Docs-Listener verwendet TLS auf Host-Loopback und wird als Teil der Runtime-Readiness wirklich per HTTPS geprueft. Er liefert nur Dokumentation. Er umgeht die authentifizierte Runtime API nicht und gibt weder Application Credentials noch OpenBao-Credentials, Runtime Bearer Tokens oder Secure Bindings aus.

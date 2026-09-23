@@ -38,6 +38,9 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if pg.OwnerApplication != "alpha" {
 		t.Fatalf("postgres=%#v", pg)
 	}
+	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
+		t.Fatalf("postgres provider distribution identity=%#v", pg)
+	}
 	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, "beta", ""); err == nil {
 		t.Fatal("beta unexpectedly resolved alpha dedicated PostgreSQL")
 	}

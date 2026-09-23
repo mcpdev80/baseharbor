@@ -251,7 +251,58 @@ func quadletProjectInstalledUnchanged(dir string, project QuadletProject) (bool,
 	return true, nil
 }
 
+func quadletProjectBuildUnits(project QuadletProject, selected []string) []string {
+	selectedSet := map[string]struct{}{}
+	for _, service := range selected {
+		selectedSet[service] = struct{}{}
+	}
+	var units []string
+	for name := range project.Files {
+		if filepath.Ext(name) != ".build" {
+			continue
+		}
+		if len(selectedSet) > 0 {
+			matched := false
+			for service := range selectedSet {
+				expected := project.Project + "-" + sanitizeQuadletName(service) + ".build"
+				if name == expected {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if unit := quadletUnitForFile(name); unit != "" {
+			units = append(units, unit)
+		}
+	}
+	sort.Strings(units)
+	return units
+}
+
+func quadletBuildProject(ctx context.Context, project QuadletProject, selected []string) error {
+	if err := quadletInstallProject(ctx, project); err != nil {
+		return err
+	}
+	units := quadletProjectBuildUnits(project, selected)
+	if len(units) == 0 {
+		return nil
+	}
+	_, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...)
+	return err
+}
+
 func quadletStartProject(ctx context.Context, project QuadletProject, selected []string) error {
+	return quadletStartProjectMode(ctx, project, selected, true)
+}
+
+func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, selected []string) error {
+	return quadletStartProjectMode(ctx, project, selected, false)
+}
+
+func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
@@ -263,7 +314,7 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	if err := quadletEnsureResourceUnits(ctx, project, volumes, "volume", "VolumeName"); err != nil {
 		return err
 	}
-	if len(builds) > 0 {
+	if build && len(builds) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, builds...)...); err != nil {
 			return err
 		}

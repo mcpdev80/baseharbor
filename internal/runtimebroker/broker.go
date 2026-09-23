@@ -26,6 +26,10 @@ type Files struct {
 	DocsURL string
 }
 
+func IsMutableDevelopmentImage(image string) bool {
+	return strings.TrimSpace(image) == DefaultImage
+}
+
 func ProjectName(m application.Manifest) string {
 	return "baseharbor-broker-" + m.Name + "-" + m.Environment
 }
@@ -241,7 +245,7 @@ func docsURL(port string) string {
 	if strings.TrimSpace(port) == "" {
 		return ""
 	}
-	return "http://127.0.0.1:" + strings.TrimSpace(port) + "/"
+	return "https://127.0.0.1:" + strings.TrimSpace(port) + "/"
 }
 
 func ensureRuntimeServiceTokensFile(m application.Manifest, appFiles application.RuntimeFiles) (string, error) {

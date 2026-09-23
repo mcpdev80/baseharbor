@@ -69,7 +69,7 @@ When the broker is required in a dev or development environment, BaseHarbor enab
 The docs listener is separate from the mTLS runtime API and is published only on host loopback:
 
 ~~~text
-http://127.0.0.1:<allocated-port>/
+https://127.0.0.1:<allocated-port>/
 ~~~
 
 The port is allocated once per application and stored in owner-only BaseHarbor state. baha app apply, baha app up and baha app status report the URL.
@@ -90,4 +90,4 @@ The broker continues to run without a Docker/Podman socket and without provider-
 
 For runtime-only applications the per-app broker owns the deterministic backend network used by authorized workload services to reach `baseharbor-runtime`. When the app already has managed PostgreSQL/Valkey runtime services, that existing backend network remains authoritative. Runtime S3 provider-network attachment is service-specific: only services explicitly listed in the runtime permission receive it.
 
-The development docs listener exposes documentation only. It does not bypass the authenticated runtime API and does not expose application credentials, OpenBao credentials, runtime bearer tokens or secure bindings.
+The development docs listener uses TLS on host loopback and is verified through a real HTTPS request as part of runtime readiness. It exposes documentation only. It does not bypass the authenticated runtime API and does not expose application credentials, OpenBao credentials, runtime bearer tokens or secure bindings.

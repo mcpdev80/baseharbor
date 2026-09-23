@@ -197,6 +197,7 @@ jobs:
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryWorkflowRealLifecycle -count=1 -v
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI -count=1 -v
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadOnlyLifecycleInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryBuildWorkloadRebuildsSourceChangesInCI -count=1 -v
           run_integration_test go test -p 1 ./internal/application -run TestMultiInstanceComposeLifecycleInCI -count=1 -v
 
       - name: Verify control-plane recovery

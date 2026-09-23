@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -124,6 +125,10 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 
 	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-runtime", "")
 	if err != nil || !brokerOK {
+		return false, err
+	}
+	loopbackOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "127.0.0.1", "")
+	if err != nil || !loopbackOK {
 		return false, err
 	}
 	expectedURI := "spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment
@@ -302,7 +307,8 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 	}
 	if server {
 		template.Subject.CommonName = "baseharbor-runtime"
-		template.DNSNames = []string{"baseharbor-runtime", "baseharbor-secrets"}
+		template.DNSNames = []string{"baseharbor-runtime", "baseharbor-secrets", "localhost"}
+		template.IPAddresses = []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
 		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	} else {
 		uri, err := url.Parse("spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment)

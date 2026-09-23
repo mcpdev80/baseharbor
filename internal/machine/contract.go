@@ -116,8 +116,8 @@ func Operations() []Operation {
 
 func CapabilitySpecifications() []string {
 	return []string{
-		"cache.key-value",
-		"database.sql",
+		"cache.key-value/v1",
+		"database.sql/v1",
 		"exposure.http/v1",
 		"logs/v1",
 		"metrics/v1",

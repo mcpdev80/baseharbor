@@ -2,9 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,7 +27,15 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m); err != nil {
+	runtimeImage := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	refreshMutableImage := runtimebroker.IsMutableDevelopmentImage(runtimeImage)
+	if refreshMutableImage {
+		cli.ReportActivityDetail(progress, "checking current development runtime image")
+		if err := compose.PullImage(ctx, runtimeImage); err != nil {
+			return fmt.Errorf("refresh development runtime image: %w", err)
+		}
+	}
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, refreshMutableImage); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -49,12 +62,12 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	if err := compose.ConfigProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate application runtime broker: %w", err)
 	}
-	if identityChanged {
-		// Runtime identity files are installed atomically. Existing containers can
-		// otherwise retain the old bind-mounted inode, so an actual rotation must
-		// recreate the broker before readiness is evaluated.
+	if identityChanged || refreshMutableImage {
+		// Runtime identity files are installed atomically and mutable development
+		// images can change behind the same tag. Recreate the broker so readiness
+		// always verifies the desired identity rather than a stale container.
 		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
-			return fmt.Errorf("restart application runtime broker after mTLS rotation: %w", err)
+			return fmt.Errorf("recreate application runtime broker for desired identity: %w", err)
 		}
 	}
 	if err := compose.UpProjectProgress(ctx, project, brokerFiles.Compose, files.Env, func(detail string) {
@@ -80,7 +93,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -107,9 +120,9 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
 		return fmt.Errorf("validate runtime provider executor: %w", err)
 	}
-	if identityChanged {
+	if identityChanged || refreshMutableImage {
 		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
-			return fmt.Errorf("restart runtime provider executor after mTLS rotation: %w", err)
+			return fmt.Errorf("recreate runtime provider executor for desired identity: %w", err)
 		}
 	}
 	if err := compose.UpProjectProgress(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env, func(detail string) {
@@ -171,8 +184,74 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 	if err != nil {
 		return fmt.Errorf("application runtime broker mTLS readiness probe failed: %w", err)
 	}
-	if !strings.Contains(out, `"status":"ready"`) {
+	var ready struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}
+	if err := json.Unmarshal([]byte(out), &ready); err != nil || ready.Status != "ready" {
 		return errors.New("application runtime broker readiness response is invalid")
+	}
+	if err := verifyRuntimeBrokerBuildIdentity(ready.Version, ready.Commit); err != nil {
+		return err
+	}
+	if strings.TrimSpace(brokerFiles.DocsURL) != "" {
+		if err := verifyRuntimeBrokerDocs(ctx, brokerFiles.DocsURL, files); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error {
+	expectedVersion := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(version), "v"))
+	expectedCommit := strings.TrimSpace(commit)
+	actualVersion = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(actualVersion), "v"))
+	actualCommit = strings.TrimSpace(actualCommit)
+	if actualVersion == "" {
+		return errors.New("runtime broker image is incompatible: build identity is missing")
+	}
+	if expectedVersion != "" && actualVersion != expectedVersion {
+		developmentPair := expectedVersion == "dev" && actualVersion == "edge"
+		if !developmentPair {
+			return fmt.Errorf("runtime broker image is incompatible: CLI version %s requires runtime version %s, got %s", expectedVersion, expectedVersion, actualVersion)
+		}
+	}
+	if expectedCommit != "" && expectedCommit != "none" && actualCommit != expectedCommit {
+		if actualCommit == "" {
+			actualCommit = "unknown"
+		}
+		return fmt.Errorf("runtime broker image is incompatible: CLI commit %s, runtime commit %s", expectedCommit, actualCommit)
+	}
+	return nil
+}
+
+func verifyRuntimeBrokerDocs(ctx context.Context, docsURL string, files application.RuntimeFiles) error {
+	caPEM, err := os.ReadFile(filepath.Join(files.Bindings, "runtime-identity", "ca.pem"))
+	if err != nil {
+		return fmt.Errorf("read Runtime Docs CA certificate: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return errors.New("Runtime Docs CA certificate is invalid")
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+	}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, docsURL, nil)
+	if err != nil {
+		return fmt.Errorf("build Runtime Docs readiness request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Runtime Docs HTTPS readiness failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("Runtime Docs HTTPS readiness returned HTTP %d", resp.StatusCode)
 	}
 	return nil
 }

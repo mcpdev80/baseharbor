@@ -52,15 +52,62 @@ type ProviderObservability struct {
 }
 
 type IntegrationDescriptor struct {
+	ID              string                   `json:"id"`
+	Version         string                   `json:"version"`
 	Protocol        string                   `json:"protocol"`
 	Provider        Provider                 `json:"provider"`
+	Services        []ServiceKind            `json:"services,omitempty"`
 	Capabilities    []SpecificationID        `json:"capabilities"`
 	SupportedScopes []ProviderScope          `json:"supported_scopes"`
 	Optional        OptionalLifecycleSupport `json:"optional_lifecycle"`
 	Observability   ProviderObservability    `json:"observability,omitempty"`
 }
 
+func (d IntegrationDescriptor) EffectiveServices() ([]ServiceKind, error) {
+	seen := map[ServiceKind]struct{}{}
+	var derived []ServiceKind
+	for _, kind := range d.Provider.Capabilities {
+		service, err := ServiceKindForCapability(kind)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[service]; ok {
+			continue
+		}
+		seen[service] = struct{}{}
+		derived = append(derived, service)
+	}
+	if len(d.Services) == 0 {
+		return derived, nil
+	}
+	declared := map[ServiceKind]struct{}{}
+	for _, service := range d.Services {
+		if service == "" {
+			return nil, fmt.Errorf("provider service kind is required")
+		}
+		if _, exists := declared[service]; exists {
+			return nil, fmt.Errorf("provider service kind %q is declared more than once", service)
+		}
+		declared[service] = struct{}{}
+	}
+	if len(declared) != len(seen) {
+		return nil, fmt.Errorf("declared service kinds do not match capability-derived service kinds")
+	}
+	for service := range seen {
+		if _, ok := declared[service]; !ok {
+			return nil, fmt.Errorf("declared service kinds do not include capability-derived service %q", service)
+		}
+	}
+	return append([]ServiceKind(nil), d.Services...), nil
+}
+
 func (d IntegrationDescriptor) Validate() error {
+	if strings.TrimSpace(d.ID) == "" {
+		return fmt.Errorf("provider id is required")
+	}
+	if strings.TrimSpace(d.Version) == "" {
+		return fmt.Errorf("provider %q implementation version is required", d.ID)
+	}
 	if d.Protocol != ProviderProtocolV1 {
 		return fmt.Errorf("provider protocol %q is unsupported; expected %q", d.Protocol, ProviderProtocolV1)
 	}
@@ -72,6 +119,13 @@ func (d IntegrationDescriptor) Validate() error {
 	}
 	if len(d.Capabilities) == 0 {
 		return fmt.Errorf("provider %q must declare versioned capability specifications", d.Provider.Kind)
+	}
+	services, err := d.EffectiveServices()
+	if err != nil {
+		return fmt.Errorf("provider %q service mapping: %w", d.Provider.Kind, err)
+	}
+	if len(services) == 0 {
+		return fmt.Errorf("provider %q must declare at least one service kind", d.Provider.Kind)
 	}
 	if len(d.SupportedScopes) == 0 {
 		return fmt.Errorf("provider %q must declare at least one supported placement scope", d.Provider.Kind)

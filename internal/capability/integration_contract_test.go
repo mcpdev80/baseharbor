@@ -35,6 +35,30 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 	}
 }
 
+func TestIntegrationDescriptorRejectsServiceCapabilityMismatch(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.Services = []ServiceKind{ServiceCache}
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider service/capability mismatch accepted")
+	}
+}
+
+func TestIntegrationDescriptorRequiresProviderImplementationVersion(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.Version = ""
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without implementation version accepted")
+	}
+}
+
+func TestIntegrationDescriptorRequiresProviderID(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.ID = ""
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without distribution id accepted")
+	}
+}
+
 func TestIntegrationDescriptorRejectsUnversionedCapability(t *testing.T) {
 	descriptor := PostgreSQLIntegration
 	descriptor.Capabilities = []SpecificationID{"database.sql"}
@@ -53,6 +77,7 @@ func TestIntegrationDescriptorRejectsCapabilityProviderMismatch(t *testing.T) {
 
 func TestIntegrationDescriptorRequiresEveryProviderCapabilityToHaveSpecification(t *testing.T) {
 	descriptor := IntegrationDescriptor{
+		ID: "baseharbor/test-provider", Version: "0.1.0",
 		Protocol: ProviderProtocolV1,
 		Provider: Provider{
 			Kind:         ProviderPostgreSQL,

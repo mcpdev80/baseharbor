@@ -7,6 +7,49 @@ import (
 	"testing"
 )
 
+func TestRegistryAdoptsLegacyProviderDistributionMetadata(t *testing.T) {
+	registry := NewRegistry()
+	legacy := ProviderInstance{
+		ID:        "openbao/control-plane",
+		Provider:  OpenBao,
+		Scope:     ScopeShared,
+		Ownership: OwnershipBaseHarbor,
+	}
+	if err := registry.Register(legacy); err != nil {
+		t.Fatal(err)
+	}
+	versioned := legacy
+	versioned.ProviderID = "baseharbor/openbao"
+	versioned.ProviderVersion = "0.1.0"
+	versioned.ProviderProtocol = ProviderProtocolV1
+	if err := registry.Register(versioned); err != nil {
+		t.Fatalf("adopt legacy provider metadata: %v", err)
+	}
+	if len(registry.Instances) != 1 {
+		t.Fatalf("instances=%#v", registry.Instances)
+	}
+	got := registry.Instances[0]
+	if got.ProviderID != versioned.ProviderID || got.ProviderVersion != versioned.ProviderVersion || got.ProviderProtocol != versioned.ProviderProtocol {
+		t.Fatalf("provider metadata not adopted: %#v", got)
+	}
+}
+
+func TestRegistryRejectsConflictingProviderDistributionMetadata(t *testing.T) {
+	registry := NewRegistry()
+	first := ProviderInstance{
+		ID: "openbao/control-plane", ProviderID: "baseharbor/openbao", ProviderVersion: "0.1.0", ProviderProtocol: ProviderProtocolV1,
+		Provider: OpenBao, Scope: ScopeShared, Ownership: OwnershipBaseHarbor,
+	}
+	if err := registry.Register(first); err != nil {
+		t.Fatal(err)
+	}
+	conflict := first
+	conflict.ProviderVersion = "9.9.9"
+	if err := registry.Register(conflict); err == nil {
+		t.Fatal("conflicting provider version accepted")
+	}
+}
+
 func TestRegistryReusesOneSharedProviderAcrossApplications(t *testing.T) {
 	registry := NewRegistry()
 	shared := ProviderInstance{ID: "openbao/control-plane", Provider: OpenBao, Scope: ScopeShared, Ownership: OwnershipBaseHarbor}

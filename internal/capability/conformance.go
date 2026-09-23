@@ -16,10 +16,13 @@ type ConformanceCheck struct {
 }
 
 type ConformanceReport struct {
-	Protocol string             `json:"protocol"`
-	Provider ProviderKind       `json:"provider"`
-	Status   ConformanceStatus  `json:"status"`
-	Checks   []ConformanceCheck `json:"checks"`
+	ProviderID      string             `json:"provider_id"`
+	ProviderVersion string             `json:"provider_version"`
+	Protocol        string             `json:"protocol"`
+	Provider        ProviderKind       `json:"provider"`
+	Services        []ServiceKind      `json:"services,omitempty"`
+	Status          ConformanceStatus  `json:"status"`
+	Checks          []ConformanceCheck `json:"checks"`
 }
 
 // CheckIntegrationContract performs transport-independent static conformance.
@@ -27,9 +30,11 @@ type ConformanceReport struct {
 // build on this report as reference providers are added.
 func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceReport {
 	report := ConformanceReport{
-		Protocol: descriptor.Protocol,
-		Provider: descriptor.Provider.Kind,
-		Status:   ConformancePass,
+		ProviderID:      descriptor.ID,
+		ProviderVersion: descriptor.Version,
+		Protocol:        descriptor.Protocol,
+		Provider:        descriptor.Provider.Kind,
+		Status:          ConformancePass,
 	}
 	if err := descriptor.Validate(); err != nil {
 		report.Status = ConformanceFail
@@ -40,7 +45,19 @@ func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceRepor
 		})
 		return report
 	}
+	services, err := descriptor.EffectiveServices()
+	if err != nil {
+		report.Status = ConformanceFail
+		report.Checks = append(report.Checks, ConformanceCheck{
+			Name:    "service-declarations",
+			Status:  ConformanceFail,
+			Message: err.Error(),
+		})
+		return report
+	}
+	report.Services = services
 	report.Checks = append(report.Checks,
+		ConformanceCheck{Name: "service-declarations", Status: ConformancePass},
 		ConformanceCheck{Name: "provider-protocol", Status: ConformancePass},
 		ConformanceCheck{Name: "capability-declarations", Status: ConformancePass},
 	)

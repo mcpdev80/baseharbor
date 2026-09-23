@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/object-storage.schema.json",
+  "title": "BaseHarbor Object Storage Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "object-storage"
+    },
+    "contractVersion": {
+      "const": "v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "put": {
+          "type": "boolean"
+        },
+        "get": {
+          "type": "boolean"
+        },
+        "delete": {
+          "type": "boolean"
+        },
+        "list": {
+          "type": "boolean"
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "enum": [
+                  "s3"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
+}

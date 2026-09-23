@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
 )
 
 func providerPlacementEnvToken(provider capability.ProviderKind) string {
@@ -83,11 +84,11 @@ func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (cap
 		placement.ExternalReference = raw
 	}
 
-	descriptor, err := capability.ReferenceIntegration(provider)
+	bundled, err := builtin.Lookup(provider)
 	if err != nil {
 		return capability.ProviderPlacement{}, err
 	}
-	if err := capability.ValidateProviderPlacement(descriptor, placement); err != nil {
+	if err := capability.ValidateProviderPlacement(bundled.Integration, placement); err != nil {
 		return capability.ProviderPlacement{}, fmt.Errorf("resolve provider placement for %s: %w", provider, err)
 	}
 	return placement, nil

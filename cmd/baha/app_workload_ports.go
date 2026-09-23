@@ -311,7 +311,7 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 	}
 	const maxAttempts = 4
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, func(detail string) {
+		err := compose.UpProjectFilesSelectedNoBuildProgress(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, func(detail string) {
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
 		if err == nil {

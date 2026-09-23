@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/provider/v1/provider-descriptor.schema.json",
+  "title": "BaseHarbor Provider Descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerProtocol": {
+      "const": "baseharbor.provider/v1"
+    },
+    "serviceKinds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "sql",
+          "cache",
+          "object-storage",
+          "secrets",
+          "messaging",
+          "vector",
+          "observability",
+          "identity"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "serviceContracts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "productSupport": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "product": {
+            "type": "string",
+            "minLength": 1
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "product"
+        ]
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "os": {
+            "type": "string",
+            "minLength": 1
+          },
+          "arch": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "os",
+          "arch"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ociReference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ociReference"
+      ]
+    },
+    "configurationSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dialect": {
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "required": [
+        "dialect"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signatureRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sbomRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attestationRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "providerProtocol",
+    "serviceKinds",
+    "serviceContracts"
+  ]
+}

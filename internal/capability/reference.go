@@ -21,35 +21,47 @@ var (
 
 var (
 	PostgreSQLIntegration = IntegrationDescriptor{
+		ID: "baseharbor/postgresql", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: PostgreSQL,
+		Services:        []ServiceKind{ServiceSQL},
 		Capabilities:    []SpecificationID{SQLV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	ValkeyIntegration = IntegrationDescriptor{
+		ID: "baseharbor/valkey", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Valkey,
+		Services:        []ServiceKind{ServiceCache},
 		Capabilities:    []SpecificationID{KeyValueV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication},
 	}
 	OpenBaoIntegration = IntegrationDescriptor{
+		ID: "baseharbor/openbao", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: OpenBao,
+		Services:        []ServiceKind{ServiceSecrets},
 		Capabilities:    []SpecificationID{SecretsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 	}
 	CaddyIntegration = IntegrationDescriptor{
+		ID: "baseharbor/caddy", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Caddy,
+		Services:        []ServiceKind{ServiceExposure},
 		Capabilities:    []SpecificationID{ExposureHTTPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	SeaweedFSIntegration = IntegrationDescriptor{
+		ID: "baseharbor/seaweedfs", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: SeaweedFS,
+		Services:        []ServiceKind{ServiceObjectStorage},
 		Capabilities:    []SpecificationID{ObjectStorageS3V1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	OTelCollectorIntegration = IntegrationDescriptor{
+		ID: "baseharbor/opentelemetry-collector", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: OTelCollector,
+		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
@@ -58,13 +70,17 @@ var (
 		}},
 	}
 	PrometheusIntegration = IntegrationDescriptor{
+		ID: "baseharbor/prometheus", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Prometheus,
+		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{MetricsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 	}
 	LokiIntegration = IntegrationDescriptor{
+		ID: "baseharbor/loki", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Loki,
+		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{LogsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
@@ -73,7 +89,9 @@ var (
 		}},
 	}
 	TempoIntegration = IntegrationDescriptor{
+		ID: "baseharbor/tempo", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Tempo,
+		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TracesV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
@@ -82,7 +100,9 @@ var (
 		}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
+		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
+		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeExternal},
 	}

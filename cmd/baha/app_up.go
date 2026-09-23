@@ -197,9 +197,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				}); err != nil {
 					return err
 				}
-				if term.Verbose() {
-					printRuntimeBrokerDocs(out, files)
-				}
+				printRuntimeBrokerDocs(out, files)
 			}
 			renderRuntimeReady(term, m)
 			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {

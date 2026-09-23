@@ -90,3 +90,26 @@ func TestQuadletFileForUnitResolvesManagedResources(t *testing.T) {
 		t.Fatalf("unexpected resource file = %q", got)
 	}
 }
+
+func TestQuadletProjectBuildUnitsSelectsOnlyChangedServices(t *testing.T) {
+	project := QuadletProject{
+		Project: "baseharbor-demo",
+		Files: map[string]string{
+			"baseharbor-demo-api.build":        "",
+			"baseharbor-demo-api.container":    "",
+			"baseharbor-demo-worker.build":     "",
+			"baseharbor-demo-worker.container": "",
+		},
+	}
+	got := quadletProjectBuildUnits(project, []string{"worker"})
+	if len(got) != 1 || got[0] != "baseharbor-demo-worker-build.service" {
+		t.Fatalf("selected build units = %#v, want worker only", got)
+	}
+
+	all := quadletProjectBuildUnits(project, nil)
+	if len(all) != 2 ||
+		all[0] != "baseharbor-demo-api-build.service" ||
+		all[1] != "baseharbor-demo-worker-build.service" {
+		t.Fatalf("all build units = %#v", all)
+	}
+}

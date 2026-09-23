@@ -15,3 +15,5 @@ ADRs preserve decisions and rationale. They do not replace current-state documen
 - [0009 — Shared core and multiple control surfaces](0009-shared-core-multiple-control-surfaces.md)
 - [0010 — Evolving application intent](0010-evolving-application-intent.md)
 - [0011 — Delivery providers and tool neutrality](0011-delivery-providers-and-tool-neutrality.md)
+- [0012 — Bundled provider versioning and packaging](0012-bundled-provider-versioning-and-packaging.md)
+- [0013 — Standards-first service and provider contracts](0013-standards-first-service-provider-contracts.md)

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/cache.schema.json",
+  "title": "BaseHarbor Cache Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "cache"
+    },
+    "contractVersion": {
+      "const": "v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ttl": {
+          "type": "boolean"
+        },
+        "transactions": {
+          "type": "boolean"
+        },
+        "pubsub": {
+          "type": "boolean"
+        },
+        "streams": {
+          "type": "boolean"
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "enum": [
+                  "resp"
+                ]
+              },
+              "versions": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "2",
+                    "3"
+                  ]
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
+}
