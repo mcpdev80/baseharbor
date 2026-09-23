@@ -20,8 +20,8 @@ type ConformanceReport struct {
 	ProviderVersion string             `json:"provider_version"`
 	Protocol        string             `json:"protocol"`
 	Provider        ProviderKind       `json:"provider"`
-	Status   ConformanceStatus  `json:"status"`
-	Checks   []ConformanceCheck `json:"checks"`
+	Status          ConformanceStatus  `json:"status"`
+	Checks          []ConformanceCheck `json:"checks"`
 }
 
 // CheckIntegrationContract performs transport-independent static conformance.
@@ -33,7 +33,7 @@ func CheckIntegrationContract(descriptor IntegrationDescriptor) ConformanceRepor
 		ProviderVersion: descriptor.Version,
 		Protocol:        descriptor.Protocol,
 		Provider:        descriptor.Provider.Kind,
-		Status:   ConformancePass,
+		Status:          ConformancePass,
 	}
 	if err := descriptor.Validate(); err != nil {
 		report.Status = ConformanceFail
