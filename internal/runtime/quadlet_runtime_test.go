@@ -73,3 +73,21 @@ func TestQuadletProjectInstalledUnchanged(t *testing.T) {
 		t.Fatal("expected modified installed project to require reconciliation")
 	}
 }
+
+
+func TestQuadletFileForUnitResolvesManagedResources(t *testing.T) {
+	project := QuadletProject{Files: map[string]string{
+		"demo-app.container":   "",
+		"demo-internal.network": "[Network]\nNetworkName=demo_internal\n",
+		"demo-data.volume":      "[Volume]\nVolumeName=demo_data\n",
+	}}
+	if got := quadletFileForUnit(project, "demo-internal-network.service", "network"); got != "demo-internal.network" {
+		t.Fatalf("network file = %q", got)
+	}
+	if got := quadletFileForUnit(project, "demo-data-volume.service", "volume"); got != "demo-data.volume" {
+		t.Fatalf("volume file = %q", got)
+	}
+	if got := quadletFileForUnit(project, "demo-app.service", "network"); got != "" {
+		t.Fatalf("unexpected resource file = %q", got)
+	}
+}
