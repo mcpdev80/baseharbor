@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -66,8 +67,10 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return nil, fmt.Errorf("external Prometheus placement is selected but no external metrics collection adapter is configured")
 	}
 
+	runtimeFiles := application.RuntimeFilesFor(resolved.Store, m)
+	runtimeCA := filepath.Join(application.RuntimeMTLSHostDir(runtimeFiles), "ca.pem")
 	prepared := &managedMetricsExecution{
-		driver:              metricsprovider.NewDriver(compose, m),
+		driver:              metricsprovider.NewDriver(compose, m, runtimeCA),
 		runtime:             compose,
 		manifest:            m,
 		enabled:             true,
