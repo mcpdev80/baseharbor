@@ -13,6 +13,9 @@ const (
 	ServiceObjectStorage ServiceKind = "object-storage"
 	ServiceSecrets       ServiceKind = "secrets"
 	ServiceObservability ServiceKind = "observability"
+	ServiceIdentity      ServiceKind = "identity"
+	ServiceMessaging     ServiceKind = "messaging"
+	ServiceVector        ServiceKind = "vector"
 	ServiceExposure      ServiceKind = "exposure"
 )
 
