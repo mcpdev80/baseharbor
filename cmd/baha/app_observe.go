@@ -126,7 +126,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			result.AddCheck("telemetry/otlp", true, "real OTLP HTTP/protobuf export accepted")
 		}
 	}
-	if m.Services.Postgres {
+	if m.Services.SQL {
 		if !containsString(services, "postgres") {
 			result.AddCheck("postgres", false, "not running")
 		} else {
@@ -136,11 +136,11 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			if err != nil {
 				result.AddCheck("postgres", false, "one or more instances failed readiness")
 			} else {
-				result.AddCheck("postgres", true, fmt.Sprintf("%d instance(s) running and authenticated SELECT 1 succeeded", len(application.PostgresInstanceNames(m))))
+				result.AddCheck("postgres", true, fmt.Sprintf("%d instance(s) running and authenticated SELECT 1 succeeded", len(application.SQLInstanceNames(m))))
 			}
 		}
 	}
-	if m.Services.Redis {
+	if m.Services.Cache {
 		if !containsString(services, "valkey") {
 			result.AddCheck("valkey", false, "not running")
 		} else {
@@ -150,7 +150,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			if err != nil {
 				result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
 			} else {
-				result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.RedisInstanceNames(m))))
+				result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(m))))
 			}
 		}
 	}
