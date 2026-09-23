@@ -71,18 +71,7 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 }
 
 func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
-	project := RuntimeProjectName(m)
-	var existing []bhruntime.ProjectResource
-	for _, resource := range ExpectedRuntimeResources(m) {
-		exists, err := compose.InspectProjectResource(ctx, project, resource)
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			existing = append(existing, resource)
-		}
-	}
-	return existing, nil
+	return compose.InspectProjectResources(ctx, RuntimeProjectName(m), ExpectedRuntimeResources(m))
 }
 
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {
