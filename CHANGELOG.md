@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.14]
+
 ### Added
 
 - Shared runtime-neutral reconciliation domain with typed desired, observed, diff and ownership state.
@@ -26,7 +28,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - External ownership remains observe-only.
 - Post-verification observation prevents successful lifecycle completion when BaseHarbor-owned desired state did not actually converge.
 - No Kubernetes/OpenShift implementation, product-specific delivery mechanism or portable-contract expansion is introduced.
-
 
 ## [0.4.13] - 2026-09-21
 
