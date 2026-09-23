@@ -83,10 +83,10 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		return overview, backupErr
 	}
 
-	for _, name := range application.PostgresInstanceNames(m) {
+	for _, name := range application.SQLInstanceNames(m) {
 		overview.Postgres = append(overview.Postgres, overviewResource{Name: name, State: "not applied"})
 	}
-	for _, name := range application.RedisInstanceNames(m) {
+	for _, name := range application.CacheInstanceNames(m) {
 		overview.Valkey = append(overview.Valkey, overviewResource{Name: name, State: "not applied"})
 	}
 	if application.HasOTLPTelemetry(m) {
@@ -123,7 +123,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		return overview, err
 	}
 
-	if m.Services.Postgres {
+	if m.Services.SQL {
 		state := "not running"
 		if containsString(running, "postgres") {
 			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -141,7 +141,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		}
 	}
 
-	if m.Services.Redis {
+	if m.Services.Cache {
 		state := "not running"
 		if containsString(running, "valkey") {
 			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
