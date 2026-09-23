@@ -596,7 +596,6 @@ func quadletSystemdJoin(values []string) string {
 	return strings.Join(quoted, " ")
 }
 
-
 func mergeQuadletComposeDocuments(base, override *yaml.Node) error {
 	baseMap, err := quadletDocumentMap(base)
 	if err != nil {
@@ -656,7 +655,6 @@ func cloneQuadletYAMLNode(node *yaml.Node) *yaml.Node {
 	}
 	return &copy
 }
-
 
 func RenderComposeProjectFilesJSON(composePaths []string, environment map[string]string) (string, error) {
 	if len(composePaths) == 0 {
