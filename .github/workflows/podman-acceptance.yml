@@ -177,11 +177,11 @@ jobs:
             echo "::group::Quadlet runtime integration diagnostics"
             systemctl --user --failed --no-pager || true
             systemctl --user list-units 'baseharbor*' --all --no-pager || true
-            while IFS= read -r unit; do
+            for unit in $(systemctl --user list-units 'baseharbor*' --all --no-legend --plain 2>/dev/null | awk '{print $1}'); do
               [ -n "$unit" ] || continue
               systemctl --user status "$unit" --no-pager -l || true
               journalctl --user -u "$unit" -n 80 --no-pager || true
-            done < <(systemctl --user list-units 'baseharbor*' --all --no-legend --plain 2>/dev/null | awk '{print $1}')
+            done
             podman ps -a || true
             echo "::endgroup::"
           }
