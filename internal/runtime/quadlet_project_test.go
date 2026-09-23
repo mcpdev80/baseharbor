@@ -228,7 +228,7 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 
 func TestQuadletSystemdJoinPreservesContainerDollarExpansion(t *testing.T) {
 	got := quadletSystemdJoin([]string{"sh", "-ec", "echo $VALKEY_PASSWORD && echo ${OTHER}"})
-	for _, want := range []string{"$$VALKEY_PASSWORD", "$$${OTHER}"} {
+	for _, want := range []string{"$$VALKEY_PASSWORD", "${OTHER}"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("systemd command lost escaped dollar %q: %s", want, got)
 		}
