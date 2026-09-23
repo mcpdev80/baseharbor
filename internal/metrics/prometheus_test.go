@@ -295,7 +295,7 @@ func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 		{Application: "alpha", Environment: "dev", RuntimeVolume: "runtime-alpha"},
 		{Application: "beta", Environment: "dev"},
 		{Application: "gamma", Environment: "dev", RuntimeVolume: "runtime-gamma"},
-	})
+	}, false)
 	for _, want := range []string{
 		"/etc/prometheus/targets/*--*--*.json",
 		"/etc/prometheus/runtime-targets/0/*.json",
