@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  podman-compose:
+  podman-quadlet:
     env:
       BASEHARBOR_TEST_RUNTIME: podman
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
@@ -66,13 +66,23 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh podman
 
-      - name: Verify Podman runner
+      - name: Verify Podman Quadlet runner
         id: verify_runner
         shell: bash
         run: |
           set -euo pipefail
           podman info >/tmp/podman-info.txt
-          podman compose version
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          "$generator" --user --dryrun >/tmp/podman-quadlet-generator.txt
+
           mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
           cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
           #!/bin/sh
@@ -80,6 +90,16 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
           echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+          # Make any accidental fallback to the external Podman Compose provider
+          # fail immediately. The Podman acceptance must be Quadlet-only.
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
 
       - name: Build BaseHarbor
         id: build
@@ -92,10 +112,10 @@ jobs:
           set -euo pipefail
           /tmp/baha doctor | tee /tmp/podman-doctor.txt
           grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
-          grep -Eq '^  OK +compose' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +quadlet' /tmp/podman-doctor.txt
           grep -q '^READY$' /tmp/podman-doctor.txt
 
-      - name: Verify application lifecycle on Podman Compose
+      - name: Verify application lifecycle on Podman Quadlet
         id: lifecycle
         shell: bash
         run: |
@@ -168,11 +188,11 @@ jobs:
           Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
           Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
-          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and Quadlet generator available; Compose provider blocked
           BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
           Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
           Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
-          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Quadlet lifecycle integration
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
           Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
