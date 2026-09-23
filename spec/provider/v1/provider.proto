@@ -32,6 +32,10 @@ message DescribeResponse {
   LifecycleSupport optional_lifecycle = 4;
   JsonSchema configuration_schema = 5;
   ProviderObservability observability = 6;
+  // Stable distribution identity, for example baseharbor/postgresql.
+  string provider_id = 7;
+  // Provider implementation version, independent from BaseHarbor and capability versions.
+  string provider_version = 8;
 }
 
 message ProviderObservability {
