@@ -167,6 +167,24 @@ func formatCLIError(w io.Writer, err error) {
 	if cli.IsPresented(err) {
 		return
 	}
+	var operational *machine.Error
+	if errors.As(err, &operational) {
+		fmt.Fprintln(w, "Error")
+		fmt.Fprintf(w, "  %s\n", operational.Message)
+		if operational.Resource != "" {
+			fmt.Fprintln(w, "\nAffected")
+			fmt.Fprintf(w, "  %s\n", operational.Resource)
+		}
+		if operational.Remediation != "" {
+			fmt.Fprintln(w, "\nResolution")
+			fmt.Fprintf(w, "  %s\n", operational.Remediation)
+		}
+		if strings.TrimSpace(operational.Next) != "" {
+			fmt.Fprintln(w, "\nWhat to do")
+			fmt.Fprintf(w, "  %s\n", operational.Next)
+		}
+		return
+	}
 	fmt.Fprintf(w, "Error: %v\n", err)
 	var usage *cli.UsageError
 	if errors.As(err, &usage) {
