@@ -109,14 +109,14 @@ type Result struct {
 	SelectedCompose        string               `json:"selected_compose,omitempty"`
 	WorkloadServices       []string             `json:"workload_services,omitempty"`
 	InfrastructureServices []string             `json:"infrastructure_services,omitempty"`
-	Findings          []Finding            `json:"findings,omitempty"`
-	RequiredSecrets   []string             `json:"required_secrets,omitempty"`
-	SecretCandidates  []string             `json:"secret_candidates,omitempty"`
-	SecretSources     map[string]string    `json:"secret_sources,omitempty"`
-	Ports             []PortEvidence       `json:"ports,omitempty"`
-	HealthChecks      []Evidence           `json:"health_checks,omitempty"`
-	Declared          []CapabilityIntent   `json:"declared_capabilities,omitempty"`
-	Reconciliation    []ReconciliationItem `json:"reconciliation,omitempty"`
+	Findings               []Finding            `json:"findings,omitempty"`
+	RequiredSecrets        []string             `json:"required_secrets,omitempty"`
+	SecretCandidates       []string             `json:"secret_candidates,omitempty"`
+	SecretSources          map[string]string    `json:"secret_sources,omitempty"`
+	Ports                  []PortEvidence       `json:"ports,omitempty"`
+	HealthChecks           []Evidence           `json:"health_checks,omitempty"`
+	Declared               []CapabilityIntent   `json:"declared_capabilities,omitempty"`
+	Reconciliation         []ReconciliationItem `json:"reconciliation,omitempty"`
 }
 
 type Snapshot struct {
