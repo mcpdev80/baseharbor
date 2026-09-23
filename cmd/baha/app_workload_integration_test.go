@@ -39,9 +39,9 @@ app:
   name: workload-ci
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: true
   secrets:
     enabled: false
@@ -176,9 +176,9 @@ app:
   name: workload-only-ci
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: false
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: false
@@ -308,9 +308,9 @@ app:
   name: build-convergence-ci
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: false
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: false
