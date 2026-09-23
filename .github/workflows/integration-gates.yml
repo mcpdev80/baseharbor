@@ -36,7 +36,7 @@ jobs:
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
-          /tmp/baha app create ci-demo --postgres --redis
+          /tmp/baha app create ci-demo --sql --cache
           /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
           /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
@@ -178,7 +178,7 @@ jobs:
           ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
-          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
+          /tmp/baha app create required-demo --sql --require-secret API_TOKEN
           /tmp/baha app show required-demo | tee /tmp/required-show.out
           grep -q 'Application: required-demo' /tmp/required-show.out
           grep -q 'Status: NOT READY' /tmp/required-show.out
