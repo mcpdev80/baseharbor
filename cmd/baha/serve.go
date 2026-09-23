@@ -79,6 +79,8 @@ func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 		RuntimeOperationsDir:     os.Getenv("BASEHARBOR_RUNTIME_OPERATIONS_DIR"),
 		RuntimeMetricsTargetsDir: os.Getenv("BASEHARBOR_RUNTIME_METRICS_TARGETS_DIR"),
 		RuntimeDocsListenAddr:    os.Getenv("BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR"),
+		RuntimeBuildVersion:      version,
+		RuntimeBuildCommit:       commit,
 	}, nil
 }
 
