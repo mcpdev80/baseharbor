@@ -64,12 +64,8 @@ type IntegrationDescriptor struct {
 }
 
 func (d IntegrationDescriptor) EffectiveServices() ([]ServiceKind, error) {
-	if len(d.Services) > 0 {
-		result := append([]ServiceKind(nil), d.Services...)
-		return result, nil
-	}
 	seen := map[ServiceKind]struct{}{}
-	var result []ServiceKind
+	var derived []ServiceKind
 	for _, kind := range d.Provider.Capabilities {
 		service, err := ServiceKindForCapability(kind)
 		if err != nil {
@@ -79,9 +75,30 @@ func (d IntegrationDescriptor) EffectiveServices() ([]ServiceKind, error) {
 			continue
 		}
 		seen[service] = struct{}{}
-		result = append(result, service)
+		derived = append(derived, service)
 	}
-	return result, nil
+	if len(d.Services) == 0 {
+		return derived, nil
+	}
+	declared := map[ServiceKind]struct{}{}
+	for _, service := range d.Services {
+		if service == "" {
+			return nil, fmt.Errorf("provider service kind is required")
+		}
+		if _, exists := declared[service]; exists {
+			return nil, fmt.Errorf("provider service kind %q is declared more than once", service)
+		}
+		declared[service] = struct{}{}
+	}
+	if len(declared) != len(seen) {
+		return nil, fmt.Errorf("declared service kinds do not match capability-derived service kinds")
+	}
+	for service := range seen {
+		if _, ok := declared[service]; !ok {
+			return nil, fmt.Errorf("declared service kinds do not include capability-derived service %q", service)
+		}
+	}
+	return append([]ServiceKind(nil), d.Services...), nil
 }
 
 func (d IntegrationDescriptor) Validate() error {
