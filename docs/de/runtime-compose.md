@@ -1,6 +1,8 @@
 # Lokale Control Plane
 
-Die aktuelle BaseHarbor-Control-Plane ist bewusst single-node und local-first. `baha up` startet PostgreSQL 18 und OpenBao 2.6.x, standardmäßig nur auf Loopback.
+Die aktuelle BaseHarbor-Control-Plane ist bewusst single-node und local-first. `baha up` startet PostgreSQL 18 und OpenBao 2.6.x, standardmaessig nur auf Loopback.
+
+Docker fuehrt die generierte Runtime ueber Docker Compose aus. Podman uebersetzt dasselbe Compose-basierte Runtime-Modell in native Quadlet-Units und verwaltet sie rootless ueber `systemd --user`. `podman-compose` wird fuer den BaseHarbor-Podman-Lifecycle nicht benoetigt.
 
 Die verwalteten Control-Plane-Container laufen als gehaertete Runtime-Komponenten und nicht als privilegierte Bootstrap-Helfer. PostgreSQL und OpenBao verwenden explizite Non-Root-Identitaeten, ein read-only Root-Filesystem, droppen alle Linux-Capabilities und setzen `no-new-privileges`. Schreibbar bleiben nur explizit benoetigte Volumes bzw. tmpfs-Pfade.
 

@@ -21,7 +21,7 @@ The provider exposes:
 - a stable provider kind;
 - explicit runtime capabilities needed by orchestration.
 
-The current provider kind is `compose`. Future provider kinds may include `kubernetes` and `openshift`.
+The current local provider seam preserves the existing Compose-based application/runtime model. Docker executes that model through Docker Compose; Podman translates it into native Quadlet units managed through rootless `systemd --user`. Future provider kinds may include `kubernetes` and `openshift`.
 
 Runtime provider selection is deployment/environment-owned state. It is not an application capability and must not be selected from portable `baseharbor.yaml` requirements.
 
@@ -67,14 +67,14 @@ This step does not change:
 - backup/restore formats;
 - application-facing environment or binding contracts.
 
-Compose remains the only selectable runtime implementation until a later scoped change adds explicit deployment-provider configuration and another provider.
+The local runtime implementation supports Docker Compose and Podman Quadlet execution behind the same portable runtime boundary. Kubernetes and OpenShift remain future provider implementations.
 
 ## Consequences
 
 Positive:
 
 - one selection point exists before Kubernetes/OpenShift implementation begins;
-- existing Compose behavior is preserved;
+- existing Compose input compatibility is preserved while Podman execution is native Quadlet;
 - runtime, capability-provider and delivery-provider axes remain separate;
 - provider capability failures can become explicit and fail closed.
 

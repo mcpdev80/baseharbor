@@ -11,7 +11,7 @@ Idee / lokale Entwicklung
 Homelab / Single Host
         |
         v
-Compose-Produktion
+Docker Compose / Podman Quadlet
         |
         v
 spaeter Kubernetes / OpenShift
@@ -22,9 +22,9 @@ Enterprise-Deploymentprofile
 
 Die Anwendung deklariert logische Anforderungen. BaseHarbor loest, provisioniert, sichert und betreibt diese Anforderungen ueber getrennte Runtime- und Capability-Provider, waehrend die Anwendung Standardprotokolle und native Clients verwendet.
 
-## Aktueller Stand v0.4.12
+## Aktueller Stand v0.4
 
-Docker/Podman Compose bleibt die vollstaendige Runtime-Implementierung. v0.4 fuehrt die Architekturgrenzen ein, die spaetere Provider ermoeglichen, ohne den logischen Anwendungsvertrag neu zu definieren.
+Die lokale Runtime ist vollstaendig fuer Docker und Podman umgesetzt: Docker verwendet Docker Compose; Podman uebersetzt dieselben Compose-basierten Workload-/Runtime-Definitionen in native Quadlets und verwaltet sie rootless ueber `systemd --user`. `podman-compose` ist kein BaseHarbor-Runtime-Dependency mehr. v0.4 behaelt dabei den logischen Anwendungsvertrag stabil und bereitet spaetere Kubernetes-/OpenShift-Provider vor.
 
 Umgesetzt sind unter anderem:
 
@@ -43,7 +43,7 @@ Umgesetzt sind unter anderem:
 - explizite gerichtete Cross-Application-Connectivity ueber `baha connect`, getrennt von Provider-Sharing und in Compose ueber einen gehaerteten BaseHarbor-Relay realisiert;
 - Managed Required/Generated Secrets ohne Secret-Werte im Contract;
 - providerneutrale `secure-binding/v1`-Semantik fuer Workload Identity, Credential-/Trust-/Secret-Referenzen, Least-Privilege-Authorization und Security-Lifecycle-Deklarationen;
-- Compose als expliziter Runtime Provider;
+- lokaler Runtime Provider mit Docker-Compose-Ausfuehrung fuer Docker und nativer Quadlet-Ausfuehrung fuer Podman;
 - deployment-eigener Runtime-Provider- und Profil-State;
 - Runtime-Capability-Negotiation mit fail-closed Verhalten;
 - zentrale Runtime-Guards, damit spaetere Provider nicht versehentlich in Compose-spezifischen Code fallen;
@@ -63,7 +63,7 @@ Mehrere logische Service-Instanzen sind nicht HA. HA ist eine spaetere Topologie
 
 ## Architekturregel
 
-Compose bleibt first-class, ist aber nicht mehr die konzeptionelle Anwendungs-API. Runtime Provider und Capability Provider sind getrennte Achsen.
+Compose bleibt eine first-class Eingabe-/Kompatibilitaetsoberflaeche fuer Repository-Workloads, ist aber nicht mehr die Podman-Ausfuehrungsengine und nicht die konzeptionelle Anwendungs-API. Runtime Provider und Capability Provider sind getrennte Achsen.
 
 Delivery Provider bilden eine dritte, unabhängige Achse. Sie bestimmen, wie die gewünschte Runtime-Realisierung zur Ziel-Runtime gelangt und dort reconciled wird. Direct Delivery und delegated/GitOps Delivery müssen dieselbe BaseHarbor-Semantik erhalten, ohne Argo CD, Flux, Git oder Kubernetes-Objekte in den portablen Application Contract zu ziehen.
 
@@ -87,7 +87,7 @@ In v0.4 umgesetzt:
 - fail-closed Guards fuer Application-Runtime-Operationen;
 - deklarativer Input Resolver;
 - gemeinsamer TLS/FQDN-Deployment-Input-Referenzpfad;
-- vollstaendig erhaltener Compose-Developer-Journey und v0.3-State-Kompatibilitaet.
+- vollstaendig erhaltener Compose-Developer-Journey und v0.3-State-Kompatibilitaet; Docker fuehrt Compose direkt aus, Podman rendert daraus Quadlets.
 
 Weiterhin Future Work:
 
@@ -365,4 +365,4 @@ Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provide
 
 Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen von Applications bestimmte Provider gemeinsam nutzen. Getrennte BaseHarbor-Control-Planes bleiben echten administrativen, Trust-Domain-, Infrastruktur- oder Compliance-Grenzen vorbehalten.
 
-Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
+Der aktuelle lokale Implementierungsumfang umfasst Docker ueber Docker Compose und Podman ueber native Quadlets aus denselben Compose-basierten Definitionen. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.

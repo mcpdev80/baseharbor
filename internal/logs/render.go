@@ -93,7 +93,7 @@ func alloyJournalConfig(registrations []Registration) string {
 `)
 	for i, registration := range registrations {
 		project := application.WorkloadProjectName(application.New(registration.Application, registration.Environment, false, false, false))
-		pattern := "^" + regexp.QuoteMeta(project) + "_(.+)_([0-9]+)$"
+		pattern := "^" + regexp.QuoteMeta(project) + "(?:_(.+)_[0-9]+|-(.+))$"
 		label := fmt.Sprintf("application_%d", i)
 		fmt.Fprintf(&b, "\nloki.relabel %s {\n", strconv.Quote(label))
 		b.WriteString("  forward_to = []\n\n")
@@ -106,7 +106,7 @@ func alloyJournalConfig(registrations []Registration) string {
 		b.WriteString("    source_labels = [\"__journal_container_name\"]\n")
 		fmt.Fprintf(&b, "    regex         = %s\n", strconv.Quote(pattern))
 		b.WriteString("    target_label  = \"baseharbor_service\"\n")
-		b.WriteString("    replacement   = \"$1\"\n")
+		b.WriteString("    replacement   = \"$1$2\"\n")
 		b.WriteString("  }\n\n")
 		b.WriteString("  rule {\n")
 		b.WriteString("    target_label = \"baseharbor_application\"\n")

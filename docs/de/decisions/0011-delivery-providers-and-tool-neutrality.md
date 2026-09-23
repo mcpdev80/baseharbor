@@ -6,11 +6,11 @@ Akzeptiert für die Architektur nach v0.4 und vor dem v0.5-Contract-Freeze erfor
 
 ## Kontext
 
-BaseHarbor trennt bereits portables Application Intent von Runtime Providern und Capability Providern. Compose ist der aktuell vollständige Runtime Provider; Kubernetes und OpenShift folgen später. Capability Provider realisieren logische Anforderungen wie SQL, S3, Secrets, Observability und Exposure.
+BaseHarbor trennt bereits portables Application Intent von Runtime Providern und Capability Providern. Die aktuelle lokale Runtime nutzt Docker Compose fuer Docker und native Quadlets fuer Podman; Kubernetes und OpenShift folgen spaeter. Capability Provider realisieren logische Anforderungen wie SQL, S3, Secrets, Observability und Exposure.
 
 Davon unabhängig ist die Frage: **Wer liefert und reconciled die gewünschte Runtime-Realisierung?**
 
-Bei Compose mutiert BaseHarbor die Runtime heute direkt. Bei Kubernetes/OpenShift ist direkte API-Mutation gültig, aber etablierte GitOps-Systeme wie Argo CD oder Flux können die kontinuierliche Reconciliation übernehmen und wertvolle native Betriebsansichten bereitstellen.
+Bei der lokalen Runtime mutiert BaseHarbor heute direkt: Docker ueber Docker Compose, Podman ueber generierte Quadlet-Units. Bei Kubernetes/OpenShift ist direkte API-Mutation gültig, aber etablierte GitOps-Systeme wie Argo CD oder Flux können die kontinuierliche Reconciliation übernehmen und wertvolle native Betriebsansichten bereitstellen.
 
 Argo CD, Flux, Helm, Git oder Kubernetes-Ressourcen dürfen nicht Teil des portablen Application Intent werden. Gleichzeitig soll BaseHarbor nicht jeden etablierten Infrastruktur-Controller selbst neu implementieren.
 
@@ -125,14 +125,15 @@ Für normale BaseHarbor-Lifecycle-Operationen sollen Nutzer keine `argocd`-, Flu
 
 Native Tool-UIs/CLIs bleiben für Platform Engineers und Experten verfügbar. BaseHarbor versteckt operative Komplexität, nicht operative Fähigkeiten.
 
-### 8. Compose bleibt First-Class
+### 8. Compose-Kompatibilitaet und Podman Quadlet bleiben First-Class
 
-Compose darf nicht von Kubernetes, GitOps, Argo CD, Flux, CRDs, Cloud-APIs oder späteren Runtime-Mechanismen abhängen.
+Compose-basierte Repository-/Runtime-Definitionen duerfen nicht von Kubernetes, GitOps, Argo CD, Flux, CRDs, Cloud-APIs oder spaeteren Runtime-Mechanismen abhaengen.
 
-Der vollständige aktuelle Pfad bleibt konzeptionell:
+Die aktuellen lokalen Pfade sind:
 
 ```text
-runtime: compose
+runtime: docker  -> Docker Compose
+runtime: podman  -> generierte Quadlets + systemd --user
 delivery: direct
 ```
 

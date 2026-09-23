@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var ErrRuntimeNotFound = errors.New("docker compose or podman compose not found")
+var ErrRuntimeNotFound = errors.New("container runtime orchestration not found")
 var ErrResourceOwnership = errors.New("runtime resource ownership does not match the application project")
 
 type ProjectResource struct {
@@ -34,6 +34,7 @@ type ComposeContainer struct {
 type Compose struct {
 	command string
 	prefix  []string
+	quadlet bool
 }
 
 func (c Compose) Engine() string {
@@ -72,6 +73,9 @@ func detectCompose(ctx context.Context) (Compose, error) {
 	}
 
 	if path, err := exec.LookPath("podman"); err == nil {
+		if QuadletAvailable(ctx) {
+			return Compose{command: path, quadlet: true}, nil
+		}
 		cmd := exec.CommandContext(ctx, path, "compose", "version")
 		if err := cmd.Run(); err == nil {
 			return Compose{command: path, prefix: []string{"compose"}}, nil
@@ -102,35 +106,99 @@ func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile st
 }
 
 func (c Compose) UpProjectProgress(ctx context.Context, project, composeFile, envFile string, onProgress func(string)) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rendered Podman Quadlet runtime")
+		}
+		if err := quadletStartProject(ctx, q, nil); err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("started Podman Quadlet services")
+		}
+		return nil
+	}
 	_, err := c.outputProjectInputProgress(ctx, project, composeFile, envFile, nil, onProgress, "up", "-d")
 	return err
 }
 
 func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletRemoveProject(ctx, q, false)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
 func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletStopProject(ctx, q, nil)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "stop")
 }
 
 func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		return c.DownProject(ctx, project, composeFile, envFile)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
 }
 
 func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletRemoveProject(ctx, q, true)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes")
 }
 
 func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		return c.DestroyProject(ctx, project, composeFile, envFile)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
 }
 
 func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
+	if c.quadlet {
+		containers, err := c.ListComposeContainers(ctx)
+		if err != nil {
+			return "", err
+		}
+		var lines []string
+		for _, container := range containers {
+			if container.Project == project {
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%t", container.Service, container.Name, container.Running))
+			}
+		}
+		sort.Strings(lines)
+		return strings.Join(lines, "\n"), nil
+	}
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
 func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		return quadletLogs(ctx, c.command, q, services)
+	}
 	args := []string{"logs", "--no-color", "--tail", "120"}
 	args = append(args, services...)
 	return c.outputProject(ctx, project, composeFile, envFile, args...)
@@ -139,6 +207,22 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // DiagnosticsProject captures stopped/restarting containers and recent logs
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
+	if c.quadlet {
+		status, statusErr := c.StatusProject(ctx, project, composeFile, envFile)
+		logs, logsErr := c.LogsProject(ctx, project, composeFile, envFile)
+		var b strings.Builder
+		if statusErr != nil {
+			fmt.Fprintf(&b, "Quadlet status failed: %v\n", statusErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet status:\n%s\n", status)
+		}
+		if logsErr != nil {
+			fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet logs:\n%s\n", logs)
+		}
+		return strings.TrimSpace(b.String())
+	}
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
 	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
 
@@ -163,10 +247,28 @@ func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, e
 }
 
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletValidateProject(ctx, q)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }
 
 func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, nil, args...)
+	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
 }
@@ -175,6 +277,17 @@ func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile,
 // stdin without placing that input in the host process argument list. It is
 // intended for sensitive operator flows such as OpenBao unseal/authentication.
 func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, input, args...)
+	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
 }
@@ -615,6 +728,9 @@ func (c Compose) outputProject(ctx context.Context, project, composeFile, envFil
 }
 
 func (c Compose) outputProjectInputProgress(ctx context.Context, project, composeFile, envFile string, input []byte, onProgress func(string), args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -647,6 +763,9 @@ func (c Compose) outputProjectInputProgress(ctx context.Context, project, compos
 }
 
 func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}

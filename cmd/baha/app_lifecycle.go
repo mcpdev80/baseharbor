@@ -51,12 +51,12 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
-				{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
 					return err
 				}},
-				{Name: "compose configuration", Run: func(ctx context.Context) error {
+				{Name: "runtime configuration", Run: func(ctx context.Context) error {
 					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
@@ -182,7 +182,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
 			}
 			if composeRequired {
-				checks = append(checks, preflight.Check{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+				checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
 					compose, err = bhruntime.DetectCompose(ctx)
 					return err
@@ -191,7 +191,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 			if runtimeErr == nil {
 				checks = append(checks,
 					preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-					preflight.Check{Name: "compose configuration", Run: func(ctx context.Context) error {
+					preflight.Check{Name: "runtime configuration", Run: func(ctx context.Context) error {
 						return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
 					}},
 				)

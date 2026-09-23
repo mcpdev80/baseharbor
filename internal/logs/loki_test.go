@@ -237,3 +237,25 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 		t.Fatalf("Loki config must bind IPv4 for host loopback publishing:\n%s", cfg)
 	}
 }
+
+func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFilesForRuntime(m, "podman")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.AlloyConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(data)
+	for _, want := range []string{
+		`^baseharbor-workload-demo-dev(?:_(.+)_[0-9]+|-(.+))$`,
+		`replacement   = "$1$2"`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("Podman Alloy journal config missing %q:\n%s", want, config)
+		}
+	}
+}

@@ -363,7 +363,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-evidence.tsv"
           cat >"$rows" <<EOF
-          Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}
+          Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}; includes Quadlet-only Podman validation
           Pre-Release tested SHA	success	${{ needs.approval.outputs.tested_sha }}
           Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
           Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}, artifact ${{ needs.supplemental.outputs.validation_artifact || 'fallback' }}
@@ -404,7 +404,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}
+          Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}; Podman validated Quadlet-only
           Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	archives, GitHub release and attestations

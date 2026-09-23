@@ -6,11 +6,11 @@ Accepted for the post-v0.4 architecture and required before the v0.5 contract fr
 
 ## Context
 
-BaseHarbor already separates portable application intent from Runtime Providers and Capability Providers. Compose is the complete current Runtime Provider; Kubernetes and OpenShift are later runtime implementations. Capability providers realize logical needs such as SQL, S3, secrets, observability and exposure.
+BaseHarbor already separates portable application intent from Runtime Providers and Capability Providers. The complete current local runtime path uses Docker Compose for Docker and native Quadlets for Podman while preserving Compose-based repository compatibility; Kubernetes and OpenShift are later runtime implementations. Capability providers realize logical needs such as SQL, S3, secrets, observability and exposure.
 
 A second question is independent from both axes: **who delivers and reconciles the desired runtime realization?**
 
-For Compose, BaseHarbor currently performs runtime mutation directly. On Kubernetes/OpenShift, direct API mutation is valid, but established GitOps systems such as Argo CD or Flux may own continuous reconciliation and provide valuable native operational views.
+For the current local runtime, BaseHarbor performs runtime mutation directly: Docker through Docker Compose and Podman through generated Quadlet units. On Kubernetes/OpenShift, direct API mutation is valid, but established GitOps systems such as Argo CD or Flux may own continuous reconciliation and provide valuable native operational views.
 
 Making Argo CD, Flux, Helm, Git or Kubernetes resources part of portable application intent would create product/runtime lock-in. Making BaseHarbor implement every mature operational controller itself would duplicate established OSS and make the BaseHarbor Core responsible for product-specific integration churn.
 
@@ -28,9 +28,10 @@ At the same time, BaseHarbor is intended to become an open ecosystem. Community,
              v                 v                 v
        Runtime Provider  Capability Provider  Delivery Provider
              |                 |                 |
-          Compose           SQL / S3         direct
-        Kubernetes          secrets          delegated/GitOps
-         OpenShift          telemetry
+ Docker Compose / Podman   SQL / S3         direct
+            Quadlet         secrets          delegated/GitOps
+        Kubernetes          telemetry
+         OpenShift
 ```
 
 Hard rule:
@@ -137,14 +138,15 @@ Users should not need `argocd`, Flux-specific CLIs, `kubectl`, Helm or provider-
 
 Native tool UIs and CLIs remain available for platform engineers and expert drill-down. BaseHarbor hides operational complexity, not operational capability.
 
-### 8. Compose remains first-class
+### 8. Compose compatibility and Podman Quadlet remain first-class
 
-Compose must not depend on Kubernetes, GitOps, Argo CD, Flux, CRDs, cloud APIs or other later-runtime mechanisms.
+Compose-based repository/runtime definitions must not depend on Kubernetes, GitOps, Argo CD, Flux, CRDs, cloud APIs or other later-runtime mechanisms.
 
-The complete current path remains conceptually:
+The complete current local paths remain conceptually:
 
 ```text
-runtime: compose
+runtime: docker  -> Docker Compose
+runtime: podman  -> generated Quadlet + systemd --user
 delivery: direct
 ```
 

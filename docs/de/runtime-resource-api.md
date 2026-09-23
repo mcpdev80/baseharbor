@@ -50,7 +50,7 @@ Eine Create-Anforderung ist providerneutral:
 }
 ```
 
-Die Anwendung fordert weder SeaweedFS noch AWS S3, Ceph RGW oder ein anderes konkretes Produkt an. Fuer `object-storage.s3/v1` wird der aktuelle Compose-Referenzpfad hinter der Provider-Grenze durch SeaweedFS realisiert.
+Die Anwendung fordert weder SeaweedFS noch AWS S3, Ceph RGW oder ein anderes konkretes Produkt an. Fuer `object-storage.s3/v1` wird der aktuelle lokale Referenzpfad hinter der Provider-Grenze durch SeaweedFS realisiert. Docker verwendet dafuer Docker Compose; Podman rendert dieselbe Definition als Quadlet.
 
 ## Authorization
 

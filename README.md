@@ -42,7 +42,7 @@ baha up -e dev
 baha doctor -e dev
 ```
 
-> **Runtime status:** Docker/Podman Compose is implemented today. Kubernetes and OpenShift are planned runtime providers and are not implemented yet.
+> **Runtime status:** Docker uses Docker Compose. Podman translates the same Compose-based workload/runtime definitions into native Quadlets managed through rootless `systemd --user`; `podman-compose` is not required. Kubernetes and OpenShift are planned runtime providers and are not implemented yet.
 
 ## Why BaseHarbor?
 
@@ -63,7 +63,7 @@ BaseHarbor
     +--> lifecycle
     |
     v
-Compose today
+Docker Compose / Podman Quadlet today
 Kubernetes / OpenShift planned
 ```
 

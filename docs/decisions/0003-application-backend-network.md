@@ -15,7 +15,7 @@ The application must also remain usable without BaseHarbor.
 
 Every BaseHarbor application environment has one stable logical **Application Backend Network**.
 
-For the current Docker/Podman Compose provider the network name is deterministic:
+For the current local Docker Compose / Podman Quadlet runtime the network name is deterministic:
 
 ```text
 baseharbor-<application>-<environment>_default
@@ -23,7 +23,7 @@ baseharbor-<application>-<environment>_default
 
 BaseHarbor exposes that identity through `ApplicationBackendNetworkName` rather than allowing workload integration code to reconstruct provider naming rules independently.
 
-BaseHarbor-managed PostgreSQL and Valkey services already run on this Compose network. Future workload integration attaches the application containers that require backend access to this network as an **additional** network.
+BaseHarbor-managed PostgreSQL and Valkey services run on this runtime-owned backend network. Docker realizes it through Compose; Podman realizes it through a generated Quadlet network unit. Future workload integration attaches the application containers that require backend access to this network as an **additional** network.
 
 Application-owned networks remain unchanged.
 
@@ -68,7 +68,7 @@ Application code still consumes ordinary variables such as `DATABASE_URL` and `R
 
 ## Ownership and lifecycle
 
-The current Compose backend owns creation and removal of the network together with the BaseHarbor backend project. Lifecycle inspection treats the network as an owned runtime resource and validates the Compose project ownership label before destructive operations.
+The current local runtime backend owns creation and removal of the network together with the BaseHarbor backend project. Docker uses Compose resources; Podman uses generated Quadlet network units. Lifecycle inspection treats the network as an owned runtime resource and validates BaseHarbor ownership before destructive operations.
 
 Once application workload attachment is implemented, shutdown order must detach/stop application workloads before removing the BaseHarbor backend network. BaseHarbor must not silently remove application-owned networks.
 

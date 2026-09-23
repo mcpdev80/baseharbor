@@ -89,6 +89,56 @@ remove_volumes() {
   "$engine" volume rm -f "${targets[@]}" >/dev/null 2>&1 || true
 }
 
+remove_quadlet_units() {
+  [ "$engine" = "podman" ] || return 0
+
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
+  local config_home unit_dir file base unit
+  config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+  unit_dir="$config_home/containers/systemd"
+  [ -d "$unit_dir" ] || return 0
+
+  shopt -s nullglob
+  local -a files=(
+    "$unit_dir"/baseharbor-*.container
+    "$unit_dir"/baseharbor-*.network
+    "$unit_dir"/baseharbor-*.volume
+    "$unit_dir"/baseharbor-*.build
+    "$unit_dir"/baseharbor-*.env
+  )
+
+  for file in "${files[@]}"; do
+    base="$(basename "$file")"
+    case "$base" in
+      *.container)
+        unit="${base%.container}.service"
+        ;;
+      *.network)
+        unit="${base%.network}-network.service"
+        ;;
+      *.volume)
+        unit="${base%.volume}-volume.service"
+        ;;
+      *.build)
+        unit="${base%.build}-build.service"
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+  done
+
+  if [ "${#files[@]}" -gt 0 ]; then
+    rm -f "${files[@]}" >/dev/null 2>&1 || true
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
+  shopt -u nullglob
+}
+
+remove_quadlet_units
 remove_containers
 remove_networks
 remove_volumes

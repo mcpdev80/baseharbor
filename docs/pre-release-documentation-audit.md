@@ -27,6 +27,8 @@ Run this check before every release. Keep the result short.
 - [ ] Architecture describes current architecture, not release history.
 - [ ] Provider/runtime-specific details did not leak into portable concepts.
 - [ ] New decisions have an ADR when rationale must be preserved.
+- [ ] Current runtime docs distinguish Docker Compose from Podman Quadlet execution.
+- [ ] Podman release validation explicitly blocks fallback to `podman compose`.
 
 ## Staleness and duplication
 

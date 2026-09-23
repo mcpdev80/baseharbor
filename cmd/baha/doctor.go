@@ -113,7 +113,9 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
-			finding.Action = "enable the Compose integration for the selected container runtime"
+			finding.Action = "enable the Compose integration for Docker"
+		case "quadlet":
+			finding.Action = "install or enable Podman Quadlet and the user systemd session"
 		case "runtime-config":
 			finding.Action = "repair or deliberately recreate the local BaseHarbor runtime configuration"
 		case "postgres":

@@ -181,7 +181,7 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	}
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
-		return fmt.Errorf("certificate update preflight: Compose is unavailable: %w", err)
+		return fmt.Errorf("certificate update preflight: runtime orchestration is unavailable: %w", err)
 	}
 	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
