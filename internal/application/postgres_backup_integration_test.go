@@ -56,9 +56,9 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 		}
 	}
 
-	backups, err := DumpSQLInstances(ctx, compose, m, files)
+	backups, err := DumpPostgresInstances(ctx, compose, m, files)
 	if err != nil {
-		t.Fatalf("DumpSQLInstances() error = %v", err)
+		t.Fatalf("DumpPostgresInstances() error = %v", err)
 	}
 	if len(backups) != 2 {
 		t.Fatalf("backup count = %d, want 2", len(backups))
@@ -80,8 +80,8 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 		}
 	}
 
-	if err := RestoreSQLInstances(ctx, compose, m, files, backups); err != nil {
-		t.Fatalf("RestoreSQLInstances() error = %v", err)
+	if err := RestorePostgresInstances(ctx, compose, m, files, backups); err != nil {
+		t.Fatalf("RestorePostgresInstances() error = %v", err)
 	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
