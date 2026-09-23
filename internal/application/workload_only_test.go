@@ -13,9 +13,9 @@ func workloadOnlyManifest() Manifest {
 		Name:        "awc",
 		Environment: "production",
 		Services: Services{
-			SQL:      false,
-			Cache:    false,
-			Secrets:  false,
+			SQL:     false,
+			Cache:   false,
+			Secrets: false,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "docker-compose.yml",
@@ -177,7 +177,7 @@ func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
 		Name:        "portable-networks",
 		Environment: "dev",
 		Services: Services{
-			SQL:      true,
+			SQL: true,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "compose.yaml",
