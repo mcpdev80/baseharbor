@@ -156,11 +156,11 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
 		result.Findings = mergeFindings(result.Findings, []Finding{{
 			Capability: "logs",
-			Direction: DirectionExport,
+			Direction:  DirectionExport,
 			Confidence: ConfidenceSuggested,
 			Evidence: []Evidence{{
-				Kind: EvidenceCompose,
-				Path: result.SelectedCompose,
+				Kind:   EvidenceCompose,
+				Path:   result.SelectedCompose,
 				Detail: "application workload can opt into managed stdout/stderr log collection",
 			}},
 		}})
@@ -283,10 +283,10 @@ type composeService struct {
 	Redis         bool
 	ObjectStorage bool
 	HasBuild      bool
-	HasImage    bool
-	HasPorts    bool
-	Ports       []string
-	HealthCheck bool
+	HasImage      bool
+	HasPorts      bool
+	Ports         []string
+	HealthCheck   bool
 }
 
 func detectComposeServices(data []byte) []composeService {
