@@ -24,6 +24,8 @@ type ComposeContainer struct {
 	Name    string
 	Project string
 	Service string
+	Running bool
+	Health  string
 }
 
 // Compose provides the small lifecycle surface BaseHarbor needs from a
@@ -194,14 +196,7 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ strin
 	seen := map[string]struct{}{}
 	var services []string
 	for _, container := range containers {
-		if container.Project != project {
-			continue
-		}
-		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.State.Running}}", container.Name)
-		if err != nil {
-			return nil, fmt.Errorf("inspect running state for %s: %w", container.Name, err)
-		}
-		if strings.TrimSpace(out) != "true" {
+		if container.Project != project || !container.Running {
 			continue
 		}
 		if _, ok := seen[container.Service]; ok {
@@ -218,40 +213,136 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ strin
 // destructive operation. A resource with the expected name but a different
 // Compose project label is an ownership conflict, never an implicit match.
 func (c Compose) InspectProjectResource(ctx context.Context, project string, resource ProjectResource) (bool, error) {
-	if c.command == "" {
-		return false, ErrRuntimeNotFound
+	existing, err := c.InspectProjectResources(ctx, project, []ProjectResource{resource})
+	if err != nil {
+		return false, err
 	}
-	if strings.TrimSpace(project) == "" || strings.TrimSpace(resource.Name) == "" {
-		return false, errors.New("project and resource name are required")
+	return len(existing) == 1, nil
+}
+
+// InspectProjectResources verifies runtime resource existence and ownership in
+// batches by kind. This keeps ownership fail-closed while avoiding repeated
+// list/inspect round-trips on Podman.
+func (c Compose) InspectProjectResources(ctx context.Context, project string, resources []ProjectResource) ([]ProjectResource, error) {
+	if c.command == "" {
+		return nil, ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil, errors.New("project is required")
+	}
+	if len(resources) == 0 {
+		return nil, nil
 	}
 
-	listArgs, inspectArgs, err := resourceCommands(resource)
-	if err != nil {
-		return false, err
+	requested := map[string]map[string]struct{}{}
+	for _, resource := range resources {
+		name := strings.TrimSpace(resource.Name)
+		if name == "" {
+			return nil, errors.New("resource name is required")
+		}
+		switch resource.Kind {
+		case "container", "network", "volume":
+		default:
+			return nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
+		}
+		if requested[resource.Kind] == nil {
+			requested[resource.Kind] = map[string]struct{}{}
+		}
+		requested[resource.Kind][name] = struct{}{}
 	}
-	out, err := c.directOutput(ctx, listArgs...)
-	if err != nil {
-		return false, err
-	}
-	exists := false
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == resource.Name {
-			exists = true
-			break
+
+	found := map[string]struct{}{}
+	for _, kind := range []string{"container", "network", "volume"} {
+		wanted := requested[kind]
+		if len(wanted) == 0 {
+			continue
+		}
+
+		var listArgs []string
+		var inspectPrefix []string
+		var inspectTemplate string
+		switch kind {
+		case "container":
+			listArgs = []string{"container", "ls", "-a", "--format", "{{.Names}}"}
+			inspectPrefix = []string{"container", "inspect", "--format"}
+			inspectTemplate = `{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}`
+		case "network":
+			listArgs = []string{"network", "ls", "--format", "{{.Name}}"}
+			inspectPrefix = []string{"network", "inspect", "--format"}
+			inspectTemplate = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
+		case "volume":
+			listArgs = []string{"volume", "ls", "--format", "{{.Name}}"}
+			inspectPrefix = []string{"volume", "inspect", "--format"}
+			inspectTemplate = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
+		}
+
+		listed, err := c.directOutput(ctx, listArgs...)
+		if err != nil {
+			return nil, err
+		}
+		existingNames := map[string]struct{}{}
+		for _, line := range strings.Split(listed, "\n") {
+			if name := strings.TrimSpace(line); name != "" {
+				existingNames[name] = struct{}{}
+			}
+		}
+
+		var names []string
+		for _, resource := range resources {
+			if resource.Kind != kind {
+				continue
+			}
+			name := strings.TrimSpace(resource.Name)
+			if _, ok := existingNames[name]; !ok {
+				continue
+			}
+			if _, duplicate := found[kind+"\x00"+name]; duplicate {
+				continue
+			}
+			names = append(names, name)
+		}
+		if len(names) == 0 {
+			continue
+		}
+
+		args := append([]string{}, inspectPrefix...)
+		args = append(args, inspectTemplate)
+		args = append(args, names...)
+		inspected, err := c.directOutput(ctx, args...)
+		if err != nil {
+			return nil, fmt.Errorf("inspect %s ownership: %w", kind, err)
+		}
+
+		owners := map[string]string{}
+		for _, line := range strings.Split(inspected, "\n") {
+			parts := strings.Split(strings.TrimSpace(line), "|")
+			if len(parts) != 3 {
+				continue
+			}
+			name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+			owners[name] = firstRuntimeLabel(parts[1], parts[2])
+		}
+
+		for _, name := range names {
+			owner, ok := owners[name]
+			if !ok {
+				return nil, fmt.Errorf("inspect %s %s ownership returned no result", kind, name)
+			}
+			if owner != project {
+				return nil, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, kind, name, project)
+			}
+			found[kind+"\x00"+name] = struct{}{}
 		}
 	}
-	if !exists {
-		return false, nil
-	}
 
-	label, err := c.directOutput(ctx, inspectArgs...)
-	if err != nil {
-		return true, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
+	existing := make([]ProjectResource, 0, len(found))
+	for _, resource := range resources {
+		if _, ok := found[resource.Kind+"\x00"+strings.TrimSpace(resource.Name)]; ok {
+			existing = append(existing, resource)
+		}
 	}
-	if strings.TrimSpace(label) != project {
-		return true, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, resource.Name, project)
-	}
-	return true, nil
+	return existing, nil
 }
 
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
@@ -262,15 +353,9 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 	if project == "" {
 		return errors.New("project is required")
 	}
-	var existing []ProjectResource
-	for _, resource := range resources {
-		found, err := c.InspectProjectResource(ctx, project, resource)
-		if err != nil {
-			return err
-		}
-		if found {
-			existing = append(existing, resource)
-		}
+	existing, err := c.InspectProjectResources(ctx, project, resources)
+	if err != nil {
+		return err
 	}
 	removeKind := func(kind string) error {
 		for _, resource := range existing {
@@ -306,41 +391,63 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 	return nil
 }
 
-func resourceCommands(resource ProjectResource) ([]string, []string, error) {
-	switch resource.Kind {
-	case "container":
-		return []string{"container", "ls", "-a", "--format", "{{.Names}}"}, []string{"container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	case "network":
-		return []string{"network", "ls", "--format", "{{.Name}}"}, []string{"network", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	case "volume":
-		return []string{"volume", "ls", "--format", "{{.Name}}"}, []string{"volume", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	default:
-		return nil, nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
-	}
-}
-
 func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer, error) {
-	out, err := c.directOutput(ctx, "container", "ls", "-a", "--format", "{{.Names}}")
+	out, err := c.directOutput(ctx, "container", "ls", "-aq")
 	if err != nil {
 		return nil, err
 	}
-	var result []ComposeContainer
+
+	var ids []string
 	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if name == "" {
+		if id := strings.TrimSpace(line); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	args := []string{
+		"container", "inspect", "--format",
+		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`,
+	}
+	args = append(args, ids...)
+	inspected, err := c.directOutput(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []ComposeContainer
+	for _, line := range strings.Split(inspected, "\n") {
+		parts := strings.Split(strings.TrimSpace(line), "|")
+		if len(parts) != 7 {
 			continue
 		}
-		labels, err := c.directOutput(ctx, "container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}`, name)
-		if err != nil {
-			return nil, err
-		}
-		project, service, ok := strings.Cut(strings.TrimSpace(labels), "|")
-		if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" {
+		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		project := firstRuntimeLabel(parts[1], parts[2])
+		service := firstRuntimeLabel(parts[3], parts[4])
+		if name == "" || project == "" || service == "" {
 			continue
 		}
-		result = append(result, ComposeContainer{Name: name, Project: strings.TrimSpace(project), Service: strings.TrimSpace(service)})
+		result = append(result, ComposeContainer{
+			Name:    name,
+			Project: project,
+			Service: service,
+			Running: strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
+			Health:  strings.TrimSpace(parts[6]),
+		})
 	}
 	return result, nil
+}
+
+func firstRuntimeLabel(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && value != "<no value>" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c Compose) ContainerHealthStatus(ctx context.Context, container string) (string, error) {
