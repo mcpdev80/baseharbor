@@ -44,6 +44,9 @@ func (s ServiceState) Ready() bool {
 // compatible implementations fall back to the portable running-service query;
 // in that case Health and Publishers remain empty rather than inventing state.
 func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
+	if c.quadlet {
+		return c.serviceStatesFromRuntimeLabels(ctx, project)
+	}
 	out, composeErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
 	if composeErr == nil {
 		states, parseErr := parseComposeServiceStates(out)
