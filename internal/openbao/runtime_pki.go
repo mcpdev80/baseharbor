@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -302,7 +303,8 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 	}
 	if server {
 		template.Subject.CommonName = "baseharbor-runtime"
-		template.DNSNames = []string{"baseharbor-runtime", "baseharbor-secrets"}
+		template.DNSNames = []string{"baseharbor-runtime", "baseharbor-secrets", "localhost"}
+		template.IPAddresses = []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
 		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	} else {
 		uri, err := url.Parse("spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment)
