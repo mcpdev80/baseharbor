@@ -309,6 +309,9 @@ message BindResponse {
   OperationStatus status = 1;
   repeated BindingValue values = 2;
   repeated Diagnostic diagnostics = 3;
+  // "servicebinding.io/v1.1" when values represent a Service Binding 1.1
+  // connection output. BaseHarbor extensions remain namespaced separately.
+  string binding_specification = 4;
 }
 
 // Binding values distinguish explicitly between safe public configuration and
@@ -319,6 +322,9 @@ message BindResponse {
 // uri, username, password, certificates or private-key. BaseHarbor-only output
 // names use the explicit baha.* extension namespace.
 message BindingValue {
+  // Use Service Binding Specification 1.1 well-known names where applicable:
+  // type, provider, host, port, uri, username, password, certificates,
+  // private-key. Non-standard values must be explicitly namespaced.
   string name = 1;
 
   oneof source {
