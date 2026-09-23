@@ -30,6 +30,7 @@ func DefaultEngine() Engine {
 		objectStorageDetector{},
 		openMetricsDetector{},
 		otlpDetector{},
+		runtimeAPIDetector{},
 	}}
 }
 
@@ -152,6 +153,18 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.SecretCandidates = uniqueSorted(result.SecretCandidates)
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
+	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
+		result.Findings = mergeFindings(result.Findings, []Finding{{
+			Capability: "logs",
+			Direction: DirectionExport,
+			Confidence: ConfidenceSuggested,
+			Evidence: []Evidence{{
+				Kind: EvidenceCompose,
+				Path: result.SelectedCompose,
+				Detail: "application workload can opt into managed stdout/stderr log collection",
+			}},
+		}})
+	}
 
 	for _, detector := range e.Detectors {
 		if detector == nil {
