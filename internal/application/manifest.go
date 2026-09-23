@@ -141,7 +141,6 @@ func WithSQLInstances(m Manifest, names ...string) Manifest {
 	return m
 }
 
-
 func WithCacheInstances(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
 		return m
@@ -155,7 +154,6 @@ func WithCacheInstances(m Manifest, names ...string) Manifest {
 	m.Services.Cache = true
 	return m
 }
-
 
 func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
@@ -359,19 +357,19 @@ func (m Manifest) Validate() error {
 	if err := validateSlug("environment", m.Environment); err != nil {
 		return err
 	}
-	postgres := PostgresInstanceNames(m)
-	redis := RedisInstanceNames(m)
+	sql := SQLInstanceNames(m)
+	cache := CacheInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(postgres) == 0 && len(redis) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	if len(sql) == 0 && len(cache) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
-	for _, name := range postgres {
-		if err := validateSlug("PostgreSQL instance name", name); err != nil {
+	for _, name := range sql {
+		if err := validateSlug("SQL instance name", name); err != nil {
 			return err
 		}
 	}
-	for _, name := range redis {
-		if err := validateSlug("Redis/Valkey instance name", name); err != nil {
+	for _, name := range cache {
+		if err := validateSlug("cache instance name", name); err != nil {
 			return err
 		}
 	}
