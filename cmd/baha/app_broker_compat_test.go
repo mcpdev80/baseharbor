@@ -13,6 +13,9 @@ func TestVerifyRuntimeBrokerBuildIdentity(t *testing.T) {
 	if err := verifyRuntimeBrokerBuildIdentity("0.4.15", "abc123"); err != nil {
 		t.Fatalf("matching runtime identity rejected: %v", err)
 	}
+	if err := verifyRuntimeBrokerBuildIdentity("v0.4.15", "abc123"); err != nil {
+		t.Fatalf("v-prefixed matching runtime identity rejected: %v", err)
+	}
 	if err := verifyRuntimeBrokerBuildIdentity("0.4.14", "abc123"); err == nil {
 		t.Fatal("mismatched runtime version was accepted")
 	}
