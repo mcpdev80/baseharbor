@@ -53,6 +53,7 @@ func TestIntegrationDescriptorRejectsCapabilityProviderMismatch(t *testing.T) {
 
 func TestIntegrationDescriptorRequiresEveryProviderCapabilityToHaveSpecification(t *testing.T) {
 	descriptor := IntegrationDescriptor{
+		ID: "baseharbor/test-provider", Version: "0.1.0",
 		Protocol: ProviderProtocolV1,
 		Provider: Provider{
 			Kind:         ProviderPostgreSQL,
