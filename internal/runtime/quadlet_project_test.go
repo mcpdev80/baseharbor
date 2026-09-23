@@ -140,7 +140,9 @@ func TestRenderComposeProjectFilesQuadletsMergesBaseHarborOverride(t *testing.T)
     environment:
       MANAGED: yes
     networks:
-      baseharbor-backend: {}
+      baseharbor-backend:
+        aliases:
+          - api-metrics
 networks:
   baseharbor-backend:
     external: true
@@ -157,6 +159,7 @@ networks:
 	for _, want := range []string{
 		"PublishPort=8080:8080",
 		"Network=baseharbor-demo-backend",
+		"NetworkAlias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
 		if !strings.Contains(api, want) {
