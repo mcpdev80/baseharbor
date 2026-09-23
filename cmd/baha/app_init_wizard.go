@@ -169,7 +169,14 @@ func detectAppProject(root string) (appProjectDetection, error) {
 				d.RedisSource = source
 			}
 		case "object-storage.s3":
-			d.ObjectStorage = d.ObjectStorage || detected
+			staticObjectStorageEvidence := false
+			for _, evidence := range finding.Evidence {
+				if evidence.Kind == repositoryinspect.EvidenceCompose || evidence.Kind == repositoryinspect.EvidenceEnv {
+					staticObjectStorageEvidence = true
+					break
+				}
+			}
+			d.ObjectStorage = d.ObjectStorage || (detected && staticObjectStorageEvidence)
 			d.ObjectStorageSuggested = d.ObjectStorageSuggested || suggested
 			if d.ObjectStorageSource == "" {
 				d.ObjectStorageSource = source
