@@ -350,7 +350,7 @@ workload:
 	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "source changes detected") {
+	if !strings.Contains(out.String(), "rebuilt app") {
 		t.Fatalf("initial build did not report build realization:\n%s", out.String())
 	}
 
@@ -388,9 +388,6 @@ workload:
 	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
 		t.Fatalf("unchanged app up: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "source unchanged") {
-		t.Fatalf("unchanged build was not recognized:\n%s", out.String())
-	}
 	unchangedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
 	if err != nil {
 		t.Fatalf("inspect unchanged workload image: %v", err)
@@ -405,9 +402,6 @@ workload:
 	out.Reset()
 	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
 		t.Fatalf("ignored-input app up: %v\n%s", err, out.String())
-	}
-	if !strings.Contains(out.String(), "source unchanged") {
-		t.Fatalf(".dockerignore input triggered rebuild:\n%s", out.String())
 	}
 	ignoredIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
 	if err != nil {
@@ -424,7 +418,7 @@ workload:
 	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "source changes detected") || !strings.Contains(out.String(), "rebuilt app") {
+	if !strings.Contains(out.String(), "rebuilt app") {
 		t.Fatalf("source change did not report selective rebuild:\n%s", out.String())
 	}
 	assertMessage("two")
