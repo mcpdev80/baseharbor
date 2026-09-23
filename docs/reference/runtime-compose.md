@@ -4,12 +4,14 @@ BaseHarbor's current operational control plane is intentionally single-node and 
 
 ## Services
 
-`baha up` materializes an embedded Compose definition and starts:
+`baha up` materializes the BaseHarbor runtime definition and starts:
 
 - PostgreSQL 18;
 - OpenBao 2.6.x.
 
 Both services bind to loopback by default.
+
+Docker executes the generated runtime through Docker Compose. Podman consumes the same Compose-based runtime model, renders native Quadlet units, and manages them through rootless `systemd --user`. BaseHarbor does not require `podman-compose` for the Podman lifecycle.
 
 The managed control-plane containers are hardened runtime components rather than privileged bootstrap helpers. PostgreSQL and OpenBao run with explicit non-root identities, read-only root filesystems, all Linux capabilities dropped and `no-new-privileges`. Only the paths that must remain writable are exposed as dedicated volumes or tmpfs mounts.
 
@@ -51,12 +53,12 @@ or, when `XDG_DATA_HOME` is unset:
 ~/.local/share/baseharbor/runtime/
 ```
 
-Typical files include:
+Typical protected runtime-state files include:
 
 ```text
 provider-registry.json
 runtime/
-├── compose.yaml
+├── compose.yaml   # canonical generated runtime model; Podman renders this to Quadlet units
 ├── runtime.env
 └── openbao-admin.env
 ```
