@@ -35,7 +35,6 @@ func TestMergeProcessEnvironmentRejectsNUL(t *testing.T) {
 	}
 }
 
-
 func TestComposeUpArgsAlwaysBuildCurrentRepositorySource(t *testing.T) {
 	got := strings.Join(composeUpArgs(nil), " ")
 	if got != "up -d --build" {
