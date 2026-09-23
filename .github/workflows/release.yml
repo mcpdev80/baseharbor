@@ -34,6 +34,7 @@ jobs:
       pre_release_run_id: ${{ steps.gate.outputs.pre_release_run_id }}
       approval_artifact: ${{ steps.gate.outputs.approval_artifact }}
       legacy_pre_release: ${{ steps.gate.outputs.legacy_pre_release }}
+      tested_sha: ${{ steps.gate.outputs.tested_sha }}
     steps:
       - name: Checkout repository metadata
         uses: actions/checkout@v7.0.1
@@ -82,38 +83,81 @@ jobs:
 
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
+          compatible_candidate() {
+            candidate_sha="$1"
+
+            git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
+            git merge-base --is-ancestor "${candidate_sha}" "${tag_sha}" || return 1
+
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image)\.yml$' || true)"
+            if [ -n "${unexpected}" ]; then
+              return 1
+            fi
+            return 0
+          }
+
           if [ -n "${MANUAL_RUN_ID:-}" ]; then
             run_id="${MANUAL_RUN_ID}"
-            run_json="$(curl -fsSL               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "${api}/actions/runs/${run_id}")"
-          else
-            runs_json="$(curl -fsSL               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "${api}/actions/workflows/pre-release.yml/runs?status=success&head_sha=${tag_sha}&per_page=100")"
-            run_id="$(jq -r --arg sha "${tag_sha}" '
-              [.workflow_runs[]
-               | select(.head_sha == $sha)
-               | select(.conclusion == "success")]
-              | sort_by(.run_number)
-              | last
-              | .id // empty
-            ' <<<"${runs_json}")"
-            test -n "${run_id}" || {
-              echo "No successful Pre-Release found for tag SHA ${tag_sha}." >&2
+            run_json="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api}/actions/runs/${run_id}")"
+
+            test "$(jq -r '.conclusion' <<<"${run_json}")" = "success" || {
+              echo "Selected Pre-Release run is not successful." >&2
               exit 1
             }
-            run_json="$(jq -c --argjson id "${run_id}" '.workflow_runs[] | select(.id == $id)' <<<"${runs_json}")"
+            test "$(jq -r '.path' <<<"${run_json}")" = ".github/workflows/pre-release.yml" || {
+              echo "Selected run is not the Pre-Release workflow." >&2
+              exit 1
+            }
+
+            tested_sha="$(jq -r '.head_sha' <<<"${run_json}")"
+            compatible_candidate "${tested_sha}" || {
+              echo "Selected Pre-Release SHA ${tested_sha} is not compatible with release tag SHA ${tag_sha}." >&2
+              echo "Only these post-validation files may differ:" >&2
+              echo "  .github/workflows/pre-release.yml" >&2
+              echo "  .github/workflows/release.yml" >&2
+              echo "  .github/workflows/runtime-image.yml" >&2
+              echo "Actual changed files:" >&2
+              git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
+              exit 1
+            }
+          else
+            runs_json="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api}/actions/workflows/pre-release.yml/runs?status=success&per_page=100")"
+
+            run_id=""
+            run_json=""
+            tested_sha=""
+
+            while IFS=$'\t' read -r candidate_id candidate_sha; do
+              [ -n "${candidate_id}" ] || continue
+              if compatible_candidate "${candidate_sha}"; then
+                run_id="${candidate_id}"
+                tested_sha="${candidate_sha}"
+                run_json="$(jq -c --argjson id "${candidate_id}" '.workflow_runs[] | select(.id == $id)' <<<"${runs_json}")"
+                break
+              fi
+            done < <(jq -r '.workflow_runs | sort_by(.run_number) | reverse[] | [.id, .head_sha] | @tsv' <<<"${runs_json}")
+
+            test -n "${run_id}" || {
+              echo "No successful compatible Pre-Release found for tag SHA ${tag_sha}." >&2
+              exit 1
+            }
           fi
 
-          test "$(jq -r '.conclusion' <<<"${run_json}")" = "success" || {
-            echo "Selected Pre-Release run is not successful." >&2
-            exit 1
-          }
-          test "$(jq -r '.head_sha' <<<"${run_json}")" = "${tag_sha}" || {
-            echo "Selected Pre-Release run does not belong to the tagged commit." >&2
-            exit 1
-          }
-          test "$(jq -r '.path' <<<"${run_json}")" = ".github/workflows/pre-release.yml" || {
-            echo "Selected run is not the Pre-Release workflow." >&2
-            exit 1
-          }
+          if [ "${tested_sha}" != "${tag_sha}" ]; then
+            echo "Using CI-only descendant handoff:"
+            echo "  tested SHA: ${tested_sha}"
+            echo "  tag SHA:    ${tag_sha}"
+            echo "  allowed post-validation changes:"
+            git diff --name-only "${tested_sha}" "${tag_sha}" --
+          fi
 
           artifacts_json="$(curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "${api}/actions/runs/${run_id}/artifacts?per_page=100")"
 
@@ -148,6 +192,7 @@ jobs:
           echo "pre_release_run_id=${run_id}" >> "${GITHUB_OUTPUT}"
           echo "approval_artifact=${approval_artifact}" >> "${GITHUB_OUTPUT}"
           echo "legacy_pre_release=${legacy_pre_release}" >> "${GITHUB_OUTPUT}"
+          echo "tested_sha=${tested_sha}" >> "${GITHUB_OUTPUT}"
 
   supplemental:
     name: release-only-checks-not-covered-by-pre-release
@@ -256,6 +301,7 @@ jobs:
           rows="$RUNNER_TEMP/release-evidence.tsv"
           cat >"$rows" <<EOF
           Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}
+          Pre-Release tested SHA	success	${{ needs.approval.outputs.tested_sha }}
           Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
           Supplemental release-only checks	${{ needs.supplemental.result }}	only checks absent from the consumed Pre-Release
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
@@ -295,7 +341,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Pre-Release handoff	${{ needs.approval.result }}	consumed run ${{ needs.approval.outputs.pre_release_run_id }}
+          Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}
           Supplemental release-only checks	${{ needs.supplemental.result }}	only checks absent from the consumed Pre-Release
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	archives, GitHub release and attestations
