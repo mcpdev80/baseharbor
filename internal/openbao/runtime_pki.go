@@ -127,6 +127,10 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 	if err != nil || !brokerOK {
 		return false, err
 	}
+	loopbackOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "127.0.0.1", "")
+	if err != nil || !loopbackOK {
+		return false, err
+	}
 	expectedURI := "spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment
 	clientOK, err := runtimeIdentityPairValid(files.ClientCert, files.ClientKey, ca, x509.ExtKeyUsageClientAuth, "", expectedURI)
 	if err != nil || !clientOK {
