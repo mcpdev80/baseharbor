@@ -113,9 +113,12 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	for _, rel := range result.ComposeCandidates {
 		services := detectComposeServices(snapshot.Files[rel])
 		for _, service := range services {
-			if manifest == nil && rel == result.SelectedCompose && !service.Postgres && !service.Redis &&
-				(service.HasBuild || service.HasImage || service.HasPorts) {
-				result.WorkloadServices = append(result.WorkloadServices, service.Name)
+			if manifest == nil && rel == result.SelectedCompose {
+				if service.Postgres || service.Redis || service.ObjectStorage {
+					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
+				} else if service.HasBuild || service.HasImage || service.HasPorts {
+					result.WorkloadServices = append(result.WorkloadServices, service.Name)
+				}
 			}
 			for _, port := range service.Ports {
 				result.Ports = append(result.Ports, PortEvidence{
@@ -148,6 +151,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	}
 	result.SecretCandidates = uniqueSorted(result.SecretCandidates)
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
+	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
 
 	for _, detector := range e.Detectors {
 		if detector == nil {
@@ -258,10 +262,11 @@ func classifyFile(rel string) (string, bool) {
 }
 
 type composeService struct {
-	Name        string
-	Postgres    bool
-	Redis       bool
-	HasBuild    bool
+	Name          string
+	Postgres      bool
+	Redis         bool
+	ObjectStorage bool
+	HasBuild      bool
 	HasImage    bool
 	HasPorts    bool
 	Ports       []string
@@ -300,6 +305,7 @@ func detectComposeServices(data []byte) []composeService {
 			lowerName := strings.ToLower(name)
 			item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
 			item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
+			item.ObjectStorage = composeObjectStorageMarker(lowerName)
 			items[name] = item
 			inPorts = false
 			continue
@@ -315,6 +321,7 @@ func detectComposeServices(data []byte) []composeService {
 			image := strings.TrimSpace(strings.TrimPrefix(lower, "image:"))
 			item.Postgres = item.Postgres || strings.Contains(image, "postgres") || strings.Contains(image, "postgresql")
 			item.Redis = item.Redis || strings.Contains(image, "redis") || strings.Contains(image, "valkey")
+			item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(image)
 		case strings.HasPrefix(lower, "build:"):
 			item.HasBuild = true
 		case lower == "ports:" || strings.HasPrefix(lower, "ports:"):
@@ -484,6 +491,16 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
 	}
 	return nil
+}
+
+func composeObjectStorageMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{"minio/minio", "seaweedfs", "chrislusf/seaweedfs", "radosgw", "ceph-rgw"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return value == "minio" || value == "seaweedfs" || value == "radosgw"
 }
 
 func readEnvNames(data []byte) []string {
@@ -806,7 +823,12 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		if service.Redis {
 			analysis.RedisInstances = append(analysis.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
 		}
-		if !service.Postgres && !service.Redis && (service.HasBuild || service.HasImage || service.HasPorts) {
+		if service.ObjectStorage {
+			analysis.ObjectStorageServices = append(analysis.ObjectStorageServices, service.Name)
+		}
+		if service.Postgres || service.Redis || service.ObjectStorage {
+			analysis.InfrastructureServices = append(analysis.InfrastructureServices, service.Name)
+		} else if service.HasBuild || service.HasImage || service.HasPorts {
 			analysis.WorkloadServices = append(analysis.WorkloadServices, service.Name)
 		}
 		for _, port := range service.Ports {
@@ -823,6 +845,8 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	}
 	analysis.PostgresInstances = uniqueSorted(analysis.PostgresInstances)
 	analysis.RedisInstances = uniqueSorted(analysis.RedisInstances)
+	analysis.ObjectStorageServices = uniqueSorted(analysis.ObjectStorageServices)
+	analysis.InfrastructureServices = uniqueSorted(analysis.InfrastructureServices)
 	analysis.WorkloadServices = uniqueSorted(analysis.WorkloadServices)
 	sort.Slice(analysis.Ports, func(i, j int) bool {
 		if analysis.Ports[i].Service != analysis.Ports[j].Service {
