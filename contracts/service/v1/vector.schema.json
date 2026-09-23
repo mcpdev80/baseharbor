@@ -28,7 +28,13 @@
     },
     "extensions": {
       "type": "object",
-      "description": "Only demonstrated cross-provider semantics belong here; provider search/index tuning is forbidden."
+      "patternProperties": {
+        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Versioned provider-neutral BaseHarbor extensions only."
     }
   }
 }
