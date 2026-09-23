@@ -204,7 +204,10 @@ func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error 
 		return errors.New("runtime broker image is incompatible: build identity is missing")
 	}
 	if expectedVersion != "" && actualVersion != expectedVersion {
-		return fmt.Errorf("runtime broker image is incompatible: CLI version %s requires runtime version %s, got %s", expectedVersion, expectedVersion, actualVersion)
+		developmentPair := expectedVersion == "dev" && actualVersion == "edge"
+		if !developmentPair {
+			return fmt.Errorf("runtime broker image is incompatible: CLI version %s requires runtime version %s, got %s", expectedVersion, expectedVersion, actualVersion)
+		}
 	}
 	if expectedCommit != "" && expectedCommit != "none" && actualCommit != expectedCommit {
 		if actualCommit == "" {
