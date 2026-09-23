@@ -123,6 +123,67 @@ func composeUpArgs(services []string) []string {
 	return args
 }
 
+func composeUpArgsNoBuild(services []string) []string {
+	args := []string{"up", "-d"}
+	if len(services) > 0 {
+		args = append(args, "--no-deps")
+		args = append(args, services...)
+	}
+	return args
+}
+
+func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rebuilding changed Podman Quadlet workload image")
+		}
+		if err := quadletBuildProject(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		return nil
+	}
+	args := []string{"build"}
+	args = append(args, services...)
+	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	return err
+}
+
+func (c Compose) UpProjectFilesSelectedNoBuildProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rendered Podman Quadlet workload")
+		}
+		if err := quadletStartProject(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		if onProgress != nil {
+			onProgress("started Podman Quadlet workload")
+		}
+		return nil
+	}
+	args := composeUpArgsNoBuild(services)
+	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	return err
+}
+
 func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
 	if c.quadlet {
 		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
