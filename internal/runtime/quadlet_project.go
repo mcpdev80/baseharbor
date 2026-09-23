@@ -45,7 +45,7 @@ type quadletComposeService struct {
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
 	Logging     quadletComposeLogging     `yaml:"logging"`
-	Secrets     quadletStringSet          `yaml:"secrets"`
+	Secrets     quadletSecretRefs         `yaml:"secrets"`
 }
 
 type quadletComposeResource struct {
@@ -57,6 +57,55 @@ type quadletComposeResource struct {
 type quadletComposeSecret struct {
 	File     string `yaml:"file"`
 	External bool   `yaml:"external"`
+}
+
+
+type quadletSecretRef struct {
+	Source string
+	Target string
+}
+
+type quadletSecretRefs []quadletSecretRef
+
+func (s *quadletSecretRefs) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case 0:
+		return nil
+	case yaml.SequenceNode:
+		var refs []quadletSecretRef
+		for _, item := range node.Content {
+			switch item.Kind {
+			case yaml.ScalarNode:
+				name := strings.TrimSpace(item.Value)
+				if name != "" {
+					refs = append(refs, quadletSecretRef{Source: name, Target: name})
+				}
+			case yaml.MappingNode:
+				var raw struct {
+					Source string `yaml:"source"`
+					Target string `yaml:"target"`
+				}
+				if err := item.Decode(&raw); err != nil {
+					return err
+				}
+				source := strings.TrimSpace(raw.Source)
+				if source == "" {
+					return errors.New("Compose secret mapping requires source")
+				}
+				target := strings.TrimSpace(raw.Target)
+				if target == "" {
+					target = source
+				}
+				refs = append(refs, quadletSecretRef{Source: source, Target: target})
+			default:
+				return errors.New("unsupported Compose secret reference syntax")
+			}
+		}
+		*s = refs
+		return nil
+	default:
+		return errors.New("Compose secrets must be a sequence")
+	}
 }
 
 type quadletComposeHealthcheck struct {
@@ -443,7 +492,15 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			fmt.Fprintf(&unit, "Volume=%s\n", quadletMount)
 		}
 
-		for _, secretName := range service.Secrets {
+		for _, secretRef := range service.Secrets {
+			secretName := strings.TrimSpace(secretRef.Source)
+			secretTarget := strings.TrimSpace(secretRef.Target)
+			if secretName == "" {
+				return QuadletProject{}, fmt.Errorf("Compose service %q references an empty secret source", serviceName)
+			}
+			if secretTarget == "" {
+				secretTarget = secretName
+			}
 			secret, ok := model.Secrets[secretName]
 			if !ok {
 				return QuadletProject{}, fmt.Errorf("Compose service %q references undeclared secret %q", serviceName, secretName)
@@ -462,7 +519,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			if err != nil {
 				return QuadletProject{}, err
 			}
-			fmt.Fprintf(&unit, "Volume=%s:/run/secrets/%s:ro\n", source, secretName)
+			fmt.Fprintf(&unit, "Volume=%s:/run/secrets/%s:ro\n", source, secretTarget)
 		}
 
 		if len(service.Command) > 0 {
