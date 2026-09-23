@@ -206,18 +206,18 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 	if err != nil {
 		return err
 	}
+	labels := map[string]string{}
+	labels["job"] = "baseharbor-applications"
+	labels["baseharbor_application"] = d.app.Name
+	labels["baseharbor_environment"] = d.app.Environment
+	labels["baseharbor_service"] = binding.Metrics.Service
+	labels["baseharbor_source"] = resource.Name
+	labels["baseharbor_source_class"] = string(application.MetricsSourceApplication)
+	labels["baseharbor_metrics_path"] = binding.Metrics.Path
+	labels["baseharbor_metrics_scheme"] = binding.Metrics.Scheme
 	target := targetGroup{
 		Targets: []string{net.JoinHostPort(application.MetricsTargetAlias(d.app, binding.Metrics.Service), strconv.Itoa(binding.Metrics.Port))},
-		Labels: map[string]string{
-			"job":                     "baseharbor-applications",
-			"baseharbor_application":  d.app.Name,
-			"baseharbor_environment":  d.app.Environment,
-			"baseharbor_service":      binding.Metrics.Service,
-			"baseharbor_source":       resource.Name,
-			"baseharbor_source_class": string(application.MetricsSourceApplication),
-			"baseharbor_metrics_path": binding.Metrics.Path,
-			"baseharbor_metrics_scheme": binding.Metrics.Scheme,
-		},
+		Labels:  labels,
 	}
 	data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
 	if err != nil {
