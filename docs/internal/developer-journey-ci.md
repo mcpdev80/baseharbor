@@ -1,101 +1,129 @@
 # Developer journey acceptance
 
-BaseHarbor's developer-facing promise is broader than individual command correctness. A release should prove that a developer can start from a clean application checkout, provide only information BaseHarbor cannot safely derive, and reach a healthy application without hidden manual state.
+BaseHarbor's developer promise is not only that individual commands work. A release must prove that a developer can start from an ordinary pristine repository, provide only information BaseHarbor cannot safely derive or generate, and reach a verified READY application without hidden manual state.
 
-The `developer-journey` GitHub Actions workflow is the release-facing acceptance layer for that promise.
+The external `mcpdev80/baseharbor-demo` repository is the canonical release-facing consumer for this journey.
 
-## What the journey proves
+## Canonical human journey
 
-The first reference consumer is MailFlow from its `main` branch.
-
-The workflow validates this sequence:
+The product contract is:
 
 ```text
-clean BaseHarbor checkout
+pristine ordinary repository
         |
         v
-build exact baha + runtime image under test
+optional: baha app inspect .
         |
         v
-occupy common ports 5432 / 8200
+baha app init
+        |
+        +--> detect workload and replaceable infrastructure
+        +--> ask only about ambiguous/user-owned decisions
+        +--> application-secret policy
+        +--> human-readable adoption summary
         |
         v
-clone MailFlow main
+baseharbor.yaml
         |
         v
-baha up --yes --recovery-file <secure-path>
+baha up
         |
-        +--> safe control-plane port fallback
-        +--> OpenBao bootstrap
-        +--> repository detection
-        +--> required-secret failure is visible and fail-closed
-        |
-        v
-supply only SECRET_KEY securely via stdin
-        |
-        v
-baha up --yes
-        |
-        +--> reuse control plane + OpenBao
-        +--> converge managed backends
-        +--> start MailFlow workload
-        +--> verify readiness
-        |
-        v
-status + doctor
-        |
-        v
-verify real MailFlow workload and native backend URLs
-        |
-        v
-app down + baha up --yes + doctor
+        +--> OpenBao first-run recovery handling
+        +--> managed provider/runtime credentials
+        +--> inline required application-secret input
+        +--> safe port handling
+        +--> backend/runtime convergence
+        +--> workload build/start
+        +--> readiness verification
         |
         v
 READY
 ```
 
-For a pristine repository the canonical human adoption path is `baha app init` followed by `baha up`. Once `baseharbor.yaml` exists, `baha up` remains the normal lifecycle command. Advanced commands such as `baha app plan`, `baha app apply` and `baha app doctor` remain available for CI, automation and troubleshooting, but they are not required knowledge for the basic developer path.
+The normal journey must not require:
 
-## Why this is separate from unit and integration tests
+- manual YAML append/edit steps to complete detected intent;
+- repository Compose rewriting;
+- a separate OpenBao bootstrap command;
+- a mandatory `plan -> preflight -> apply` command sequence;
+- shell piping for normal human secret input.
 
-Unit and package tests remain the fast correctness layer. Existing runtime, broker, backup/restore and application integration workflows test focused contracts in depth.
+`plan`, `preflight`, explicit `app apply`, `secret set --stdin` and lower-level lifecycle commands remain supported automation/troubleshooting interfaces.
 
-The developer journey answers a different question:
+## Guided and deterministic acceptance are separate
 
-> Does the product still feel like one coherent path when a real developer uses it?
+The demo acceptance suite intentionally contains two different proof paths.
 
-A change can pass isolated tests while accidentally requiring an undocumented command, relying on repository-local hidden state, producing an unusable missing-secret error, or breaking the restart path. The journey gate exists to catch those regressions.
+### Guided human acceptance
 
-## Required behavior
+The `guided` gate starts with:
 
-The workflow intentionally creates port conflicts on the default PostgreSQL and OpenBao ports. `baha up --yes` must select safe alternatives without modifying or destroying the unrelated containers occupying those ports.
+```text
+compose.yaml
+application source
+Dockerfiles
 
-On a fresh managed-secret installation, BaseHarbor cannot safely invent where the operator wants OpenBao recovery material stored. Interactive use asks for that path. Non-interactive use supplies `--recovery-file PATH`; the path remains outside BaseHarbor application state.
-
-A required external application secret is intentionally absent during the first apply/up. In an interactive terminal BaseHarbor must identify it, offer secure hidden-value entry, store it directly in managed secret storage and continue the same lifecycle operation. In CI/non-interactive mode it must remain fail-closed and print the exact explicit `baha app secret set KEY --stdin` remediation path.
-
-After successful startup, the workflow verifies that MailFlow receives standard application-facing interfaces such as `DATABASE_URL` and `REDIS_URL`. The application does not need a BaseHarbor SDK or runtime login.
-
-The restart portion validates that `baha app down` preserves durable state and that the recommended repository command `baha up --yes` returns the application to a healthy state.
-
-Focused operator or CI workflows that intentionally need only the BaseHarbor platform can use the explicit advanced mode:
-
-```bash
-baha up --control-plane-only
+NO baseharbor.yaml
+NO .baseharbor/
 ```
 
-That flag is not the normal developer path.
+It drives the CLI through a real pseudo-terminal so terminal detection, prompts and hidden secret input use the same code paths as a person.
 
-## Relationship to the MVP reference matrix
+It proves:
 
-This workflow establishes the reusable developer-journey pattern for issue #80 and the one-command application lifecycle from #81. MailFlow is the first consumer because it already exercises PostgreSQL, Valkey, managed secrets and a multi-service workload.
+- guided Compose selection when the repository contains multiple candidates;
+- capability-first adoption;
+- application-secret naming/policy;
+- human-readable confirmation;
+- unchanged repository Compose;
+- OpenBao first-run handling through `baha up`;
+- inline missing-secret resolution;
+- convergence to READY in the same normal repository flow.
 
-AWC and AI-Coding-System remain tracked in the final reference-app matrix (#45). Their acceptance should reuse the same principles instead of creating different operator workflows for each application.
+### Deterministic automation acceptance
+
+The separate `init` gate exercises `baha app inspect` and `baha app init --quick` on an unambiguous ordinary repository fixture.
+
+It proves that CI/agents can use deterministic detection without interactive assumptions and that heuristic secret candidates are not silently promoted.
+
+Focused component gates may continue to use explicit low-level commands where that is the contract under test.
+
+## Runtime parity
+
+The release-facing demo matrix runs against both supported local runtime implementations:
+
+- Docker / Docker Compose;
+- Podman / native Quadlet + rootless `systemd --user`.
+
+Equivalent user-visible behavior must remain BaseHarbor-level behavior rather than provider-specific UX.
+
+## Failure and recovery expectations
+
+Known failures should be classified and actionable.
+
+Examples:
+
+- configurable occupied ports are resolved before workload start where safely possible;
+- explicit operator port choices are never silently replaced;
+- fixed occupied ports fail before workload start with a concrete action;
+- missing required application secrets are resolved inline for an interactive human flow and fail closed with explicit automation remediation in non-interactive mode;
+- raw Docker/Podman/provider output is diagnostic detail, not the primary human error.
 
 ## Release rule
 
-Before the next stable release, the developer-facing happy path must be green together with the existing focused acceptance workflows.
+The mandatory pre-release validation is the proof point for the complete developer journey.
 
-The intended product rule is:
+Pre-release must pin and record both:
 
-> Clone the application, run `baha up`, provide only what cannot be derived or generated safely, and get a verified working application.
+- the exact BaseHarbor candidate SHA;
+- the exact `baseharbor-demo` SHA used as the external consumer contract.
+
+The pre-release approval is valid only when source/build validation, Docker runtime core, Podman runtime core and the complete external demo matrix—including the guided human gate—are green.
+
+The final release workflow consumes that immutable approval/evidence. It must not rerun the same expensive acceptance matrix; it performs only checks/publishing that were not already proven by pre-release.
+
+## Product rule
+
+> Clone an ordinary application repository, run `baha app init`, then `baha up`. Provide only what BaseHarbor cannot safely derive or generate, and get a verified working application.
+
+Once `baseharbor.yaml` exists, `baha up` remains the normal lifecycle command.
