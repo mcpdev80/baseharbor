@@ -856,6 +856,26 @@ func writeServiceYAML(b *strings.Builder, service string, enabled bool, instance
 	}
 }
 
+func secretRequirementPointer(m *Manifest, field string, index int) *SecretRequirement {
+	if index < 0 {
+		return nil
+	}
+	switch field {
+	case "required":
+		if index >= len(m.Secrets.Required) {
+			return nil
+		}
+		return &m.Secrets.Required[index]
+	case "optional":
+		if index >= len(m.Secrets.Optional) {
+			return nil
+		}
+		return &m.Secrets.Optional[index]
+	default:
+		return nil
+	}
+}
+
 // ParseYAML parses the intentionally small v1 manifest grammar without adding a runtime dependency.
 func ParseYAML(input string) (Manifest, error) {
 	var m Manifest
@@ -957,8 +977,8 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && trim == "required:" {
-				secretField = "required"
+			if section == "secrets" && (trim == "required:" || trim == "optional:") {
+				secretField = strings.TrimSuffix(trim, ":")
 				continue
 			}
 			if section == "exposure" && trim == "http:" {
@@ -1026,17 +1046,22 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && secretField == "required" && strings.HasPrefix(trim, "- ") {
+			if section == "secrets" && (secretField == "required" || secretField == "optional") && strings.HasPrefix(trim, "- ") {
 				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
 				name := item
 				if strings.HasPrefix(item, "name:") {
 					name = strings.TrimSpace(strings.TrimPrefix(item, "name:"))
 				}
 				if name == "" {
-					return Manifest{}, fmt.Errorf("line %d: required secret key is empty", lineNo)
+					return Manifest{}, fmt.Errorf("line %d: application secret key is empty", lineNo)
 				}
-				m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
-				secretIndex = len(m.Secrets.Required) - 1
+				if secretField == "required" {
+					m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
+					secretIndex = len(m.Secrets.Required) - 1
+				} else {
+					m.Secrets.Optional = append(m.Secrets.Optional, SecretRequirement{Name: name})
+					secretIndex = len(m.Secrets.Optional) - 1
+				}
 				continue
 			}
 			if section == "workload" && workloadField == "services" && strings.HasPrefix(trim, "- ") {
@@ -1153,8 +1178,12 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && secretField == "required" && secretIndex >= 0 && trim == "generate:" {
-				m.Secrets.Required[secretIndex].Generate = &SecretGeneration{}
+			if section == "secrets" && (secretField == "required" || secretField == "optional") && secretIndex >= 0 && trim == "generate:" {
+				requirement := secretRequirementPointer(&m, secretField, secretIndex)
+				if requirement == nil {
+					return Manifest{}, fmt.Errorf("line %d: invalid secret requirement", lineNo)
+				}
+				requirement.Generate = &SecretGeneration{}
 				secretGenerate = true
 				continue
 			}
@@ -1207,7 +1236,8 @@ func ParseYAML(input string) (Manifest, error) {
 					continue
 				}
 			}
-			if section != "secrets" || secretField != "required" || secretIndex < 0 || !secretGenerate || m.Secrets.Required[secretIndex].Generate == nil {
+			requirement := secretRequirementPointer(&m, secretField, secretIndex)
+			if section != "secrets" || requirement == nil || !secretGenerate || requirement.Generate == nil {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
 			key, value, ok := strings.Cut(trim, ":")
@@ -1215,7 +1245,7 @@ func ParseYAML(input string) (Manifest, error) {
 				return Manifest{}, fmt.Errorf("line %d: expected generated secret key: value", lineNo)
 			}
 			value = strings.TrimSpace(value)
-			generation := m.Secrets.Required[secretIndex].Generate
+			generation := requirement.Generate
 			switch key {
 			case "type":
 				generation.Type = value
