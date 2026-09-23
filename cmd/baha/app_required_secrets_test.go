@@ -100,7 +100,7 @@ func TestManifestFromCreateArgsAllowsS3OnlyWithoutImplicitPostgres(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(application.PostgresInstanceNames(m)) != 0 {
+	if len(application.SQLInstanceNames(m)) != 0 {
 		t.Fatalf("S3-only manifest unexpectedly includes PostgreSQL: %#v", m)
 	}
 	if !reflect.DeepEqual(application.ObjectStorageBucketNames(m), []string{"uploads"}) {
