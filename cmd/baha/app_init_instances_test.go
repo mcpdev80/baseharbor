@@ -14,7 +14,7 @@ func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing
 	d := appProjectDetection{
 		Name:              "mailflow",
 		SQL:               true,
-		SQLInstances: []string{"primary", "analytics"},
+		SQLInstances:      []string{"primary", "analytics"},
 		Cache:             true,
 		CacheInstances:    []string{"cache", "sessions"},
 	}
