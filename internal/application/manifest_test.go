@@ -220,8 +220,6 @@ func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
 			t.Fatalf("sparse YAML contains disabled capability %q:\n%s", unwanted, yaml)
 		}
 	}
-
-
 }
 
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
