@@ -366,8 +366,8 @@ The explicit flag-based path remains available and deterministic for CI, scripts
 ```bash
 baha app init mailflow \
   --environment production \
-  --postgres \
-  --redis \
+  --sql \
+  --cache \
   --require-secret SECRET_KEY
 ```
 
@@ -402,20 +402,20 @@ Multiple independent logical buckets use repeated `--s3-bucket`; `--s3` requests
 
 Application backup/restore currently fails closed when managed object storage is declared because bucket contents are not yet part of the recovery unit.
 
-## Multiple PostgreSQL and Valkey instances
+## Multiple SQL and cache instances
 
 ```bash
-baha app init demo --postgres --redis
+baha app init demo --sql --cache
 ```
 
 Named logical instances:
 
 ```bash
 baha app init demo \
-  --postgres-instance primary \
-  --postgres-instance analytics \
-  --redis-instance cache \
-  --redis-instance sessions
+  --sql-instance primary \
+  --sql-instance analytics \
+  --cache-instance cache \
+  --cache-instance sessions
 ```
 
 Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
