@@ -191,9 +191,9 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 		sources := map[string]string{
 			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
 			"baseharbor-runtime-client-cert": filepath.Join(identityDir, "client-cert.pem"),
-			"baseharbor-runtime-client-key": filepath.Join(identityDir, "client-key.pem"),
-			"baseharbor-tls-cert":           filepath.Join(identityDir, "workload-cert.pem"),
-			"baseharbor-tls-key":            filepath.Join(identityDir, "workload-key.pem"),
+			"baseharbor-runtime-client-key":  filepath.Join(identityDir, "client-key.pem"),
+			"baseharbor-tls-cert":            filepath.Join(identityDir, "workload-cert.pem"),
+			"baseharbor-tls-key":             filepath.Join(identityDir, "workload-key.pem"),
 		}
 		runtimeSecretFiles = make(map[string]string, len(sources))
 		for name, hostPath := range sources {
