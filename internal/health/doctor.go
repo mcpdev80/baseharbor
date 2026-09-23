@@ -28,7 +28,7 @@ func Doctor() []Check {
 	containerRuntime, runtimeOK := checkContainerRuntime()
 	checks = append(checks, containerRuntime)
 	if runtimeOK {
-		checks = append(checks, checkCompose(containerRuntime.Name))
+		checks = append(checks, checkRuntimeOrchestration(containerRuntime.Name))
 	}
 	checks = append(checks, RuntimeChecks()...)
 	return checks
@@ -71,13 +71,19 @@ func checkContainerRuntime() (Check, bool) {
 	return Check{Name: "container-runtime", OK: false, Message: "docker/podman daemon not reachable"}, false
 }
 
-func checkCompose(runtimeName string) Check {
+func checkRuntimeOrchestration(runtimeName string) Check {
 	path, err := exec.LookPath(runtimeName)
 	if err != nil {
-		return Check{Name: "compose", OK: false, Message: "runtime executable missing"}
+		return Check{Name: "runtime-orchestration", OK: false, Message: "runtime executable missing"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if runtimeName == "podman" {
+		if !bhruntime.QuadletAvailable(ctx) {
+			return Check{Name: "quadlet", OK: false, Message: "Podman Quadlet unavailable"}
+		}
+		return Check{Name: "quadlet", OK: true, Message: "Podman Quadlet available"}
+	}
 	if err := exec.CommandContext(ctx, path, "compose", "version").Run(); err != nil {
 		return Check{Name: "compose", OK: false, Message: runtimeName + " compose unavailable"}
 	}
