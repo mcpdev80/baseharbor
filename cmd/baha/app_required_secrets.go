@@ -62,6 +62,7 @@ func checkRequiredApplicationSecrets(
 			}
 			return &machine.Error{
 				Code:        machine.ErrorRequiredSecretMissing,
+				CauseCode:   "required_secret_missing",
 				Message:     fmt.Sprintf("Required application secret %s is missing or unusable.", status.Name),
 				Resource:    status.Name,
 				Remediation: "requires developer input",
