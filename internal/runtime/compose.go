@@ -207,6 +207,22 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // DiagnosticsProject captures stopped/restarting containers and recent logs
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
+	if c.quadlet {
+		status, statusErr := c.StatusProject(ctx, project, composeFile, envFile)
+		logs, logsErr := c.LogsProject(ctx, project, composeFile, envFile)
+		var b strings.Builder
+		if statusErr != nil {
+			fmt.Fprintf(&b, "Quadlet status failed: %v\n", statusErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet status:\n%s\n", status)
+		}
+		if logsErr != nil {
+			fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet logs:\n%s\n", logs)
+		}
+		return strings.TrimSpace(b.String())
+	}
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
 	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
 
@@ -712,6 +728,9 @@ func (c Compose) outputProject(ctx context.Context, project, composeFile, envFil
 }
 
 func (c Compose) outputProjectInputProgress(ctx context.Context, project, composeFile, envFile string, input []byte, onProgress func(string), args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -744,6 +763,9 @@ func (c Compose) outputProjectInputProgress(ctx context.Context, project, compos
 }
 
 func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
