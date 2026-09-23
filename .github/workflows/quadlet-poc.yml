@@ -33,7 +33,16 @@ jobs:
           podman version
           podman info --format 'cgroups={{.Host.CgroupsVersion}} rootless={{.Host.Security.Rootless}}'
           test "$(podman info --format '{{.Host.CgroupsVersion}}')" = "v2"
+
+          runtime_dir="/run/user/$(id -u)"
+          test -d "$runtime_dir"
+          test -S "$runtime_dir/bus"
+          echo "XDG_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
           systemctl --user show-environment >/dev/null
+
           generator="$(command -v podman-system-generator || true)"
           if [ -z "$generator" ]; then
             generator=/usr/lib/systemd/system-generators/podman-system-generator
