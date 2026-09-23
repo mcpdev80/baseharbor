@@ -114,6 +114,24 @@ jobs:
           go vet ./...
           go build ./cmd/baha
 
+      - name: Verify control-plane restart and operator-held unseal recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real Loki and Alloy workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real OpenTelemetry to Tempo trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
       - name: Set up Python
         id: setup_python
         uses: actions/setup-python@v7
@@ -183,6 +201,9 @@ jobs:
           Candidate resolution	${{ steps.release.outcome }}	SemVer, changelog, release notes and develop ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
+          Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	OpenTelemetry to managed Tempo
           Documentation	${{ steps.docs.outcome }}	strict EN/DE MkDocs builds plus documentation architecture audit
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
@@ -474,3 +495,28 @@ jobs:
           test "${{ needs.podman.result }}" = "success"
           test "${{ needs.demo_docker.result }}" = "success"
           test "${{ needs.demo_podman.result }}" = "success"
+
+      - name: Create immutable release approval manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pre-release-approval"
+          cat >"$RUNNER_TEMP/pre-release-approval/release-approved.json" <<EOF
+          {
+            "schema": 1,
+            "tag": "${{ needs.validate.outputs.tag }}",
+            "candidate_sha": "${{ needs.validate.outputs.candidate_sha }}",
+            "pre_release_run_id": ${{ github.run_id }},
+            "pre_release_run_attempt": ${{ github.run_attempt }},
+            "workflow": ".github/workflows/pre-release.yml",
+            "result": "success"
+          }
+          EOF
+
+      - name: Upload immutable release approval manifest
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-approval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-approval
+          if-no-files-found: error
+          retention-days: 90
