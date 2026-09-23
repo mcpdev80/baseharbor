@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
@@ -724,7 +725,11 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		"OTLP telemetry",
 		"Application logs",
 	}
-	fmt.Fprintln(out, "\nSelect application capabilities (Enter keeps detected defaults; suggested capabilities remain opt-in):")
+	if input, ok := appInitInput.(interface{ Fd() uintptr }); ok && term.IsTerminal(input.Fd()) {
+		return promptCapabilityTTY(reader, out, input.Fd(), labels, defaults, allowNone)
+	}
+
+	fmt.Fprintln(out, "\nSelect application capabilities (Enter keeps detected defaults; comma-separated numbers override):")
 	for i, label := range labels {
 		mark := " "
 		if defaults[i] {
@@ -755,6 +760,88 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
+}
+
+func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
+	selected := append([]bool(nil), defaults...)
+	cursor := 0
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return nil, fmt.Errorf("enable interactive capability selection: %w", err)
+	}
+	defer term.Restore(fd, oldState)
+
+	fmt.Fprintln(out, "\nSelect application capabilities")
+	fmt.Fprintln(out, "Use ↑/↓ to move, Space to toggle, Enter to confirm.")
+	fmt.Fprint(out, "\x1b[?25l")
+	defer fmt.Fprint(out, "\x1b[?25h")
+
+	renderCapabilityChoices(out, labels, selected, cursor, false)
+
+	for {
+		key, err := reader.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		switch key {
+		case 3:
+			return nil, errors.New("capability selection cancelled")
+		case '\r', '\n':
+			if !anySelected(selected) && !allowNone {
+				fmt.Fprint(out, "\a")
+				continue
+			}
+			fmt.Fprint(out, "\r\n")
+			return selected, nil
+		case ' ':
+			selected[cursor] = !selected[cursor]
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 'j':
+			cursor = (cursor + 1) % len(labels)
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 'k':
+			cursor = (cursor - 1 + len(labels)) % len(labels)
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 0x1b:
+			next, err := reader.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			if next != '[' {
+				continue
+			}
+			direction, err := reader.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			switch direction {
+			case 'A':
+				cursor = (cursor - 1 + len(labels)) % len(labels)
+				renderCapabilityChoices(out, labels, selected, cursor, true)
+			case 'B':
+				cursor = (cursor + 1) % len(labels)
+				renderCapabilityChoices(out, labels, selected, cursor, true)
+			}
+		}
+	}
+}
+
+func renderCapabilityChoices(out io.Writer, labels []string, selected []bool, cursor int, redraw bool) {
+	if redraw {
+		fmt.Fprintf(out, "\x1b[%dA\r\x1b[J", len(labels))
+	}
+	for i, label := range labels {
+		pointer := " "
+		if i == cursor {
+			pointer = ">"
+		}
+		mark := " "
+		if selected[i] {
+			mark = "x"
+		}
+		fmt.Fprintf(out, "%s [%s] %d. %s\r\n", pointer, mark, i+1, label)
+	}
 }
 
 func anySelected(values []bool) bool {
