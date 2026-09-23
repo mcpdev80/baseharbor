@@ -29,7 +29,7 @@ type appProjectDetection struct {
 	AmbiguousServices      []string
 	SQL                    bool
 	SQLSource              string
-	SQLInstances      []string
+	SQLInstances           []string
 	Cache                  bool
 	CacheSource            string
 	CacheInstances         []string
@@ -448,15 +448,15 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 		return err
 	}
 
-	var postgresInstances, redisInstances, objectStorageBuckets []string
+	var sqlInstances, cacheInstances, objectStorageBuckets []string
 	if selected[0] {
-		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
+		sqlInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
 		if err != nil {
 			return err
 		}
 	}
 	if selected[1] {
-		redisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
+		cacheInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
 		if err != nil {
 			return err
 		}
@@ -491,11 +491,11 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 
 	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
-	if len(postgresInstances) > 0 {
-		m = application.WithSQLInstances(m, postgresInstances...)
+	if len(sqlInstances) > 0 {
+		m = application.WithSQLInstances(m, sqlInstances...)
 	}
-	if len(redisInstances) > 0 {
-		m = application.WithCacheInstances(m, redisInstances...)
+	if len(cacheInstances) > 0 {
+		m = application.WithCacheInstances(m, cacheInstances...)
 	}
 	if len(objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
@@ -563,7 +563,7 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	return writeRepositoryManifest(m, out)
 }
 
-func detectedApplicationManifest(name, environment string, postgres, redis, objectStorage, secrets, hasWorkload bool) application.Manifest {
+func detectedApplicationManifest(name, environment string, sql, cache, objectStorage, secrets, hasWorkload bool) application.Manifest {
 	if environment == "" {
 		environment = "dev"
 	}
@@ -572,8 +572,8 @@ func detectedApplicationManifest(name, environment string, postgres, redis, obje
 		Name:        name,
 		Environment: environment,
 		Services: application.Services{
-			SQL:      postgres,
-			Cache:         redis,
+			SQL:           sql,
+			Cache:         cache,
 			ObjectStorage: objectStorage,
 			Secrets:       secrets,
 		},
@@ -587,24 +587,24 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.AmbiguousServices) > 0 {
 		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
 	}
-	postgres, redis, objectStorage := d.SQL, d.Cache, d.ObjectStorage
+	sql, cache, objectStorage := d.SQL, d.Cache, d.ObjectStorage
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
 	secrets := false
 	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
-	if quick && !postgres && !redis && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
+	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
 			"no unambiguous application requirements were detected",
 			"Run 'baha app init' interactively or use explicit capability flags.",
 		)
 	}
-	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, objectStorage, secrets, hasWorkload)
-	if postgresNamed := quickNamedInstances(d.SQLInstances); len(postgresNamed) > 0 {
-		m = application.WithSQLInstances(m, postgresNamed...)
+	m := detectedApplicationManifest(d.Name, "dev", sql, cache, objectStorage, secrets, hasWorkload)
+	if sqlNamed := quickNamedInstances(d.SQLInstances); len(sqlNamed) > 0 {
+		m = application.WithSQLInstances(m, sqlNamed...)
 	}
-	if redisNamed := quickNamedInstances(d.CacheInstances); len(redisNamed) > 0 {
-		m = application.WithCacheInstances(m, redisNamed...)
+	if cacheNamed := quickNamedInstances(d.CacheInstances); len(cacheNamed) > 0 {
+		m = application.WithCacheInstances(m, cacheNamed...)
 	}
 	if !quick {
 		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
