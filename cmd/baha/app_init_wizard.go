@@ -115,7 +115,7 @@ func appGuidedInitCommand() *cli.Command {
 			if !appInitReaderIsTerminal(appInitInput) {
 				return usageError("interactive app init requires a terminal", "Use 'baha app init --quick' for detected safe defaults or explicit flags for CI/scripts.")
 			}
-			return runAppInitWizard(detected, out)
+			return runAppInitWizard(ctx, detected, out)
 		},
 	}
 }
@@ -387,7 +387,7 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	return name
 }
 
-func runAppInitWizard(d appProjectDetection, out io.Writer) error {
+func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer) error {
 	reader := bufio.NewReader(appInitInput)
 	fmt.Fprintln(out, "Analyzing repository...")
 	printProjectDetection(out, d)
@@ -545,11 +545,14 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "\nManifest preview:")
-	fmt.Fprintln(out, "----------------------------------------")
-	fmt.Fprint(out, m.YAML())
-	fmt.Fprintln(out, "----------------------------------------")
-	confirm, err := promptYesNo(reader, out, "Write ./baseharbor.yaml?", true)
+	printAdoptionSummary(out, m, d, secretPolicies)
+	if cli.OutputOptionsFromContext(ctx).Verbose {
+		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
+		fmt.Fprintln(out, "----------------------------------------")
+		fmt.Fprint(out, m.YAML())
+		fmt.Fprintln(out, "----------------------------------------")
+	}
+	confirm, err := promptYesNo(reader, out, "Write baseharbor.yaml?", true)
 	if err != nil {
 		return err
 	}
@@ -1024,6 +1027,67 @@ func printManagedCredentialSummary(out io.Writer, selected []bool, runtimePermis
 		fmt.Fprintf(out, "  - %s\n", item)
 	}
 	fmt.Fprintln(out, "You do not need to create or enter these managed credentials.")
+}
+
+func printAdoptionSummary(out io.Writer, m application.Manifest, detected appProjectDetection, policies []guidedSecretPolicy) {
+	fmt.Fprintln(out, "\nAdoption summary")
+	fmt.Fprintln(out, "\nApplication")
+	fmt.Fprintf(out, "  Name          %s\n", m.Name)
+	fmt.Fprintf(out, "  Environment   %s\n", m.Environment)
+
+	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
+		fmt.Fprintln(out, "\nWorkload")
+		if m.Workload.Compose != "" {
+			fmt.Fprintf(out, "  Compose       %s (repository-owned, read-only)\n", m.Workload.Compose)
+		}
+		if len(m.Workload.Services) > 0 {
+			fmt.Fprintf(out, "  Services      %s\n", strings.Join(m.Workload.Services, ", "))
+		}
+	}
+
+	if m.Services.Postgres || m.Services.Redis || m.Services.ObjectStorage {
+		fmt.Fprintln(out, "\nManaged services")
+		if m.Services.Postgres {
+			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.Postgres))
+		}
+		if m.Services.Redis {
+			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Redis))
+		}
+		if m.Services.ObjectStorage {
+			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
+		}
+	}
+
+	if application.HasMetricsSources(m) || application.HasOTLPTelemetry(m) || application.HasLogsCollection(m) {
+		fmt.Fprintln(out, "\nObservability")
+		if application.HasMetricsSources(m) {
+			fmt.Fprintln(out, "  Metrics       /metrics")
+		}
+		if application.HasOTLPTelemetry(m) {
+			fmt.Fprintf(out, "  OTLP          %s\n", strings.Join(m.Telemetry.OTLP.Signals, ", "))
+		}
+		if application.HasLogsCollection(m) {
+			fmt.Fprintln(out, "  Logs          application")
+		}
+	}
+
+	printGuidedSecretSummary(out, policies)
+
+	if len(m.Runtime.Permissions) > 0 {
+		fmt.Fprintln(out, "\nRuntime permissions")
+		for _, permission := range m.Runtime.Permissions {
+			fmt.Fprintf(out, "  %s\n", permission.Capability)
+			fmt.Fprintf(out, "    services: %s\n", strings.Join(permission.Services, ", "))
+			fmt.Fprintf(out, "    operations: %s\n", strings.Join(permission.Operations, ", "))
+		}
+	}
+}
+
+func adoptionOrigin(detected bool) string {
+	if detected {
+		return "detected and confirmed"
+	}
+	return "user confirmed"
 }
 
 func printGuidedSecretSummary(out io.Writer, policies []guidedSecretPolicy) {
