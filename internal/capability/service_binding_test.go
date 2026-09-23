@@ -2,7 +2,7 @@ package capability
 
 import "testing"
 
-func TestValidateServiceBindingOutputName(t *testing.T) {
+func TestServiceBindingWellKnownNames(t *testing.T) {
 	for _, name := range []string{
 		ServiceBindingType,
 		ServiceBindingProvider,
@@ -13,15 +13,29 @@ func TestValidateServiceBindingOutputName(t *testing.T) {
 		ServiceBindingPassword,
 		ServiceBindingCertificates,
 		ServiceBindingPrivateKey,
-		"baha.identity-ref",
 	} {
-		if err := ValidateServiceBindingOutputName(name); err != nil {
+		if !IsServiceBindingWellKnownName(name) {
+			t.Fatalf("%q not recognized as well-known", name)
+		}
+		if err := ValidateServiceBindingName(name); err != nil {
 			t.Fatalf("%q rejected: %v", name, err)
 		}
 	}
-	for _, name := range []string{"", "hostname", "connectionHost", "user", "pass", "connectionString", "baha."} {
-		if err := ValidateServiceBindingOutputName(name); err == nil {
-			t.Fatalf("%q unexpectedly accepted", name)
+}
+
+func TestServiceBindingRejectsAliases(t *testing.T) {
+	for _, name := range []string{"hostname", "connectionHost", "user", "pass", "connectionString"} {
+		if err := ValidateServiceBindingName(name); err == nil {
+			t.Fatalf("alias %q accepted", name)
 		}
+	}
+}
+
+func TestServiceBindingAllowsNamespacedExtensions(t *testing.T) {
+	if err := ValidateServiceBindingName("baha.identity-ref"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateServiceBindingName("provider.example/region"); err != nil {
+		t.Fatal(err)
 	}
 }
