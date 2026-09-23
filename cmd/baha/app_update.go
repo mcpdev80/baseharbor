@@ -155,7 +155,7 @@ func parseAppUpdateOptions(args []string) (appUpdateOptions, error) {
 }
 
 func applicationUpdateHasDurableState(m application.Manifest) bool {
-	return len(application.PostgresInstanceNames(m)) > 0 || m.Services.Secrets
+	return len(application.SQLInstanceNames(m)) > 0 || m.Services.Secrets
 }
 
 func createApplicationUpdateRecoveryPoint(ctx context.Context, store application.Store, resolved resolvedApplication, environment, passwordFile string, out, errOut io.Writer) (application.BackupMetadata, error) {
