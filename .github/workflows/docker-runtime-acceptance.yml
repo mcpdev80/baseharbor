@@ -22,7 +22,7 @@ on:
       - 'runtime-validation/docker/**'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-docker-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
