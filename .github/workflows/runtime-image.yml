@@ -98,10 +98,11 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=raw,value=${{ steps.source.outputs.version_tag }},enable=${{ steps.source.outputs.version_tag != '' }}
+            type=semver,pattern={{version}},value=${{ steps.source.outputs.version_tag }},enable=${{ steps.source.outputs.version_tag != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.source.outputs.version_tag }},enable=${{ steps.source.outputs.version_tag != '' }}
             type=raw,value=latest,enable=${{ steps.source.outputs.version_tag != '' }}
             type=raw,value=edge,enable=${{ steps.source.outputs.version_tag == '' }}
-            type=sha,prefix=sha-
+            type=raw,value=sha-${{ steps.buildmeta.outputs.commit }}
 
       - name: Build runtime image
         id: build
