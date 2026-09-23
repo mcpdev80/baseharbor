@@ -26,6 +26,10 @@ type Files struct {
 	DocsURL string
 }
 
+func IsMutableDevelopmentImage(image string) bool {
+	return strings.TrimSpace(image) == DefaultImage
+}
+
 func ProjectName(m application.Manifest) string {
 	return "baseharbor-broker-" + m.Name + "-" + m.Environment
 }
