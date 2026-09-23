@@ -78,6 +78,7 @@ type MetricsBinding struct {
 	Direction string `json:"direction"`
 	Format    string `json:"format"`
 	Service   string `json:"service"`
+	Scheme    string `json:"scheme"`
 	Port      int    `json:"port"`
 	Path      string `json:"path"`
 }
@@ -227,12 +228,19 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			value.Direction = strings.TrimSpace(value.Direction)
 			value.Format = strings.TrimSpace(value.Format)
 			value.Service = strings.TrimSpace(value.Service)
+			value.Scheme = strings.TrimSpace(value.Scheme)
 			value.Path = strings.TrimSpace(value.Path)
+			if value.Scheme == "" {
+				value.Scheme = "http"
+			}
 			if value.Direction != "provide" {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: direction must be provide", application, request.Requirement.Name)
 			}
 			if value.Format != "openmetrics" {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: unsupported format %q", application, request.Requirement.Name, value.Format)
+			}
+			if value.Scheme != "http" && value.Scheme != "https" {
+				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s: unsupported scheme %q", application, request.Requirement.Name, value.Scheme)
 			}
 			if value.Service == "" || value.Port < 1 || value.Port > 65535 || !strings.HasPrefix(value.Path, "/") {
 				return Plan{}, fmt.Errorf("capability metrics binding for %s/%s is incomplete", application, request.Requirement.Name)
