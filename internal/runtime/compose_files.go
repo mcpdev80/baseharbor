@@ -115,7 +115,7 @@ func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir st
 }
 
 func composeUpArgs(services []string) []string {
-	args := []string{"up", "-d"}
+	args := []string{"up", "-d", "--build"}
 	if len(services) > 0 {
 		args = append(args, "--no-deps")
 		args = append(args, services...)
@@ -180,57 +180,6 @@ func (c Compose) UpProjectFilesSelectedNoBuildProgress(ctx context.Context, proj
 		return nil
 	}
 	args := composeUpArgsNoBuild(services)
-	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
-	return err
-}
-
-func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
-	if len(services) == 0 {
-		return nil
-	}
-	if c.quadlet {
-		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
-		if err != nil {
-			return err
-		}
-		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
-		if err != nil {
-			return err
-		}
-		if err := quadletInstallProject(ctx, q); err != nil {
-			return err
-		}
-		var buildUnits []string
-		for _, service := range services {
-			name := project + "-" + sanitizeQuadletName(service) + ".build"
-			if _, ok := q.Files[name]; !ok {
-				continue
-			}
-			buildUnits = append(buildUnits, quadletUnitForFile(name))
-		}
-		sort.Strings(buildUnits)
-		if len(buildUnits) == 0 {
-			return nil
-		}
-		if onProgress != nil {
-			onProgress("rebuilding changed Podman Quadlet workload image")
-		}
-		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, buildUnits...)...); err != nil {
-			return err
-		}
-		units, err := quadletProjectServiceUnits(q, services)
-		if err != nil {
-			return err
-		}
-		if len(units) > 0 {
-			if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	args := []string{"build"}
-	args = append(args, services...)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
 }
