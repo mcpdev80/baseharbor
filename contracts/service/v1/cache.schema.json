@@ -1,52 +1,69 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:service:v1:cache",
-  "title": "BaseHarbor cache service contract v1",
+  "$id": "https://schemas.baseharbor.dev/service/v1/cache.schema.json",
+  "title": "BaseHarbor Cache Service Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "kind"
-  ],
   "properties": {
     "kind": {
       "const": "cache"
+    },
+    "contractVersion": {
+      "const": "v1"
     },
     "name": {
       "type": "string",
       "minLength": 1
     },
-    "compatibility": {
+    "requirements": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "resp": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "versions": {
-              "type": "array",
-              "items": {
+        "ttl": {
+          "type": "boolean"
+        },
+        "transactions": {
+          "type": "boolean"
+        },
+        "pubsub": {
+          "type": "boolean"
+        },
+        "streams": {
+          "type": "boolean"
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
                 "enum": [
-                  "2",
-                  "3"
+                  "resp"
                 ]
               },
-              "uniqueItems": true,
-              "minItems": 1
-            }
+              "versions": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "2",
+                    "3"
+                  ]
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "name"
+            ]
           }
         }
       }
-    },
-    "extensions": {
-      "type": "object",
-      "patternProperties": {
-        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false,
-      "description": "Versioned provider-neutral BaseHarbor extensions only."
     }
-  }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
 }
