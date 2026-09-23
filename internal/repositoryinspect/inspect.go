@@ -176,6 +176,9 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		result.Findings = mergeFindings(result.Findings, findings)
 	}
+	for i := range result.Findings {
+		normalizeFindingService(&result.Findings[i])
+	}
 	result.Declared, result.Reconciliation = Reconcile(result.Findings, manifest)
 	sortResult(&result)
 	return result, nil
@@ -720,6 +723,36 @@ func uniqueSorted(items []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func normalizeFindingService(finding *Finding) {
+	switch finding.Capability {
+	case "database.sql":
+		finding.Service = "sql"
+	case "cache.key-value":
+		finding.Service = "cache"
+		finding.Protocol = "RESP"
+	case "object-storage.s3":
+		finding.Service = "object-storage"
+		finding.Protocol = "S3"
+	case "secrets":
+		finding.Service = "secrets"
+	case "metrics":
+		finding.Service = "observability"
+		finding.Protocol = "OpenMetrics"
+	case "telemetry.otlp":
+		finding.Service = "observability"
+		finding.Protocol = "OTLP"
+	case "logs", "traces":
+		finding.Service = "observability"
+	case "identity":
+		finding.Service = "identity"
+		finding.Protocol = "OIDC/OAuth"
+	case "messaging":
+		finding.Service = "messaging"
+	case "vector":
+		finding.Service = "vector"
+	}
 }
 
 func sortResult(result *Result) {
