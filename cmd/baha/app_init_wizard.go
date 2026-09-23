@@ -1111,7 +1111,6 @@ func printGuidedSecretSummary(out io.Writer, policies []guidedSecretPolicy) {
 	}
 }
 
-
 func promptCompose(reader *bufio.Reader, out io.Writer, candidates []string) (string, error) {
 	fmt.Fprintln(out, "\nMultiple Compose files were detected. Select the application workload:")
 	for i, candidate := range candidates {

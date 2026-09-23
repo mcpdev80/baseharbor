@@ -103,7 +103,6 @@ func TestGenerateSecretValueHex(t *testing.T) {
 	}
 }
 
-
 func TestOptionalSecretManifestRoundTrip(t *testing.T) {
 	m := New("demo", "dev", true, false, true)
 	m = WithRequiredSecrets(m, "REQUIRED_TOKEN")

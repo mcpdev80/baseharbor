@@ -122,7 +122,6 @@ func TestReadSecretValueRejectsEmptyAndOversizedInput(t *testing.T) {
 	}
 }
 
-
 func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *testing.T) {
 	oldInput := appSecretInput
 	oldHidden := appSecretReadHidden

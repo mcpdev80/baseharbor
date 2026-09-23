@@ -356,7 +356,6 @@ func TestPromptAmbiguousComposeServicesConfirmsWorkloadSelection(t *testing.T) {
 	}
 }
 
-
 func TestPromptSecretPoliciesSupportsRenameOptionalGenerateAndSkip(t *testing.T) {
 	reader := bufio.NewReader(strings.NewReader(
 		"y\nRENAMED_TOKEN\nn\n2\n" +
@@ -368,7 +367,7 @@ func TestPromptSecretPoliciesSupportsRenameOptionalGenerateAndSkip(t *testing.T)
 		&out,
 		[]string{"API_TOKEN", "SMTP_PASSWORD"},
 		map[string]string{
-			"API_TOKEN": ".env.example variable API_TOKEN",
+			"API_TOKEN":     ".env.example variable API_TOKEN",
 			"SMTP_PASSWORD": ".env.example variable SMTP_PASSWORD",
 		},
 	)
@@ -413,7 +412,6 @@ func TestGuidedSecretSummaryShowsPolicyWithoutValues(t *testing.T) {
 		}
 	}
 }
-
 
 func TestAdoptionSummaryMinimal(t *testing.T) {
 	m := detectedApplicationManifest("demo", "dev", false, false, false, false, true)
