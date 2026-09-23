@@ -12,336 +12,171 @@ on:
         description: Existing release tag to publish or recover
         required: true
         type: string
+      pre_release_run_id:
+        description: Successful Pre-Release run to consume; leave empty to auto-discover by tag SHA
+        required: false
+        type: string
 
 permissions:
   contents: write
+  actions: read
+  packages: write
   id-token: write
   attestations: write
 
 jobs:
-  docker_runtime:
-    name: release-docker-runtime
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/docker-runtime-acceptance.yml
-    with:
-      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-
-  podman:
-    name: release-podman
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/podman-acceptance.yml
-    with:
-      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-
-  demo_catalog:
-    name: release-demo-catalog
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/demo-gate-catalog.yml
-
-  demo_docker:
-    name: Docker · ${{ matrix.gate }}
-    needs: demo_catalog
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
-    runs-on:
-      - self-hosted
-      - Linux
-      - X64
-      - baseharbor
-      - docker
-    timeout-minutes: 60
-    env:
-      BASEHARBOR_TEST_RUNTIME: docker
-      DEMO_GATE: ${{ matrix.gate }}
-      ARTIFACT_DIR: /tmp/baseharbor-demo-docker-${{ matrix.gate }}
-
+  approval:
+    name: consume-pre-release-approval
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.gate.outputs.tag }}
+      tag_sha: ${{ steps.gate.outputs.tag_sha }}
+      pre_release_run_id: ${{ steps.gate.outputs.pre_release_run_id }}
+      approval_artifact: ${{ steps.gate.outputs.approval_artifact }}
     steps:
-      - name: Checkout BaseHarbor
-        id: checkout
+      - name: Checkout repository metadata
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          fetch-depth: 0
 
-      - name: Set up Go
-        id: setup_go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Resolve candidate SHA
-        id: candidate
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Reset runtime state
-        id: reset
-        shell: bash
-        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
-
-      - name: Run demo gate
-        id: demo
+      - name: Validate tag and consume successful Pre-Release
+        id: gate
         shell: bash
         env:
-          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          MANUAL_RUN_ID: ${{ inputs.pre_release_run_id }}
         run: |
           set -euo pipefail
-          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
-          rm -rf "$workdir" "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
-          cd "$workdir"
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
 
-      - name: Cleanup runtime state
-        id: cleanup
-        if: always()
-        shell: bash
-        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${MANUAL_TAG}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
 
-      - name: Generate gate evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/demo-gate-evidence"
-          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
-          cat >"$rows" <<EOF
-          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
-          Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
-          Runtime reset	${{ steps.reset.outcome }}	Clean docker runner state
-          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate
-          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
-          EOF
-          mkdir -p "$out/demo"
-          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$out" \
-            "BaseHarbor Demo Gate Evidence" \
-            "demo/docker/${{ matrix.gate }}" \
-            "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" \
-            "${{ steps.candidate.outputs.sha || github.sha }}" \
-            "$rows"
+          if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be valid SemVer with a v prefix." >&2
+            exit 1
+          fi
 
-      - name: Upload gate evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: demo-docker-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/demo-gate-evidence
-          if-no-files-found: error
-          retention-days: 30
+          git fetch origin main --tags --force
+          tag_sha="$(git rev-list -n 1 "${tag}^{commit}")"
+          test -n "${tag_sha}"
 
-  demo_podman:
-    name: Podman · ${{ matrix.gate }}
-    needs: demo_catalog
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.demo_catalog.outputs.matrix) }}
-    runs-on:
-      - self-hosted
-      - Linux
-      - X64
-      - baseharbor
-      - podman
-    timeout-minutes: 60
-    env:
-      BASEHARBOR_TEST_RUNTIME: podman
-      DEMO_GATE: ${{ matrix.gate }}
-      ARTIFACT_DIR: /tmp/baseharbor-demo-podman-${{ matrix.gate }}
+          git merge-base --is-ancestor "${tag_sha}" origin/main || {
+            echo "Release tag must point to a commit contained in main." >&2
+            exit 1
+          }
 
-    steps:
-      - name: Checkout BaseHarbor
-        id: checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          version="${tag#v}"
+          git show "${tag_sha}:CHANGELOG.md" | grep -Fq "## [${version}]" || {
+            echo "CHANGELOG.md must contain ## [${version}] at the tagged commit." >&2
+            exit 1
+          }
+          git cat-file -e "${tag_sha}:docs/releases/${tag}.md" || {
+            echo "Release notes docs/releases/${tag}.md are missing at the tagged commit." >&2
+            exit 1
+          }
 
-      - name: Set up Go
-        id: setup_go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
-      - name: Resolve candidate SHA
-        id: candidate
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ -n "${MANUAL_RUN_ID:-}" ]; then
+            run_id="${MANUAL_RUN_ID}"
+            run_json="$(curl -fsSL               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "${api}/actions/runs/${run_id}")"
+          else
+            runs_json="$(curl -fsSL               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "${api}/actions/workflows/pre-release.yml/runs?status=success&head_sha=${tag_sha}&per_page=100")"
+            run_id="$(jq -r --arg sha "${tag_sha}" '
+              [.workflow_runs[]
+               | select(.head_sha == $sha)
+               | select(.conclusion == "success")]
+              | sort_by(.run_number)
+              | last
+              | .id // empty
+            ' <<<"${runs_json}")"
+            test -n "${run_id}" || {
+              echo "No successful Pre-Release found for tag SHA ${tag_sha}." >&2
+              exit 1
+            }
+            run_json="$(jq -c --argjson id "${run_id}" '.workflow_runs[] | select(.id == $id)' <<<"${runs_json}")"
+          fi
 
-      - name: Reset runtime state
-        id: reset
-        shell: bash
-        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+          test "$(jq -r '.conclusion' <<<"${run_json}")" = "success" || {
+            echo "Selected Pre-Release run is not successful." >&2
+            exit 1
+          }
+          test "$(jq -r '.head_sha' <<<"${run_json}")" = "${tag_sha}" || {
+            echo "Selected Pre-Release run does not belong to the tagged commit." >&2
+            exit 1
+          }
+          test "$(jq -r '.path' <<<"${run_json}")" = ".github/workflows/pre-release.yml" || {
+            echo "Selected run is not the Pre-Release workflow." >&2
+            exit 1
+          }
 
-      - name: Run demo gate
-        id: demo
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
-        run: |
-          set -euo pipefail
-          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
-          rm -rf "$workdir" "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
-          cd "$workdir"
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
+          artifacts_json="$(curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "${api}/actions/runs/${run_id}/artifacts?per_page=100")"
 
-      - name: Cleanup runtime state
-        id: cleanup
-        if: always()
-        shell: bash
-        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+          approval_artifact="$(jq -r '
+            [.artifacts[]
+             | select(.expired == false)
+             | select(.name | startswith("pre-release-approval-"))]
+            | first
+            | .name // empty
+          ' <<<"${artifacts_json}")"
 
-      - name: Generate gate evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/demo-gate-evidence"
-          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
-          cat >"$rows" <<EOF
-          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
-          Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
-          Runtime reset	${{ steps.reset.outcome }}	Clean podman runner state
-          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate
-          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
-          EOF
-          mkdir -p "$out/demo"
-          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$out" \
-            "BaseHarbor Demo Gate Evidence" \
-            "demo/podman/${{ matrix.gate }}" \
-            "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" \
-            "${{ steps.candidate.outputs.sha || github.sha }}" \
-            "$rows"
+          if [ -z "${approval_artifact}" ]; then
+            approval_artifact="$(jq -r '
+              [.artifacts[]
+               | select(.expired == false)
+               | select(.name | startswith("pre-release-gate-evidence-"))]
+              | first
+              | .name // empty
+            ' <<<"${artifacts_json}")"
+            test -n "${approval_artifact}" || {
+              echo "Pre-Release run has no immutable approval or combined gate evidence artifact." >&2
+              exit 1
+            }
+            echo "Using legacy combined gate evidence from Pre-Release run ${run_id}."
+          fi
 
-      - name: Upload gate evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: demo-podman-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/demo-gate-evidence
-          if-no-files-found: error
-          retention-days: 30
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "tag_sha=${tag_sha}" >> "${GITHUB_OUTPUT}"
+          echo "pre_release_run_id=${run_id}" >> "${GITHUB_OUTPUT}"
+          echo "approval_artifact=${approval_artifact}" >> "${GITHUB_OUTPUT}"
 
   runtime-image:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - docker_runtime
-      - podman
-      - demo_docker
-      - demo_podman
+    name: publish-runtime-image
+    needs: approval
     permissions:
       contents: read
       packages: write
       id-token: write
       attestations: write
     uses: ./.github/workflows/runtime-image.yml
+    with:
+      ref: ${{ needs.approval.outputs.tag }}
+      version_tag: ${{ needs.approval.outputs.tag }}
     secrets: inherit
 
   release:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    name: publish-release
     needs:
-      - docker_runtime
-      - podman
-      - demo_docker
-      - demo_podman
+      - approval
       - runtime-image
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release tag
-        id: release_ref
-        shell: bash
-        env:
-          MANUAL_TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            tag="${MANUAL_TAG}"
-          else
-            tag="${GITHUB_REF_NAME}"
-          fi
-          if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must be valid SemVer with a v prefix: vX.Y.Z or vX.Y.Z-prerelease" >&2
-            exit 1
-          fi
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-
-      - name: Checkout tagged source
+      - name: Checkout approved tagged source
         id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ steps.release_ref.outputs.tag }}
+          ref: ${{ needs.approval.outputs.tag }}
           fetch-depth: 0
 
-      - name: Validate release tag and source
-        id: validate_source
+      - name: Verify approved SHA
         shell: bash
-        env:
-          TAG: ${{ steps.release_ref.outputs.tag }}
         run: |
           set -euo pipefail
-          git fetch origin main
-          git merge-base --is-ancestor HEAD origin/main || {
-            echo "Release tags must point to a commit contained in main." >&2
-            exit 1
-          }
-          version="${TAG#v}"
-          grep -Fq "## [${version}]" CHANGELOG.md || {
-            echo "CHANGELOG.md must contain a ## [${version}] release section before tagging." >&2
-            exit 1
-          }
-          notes="docs/releases/${TAG}.md"
-          test -s "${notes}" || {
-            echo "Human-readable release notes are required at ${notes}." >&2
-            exit 1
-          }
-
-      - name: Set up Go
-        id: setup_go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Test release source
-        id: source_tests
-        run: |
-          go test ./internal/... ./spec/...
-          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
-
-      - name: Audit release documentation
-        id: docs
-        shell: bash
-        run: bash scripts/documentation-audit.sh
-
-      - name: Verify control-plane restart and operator-held unseal recovery
-        id: recovery
-        env:
-          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
-
-      - name: Verify real Loki and Alloy workload log ingestion
-        id: log_ingestion
-        env:
-          BASEHARBOR_LOGS_INTEGRATION: "1"
-        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
-
-      - name: Verify real OpenTelemetry to Tempo trace ingestion
-        id: trace_ingestion
-        env:
-          BASEHARBOR_TRACES_INTEGRATION: "1"
-        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+          test "$(git rev-parse HEAD)" = "${{ needs.approval.outputs.tag_sha }}"
 
       - name: Run GoReleaser
         id: goreleaser
@@ -349,7 +184,7 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --release-notes docs/releases/${{ steps.release_ref.outputs.tag }}.md
+          args: release --clean --release-notes docs/releases/${{ needs.approval.outputs.tag }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -372,25 +207,16 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-evidence.tsv"
           cat >"$rows" <<EOF
-          Release tag/source	${{ steps.validate_source.outcome }}	Tag is SemVer, contained in main, changelog and release notes present
-          Release-source tests	${{ steps.source_tests.outcome }}	internal/spec/cmd test suites
-          Documentation audit	${{ steps.docs.outcome }}	documentation structure, ownership and human-readability guardrails
-          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
-          Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
-          Trace ingestion	${{ steps.trace_ingestion.outcome }}	OpenTelemetry to managed Tempo
+          Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}
+          Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
+          Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           GoReleaser publish	${{ steps.goreleaser.outcome }}	release archives and GitHub release
           Archive attestation	${{ steps.attest_archives.outcome }}	artifact provenance
           Checksum attestation	${{ steps.attest_checksums.outcome }}	checksum provenance
           EOF
           mkdir -p "$RUNNER_TEMP/release-evidence/dist"
           cp dist/checksums.txt "$RUNNER_TEMP/release-evidence/dist/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$RUNNER_TEMP/release-evidence" \
-            "BaseHarbor Release Evidence" \
-            "release/publish" \
-            "${{ steps.release_ref.outputs.tag }}" \
-            "$(git rev-parse HEAD)" \
-            "$rows"
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/release-evidence"             "BaseHarbor Final Release Evidence"             "release/publish"             "${{ needs.approval.outputs.tag }}"             "${{ needs.approval.outputs.tag_sha }}"             "$rows"
 
       - name: Upload release evidence
         if: always() && steps.checkout.outcome == 'success'
@@ -403,20 +229,15 @@ jobs:
 
   evidence:
     name: release-gate-evidence
-    if: always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    if: always()
     needs:
-      - docker_runtime
-      - podman
-      - demo_docker
-      - demo_podman
+      - approval
       - runtime-image
       - release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tagged source
+      - name: Checkout evidence generator
         uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - name: Generate combined release evidence
         shell: bash
@@ -424,20 +245,11 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Docker runtime core	${{ needs.docker_runtime.result }}	Dedicated self-hosted Docker runtime core
-          Podman runtime core	${{ needs.podman.result }}	Dedicated self-hosted Podman runtime core
-          Docker demo gates	${{ needs.demo_docker.result }}	Independent consumer-contract gate matrix
-          Podman demo gates	${{ needs.demo_podman.result }}	Independent consumer-contract gate matrix
-          Runtime image publish	${{ needs.runtime-image.result }}	Multi-arch runtime image and attestation
-          Release publish	${{ needs.release.result }}	Tagged-source tests, archives and attestations
+          Pre-Release handoff	${{ needs.approval.result }}	consumed run ${{ needs.approval.outputs.pre_release_run_id }}
+          Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
+          Release publish	${{ needs.release.result }}	archives, GitHub release and attestations
           EOF
-          bash scripts/ci-evidence.sh \
-            "$RUNNER_TEMP/release-gate-evidence" \
-            "BaseHarbor Final Release Gate Evidence" \
-            "release/combined" \
-            "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" \
-            "$(git rev-parse HEAD)" \
-            "$rows"
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/release-gate-evidence"             "BaseHarbor Final Release Gate Evidence"             "release/combined"             "${{ needs.approval.outputs.tag || github.ref_name }}"             "${{ needs.approval.outputs.tag_sha || github.sha }}"             "$rows"
 
       - name: Upload combined release-gate evidence
         uses: actions/upload-artifact@v6
@@ -447,12 +259,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Enforce complete release gate
+      - name: Enforce complete release
         shell: bash
         run: |
-          test "${{ needs.docker_runtime.result }}" = "success"
-          test "${{ needs.podman.result }}" = "success"
-          test "${{ needs.demo_docker.result }}" = "success"
-          test "${{ needs.demo_podman.result }}" = "success"
+          test "${{ needs.approval.result }}" = "success"
           test "${{ needs.runtime-image.result }}" = "success"
           test "${{ needs.release.result }}" = "success"
