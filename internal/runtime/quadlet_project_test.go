@@ -271,3 +271,35 @@ func TestRenderQuadletHealthCommandEscapesSystemdDollarExpansion(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderComposeProjectQuadletsMapsLongFormSecretTarget(t *testing.T) {
+	root := t.TempDir()
+	secret := filepath.Join(root, "token")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compose := filepath.Join(root, "compose.yaml")
+	data := `services:
+  api:
+    image: docker.io/library/alpine:3.22
+    secrets:
+      - source: service-token
+        target: baseharbor-runtime-token
+secrets:
+  service-token:
+    file: ./token
+`
+	if err := os.WriteFile(compose, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-demo-api.container"]
+	want := "Volume=" + secret + ":/run/secrets/baseharbor-runtime-token:ro"
+	if !strings.Contains(unit, want) {
+		t.Fatalf("long-form secret target missing %q:\n%s", want, unit)
+	}
+}
