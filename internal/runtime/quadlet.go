@@ -27,15 +27,15 @@ type composeWorkloadFile struct {
 }
 
 type composeWorkloadService struct {
-	Image       string            `yaml:"image"`
-	Build       composeBuild      `yaml:"build"`
-	Ports       []string          `yaml:"ports"`
-	Environment composeEnv        `yaml:"environment"`
-	Restart     string            `yaml:"restart"`
-	Command     any               `yaml:"command"`
-	Volumes     []string          `yaml:"volumes"`
-	Networks    any               `yaml:"networks"`
-	Profiles    []string          `yaml:"profiles"`
+	Image       string       `yaml:"image"`
+	Build       composeBuild `yaml:"build"`
+	Ports       []string     `yaml:"ports"`
+	Environment composeEnv   `yaml:"environment"`
+	Restart     string       `yaml:"restart"`
+	Command     any          `yaml:"command"`
+	Volumes     []string     `yaml:"volumes"`
+	Networks    any          `yaml:"networks"`
+	Profiles    []string     `yaml:"profiles"`
 }
 
 type composeBuild struct {
