@@ -64,9 +64,14 @@ func (r *Registry) Register(instance ProviderInstance) error {
 	if err := validateProviderInstance(instance); err != nil {
 		return err
 	}
-	for _, existing := range r.Instances {
+	for i := range r.Instances {
+		existing := r.Instances[i]
 		if existing.ID == instance.ID {
 			if sameProviderInstance(existing, instance) {
+				return nil
+			}
+			if providerInstanceDistributionMetadataMissing(existing) && sameProviderInstanceWithoutDistribution(existing, instance) {
+				r.Instances[i] = instance
 				return nil
 			}
 			return fmt.Errorf("provider instance %q already exists with different metadata", instance.ID)
@@ -464,6 +469,18 @@ func (r Registry) instance(id string) (ProviderInstance, bool) {
 
 func sameLogicalResource(a, b Resource) bool {
 	return a.Application == b.Application && a.Kind == b.Kind && a.Name == b.Name
+}
+
+func providerInstanceDistributionMetadataMissing(instance ProviderInstance) bool {
+	return strings.TrimSpace(instance.ProviderID) == "" &&
+		strings.TrimSpace(instance.ProviderVersion) == "" &&
+		strings.TrimSpace(instance.ProviderProtocol) == ""
+}
+
+func sameProviderInstanceWithoutDistribution(a, b ProviderInstance) bool {
+	a.ProviderID, a.ProviderVersion, a.ProviderProtocol = "", "", ""
+	b.ProviderID, b.ProviderVersion, b.ProviderProtocol = "", "", ""
+	return sameProviderInstance(a, b)
 }
 
 func sameProviderInstance(a, b ProviderInstance) bool {
