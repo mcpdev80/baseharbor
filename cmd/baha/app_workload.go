@@ -376,26 +376,6 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		return false, fmt.Errorf("application workload has no active selected Compose services")
 	}
 
-	buildFingerprints, err := repositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, composeFiles, expectedServices)
-	if err != nil {
-		return false, err
-	}
-	persistedBuildFingerprints, err := loadRepositoryWorkloadBuildFingerprints(files)
-	if err != nil {
-		return false, fmt.Errorf("load workload build fingerprint state: %w", err)
-	}
-	changedBuildServices := changedRepositoryBuildServices(buildFingerprints, persistedBuildFingerprints)
-	if len(changedBuildServices) > 0 {
-		fmt.Fprintf(out, "[INFO] workload-build    source changes require rebuild: %s\n", strings.Join(changedBuildServices, ", "))
-		if err := compose.BuildProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, changedBuildServices, func(detail string) {
-			cli.ReportActivityDetail(out, detail)
-		}, composeFiles...); err != nil {
-			return false, fmt.Errorf("rebuild changed application workload services: %w", err)
-		}
-	} else if len(buildFingerprints) > 0 {
-		fmt.Fprintln(out, "[OK] workload-build      source inputs unchanged")
-	}
-
 	beforeStates, err := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if err != nil {
 		return false, fmt.Errorf("inspect application workload before start: %w", err)
@@ -505,9 +485,6 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 				if err := persistRepositoryWorkloadBuildState(files, buildFingerprints); err != nil {
 					return false, fmt.Errorf("record verified workload build identity: %w", err)
 				}
-			}
-			if err := persistRepositoryWorkloadBuildFingerprints(files, buildFingerprints); err != nil {
-				return false, fmt.Errorf("persist workload build fingerprint state: %w", err)
 			}
 			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
 			return true, nil
