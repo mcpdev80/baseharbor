@@ -82,8 +82,16 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return prepared, nil
 	}
 
+	runtimeTLS := make(map[string]struct{})
+	for _, service := range application.RuntimeAuthorizedServices(m) {
+		runtimeTLS[service] = struct{}{}
+	}
 	requests := make([]capability.Request, 0, len(m.Metrics.Sources))
 	for _, source := range m.Metrics.Sources {
+		scheme := "http"
+		if _, ok := runtimeTLS[source.Service]; ok {
+			scheme = "https"
+		}
 		requests = append(requests, capability.Request{
 			Requirement: capability.Requirement{Kind: capability.Metrics, Name: source.Name},
 			Workload:    "service/" + source.Service,
@@ -91,6 +99,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 				Direction: "provide",
 				Format:    "openmetrics",
 				Service:   source.Service,
+				Scheme:    scheme,
 				Port:      source.Port,
 				Path:      source.Path,
 			},
