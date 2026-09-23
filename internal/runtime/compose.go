@@ -24,6 +24,7 @@ type ComposeContainer struct {
 	Name    string
 	Project string
 	Service string
+	Running bool
 }
 
 // Compose provides the small lifecycle surface BaseHarbor needs from a
@@ -194,14 +195,7 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ strin
 	seen := map[string]struct{}{}
 	var services []string
 	for _, container := range containers {
-		if container.Project != project {
-			continue
-		}
-		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.State.Running}}", container.Name)
-		if err != nil {
-			return nil, fmt.Errorf("inspect running state for %s: %w", container.Name, err)
-		}
-		if strings.TrimSpace(out) != "true" {
+		if container.Project != project || !container.Running {
 			continue
 		}
 		if _, ok := seen[container.Service]; ok {
@@ -320,27 +314,61 @@ func resourceCommands(resource ProjectResource) ([]string, []string, error) {
 }
 
 func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer, error) {
-	out, err := c.directOutput(ctx, "container", "ls", "-a", "--format", "{{.Names}}")
+	out, err := c.directOutput(ctx, "container", "ls", "-aq")
 	if err != nil {
 		return nil, err
 	}
-	var result []ComposeContainer
+
+	var ids []string
 	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if name == "" {
+		if id := strings.TrimSpace(line); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	args := []string{
+		"container", "inspect", "--format",
+		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}`,
+	}
+	args = append(args, ids...)
+	inspected, err := c.directOutput(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []ComposeContainer
+	for _, line := range strings.Split(inspected, "\n") {
+		parts := strings.Split(strings.TrimSpace(line), "|")
+		if len(parts) != 6 {
 			continue
 		}
-		labels, err := c.directOutput(ctx, "container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}`, name)
-		if err != nil {
-			return nil, err
-		}
-		project, service, ok := strings.Cut(strings.TrimSpace(labels), "|")
-		if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" {
+		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+		project := firstRuntimeLabel(parts[1], parts[2])
+		service := firstRuntimeLabel(parts[3], parts[4])
+		if name == "" || project == "" || service == "" {
 			continue
 		}
-		result = append(result, ComposeContainer{Name: name, Project: strings.TrimSpace(project), Service: strings.TrimSpace(service)})
+		result = append(result, ComposeContainer{
+			Name:    name,
+			Project: project,
+			Service: service,
+			Running: strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
+		})
 	}
 	return result, nil
+}
+
+func firstRuntimeLabel(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && value != "<no value>" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c Compose) ContainerHealthStatus(ctx context.Context, container string) (string, error) {
