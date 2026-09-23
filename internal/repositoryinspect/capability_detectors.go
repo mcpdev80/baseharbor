@@ -20,6 +20,17 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 		base := strings.ToLower(filepath.Base(path))
 		lower := strings.ToLower(string(data))
 
+		if isComposeFile(base) {
+			for _, service := range detectComposeServices(data) {
+				if service.ObjectStorage {
+					detected = append(detected, Evidence{
+						Kind: EvidenceCompose, Path: path,
+						Detail: "compose service " + service.Name + " provides S3-compatible object storage",
+					})
+				}
+			}
+		}
+
 		if isEnvFile(base) {
 			for _, name := range readEnvNames(data) {
 				switch strings.ToUpper(name) {
