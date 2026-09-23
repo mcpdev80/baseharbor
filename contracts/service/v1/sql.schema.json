@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:service:v1:sql",
-  "title": "BaseHarbor SQL service contract v1",
+  "$id": "https://schemas.baseharbor.dev/service/v1/sql.schema.json",
+  "title": "BaseHarbor SQL Service Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "kind"
-  ],
   "properties": {
     "kind": {
       "const": "sql"
+    },
+    "contractVersion": {
+      "const": "v1"
     },
     "name": {
       "type": "string",
@@ -22,20 +22,23 @@
         "transactions": {
           "type": "boolean"
         },
-        "tls": {
+        "readWrite": {
           "type": "boolean"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
-    },
-    "extensions": {
-      "type": "object",
-      "patternProperties": {
-        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false,
-      "description": "Versioned provider-neutral BaseHarbor extensions only."
     }
-  }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
 }
