@@ -34,7 +34,7 @@ type quadletComposeService struct {
 	Restart     string                    `yaml:"restart"`
 	Command     quadletStringList         `yaml:"command"`
 	Volumes     []string                  `yaml:"volumes"`
-	Networks    quadletStringSet          `yaml:"networks"`
+	Networks    quadletNetworkAttachments `yaml:"networks"`
 	DependsOn   quadletStringSet          `yaml:"depends_on"`
 	Profiles    []string                  `yaml:"profiles"`
 	User        string                    `yaml:"user"`
@@ -111,6 +111,56 @@ func (s *quadletStringSet) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	default:
 		return errors.New("unsupported Compose sequence/mapping syntax")
+	}
+}
+
+type quadletNetworkAttachments struct {
+	Names   []string
+	Aliases map[string][]string
+}
+
+func (n *quadletNetworkAttachments) UnmarshalYAML(node *yaml.Node) error {
+	n.Aliases = map[string][]string{}
+	switch node.Kind {
+	case 0:
+		return nil
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			name := strings.TrimSpace(item.Value)
+			if name != "" {
+				n.Names = append(n.Names, name)
+			}
+		}
+		return nil
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			name := strings.TrimSpace(node.Content[i].Value)
+			if name == "" {
+				continue
+			}
+			n.Names = append(n.Names, name)
+			value := node.Content[i+1]
+			if value.Kind != yaml.MappingNode {
+				continue
+			}
+			for j := 0; j+1 < len(value.Content); j += 2 {
+				if value.Content[j].Value != "aliases" {
+					continue
+				}
+				aliasesNode := value.Content[j+1]
+				if aliasesNode.Kind != yaml.SequenceNode {
+					return errors.New("Compose network aliases must be a sequence")
+				}
+				for _, alias := range aliasesNode.Content {
+					if value := strings.TrimSpace(alias.Value); value != "" {
+						n.Aliases[name] = append(n.Aliases[name], value)
+					}
+				}
+			}
+		}
+		return nil
+	default:
+		return errors.New("unsupported Compose networks syntax")
 	}
 }
 
@@ -200,7 +250,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 				continue
 			}
 		}
-		if len(service.Networks) == 0 {
+		if len(service.Networks.Names) == 0 {
 			defaultNetworkNeeded = true
 		}
 	}
@@ -348,7 +398,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			}
 		}
 
-		serviceNetworks := append([]string(nil), service.Networks...)
+		serviceNetworks := append([]string(nil), service.Networks.Names...)
 		if len(serviceNetworks) == 0 {
 			serviceNetworks = []string{"default"}
 		}
@@ -368,6 +418,9 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 				return QuadletProject{}, fmt.Errorf("Compose service %q references undeclared network %q", serviceName, networkName)
 			}
 			fmt.Fprintf(&unit, "NetworkAlias=%s\n", serviceName)
+			for _, alias := range service.Networks.Aliases[networkName] {
+				fmt.Fprintf(&unit, "NetworkAlias=%s\n", alias)
+			}
 		}
 
 		for _, mount := range service.Volumes {
