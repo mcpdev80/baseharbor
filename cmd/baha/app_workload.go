@@ -415,13 +415,31 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 
 	cli.ReportActivityDetail(out, "waiting for workload service and HTTP/TLS readiness")
 	fmt.Fprintf(out, "[WAIT] workload          waiting up to %s for service and HTTP/TLS readiness\n", repositoryWorkloadReadinessTimeout)
+	initState, err := loadRepositoryInitState(workload.RepositoryRoot)
+	if err != nil {
+		cleanupNewResources()
+		return false, fmt.Errorf("load repository deployment state for readiness: %w", err)
+	}
 	verifyCtx, cancel := context.WithTimeout(ctx, repositoryWorkloadReadinessTimeout)
 	defer cancel()
 	var lastStatus repositoryWorkloadStatus
 	var lastErr error
 	for verifyCtx.Err() == nil {
-		lastStatus, lastErr = inspectRepositoryWorkloadStatus(verifyCtx, compose, resolved, files)
-		if lastErr == nil && lastStatus.Found && lastStatus.Ready() {
+		states, stateErr := compose.ServiceStatesProjectFilesEnv(verifyCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+		if stateErr != nil {
+			lastErr = stateErr
+		} else {
+			exposures := inspectWorkloadExposures(verifyCtx, expectedServices, states, initState.Hostname)
+			services := attachWorkloadExposures(buildWorkloadServiceStatuses(expectedServices, states), exposures)
+			lastStatus = repositoryWorkloadStatus{
+				Found:     true,
+				Workload:  workload,
+				Services:  services,
+				Exposures: exposures,
+			}
+			lastErr = workloadExposureReadinessError(exposures)
+		}
+		if lastErr == nil && lastStatus.Ready() {
 			cli.ReportActivityDetail(out, "workload ready")
 			fmt.Fprintf(out, "[READY] workload         %d Compose service(s) ready\n", len(expectedServices))
 			if len(lastStatus.Exposures) > 0 {
