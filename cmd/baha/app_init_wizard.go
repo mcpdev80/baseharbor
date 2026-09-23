@@ -40,6 +40,7 @@ type appProjectDetection struct {
 	MetricsSource          string
 	OTLP                   bool
 	OTLPSuggested          bool
+	OTLPSignals            []string
 	OTLPSource             string
 	LogsSuggested          bool
 	RuntimeAPI             bool
@@ -188,6 +189,9 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		case "telemetry.otlp":
 			d.OTLP = d.OTLP || detected
 			d.OTLPSuggested = d.OTLPSuggested || suggested
+			if finding.Name != "" && (detected || suggested) {
+				d.OTLPSignals = append(d.OTLPSignals, finding.Name)
+			}
 			if d.OTLPSource == "" {
 				d.OTLPSource = source
 			}
@@ -200,6 +204,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 	d.EnvFiles = uniqueSorted(d.EnvFiles)
 	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
 	d.RedisInstances = uniqueSorted(d.RedisInstances)
+	d.OTLPSignals = uniqueSorted(d.OTLPSignals)
 	for capabilityID, operations := range d.RuntimePermissions {
 		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
 	}
