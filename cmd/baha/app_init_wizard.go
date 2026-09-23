@@ -136,15 +136,17 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 	}
 	for _, finding := range result.Findings {
-		if finding.Confidence != repositoryinspect.ConfidenceDetected {
-			continue
-		}
 		source := ""
 		if len(finding.Evidence) > 0 {
 			source = finding.Evidence[0].Path + " " + finding.Evidence[0].Detail
 		}
+		detected := finding.Confidence == repositoryinspect.ConfidenceDetected
+		suggested := finding.Confidence == repositoryinspect.ConfidenceSuggested
 		switch finding.Capability {
 		case "database.sql":
+			if !detected {
+				continue
+			}
 			d.Postgres = true
 			if finding.Name != "" {
 				d.PostgresInstances = append(d.PostgresInstances, finding.Name)
@@ -153,6 +155,9 @@ func detectAppProject(root string) (appProjectDetection, error) {
 				d.PostgresSource = source
 			}
 		case "cache.key-value":
+			if !detected {
+				continue
+			}
 			d.Redis = true
 			if finding.Name != "" {
 				d.RedisInstances = append(d.RedisInstances, finding.Name)
@@ -160,11 +165,44 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			if d.RedisSource == "" {
 				d.RedisSource = source
 			}
+		case "object-storage.s3":
+			d.ObjectStorage = d.ObjectStorage || detected
+			d.ObjectStorageSuggested = d.ObjectStorageSuggested || suggested
+			if d.ObjectStorageSource == "" {
+				d.ObjectStorageSource = source
+			}
+			if len(finding.Operations) > 0 {
+				for _, operation := range finding.Operations {
+					d.RuntimePermissions["object-storage.s3/v1"] = append(
+						d.RuntimePermissions["object-storage.s3/v1"],
+						string(operation),
+					)
+				}
+			}
+		case "metrics":
+			d.Metrics = d.Metrics || detected
+			d.MetricsSuggested = d.MetricsSuggested || suggested
+			if d.MetricsSource == "" {
+				d.MetricsSource = source
+			}
+		case "telemetry.otlp":
+			d.OTLP = d.OTLP || detected
+			d.OTLPSuggested = d.OTLPSuggested || suggested
+			if d.OTLPSource == "" {
+				d.OTLPSource = source
+			}
+		case "logs":
+			d.LogsSuggested = d.LogsSuggested || detected || suggested
+		case "runtime-api":
+			d.RuntimeAPI = d.RuntimeAPI || detected
 		}
 	}
 	d.EnvFiles = uniqueSorted(d.EnvFiles)
 	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
 	d.RedisInstances = uniqueSorted(d.RedisInstances)
+	for capabilityID, operations := range d.RuntimePermissions {
+		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
+	}
 	return d, nil
 }
 
