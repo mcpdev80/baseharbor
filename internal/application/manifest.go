@@ -1200,7 +1200,7 @@ func ParseYAML(input string) (Manifest, error) {
 			if section != "services" || (serviceField != "instances" && serviceField != "buckets") {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
-			if serviceField == "instances" && service != "postgres" && service != "redis" {
+			if serviceField == "instances" && service != "sql" && service != "cache" {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
 			if serviceField == "buckets" && service != "object_storage" {
@@ -1215,13 +1215,13 @@ func ParseYAML(input string) (Manifest, error) {
 				return Manifest{}, fmt.Errorf("line %d: %w", lineNo, err)
 			}
 			switch service {
-			case "postgres":
+			case "sql":
 				if m.Services.SQLInstances == nil {
 					m.Services.SQLInstances = map[string]ServiceInstance{}
 				}
 				m.Services.SQLInstances[name] = ServiceInstance{}
 				m.Services.SQL = true
-			case "redis":
+			case "cache":
 				if m.Services.CacheInstances == nil {
 					m.Services.CacheInstances = map[string]ServiceInstance{}
 				}
