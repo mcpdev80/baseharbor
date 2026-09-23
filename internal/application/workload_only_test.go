@@ -13,8 +13,8 @@ func workloadOnlyManifest() Manifest {
 		Name:        "awc",
 		Environment: "production",
 		Services: Services{
-			Postgres: false,
-			Redis:    false,
+			SQL:      false,
+			Cache:    false,
 			Secrets:  false,
 		},
 		Workload: WorkloadConfig{
@@ -177,7 +177,7 @@ func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
 		Name:        "portable-networks",
 		Environment: "dev",
 		Services: Services{
-			Postgres: true,
+			SQL:      true,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "compose.yaml",
