@@ -34,10 +34,10 @@ func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(SQLInstanceNames(got), []string{"analytics", "primary"}) {
-		t.Fatalf("unexpected PostgreSQL instances: %#v", SQLInstanceNames(got))
+		t.Fatalf("unexpected SQL instances: %#v", SQLInstanceNames(got))
 	}
 	if !reflect.DeepEqual(CacheInstanceNames(got), []string{"cache", "sessions"}) {
-		t.Fatalf("unexpected Redis instances: %#v", CacheInstanceNames(got))
+		t.Fatalf("unexpected cache instances: %#v", CacheInstanceNames(got))
 	}
 	for _, expected := range []string{"    instances:\n", "      primary: {}\n", "      analytics: {}\n", "      cache: {}\n", "      sessions: {}\n"} {
 		if !strings.Contains(got.YAML(), expected) {
@@ -49,10 +49,10 @@ func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
 	if got := SQLInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
-		t.Fatalf("unexpected default PostgreSQL instances: %#v", got)
+		t.Fatalf("unexpected default SQL instances: %#v", got)
 	}
 	if got := CacheInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
-		t.Fatalf("unexpected default Redis instances: %#v", got)
+		t.Fatalf("unexpected default cache instances: %#v", got)
 	}
 	if strings.Contains(m.YAML(), "instances:") {
 		t.Fatalf("simple manifest should stay compact:\n%s", m.YAML())
@@ -145,6 +145,15 @@ func TestStoreCreateLoadList(t *testing.T) {
 	_, err = store.Create(New("alpha", "dev", true, false, false))
 	if !errors.Is(err, ErrExists) {
 		t.Fatalf("expected ErrExists, got %v", err)
+	}
+}
+
+func TestParserRejectsProviderSpecificServiceNames(t *testing.T) {
+	for _, service := range []string{"postgres", "redis"} {
+		input := "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  " + service + ":\n    enabled: true\n"
+		if _, err := ParseYAML(input); err == nil {
+			t.Fatalf("expected provider-specific service %q to be rejected", service)
+		}
 	}
 }
 
