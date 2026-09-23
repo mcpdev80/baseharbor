@@ -163,7 +163,7 @@ OpenTelemetry evidence -> Observability + OTLP
 
 Das bestehende v0.4-Manifest bleibt bis zur expliziten Contract-Migration kompatibel. Produktnamen in bestehenden v0.4-Feldern sind dabei eine Compatibility Surface und keine neue Architekturgrenze.
 
-Repository-Compose ist immer read-only. Bei gemischten Compose-Dateien trennt die Inspection bekannte ersetzbare Infrastruktur von Application Workload. PostgreSQL-, Redis/Valkey- und unterstuetzte S3-kompatible Services bleiben im Original-Compose unveraendert vorhanden, werden aber fuer den BaseHarbor-managed Pfad nicht in `workload.services` aufgenommen. `docker compose up` ausserhalb BaseHarbor bleibt dadurch unveraendert moeglich.
+Repository-Compose ist immer read-only. Bei gemischten Compose-Dateien trennt die Inspection bekannte ersetzbare Infrastruktur von Application Workload. PostgreSQL-, Redis/Valkey- und unterstuetzte S3-kompatible Services bleiben im Original-Compose unveraendert vorhanden, werden aber fuer den BaseHarbor-managed Pfad nicht in `workload.services` aufgenommen. Infrastrukturartig benannte Services, deren Rolle nicht sicher erkannt werden kann, werden als mehrdeutig markiert: `--quick` bricht fail-closed ab, der interaktive Wizard verlangt eine explizite Zuordnung. `docker compose up` ausserhalb BaseHarbor bleibt dadurch unveraendert moeglich.
 
 `baha app init --quick` uebernimmt nur eindeutige Detected-Evidence. Metrics werden nur automatisch geschrieben, wenn Workload-Service und Container-Port eindeutig ableitbar sind. OTLP wird nur automatisch geschrieben, wenn der Signaltyp eindeutig erkannt wurde. Konkrete Runtime-Operationen erzeugen nur dann Runtime-Permissions, wenn auch deren Workload-Scope eindeutig ist; sonst bricht Quick-Init fail-closed ab.
 
