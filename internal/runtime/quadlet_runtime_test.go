@@ -1,6 +1,10 @@
 package runtime
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestQuadletProjectResourceUnitsOrdersPrerequisites(t *testing.T) {
 	project := QuadletProject{Files: map[string]string{
@@ -32,5 +36,40 @@ func TestQuadletDirectiveValueReadsResourceNames(t *testing.T) {
 	}
 	if got := quadletDirectiveValue(content, "VolumeName"); got != "" {
 		t.Fatalf("unexpected VolumeName = %q", got)
+	}
+}
+
+func TestQuadletProjectInstalledUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	project := QuadletProject{
+		Project: "baseharbor-demo",
+		Files: map[string]string{
+			"baseharbor-demo-api.container": "[Container]\nImage=example\n",
+			"baseharbor-demo-default.network": "[Network]\nNetworkName=baseharbor-demo_default\n",
+		},
+	}
+	for name, content := range project.Files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	unchanged, err := quadletProjectInstalledUnchanged(dir, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unchanged {
+		t.Fatal("expected installed project to be unchanged")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "baseharbor-demo-api.container"), []byte("[Container]\nImage=changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err = quadletProjectInstalledUnchanged(dir, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged {
+		t.Fatal("expected modified installed project to require reconciliation")
 	}
 }
