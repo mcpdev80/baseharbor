@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:baseharbor:contracts:binding:v1:service-binding",
+  "title": "BaseHarbor Service Binding 1.1 aligned output",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "uri": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    },
+    "password": {
+      "$ref": "#/$defs/valueOrReference"
+    },
+    "certificates": {
+      "$ref": "#/$defs/valueOrReference"
+    },
+    "private-key": {
+      "$ref": "#/$defs/valueOrReference"
+    },
+    "extensions": {
+      "type": "object",
+      "properties": {
+        "baha": {
+          "type": "object",
+          "description": "Versioned BaseHarbor extensions such as identity/credential references, authorization and lifecycle metadata."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "valueOrReference": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^baseharbor://"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
