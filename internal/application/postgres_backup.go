@@ -18,7 +18,7 @@ type PostgresBackup struct {
 	SQL      []byte
 }
 
-func DumpSQLInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles) ([]PostgresBackup, error) {
+func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles) ([]PostgresBackup, error) {
 	instances := SQLInstanceNames(m)
 	backups := make([]PostgresBackup, 0, len(instances))
 	for _, instance := range instances {
@@ -50,7 +50,7 @@ func DumpSQLInstances(ctx context.Context, runtime PostgresBackupRuntime, m Mani
 	return backups, nil
 }
 
-func RestoreSQLInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, backups []PostgresBackup) error {
+func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, backups []PostgresBackup) error {
 	if err := ValidatePostgresBackupSet(m, backups); err != nil {
 		return err
 	}
