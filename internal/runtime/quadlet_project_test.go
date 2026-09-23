@@ -234,3 +234,25 @@ func TestQuadletSystemdJoinPreservesContainerDollarExpansion(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderQuadletHealthCommandUsesNativeShellExpression(t *testing.T) {
+	got, err := renderQuadletHealthCommand([]string{"CMD-SHELL", "pg_isready -U baseharbor -d app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "pg_isready -U baseharbor -d app" {
+		t.Fatalf("CMD-SHELL health command = %q", got)
+	}
+}
+
+func TestRenderQuadletHealthCommandEscapesSystemdDollarExpansion(t *testing.T) {
+	got, err := renderQuadletHealthCommand([]string{"CMD-SHELL", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping | grep -q '^PONG$'`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"$$VALKEY_PASSWORD", "^PONG$$"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("health command missing %q: %s", want, got)
+		}
+	}
+}
