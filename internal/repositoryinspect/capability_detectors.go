@@ -147,7 +147,9 @@ type otlpDetector struct{}
 func (otlpDetector) Name() string { return "telemetry.otlp" }
 
 func (otlpDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
-	var detected, suggested []Evidence
+	var genericDetected, genericSuggested []Evidence
+	detectedSignals := map[string][]Evidence{}
+	suggestedSignals := map[string][]Evidence{}
 	for path, data := range snapshot.Files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -156,43 +158,81 @@ func (otlpDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, e
 		lower := strings.ToLower(string(data))
 		if isEnvFile(base) {
 			for _, name := range readEnvNames(data) {
-				if strings.HasPrefix(strings.ToUpper(name), "OTEL_EXPORTER_OTLP_") || strings.EqualFold(name, "OTEL_EXPORTER_OTLP_ENDPOINT") {
-					detected = append(detected, Evidence{Kind: EvidenceEnv, Path: path, Detail: "variable " + name})
+				upper := strings.ToUpper(name)
+				evidence := Evidence{Kind: EvidenceEnv, Path: path, Detail: "variable " + name}
+				switch upper {
+				case "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT":
+					detectedSignals["traces"] = append(detectedSignals["traces"], evidence)
+				case "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":
+					detectedSignals["metrics"] = append(detectedSignals["metrics"], evidence)
+				case "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT":
+					detectedSignals["logs"] = append(detectedSignals["logs"], evidence)
+				case "OTEL_EXPORTER_OTLP_ENDPOINT":
+					genericDetected = append(genericDetected, evidence)
 				}
 			}
 		}
 		if isDependencyFile(base) && containsAnyToken(lower, []string{
 			"opentelemetry", "otel-exporter", "otlp",
 		}) {
-			suggested = append(suggested, Evidence{
+			genericSuggested = append(genericSuggested, Evidence{
 				Kind: EvidenceDependency, Path: path,
 				Detail: "dependency metadata references OpenTelemetry/OTLP",
 			})
 		}
-		if isSourceFile(base) && containsAny(lower, []string{
-			"otlptrace", "otlpmetric", "otlplog", "opentelemetry", "otel.exporter",
-		}) {
-			suggested = append(suggested, Evidence{
-				Kind: EvidenceImport, Path: path,
-				Detail: "source references OpenTelemetry/OTLP export",
+		if isSourceFile(base) {
+			if strings.Contains(lower, "otlptrace") {
+				suggestedSignals["traces"] = append(suggestedSignals["traces"], Evidence{
+					Kind: EvidenceImport, Path: path, Detail: "source references OTLP trace export",
+				})
+			}
+			if strings.Contains(lower, "otlpmetric") {
+				suggestedSignals["metrics"] = append(suggestedSignals["metrics"], Evidence{
+					Kind: EvidenceImport, Path: path, Detail: "source references OTLP metric export",
+				})
+			}
+			if strings.Contains(lower, "otlplog") {
+				suggestedSignals["logs"] = append(suggestedSignals["logs"], Evidence{
+					Kind: EvidenceImport, Path: path, Detail: "source references OTLP log export",
+				})
+			}
+			if containsAny(lower, []string{"opentelemetry", "otel.exporter"}) {
+				genericSuggested = append(genericSuggested, Evidence{
+					Kind: EvidenceImport, Path: path,
+					Detail: "source references OpenTelemetry/OTLP export",
+				})
+			}
+		}
+	}
+
+	var findings []Finding
+	for _, signal := range []string{"traces", "metrics", "logs"} {
+		if evidence := detectedSignals[signal]; len(evidence) > 0 {
+			findings = append(findings, Finding{
+				Capability: "telemetry.otlp", Name: signal, Direction: DirectionExport,
+				Confidence: ConfidenceDetected, Evidence: uniqueEvidence(evidence),
+			})
+		} else if evidence := suggestedSignals[signal]; len(evidence) > 0 {
+			findings = append(findings, Finding{
+				Capability: "telemetry.otlp", Name: signal, Direction: DirectionExport,
+				Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(evidence),
 			})
 		}
 	}
-	if len(detected) > 0 {
-		return []Finding{{
+	if len(genericDetected) > 0 {
+		findings = append(findings, Finding{
 			Capability: "telemetry.otlp", Direction: DirectionExport,
-			Confidence: ConfidenceDetected, Evidence: uniqueEvidence(append(detected, suggested...)),
-		}}, nil
-	}
-	if len(suggested) > 0 {
-		return []Finding{{
+			Confidence: ConfidenceDetected,
+			Evidence: uniqueEvidence(append(genericDetected, genericSuggested...)),
+		})
+	} else if len(genericSuggested) > 0 && len(findings) == 0 {
+		findings = append(findings, Finding{
 			Capability: "telemetry.otlp", Direction: DirectionExport,
-			Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested),
-		}}, nil
+			Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(genericSuggested),
+		})
 	}
-	return nil, nil
+	return findings, nil
 }
-
 
 type runtimeAPIDetector struct{}
 
