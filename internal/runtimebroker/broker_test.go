@@ -188,7 +188,7 @@ func TestEnsureDocsPortIsStableAndOwnerOnly(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("docs port state mode = %o, want 600", got)
 	}
-	if got := docsURL(first); !strings.HasPrefix(got, "http://127.0.0.1:") {
+	if got := docsURL(first); !strings.HasPrefix(got, "https://127.0.0.1:") {
 		t.Fatalf("docs URL is not loopback-only: %q", got)
 	}
 }
