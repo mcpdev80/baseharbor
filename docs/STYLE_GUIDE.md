@@ -46,7 +46,8 @@ Prefer machine-readable contracts where practical.
 
 ## Source of truth
 
-- schema/types -> structure;
+- JSON Schema 2020-12 -> portable service/provider configuration structure and validation;
+- schema/types -> internal implementation structure;
 - OpenAPI -> REST;
 - Protobuf -> provider process protocol;
 - code/generated help -> CLI syntax;
