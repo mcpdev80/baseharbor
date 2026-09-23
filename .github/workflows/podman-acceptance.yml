@@ -120,6 +120,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          diagnose_quadlet() {
+            echo "::group::Quadlet diagnostics"
+            systemctl --user --failed --no-pager || true
+            systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            podman ps -a || true
+            unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+            if [ -d "$unit_dir" ]; then
+              find "$unit_dir" -maxdepth 1 -type f -name 'baseharbor-*' -printf '%f\n' | sort || true
+            fi
+            echo "::endgroup::"
+          }
+          trap diagnose_quadlet ERR
+
           workdir="$(mktemp -d)"
           printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
           cd "$workdir"
@@ -129,7 +142,7 @@ jobs:
           grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
 
           /tmp/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
-          /tmp/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          timeout 180s /tmp/baha app apply podman-ci | tee /tmp/podman-apply.txt
 
           /tmp/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
