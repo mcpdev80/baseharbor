@@ -52,7 +52,7 @@ func TestFormatBackupPreviewContainsDurableStateWithoutSecretNames(t *testing.T)
 		Services: application.Services{
 			Postgres: true,
 			Secrets:  true,
-			PostgresInstances: map[string]application.ServiceInstance{
+			SQLInstances: map[string]application.ServiceInstance{
 				"primary": {},
 			},
 		},
@@ -79,7 +79,7 @@ func TestFormatRestorePreviewExplainsImpactAndVerification(t *testing.T) {
 		Services: application.Services{
 			Postgres: true,
 			Secrets:  true,
-			PostgresInstances: map[string]application.ServiceInstance{
+			SQLInstances: map[string]application.ServiceInstance{
 				"primary": {},
 			},
 		},
