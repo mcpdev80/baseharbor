@@ -257,13 +257,11 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	}
 
 	networks, volumes, builds := quadletProjectResourceUnits(project)
-	for _, units := range [][]string{networks, volumes} {
-		if len(units) == 0 {
-			continue
-		}
-		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
-			return err
-		}
+	if err := quadletEnsureResourceUnits(ctx, project, networks, "network", "NetworkName"); err != nil {
+		return err
+	}
+	if err := quadletEnsureResourceUnits(ctx, project, volumes, "volume", "VolumeName"); err != nil {
+		return err
 	}
 	if len(builds) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, builds...)...); err != nil {
@@ -280,6 +278,80 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	}
 	_, err = quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...)
 	return err
+}
+
+func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, units []string, kind, directive string) error {
+	if len(units) == 0 {
+		return nil
+	}
+	for _, unit := range units {
+		file := quadletFileForUnit(project, unit, kind)
+		if file == "" {
+			return fmt.Errorf("Quadlet %s unit %s has no matching project file", kind, unit)
+		}
+		resource := quadletDirectiveValue(project.Files[file], directive)
+		if resource == "" {
+			return fmt.Errorf("Quadlet %s file %s has no %s directive", kind, file, directive)
+		}
+		exists, err := quadletRuntimeResourceExists(ctx, kind, resource)
+		if err != nil {
+			return err
+		}
+		if exists {
+			if _, err := quadletSystemctl(ctx, nil, "start", unit); err != nil {
+				return err
+			}
+			continue
+		}
+		_, _ = quadletSystemctl(ctx, nil, "reset-failed", unit)
+		if _, err := quadletSystemctl(ctx, nil, "restart", unit); err != nil {
+			return err
+		}
+		exists, err = quadletRuntimeResourceExists(ctx, kind, resource)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s", kind, resource, unit)
+		}
+	}
+	return nil
+}
+
+func quadletFileForUnit(project QuadletProject, unit, kind string) string {
+	var suffix string
+	switch kind {
+	case "network":
+		suffix = ".network"
+	case "volume":
+		suffix = ".volume"
+	default:
+		return ""
+	}
+	for name := range project.Files {
+		if filepath.Ext(name) != suffix {
+			continue
+		}
+		if quadletUnitForFile(name) == unit {
+			return name
+		}
+	}
+	return ""
+}
+
+func quadletRuntimeResourceExists(ctx context.Context, kind, name string) (bool, error) {
+	path, err := exec.LookPath("podman")
+	if err != nil {
+		return false, err
+	}
+	cmd := exec.CommandContext(ctx, path, kind, "exists", name)
+	if err := cmd.Run(); err == nil {
+		return true, nil
+	} else if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return false, nil
+	} else {
+		return false, fmt.Errorf("check Podman %s resource %s: %w", kind, name, err)
+	}
 }
 
 func quadletProjectResourceUnits(project QuadletProject) (networks, volumes, builds []string) {
