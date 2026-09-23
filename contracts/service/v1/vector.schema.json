@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:baseharbor:contracts:service:v1:vector",
+  "title": "BaseHarbor vector service contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind"
+  ],
+  "properties": {
+    "kind": {
+      "const": "vector"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dimensions": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "distance": {
+      "enum": [
+        "cosine",
+        "dot-product",
+        "euclidean"
+      ]
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Only demonstrated cross-provider semantics belong here; provider search/index tuning is forbidden."
+    }
+  }
+}
