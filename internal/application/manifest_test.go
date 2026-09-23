@@ -26,18 +26,18 @@ func TestManifestRoundTrip(t *testing.T) {
 
 func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 	want := New("mailflow", "prod", false, false, false)
-	want.Services.Postgres = false
-	want = WithPostgresInstances(want, "primary", "analytics")
-	want = WithRedisInstances(want, "cache", "sessions")
+	want.Services.SQL = false
+	want = WithSQLInstances(want, "primary", "analytics")
+	want = WithCacheInstances(want, "cache", "sessions")
 	got, err := ParseYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(PostgresInstanceNames(got), []string{"analytics", "primary"}) {
-		t.Fatalf("unexpected PostgreSQL instances: %#v", PostgresInstanceNames(got))
+	if !reflect.DeepEqual(SQLInstanceNames(got), []string{"analytics", "primary"}) {
+		t.Fatalf("unexpected PostgreSQL instances: %#v", SQLInstanceNames(got))
 	}
-	if !reflect.DeepEqual(RedisInstanceNames(got), []string{"cache", "sessions"}) {
-		t.Fatalf("unexpected Redis instances: %#v", RedisInstanceNames(got))
+	if !reflect.DeepEqual(CacheInstanceNames(got), []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected Redis instances: %#v", CacheInstanceNames(got))
 	}
 	for _, expected := range []string{"    instances:\n", "      primary: {}\n", "      analytics: {}\n", "      cache: {}\n", "      sessions: {}\n"} {
 		if !strings.Contains(got.YAML(), expected) {
@@ -48,10 +48,10 @@ func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 
 func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
-	if got := PostgresInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+	if got := SQLInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
 		t.Fatalf("unexpected default PostgreSQL instances: %#v", got)
 	}
-	if got := RedisInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+	if got := CacheInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
 		t.Fatalf("unexpected default Redis instances: %#v", got)
 	}
 	if strings.Contains(m.YAML(), "instances:") {
@@ -86,7 +86,7 @@ secrets:
 
 func TestManifestDefaultsToPostgres(t *testing.T) {
 	m := New("demo", "", false, false, false)
-	if m.Environment != "dev" || !m.Services.Postgres {
+	if m.Environment != "dev" || !m.Services.SQL {
 		t.Fatalf("unexpected defaults: %#v", m)
 	}
 }
@@ -106,7 +106,7 @@ func TestManifestValidationFailsClosed(t *testing.T) {
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
-		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true, PostgresInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true, SQLInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
@@ -157,7 +157,7 @@ func TestParserRejectsUnknownFields(t *testing.T) {
 
 func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "web")
 	m = WithHTTPExposure(m, "public", "web", 8080, "http")
 
@@ -177,7 +177,7 @@ func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 
 func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml"}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.services") {
@@ -192,7 +192,7 @@ func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 
 func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "private-ish"}}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "visibility must be public or internal") {
@@ -228,14 +228,14 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !parsed.Services.Postgres || parsed.Services.Redis || parsed.Services.Secrets {
+	if !parsed.Services.SQL || parsed.Services.Cache || parsed.Services.Secrets {
 		t.Fatalf("legacy explicit false flags changed semantics: %#v", parsed.Services)
 	}
 }
 
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
@@ -285,7 +285,7 @@ func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
 
 func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
@@ -313,7 +313,7 @@ func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 
 func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 	base := New("demo", "dev", false, false, false)
-	base.Services.Postgres = false
+	base.Services.SQL = false
 	base = WithWorkload(base, "compose.yaml", "api")
 
 	cases := []MetricsSourceRequirement{
@@ -342,7 +342,7 @@ func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 
 func TestManifestLogsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithLogsCollection(m, "application")
 
@@ -362,7 +362,7 @@ func TestManifestLogsRoundTrip(t *testing.T) {
 
 func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml")
 	m = WithLogsCollection(m, "application")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.services") {
@@ -372,7 +372,7 @@ func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
 
 func TestManifestLogsRejectUnknownSource(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithLogsCollection(m, "everything")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {
