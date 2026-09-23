@@ -175,6 +175,11 @@ func validateRelayID(id string) error {
 func composeYAML(spec RuntimeSpec, image string) string {
 	listen := "0.0.0.0:" + strconv.Itoa(spec.TargetPort)
 	target := spec.TargetHost + ":" + strconv.Itoa(spec.TargetPort)
+	healthPort := 8081
+	if spec.TargetPort == healthPort {
+		healthPort = 8082
+	}
+	healthAddr := "127.0.0.1:" + strconv.Itoa(healthPort)
 	var b strings.Builder
 	b.WriteString("services:\n")
 	b.WriteString("  relay:\n")
@@ -186,9 +191,9 @@ func composeYAML(spec RuntimeSpec, image string) string {
 	b.WriteString("      BASEHARBOR_CONNECTIVITY_RELAY_MODE: \"true\"\n")
 	fmt.Fprintf(&b, "      BASEHARBOR_RELAY_LISTEN_ADDR: %s\n", strconv.Quote(listen))
 	fmt.Fprintf(&b, "      BASEHARBOR_RELAY_TARGET_ADDR: %s\n", strconv.Quote(target))
-	b.WriteString("      BASEHARBOR_RELAY_HEALTH_ADDR: \"127.0.0.1:8081\"\n")
+	fmt.Fprintf(&b, "      BASEHARBOR_RELAY_HEALTH_ADDR: %s\n", strconv.Quote(healthAddr))
 	b.WriteString("    healthcheck:\n")
-	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"http://127.0.0.1:8081/readyz\"]\n")
+	fmt.Fprintf(&b, "      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", %s]\n", strconv.Quote("http://"+healthAddr+"/readyz"))
 	b.WriteString("      interval: 2s\n")
 	b.WriteString("      timeout: 2s\n")
 	b.WriteString("      retries: 15\n")

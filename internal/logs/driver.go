@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	LokiImage       = "grafana/loki:3.7.8"
-	AlloyImage      = "grafana/alloy:v1.19.2"
+	LokiImage       = "docker.io/grafana/loki:3.7.8"
+	AlloyImage      = "docker.io/grafana/alloy:v1.19.2"
 	LokiRuntimeUID  = 10001
 	LokiRuntimeGID  = 10001
 	AlloyRuntimeUID = 473
@@ -31,12 +31,29 @@ type Runtime interface {
 
 type Driver struct {
 	runtime Runtime
+	engine  string
 	app     application.Manifest
 	client  *http.Client
 }
 
+type runtimeEngine interface {
+	Engine() string
+}
+
+func runtimeKind(runtime Runtime) string {
+	if detected, ok := runtime.(runtimeEngine); ok {
+		switch strings.ToLower(strings.TrimSpace(detected.Engine())) {
+		case "podman":
+			return "podman"
+		case "docker":
+			return "docker"
+		}
+	}
+	return "docker"
+}
+
 func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, app: app, client: &http.Client{Timeout: 10 * time.Second}}
+	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, client: &http.Client{Timeout: 10 * time.Second}}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Loki }
@@ -69,7 +86,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	files, err := EnsureProviderFiles(d.app)
+	files, err := EnsureProviderFilesForRuntime(d.app, d.engine)
 	if err != nil {
 		return err
 	}

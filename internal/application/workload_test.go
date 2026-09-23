@@ -179,10 +179,13 @@ func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *te
 	}
 	api := got[apiStart:workerStart]
 	worker := got[workerStart:]
-	if !strings.Contains(api, "baseharbor-object-storage:") {
+	if networksStart := strings.Index(worker, "networks:\n"); networksStart >= 0 {
+		worker = worker[:networksStart]
+	}
+	if !strings.Contains(api, "- baseharbor-object-storage") {
 		t.Fatalf("authorized service missing runtime S3 network:\n%s", got)
 	}
-	if strings.Contains(worker, "baseharbor-object-storage: {}") {
+	if strings.Contains(worker, "baseharbor-object-storage") {
 		t.Fatalf("unauthorized service joined runtime S3 network:\n%s", got)
 	}
 }

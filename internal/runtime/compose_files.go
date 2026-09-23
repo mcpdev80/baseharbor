@@ -3,12 +3,15 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 var projectEnvironmentCache = struct {
@@ -49,15 +52,36 @@ func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string
 }
 
 func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
-	if err == nil {
-		cacheProjectEnvironment(project, environment)
+	_, quietErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
+	if quietErr != nil {
+		if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config"); err != nil {
+			return fmt.Errorf("%v; plain config fallback: %w", quietErr, err)
+		}
 	}
-	return err
+	cacheProjectEnvironment(project, environment)
+	return nil
 }
 
 func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) (string, error) {
-	return c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
+	rendered, jsonErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
+	if jsonErr == nil {
+		return rendered, nil
+	}
+
+	renderedYAML, yamlErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config")
+	if yamlErr != nil {
+		return "", fmt.Errorf("%v; YAML fallback: %w", jsonErr, yamlErr)
+	}
+
+	var model any
+	if err := yaml.Unmarshal([]byte(renderedYAML), &model); err != nil {
+		return "", fmt.Errorf("decode Compose YAML fallback after %v: %w", jsonErr, err)
+	}
+	normalized, err := json.Marshal(model)
+	if err != nil {
+		return "", fmt.Errorf("encode Compose YAML fallback as JSON after %v: %w", jsonErr, err)
+	}
+	return string(normalized), nil
 }
 
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
@@ -69,12 +93,17 @@ func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir st
 	return c.UpProjectFilesSelectedProgress(ctx, project, workdir, environment, services, nil, composeFiles...)
 }
 
-func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
-	args := []string{"up", "-d"}
+func composeUpArgs(services []string) []string {
+	args := []string{"up", "-d", "--build"}
 	if len(services) > 0 {
 		args = append(args, "--no-deps")
 		args = append(args, services...)
 	}
+	return args
+}
+
+func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	args := composeUpArgs(services)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
 }
@@ -93,10 +122,48 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 	if len(services) == 0 {
 		return nil
 	}
-	args := []string{"rm", "-f", "-s"}
+
+	selected := make(map[string]struct{}, len(services))
+	for _, service := range services {
+		selected[service] = struct{}{}
+	}
+
+	args := []string{"stop"}
 	args = append(args, services...)
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
-	return err
+	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err != nil {
+		containers, listErr := c.ListComposeContainers(ctx)
+		if listErr != nil {
+			return fmt.Errorf("%v; engine-level selected-service fallback: %w", err, listErr)
+		}
+		for _, container := range containers {
+			if container.Project != project {
+				continue
+			}
+			if _, ok := selected[container.Service]; !ok {
+				continue
+			}
+			if _, stopErr := c.directOutput(ctx, "container", "stop", container.Name); stopErr != nil {
+				return fmt.Errorf("%v; stop selected service %s via runtime engine: %w", err, container.Service, stopErr)
+			}
+		}
+	}
+
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("list selected workload containers after stop: %w", err)
+	}
+	for _, container := range containers {
+		if container.Project != project {
+			continue
+		}
+		if _, ok := selected[container.Service]; !ok {
+			continue
+		}
+		if _, removeErr := c.directOutput(ctx, "container", "rm", container.Name); removeErr != nil {
+			return fmt.Errorf("remove stopped selected service %s via runtime engine: %w", container.Service, removeErr)
+		}
+	}
+	return nil
 }
 
 func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) (string, error) {

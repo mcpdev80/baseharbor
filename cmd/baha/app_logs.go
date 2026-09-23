@@ -103,7 +103,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	if _, err := logsprovider.EnsureWorkloadOverride(prepared.manifest, files, prepared.services); err != nil {
+	if _, err := logsprovider.EnsureWorkloadOverrideForRuntime(prepared.manifest, files, prepared.services, prepared.runtime.Engine()); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s\n", prepared.manifest.Name)

@@ -20,8 +20,17 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
+const (
+	applicationStatusTimeout         = 120 * time.Second
+	applicationOpenBaoStatusTimeout  = 30 * time.Second
+	applicationRequiredSecretTimeout = 40 * time.Second
+	applicationBrokerStatusTimeout   = 10 * time.Second
+	applicationPostgresStatusTimeout = 15 * time.Second
+	applicationValkeyStatusTimeout   = 10 * time.Second
+)
+
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
-	statusCtx, cancelStatus := context.WithTimeout(ctx, 30*time.Second)
+	statusCtx, cancelStatus := context.WithTimeout(ctx, applicationStatusTimeout)
 	defer cancelStatus()
 	ctx = statusCtx
 
@@ -121,7 +130,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if !containsString(services, "postgres") {
 			result.AddCheck("postgres", false, "not running")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
 			err := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
 			cancel()
 			if err != nil {
@@ -135,7 +144,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if !containsString(services, "valkey") {
 			result.AddCheck("valkey", false, "not running")
 		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
 			err := application.VerifyValkeyRuntime(checkCtx, compose, m, files)
 			cancel()
 			if err != nil {
@@ -150,7 +159,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
-			scopeCtx, scopeCancel := context.WithTimeout(ctx, 2*time.Second)
+			scopeCtx, scopeCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 			err := openbao.InspectApplicationScope(scopeCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 			scopeCancel()
@@ -159,7 +168,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			} else {
 				result.AddCheck("secrets", true, "isolated OpenBao AppRole authentication succeeded")
 				if len(application.RequiredSecretNames(m)) > 0 {
-					secretCtx, secretCancel := context.WithTimeout(ctx, 8*time.Second)
+					secretCtx, secretCancel := context.WithTimeout(ctx, applicationRequiredSecretTimeout)
 					statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
 					secretCancel()
 					if statusErr != nil {
@@ -172,7 +181,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 				}
 			}
 		}
-		brokerCtx, brokerCancel := context.WithTimeout(ctx, 2*time.Second)
+		brokerCtx, brokerCancel := context.WithTimeout(ctx, applicationBrokerStatusTimeout)
 		brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
 		brokerCancel()
 		if brokerErr != nil {

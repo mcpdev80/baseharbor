@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ProviderImage   = "grafana/tempo:3.0.2"
+	ProviderImage   = "docker.io/grafana/tempo:3.0.2"
 	ProviderService = "tempo"
 )
 

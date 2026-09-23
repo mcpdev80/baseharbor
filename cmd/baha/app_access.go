@@ -132,7 +132,9 @@ func appLogsCommand(store application.Store) *cli.Command {
 			if service != "" {
 				cmdArgs = append(cmdArgs, service)
 			}
-			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, errOut, composeFiles, cmdArgs...)
+			// Compose implementations disagree on whether workload logs are emitted on stdout or stderr.
+			// The BaseHarbor CLI contract normalizes both streams to stdout for `baha app logs`.
+			return compose.RunProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, os.Stdin, out, out, composeFiles, cmdArgs...)
 		},
 	}
 }

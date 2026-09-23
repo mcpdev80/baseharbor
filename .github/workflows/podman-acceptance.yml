@@ -1,0 +1,200 @@
+name: "Runtime · Podman Core"
+
+run-name: "Runtime · Podman Core · ${{ inputs.ref || github.ref_name }}"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref or commit SHA to test
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/podman/**'
+
+concurrency:
+  group: ${{ github.workflow }}-podman-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  podman-compose:
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout requested ref
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve tested commit
+        id: tested_ref
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Verify Podman runner
+        id: verify_runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/podman-info.txt
+          podman compose version
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+      - name: Build BaseHarbor
+        id: build
+        run: go build -trimpath -o /tmp/baha ./cmd/baha
+
+      - name: Verify Podman runtime detection
+        id: runtime_detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/baha doctor | tee /tmp/podman-doctor.txt
+          grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +compose' /tmp/podman-doctor.txt
+          grep -q '^READY$' /tmp/podman-doctor.txt
+
+      - name: Verify application lifecycle on Podman Compose
+        id: lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
+          cd "$workdir"
+
+          /tmp/baha app create podman-ci --postgres --redis | tee /tmp/podman-create.txt
+          /tmp/baha app plan podman-ci | tee /tmp/podman-plan.txt
+          grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
+
+          /tmp/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
+          /tmp/baha app apply podman-ci | tee /tmp/podman-apply.txt
+
+          /tmp/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
+          grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
+          grep -q "authenticated PING returned PONG" /tmp/podman-status.txt
+
+          /tmp/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
+          grep -q '^READY$' /tmp/podman-app-doctor.txt
+
+          /tmp/baha app down podman-ci | tee /tmp/podman-down.txt
+          /tmp/baha app up podman-ci | tee /tmp/podman-up.txt
+          /tmp/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
+          grep -q '^READY$' /tmp/podman-resume-doctor.txt
+
+          /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+
+      - name: Run runtime integration tests serially
+        id: runtime_integration
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+
+      - name: Verify control-plane recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Cleanup Podman runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and podman compose available
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Compose and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
+          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          EOF
+          cat >>"$rows" <<EOF
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/podman-evidence" \
+            "BaseHarbor Podman Runtime Evidence" \
+            "podman-runtime-acceptance" \
+            "$EVIDENCE_REF" \
+            "${{ steps.tested_ref.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30

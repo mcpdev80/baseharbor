@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/reconciliation"
 )
 
 type Status string
@@ -86,10 +87,21 @@ func Run(ctx context.Context, target Target) Report {
 	}
 
 	before := digest(target.Request.Driver)
-	execution, _, err := capability.Prepare(ctx, target.Application, []capability.Request{target.Request})
+	execution, prepared, err := capability.Prepare(ctx, target.Application, []capability.Request{target.Request})
 	add("preflight", err)
 	if err != nil {
 		return report
+	}
+	if _, ok := target.Request.Driver.(capability.ReconciliationDriver); ok {
+		if len(prepared.Reconciliation) != 1 {
+			add("typed-reconciliation", fmt.Errorf("expected one typed reconciliation result, got %d", len(prepared.Reconciliation)))
+			return report
+		}
+		if prepared.Reconciliation[0].Result.Action == reconciliation.ActionBlocked {
+			add("typed-reconciliation", fmt.Errorf("reconciliation unexpectedly blocked: %s", prepared.Reconciliation[0].Result.State))
+			return report
+		}
+		add("typed-reconciliation", nil)
 	}
 	after := digest(target.Request.Driver)
 	if before != "" && after != before {
@@ -109,10 +121,22 @@ func Run(ctx context.Context, target Target) Report {
 	}
 	add("binding-contract", nil)
 
-	_, err = execution.Verify(ctx)
+	verified, err := execution.Verify(ctx)
 	add("verify-readiness", err)
 	if err != nil {
 		return report
+	}
+	if _, ok := target.Request.Driver.(capability.ReconciliationDriver); ok {
+		if len(verified.Reconciliation) != 1 {
+			add("verified-convergence", fmt.Errorf("expected one reconciliation result after verify"))
+			return report
+		}
+		decision := verified.Reconciliation[0].Result
+		if decision.Ownership == reconciliation.OwnershipBaseHarbor && decision.State != reconciliation.StateInSync {
+			add("verified-convergence", fmt.Errorf("BaseHarbor-owned resource did not converge: %s", decision.State))
+			return report
+		}
+		add("verified-convergence", nil)
 	}
 	first := digest(target.Request.Driver)
 

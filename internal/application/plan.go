@@ -60,6 +60,24 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Resource:    "exposure:" + capability.Name,
 				Description: fmt.Sprintf("ensure managed HTTP exposure %s", capability.Name),
 			})
+		case CapabilityTelemetryOTLP:
+			p.Actions = append(p.Actions, Action{
+				Kind:        "ensure",
+				Resource:    "telemetry.otlp:" + capability.Name,
+				Description: "ensure OTLP export binding",
+			})
+		case CapabilityMetrics:
+			p.Actions = append(p.Actions, Action{
+				Kind:        "ensure",
+				Resource:    "metrics:" + capability.Name,
+				Description: fmt.Sprintf("ensure metrics source %s", capability.Name),
+			})
+		case CapabilityLogs:
+			p.Actions = append(p.Actions, Action{
+				Kind:        "ensure",
+				Resource:    "logs:" + capability.Name,
+				Description: fmt.Sprintf("ensure workload log collection for %s", capability.Name),
+			})
 		default:
 			return Plan{}, fmt.Errorf("unsupported application capability %q", capability.Kind)
 		}

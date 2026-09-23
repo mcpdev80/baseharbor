@@ -56,8 +56,8 @@ Jeder Release wird auf `develop` vorbereitet und erst nach erfolgreicher Release
 
 Veroeffentlichte Tags werden niemals verschoben. Fehlerhafte Releases werden durch einen neuen Patch-Release korrigiert.
 
-## v0.4.9-Kompatibilitaet
+## v0.4.14-Kompatibilitaet
 
-Manifest v1 bleibt unveraendert. v0.4.9 fuegt zentrale Workload-Logs als Deployment-/Plattform-Policy hinzu, nicht als Loki-Feld im Application Contract. Loki/Alloy, Provider Placement und Collector-State bleiben Provider-/Operator-State.
+Manifest v1 bleibt unveraendert. Die v0.4-Linie hat schrittweise Provider-, Observability-, Repository-, Agent-/MCP-, Environment-/Policy- und Reconciliation-Semantik hinter diesem stabilen Application Contract aufgebaut.
 
-Der Release erweitert ausserdem den gerenderten Compose-Security-Preflight und macht Provider Integration Contract v1 Lifecycle-Conformance ausfuehrbar. Kubernetes/OpenShift werden dadurch nicht implementiert.
+v0.4.14 ergaenzt ein typisiertes Desired/Observed/Diff/Ownership-Modell mit fail-closed Foreign-Ownership-/Conflict-/Unsupported-/Degraded-Zustaenden, Core-NOOP, minimaler Repair-Semantik und erneuter Observation nach Verification. Provider Integration Contract v1 bleibt die gemeinsame Provider-Grenze. Kubernetes/OpenShift werden dadurch nicht implementiert.

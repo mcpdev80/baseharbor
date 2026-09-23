@@ -2,6 +2,9 @@ name: pages
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -34,6 +37,9 @@ jobs:
 
       - name: Build German documentation
         run: mkdocs build --strict --config-file mkdocs.de.yml
+
+      - name: Run documentation architecture audit
+        run: bash scripts/documentation-audit.sh
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'

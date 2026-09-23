@@ -277,28 +277,52 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, service := range services {
-		fmt.Fprintf(&b, "  %s:\n", service)
-		if len(env) > 0 || HasOTLPTelemetry(m) {
-			b.WriteString("    environment:\n")
-			keys := make([]string, 0, len(env))
-			for key := range env {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(env[key]))
-			}
-			if HasOTLPTelemetry(m) {
-				fmt.Fprintf(&b, "      OTEL_SERVICE_NAME: %s\n", strconv.Quote(service))
-				fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote(telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])))
-			}
-		}
 		_, exposed := exposedServices[service]
 		_, metricsSource := metricsServices[service]
 		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
-		if backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed {
+		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
+		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+
+		if !hasEnvironment && !hasNetworks {
+			fmt.Fprintf(&b, "  %s: {}\n", service)
+			continue
+		}
+
+		fmt.Fprintf(&b, "  %s:\n", service)
+		if hasEnvironment {
+			b.WriteString("    environment:\n")
+			serviceEnv := make(map[string]string, len(env)+2)
+			for key, value := range env {
+				serviceEnv[key] = value
+			}
+			if HasOTLPTelemetry(m) {
+				serviceEnv["OTEL_SERVICE_NAME"] = service
+				serviceEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])
+			}
+			keys := make([]string, 0, len(serviceEnv))
+			for key := range serviceEnv {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
+			}
+		}
+		if hasNetworks {
 			b.WriteString("    networks:\n")
+			if !metricsSource && !exposed {
+				if backendNetwork {
+					b.WriteString("      - baseharbor-backend\n")
+				}
+				if serviceObjectStorage {
+					b.WriteString("      - baseharbor-object-storage\n")
+				}
+				if telemetryManaged {
+					b.WriteString("      - baseharbor-telemetry\n")
+				}
+				continue
+			}
 			if backendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
 			}

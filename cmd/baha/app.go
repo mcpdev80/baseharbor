@@ -129,8 +129,6 @@ func appCommand(store application.Store) *cli.Command {
 					return err
 				}
 				m := resolved.Manifest
-				checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				defer cancel()
 				var compose bhruntime.Compose
 				var platformFiles bhruntime.Files
 				var requiredStatuses []openbao.RequiredSecretStatus
@@ -190,7 +188,7 @@ func appCommand(store application.Store) *cli.Command {
 						}})
 					}
 				}
-				results, ok := preflight.Run(checkCtx, checks)
+				results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
 				preflight.Format(out, results)
 				if cli.NewTerminal(ctx, out, errOut).Verbose() {
 					printWorkloadSecurityFindings(out, workloadSecurity)

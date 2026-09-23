@@ -77,8 +77,8 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	}
 	text := string(compose)
 	for _, wanted := range []string{
-		"postgres:18-alpine",
-		"valkey/valkey:9.1.2-alpine",
+		"docker.io/library/postgres:18-alpine",
+		"docker.io/valkey/valkey:9.1.2-alpine",
 		"postgres-data:/var/lib/postgresql",
 		"valkey-data:/data",
 		"appendonly yes",
@@ -318,7 +318,7 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	if strings.Contains(string(compose), "postgres:") {
 		t.Fatal("Valkey-only runtime unexpectedly contains PostgreSQL")
 	}
-	if !strings.Contains(string(compose), "valkey/valkey:9.1.2-alpine") {
+	if !strings.Contains(string(compose), "docker.io/valkey/valkey:9.1.2-alpine") {
 		t.Fatal("Valkey-only runtime is missing Valkey")
 	}
 }
@@ -334,7 +334,7 @@ func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(compose), "postgres:18-alpine") {
+	if !strings.Contains(string(compose), "docker.io/library/postgres:18-alpine") {
 		t.Fatal("managed secrets changed the PostgreSQL runtime definition")
 	}
 }

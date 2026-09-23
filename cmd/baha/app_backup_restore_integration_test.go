@@ -33,7 +33,8 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runtimeUp(ctx, io.Discard); err != nil {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
+	if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
 		t.Fatalf("runtime up: %v", err)
 	}
 	defer func() { _ = runtimeDown(context.Background(), io.Discard) }()

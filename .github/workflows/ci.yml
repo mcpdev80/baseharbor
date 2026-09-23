@@ -1,14 +1,24 @@
-name: ci
+name: "CI · Source & Quality"
+
+run-name: "CI · Source & Quality · ${{ github.ref_name }}"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/ci/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  validate:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18-alpine
@@ -25,53 +35,76 @@ jobs:
           --health-retries 10
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
-      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
+
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v7
+          cache: false
+
+      - name: Set up Python
+        id: setup_python
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: requirements-docs.txt
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Install validation tooling
+        id: tooling
         run: |
-          pip install --requirement requirements-docs.txt
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - name: Validate workflow YAML
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
         run: "$(go env GOPATH)/bin/actionlint -shellcheck="
-      - name: Build documentation
+
+      - name: Validate documentation
+        id: docs
         run: |
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
-      - name: Format check
+          bash scripts/documentation-audit.sh
+
+      - name: Check formatting
+        id: formatting
+        shell: bash
         run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            printf 'The following Go files need gofmt:\n%s\n' "$unformatted"
+          set -euo pipefail
+          files="$(gofmt -l cmd internal spec)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
             exit 1
-          fi
-      - name: Test
+          }
+
+      - name: Run unit and package tests
+        id: unit_tests
         run: go test ./...
-      - name: Verify Prometheus metrics isolation and ingestion
+
+      - name: Run runtime integration tests serially
+        id: runtime_integration
         env:
-          BASEHARBOR_METRICS_INTEGRATION: "1"
-        run: go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -v
-      - name: Verify managed HTTP exposure provider lifecycle
-        env:
-          BASEHARBOR_EXPOSURE_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestManagedHTTPExposure' -count=1 -v
-      - name: Build runtime broker image
-        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
-      - name: Verify directed cross-application connectivity
-        env:
-          BASEHARBOR_CONNECTIVITY_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run TestDirectedCrossApplicationConnectivityInCI -count=1 -v
-      - name: Vet
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+
+      - name: Run Go vet
+        id: vet
         run: go vet ./...
-      - name: Validate compose
+
+      - name: Validate Compose model
+        id: compose_model
+        shell: bash
         run: |
           cat > /tmp/baseharbor-runtime.env <<'EOF'
           BASEHARBOR_POSTGRES_DB=baseharbor
@@ -80,576 +113,53 @@ jobs:
           BASEHARBOR_POSTGRES_PORT=15432
           BASEHARBOR_OPENBAO_PORT=18200
           EOF
-          docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
-      - name: Build baha
-        run: go build -o /tmp/baha ./cmd/baha
-      - name: Smoke test baha binary
+          docker compose             --file internal/runtime/assets/compose.yaml             --env-file /tmp/baseharbor-runtime.env             config --quiet
+
+      - name: Build and smoke-test CLI
+        id: smoke
+        shell: bash
         run: |
+          set -euo pipefail
+          go build -trimpath -o /tmp/baha ./cmd/baha
           /tmp/baha --help >/tmp/baha-help.txt
-          grep -q "Usage:" /tmp/baha-help.txt
-          grep -q "openbao" /tmp/baha-help.txt
           /tmp/baha app --help >/tmp/baha-app-help.txt
-          grep -q "init" /tmp/baha-app-help.txt
-          grep -q "apply" /tmp/baha-app-help.txt
-          grep -q "down" /tmp/baha-app-help.txt
-          grep -q "up" /tmp/baha-app-help.txt
-          grep -q "destroy" /tmp/baha-app-help.txt
-          grep -q "secret" /tmp/baha-app-help.txt
-          /tmp/baha app init --help >/tmp/baha-app-init-help.txt
-          grep -q "baseharbor.yaml" /tmp/baha-app-init-help.txt
-          grep -q -- "--postgres-instance" /tmp/baha-app-init-help.txt
-          grep -q -- "--redis-instance" /tmp/baha-app-init-help.txt
-          grep -q -- "--s3-bucket" /tmp/baha-app-init-help.txt
-          grep -q -- "--require-secret" /tmp/baha-app-init-help.txt
-          /tmp/baha app create --help >/tmp/baha-app-create-help.txt
-          grep -q -- "--redis" /tmp/baha-app-create-help.txt
-          grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
-          grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
-          /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "runtime and readiness status"
-          /tmp/baha app doctor --help | grep -q "presence/usability"
-          /tmp/baha app down --help | grep -q "preserving persistent data"
-          /tmp/baha app up --help | grep -q "required application secrets"
-          /tmp/baha app destroy --help | grep -q -- "--yes"
-          /tmp/baha openbao --help | grep -q "Bootstrap and operate"
-          /tmp/baha openbao bootstrap --help | grep -q -- "--recovery-file"
-          /tmp/baha openbao unseal --help | grep -q "host command argument list"
-          /tmp/baha version | grep -q '^baha '
-          set +e
-          /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
-          code=$?
-          set -e
-          test "$code" -eq 2
-          grep -q "unknown command" /tmp/baha-invalid.err
-      - name: Verify application PostgreSQL and Valkey lifecycle
-        run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          /tmp/baha app create ci-demo --postgres --redis
-          /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
-          /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
-          /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
-          /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
-          /tmp/baha app doctor ci-demo | grep -q "^READY$"
-          test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
-          ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
-
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli set lifecycle_probe preserved' | grep -q '^OK$'
-          env_hash_before=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
-
-          /tmp/baha app down ci-demo | grep -q "persistent data preserved"
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
-
-          /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
-          env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
-          test "$env_hash_before" = "$env_hash_after"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
-
-          /tmp/baha app destroy ci-demo | grep -q "No changes were made"
-          test -d .baseharbor/apps/ci-demo
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
-
-          /tmp/baha app destroy ci-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/ci-demo
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-      - name: Verify S3 object-storage lifecycle
-        run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
-
-          /tmp/baha app create s3-demo --s3-bucket assets
-          /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
-          /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
-          grep -Eq '\[VERIFIED\][[:space:]]+object-storage[[:space:]]+assets authenticated S3 Put/Get' /tmp/s3-apply.out
-
-          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
-          test -f "$provider_dir/compose.yaml"
-          test -f "$provider_dir/runtime.env"
-          ! grep -Eq 'ACCESS_KEY|SECRET_KEY|AWS_' "$provider_dir/runtime.env"
-          grep -q 'server -s3 -iam=true' "$provider_dir/compose.yaml"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-
-          /tmp/baha app env s3-demo | tee /tmp/s3-env.out
-          grep -q '^AWS_ACCESS_KEY_ID=<masked>$' /tmp/s3-env.out
-          grep -q '^AWS_SECRET_ACCESS_KEY=<masked>$' /tmp/s3-env.out
-          grep -q '^S3_BUCKET=bh-s3-demo-dev-assets$' /tmp/s3-env.out
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
-
-          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
-          /tmp/baha app doctor s3-demo | grep -q "^READY$"
-
-          /tmp/baha app down s3-demo | grep -q "persistent data preserved"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-          /tmp/baha app up s3-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
-
-          /tmp/baha app destroy s3-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/s3-demo
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-
-          docker compose --project-name baseharbor-object-storage --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
-          rm -rf "$BASEHARBOR_STATE_DIR"
-
-      - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
-        run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          mkdir -p .baseharbor/runtime
-          chmod 700 .baseharbor .baseharbor/runtime
-          cat > .baseharbor/runtime/runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
-          EOF
-          chmod 600 .baseharbor/runtime/runtime.env
-
-          /tmp/baha up | grep -q "control-plane runtime started"
-
-          set +e
-          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 1
-          grep -q "not initialized" /tmp/openbao-before.out
-
-          recovery="$workdir/openbao-recovery.json"
-          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
-          test "$(stat -c '%a' "$recovery")" = "600"
-          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
-          ! grep -q 'root_token' "$recovery"
-          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
-          /tmp/baha app show required-demo | tee /tmp/required-show.out
-          grep -q 'Application: required-demo' /tmp/required-show.out
-          grep -q 'Status: NOT READY' /tmp/required-show.out
-          grep -Eq '^  required +1$' /tmp/required-show.out
-          ! grep -q 'API_TOKEN' /tmp/required-show.out
-          ! grep -q 'postgres://' /tmp/required-show.out
-          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
-          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
-          grep -Eq 'API_TOKEN[[:space:]]+unknown - secret scope not materialized yet[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
-
-          set +e
-          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
-          required_code=$?
-          set -e
-          test "$required_code" -eq 1
-          grep -q "required secrets check failed" /tmp/required-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
-
-          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
-          grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
-          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
-
-          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
-          /tmp/baha app apply required-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status required-demo | tee /tmp/required-status.out
-          grep -Eq 'required-secret/API_TOKEN[[:space:]]+present and usable' /tmp/required-status.out
-          grep -q '^READY$' /tmp/required-status.out
-          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
-          grep -q "^READY$" /tmp/required-doctor.out
-
-          /tmp/baha app down required-demo | grep -q "persistent data preserved"
-          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
-          set +e
-          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
-          required_up_code=$?
-          set -e
-          test "$required_up_code" -eq 1
-          grep -q "required application secrets" /tmp/required-up-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
-
-          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
-          /tmp/baha app up required-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app destroy required-demo --yes | grep -q "permanently deleted"
-
-          mkdir generated-app
-          cd generated-app
-          cat > baseharbor.yaml <<'EOF'
-          version: 1
-          app:
-            name: generated-demo
-            environment: dev
-          services:
-            postgres:
-              enabled: true
-            redis:
-              enabled: false
-            secrets:
-              enabled: true
-          secrets:
-            required:
-              - name: SECRET_KEY
-                generate:
-                  type: random
-                  length: 64
-              - name: EXTERNAL_TOKEN
-          EOF
-
-          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
-          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
-          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
-
-          set +e
-          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
-          generated_code=$?
-          set -e
-          test "$generated_code" -eq 1
-          grep -Eq '\[OK\][[:space:]]+generated-secret[[:space:]]+SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
-          grep -q "required secrets check failed" /tmp/generated-first-apply.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
-
-          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
-          grep -Eq 'SECRET_KEY[[:space:]]+present[[:space:]]+-' /tmp/generated-preflight-after.out
-          grep -Eq 'EXTERNAL_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
-
-          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
-          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
-          /tmp/baha app apply | tee /tmp/generated-second-apply.out
-          grep -q "application and requested infrastructure verified" /tmp/generated-second-apply.out
-          ! grep -q "generated-secret" /tmp/generated-second-apply.out
-          /tmp/baha app status | tee /tmp/generated-status.out
-          grep -Eq 'required-secret/SECRET_KEY[[:space:]]+present and usable' /tmp/generated-status.out
-          grep -Eq 'required-secret/EXTERNAL_TOKEN[[:space:]]+present and usable' /tmp/generated-status.out
-          /tmp/baha app doctor | grep -q "^READY$"
-          /tmp/baha app destroy --yes | grep -q "permanently deleted"
-          cd "$workdir"
-          unset BASEHARBOR_STATE_DIR
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
-          for i in $(seq 1 20); do
-            set +e
-            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
-            code=$?
-            set -e
-            if [ "$code" -eq 2 ]; then
-              break
-            fi
-            sleep 1
-          done
-          test "$code" -eq 2
-
-          set +e
-          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
-          status_code=$?
-          set -e
-          test "$status_code" -eq 1
-          grep -q "sealed" /tmp/openbao-sealed.out
-
-          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
-      - name: Vet
-        run: go vet ./...
-      - name: Validate compose
-        run: |
-          cat > /tmp/baseharbor-runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=ci-only
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
-          EOF
-          docker compose --file internal/runtime/assets/compose.yaml --env-file /tmp/baseharbor-runtime.env config --quiet
-      - name: Build baha
-        run: go build -o /tmp/baha ./cmd/baha
-      - name: Build runtime broker image
-        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
-      - name: Smoke test baha binary
-        run: |
-          /tmp/baha --help >/tmp/baha-help.txt
+          /tmp/baha agent describe -o json >/tmp/baha-agent.json
           grep -q "Usage:" /tmp/baha-help.txt
-          grep -q "openbao" /tmp/baha-help.txt
-          /tmp/baha app --help >/tmp/baha-app-help.txt
           grep -q "init" /tmp/baha-app-help.txt
-          grep -q "apply" /tmp/baha-app-help.txt
-          grep -q "down" /tmp/baha-app-help.txt
-          grep -q "up" /tmp/baha-app-help.txt
-          grep -q "destroy" /tmp/baha-app-help.txt
-          grep -q "secret" /tmp/baha-app-help.txt
-          /tmp/baha app init --help >/tmp/baha-app-init-help.txt
-          grep -q "baseharbor.yaml" /tmp/baha-app-init-help.txt
-          grep -q -- "--postgres-instance" /tmp/baha-app-init-help.txt
-          grep -q -- "--redis-instance" /tmp/baha-app-init-help.txt
-          grep -q -- "--s3-bucket" /tmp/baha-app-init-help.txt
-          grep -q -- "--require-secret" /tmp/baha-app-init-help.txt
-          /tmp/baha app create --help >/tmp/baha-app-create-help.txt
-          grep -q -- "--redis" /tmp/baha-app-create-help.txt
-          grep -q -- "--s3-bucket" /tmp/baha-app-create-help.txt
-          grep -q -- "--require-secret" /tmp/baha-app-create-help.txt
-          /tmp/baha app apply --help | grep -q "secrets.required"
-          /tmp/baha app status --help | grep -q "runtime and readiness status"
-          /tmp/baha app doctor --help | grep -q "presence/usability"
-          /tmp/baha app down --help | grep -q "preserving persistent data"
-          /tmp/baha app up --help | grep -q "required application secrets"
-          /tmp/baha app destroy --help | grep -q -- "--yes"
-          /tmp/baha openbao --help | grep -q "Bootstrap and operate"
-          /tmp/baha openbao bootstrap --help | grep -q -- "--recovery-file"
-          /tmp/baha openbao unseal --help | grep -q "host command argument list"
+          grep -q '"contract_version":"v1"' /tmp/baha-agent.json
           /tmp/baha version | grep -q '^baha '
-          set +e
-          /tmp/baha does-not-exist >/tmp/baha-invalid.out 2>/tmp/baha-invalid.err
-          code=$?
-          set -e
-          test "$code" -eq 2
-          grep -q "unknown command" /tmp/baha-invalid.err
-      - name: Verify application PostgreSQL and Valkey lifecycle
+
+      - name: Cleanup persistent runner state
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate CI evidence
+        if: always()
+        shell: bash
         run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          /tmp/baha app create ci-demo --postgres --redis
-          /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
-          /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
-          /tmp/baha app preflight ci-demo | grep -q "Preflight passed"
-          /tmp/baha app apply ci-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
-          /tmp/baha app doctor ci-demo | grep -q "^READY$"
-          test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
-          ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
-
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli set lifecycle_probe preserved' | grep -q '^OK$'
-          env_hash_before=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
-
-          /tmp/baha app down ci-demo | grep -q "persistent data preserved"
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
-
-          /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
-          env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
-          test "$env_hash_before" = "$env_hash_after"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
-          /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
-
-          /tmp/baha app destroy ci-demo | grep -q "No changes were made"
-          test -d .baseharbor/apps/ci-demo
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
-
-          /tmp/baha app destroy ci-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/ci-demo
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-      - name: Verify S3 object-storage lifecycle
-        run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
-
-          /tmp/baha app create s3-demo --s3-bucket assets
-          /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
-          /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
-          /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
-          grep -Eq '\[VERIFIED\][[:space:]]+object-storage[[:space:]]+assets authenticated S3 Put/Get' /tmp/s3-apply.out
-
-          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
-          test -f "$provider_dir/compose.yaml"
-          test -f "$provider_dir/runtime.env"
-          ! grep -Eq 'ACCESS_KEY|SECRET_KEY|AWS_' "$provider_dir/runtime.env"
-          grep -q 'server -s3 -iam=true' "$provider_dir/compose.yaml"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-
-          /tmp/baha app env s3-demo | tee /tmp/s3-env.out
-          grep -q '^AWS_ACCESS_KEY_ID=<masked>$' /tmp/s3-env.out
-          grep -q '^AWS_SECRET_ACCESS_KEY=<masked>$' /tmp/s3-env.out
-          grep -q '^S3_BUCKET=bh-s3-demo-dev-assets$' /tmp/s3-env.out
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
-
-          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
-          /tmp/baha app doctor s3-demo | grep -q "^READY$"
-
-          /tmp/baha app down s3-demo | grep -q "persistent data preserved"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-          /tmp/baha app up s3-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
-
-          /tmp/baha app destroy s3-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/s3-demo
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
-
-          docker compose --project-name baseharbor-object-storage --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
-          rm -rf "$BASEHARBOR_STATE_DIR"
-
-      - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
-        run: |
-          workdir=$(mktemp -d)
-          cd "$workdir"
-          mkdir -p .baseharbor/runtime
-          chmod 700 .baseharbor .baseharbor/runtime
-          cat > .baseharbor/runtime/runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
+          set -euo pipefail
+          rows="$RUNNER_TEMP/ci-evidence.tsv"
+          cat >"$rows" <<EOF
+          Tooling	${{ steps.tooling.outcome }}	documentation and workflow validation tools
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
+          Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Unit/package tests	${{ steps.unit_tests.outcome }}	go test ./...
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle tests
+          Go vet	${{ steps.vet.outcome }}	go vet ./...
+          Compose model	${{ steps.compose_model.outcome }}	docker compose config validation
+          CLI smoke test	${{ steps.smoke.outcome }}	build, help, agent contract and version
+          Runner cleanup	${{ steps.cleanup.outcome }}	persistent Docker runner reset
           EOF
-          chmod 600 .baseharbor/runtime/runtime.env
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/ci-evidence"             "BaseHarbor CI Evidence"             "ci"             "${{ github.ref_name }}"             "${{ github.sha }}"             "$rows"
 
-          /tmp/baha up | grep -q "control-plane runtime started"
-
-          set +e
-          /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 1
-          grep -q "not initialized" /tmp/openbao-before.out
-
-          recovery="$workdir/openbao-recovery.json"
-          /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
-          test "$(stat -c '%a' "$recovery")" = "600"
-          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
-          ! grep -q 'root_token' "$recovery"
-          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-          /tmp/baha app create required-demo --postgres --require-secret API_TOKEN
-          /tmp/baha app show required-demo | tee /tmp/required-show.out
-          grep -q 'Application: required-demo' /tmp/required-show.out
-          grep -q 'Status: NOT READY' /tmp/required-show.out
-          grep -Eq '^  required +1$' /tmp/required-show.out
-          ! grep -q 'API_TOKEN' /tmp/required-show.out
-          ! grep -q 'postgres://' /tmp/required-show.out
-          /tmp/baha app plan required-demo | grep -q "secret:API_TOKEN"
-          /tmp/baha app preflight required-demo | tee /tmp/required-preflight.out
-          grep -Eq 'API_TOKEN[[:space:]]+unknown - secret scope not materialized yet[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight.out
-
-          set +e
-          /tmp/baha app apply required-demo >/tmp/required-missing.out 2>&1
-          required_code=$?
-          set -e
-          test "$required_code" -eq 1
-          grep -q "required secrets check failed" /tmp/required-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
-
-          /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
-          grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
-          grep -q "No application secrets have been configured yet." /tmp/required-preflight-missing.out
-
-          printf '%s' 'integration-secret' | /tmp/baha app secret set required-demo API_TOKEN --stdin
-          /tmp/baha app apply required-demo | grep -q "application and requested infrastructure verified"
-          /tmp/baha app status required-demo | tee /tmp/required-status.out
-          grep -Eq 'required-secret/API_TOKEN[[:space:]]+present and usable' /tmp/required-status.out
-          grep -q '^READY$' /tmp/required-status.out
-          /tmp/baha app doctor required-demo | tee /tmp/required-doctor.out
-          grep -Eq 'API_TOKEN[[:space:]]+present and usable' /tmp/required-doctor.out
-          grep -q "^READY$" /tmp/required-doctor.out
-
-          /tmp/baha app down required-demo | grep -q "persistent data preserved"
-          /tmp/baha app secret delete required-demo API_TOKEN --yes | grep -q "permanently deleted"
-          set +e
-          /tmp/baha app up required-demo >/tmp/required-up-missing.out 2>&1
-          required_up_code=$?
-          set -e
-          test "$required_up_code" -eq 1
-          grep -q "required application secrets" /tmp/required-up-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
-
-          printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
-          /tmp/baha app up required-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app destroy required-demo --yes | grep -q "permanently deleted"
-
-          mkdir generated-app
-          cd generated-app
-          cat > baseharbor.yaml <<'EOF'
-          version: 1
-          app:
-            name: generated-demo
-            environment: dev
-          services:
-            postgres:
-              enabled: true
-            redis:
-              enabled: false
-            secrets:
-              enabled: true
-          secrets:
-            required:
-              - name: SECRET_KEY
-                generate:
-                  type: random
-                  length: 64
-              - name: EXTERNAL_TOKEN
-          EOF
-
-          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
-          /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
-          grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
-
-          set +e
-          /tmp/baha app apply >/tmp/generated-first-apply.out 2>&1
-          generated_code=$?
-          set -e
-          test "$generated_code" -eq 1
-          grep -Eq '\[OK\][[:space:]]+generated-secret[[:space:]]+SECRET_KEY materialized in managed secret storage' /tmp/generated-first-apply.out
-          grep -q "required secrets check failed" /tmp/generated-first-apply.out
-          grep -q "EXTERNAL_TOKEN" /tmp/generated-first-apply.out
-
-          /tmp/baha app preflight >/tmp/generated-preflight-after.out 2>&1 || true
-          grep -Eq 'SECRET_KEY[[:space:]]+present[[:space:]]+-' /tmp/generated-preflight-after.out
-          grep -Eq 'EXTERNAL_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set EXTERNAL_TOKEN --stdin' /tmp/generated-preflight-after.out
-
-          /tmp/baha app secret list | grep -q '^SECRET_KEY$'
-          printf '%s' 'external-integration-token' | /tmp/baha app secret set EXTERNAL_TOKEN --stdin
-          /tmp/baha app apply | tee /tmp/generated-second-apply.out
-          grep -q "application and requested infrastructure verified" /tmp/generated-second-apply.out
-          ! grep -q "generated-secret" /tmp/generated-second-apply.out
-          /tmp/baha app status | tee /tmp/generated-status.out
-          grep -Eq 'required-secret/SECRET_KEY[[:space:]]+present and usable' /tmp/generated-status.out
-          grep -Eq 'required-secret/EXTERNAL_TOKEN[[:space:]]+present and usable' /tmp/generated-status.out
-          /tmp/baha app doctor | grep -q "^READY$"
-          /tmp/baha app destroy --yes | grep -q "permanently deleted"
-          cd "$workdir"
-          unset BASEHARBOR_STATE_DIR
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
-          for i in $(seq 1 20); do
-            set +e
-            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
-            code=$?
-            set -e
-            if [ "$code" -eq 2 ]; then
-              break
-            fi
-            sleep 1
-          done
-          test "$code" -eq 2
-
-          set +e
-          /tmp/baha openbao status >/tmp/openbao-sealed.out 2>&1
-          status_code=$?
-          set -e
-          test "$status_code" -eq 1
-          grep -q "sealed" /tmp/openbao-sealed.out
-
-          /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-evidence
+          if-no-files-found: error
+          retention-days: 30

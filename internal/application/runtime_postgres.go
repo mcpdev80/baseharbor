@@ -149,7 +149,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	passwordKey := postgresRuntimeKey(instance, "PASSWORD")
 	portKey := postgresRuntimeKey(instance, "HOST_PORT")
 	fmt.Fprintf(b, `  %s:
-    image: postgres:18-alpine
+    image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
     user: "postgres"
     read_only: true
@@ -181,7 +181,7 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
 	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 	portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 	fmt.Fprintf(b, `  %s:
-    image: valkey/valkey:9.1.2-alpine
+    image: docker.io/valkey/valkey:9.1.2-alpine
     restart: unless-stopped
     user: "valkey"
     read_only: true

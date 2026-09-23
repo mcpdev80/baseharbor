@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,18 @@ type ComposeContainer struct {
 type Compose struct {
 	command string
 	prefix  []string
+}
+
+func (c Compose) Engine() string {
+	base := filepath.Base(strings.TrimSpace(c.command))
+	switch base {
+	case "podman":
+		return "podman"
+	case "docker":
+		return "docker"
+	default:
+		return base
+	}
 }
 
 // DetectCompose remains the compatibility entry point for existing v0.3
@@ -164,17 +177,40 @@ func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, env
 	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
 }
 
-func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
-	out, err := c.outputProject(ctx, project, composeFile, envFile, "ps", "--services", "--status", "running")
+func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ string) ([]string, error) {
+	if c.command == "" {
+		return nil, ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil, errors.New("compose project name is required")
+	}
+
+	containers, err := c.ListComposeContainers(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	seen := map[string]struct{}{}
 	var services []string
-	for _, line := range strings.Split(out, "\n") {
-		if value := strings.TrimSpace(line); value != "" {
-			services = append(services, value)
+	for _, container := range containers {
+		if container.Project != project {
+			continue
 		}
+		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.State.Running}}", container.Name)
+		if err != nil {
+			return nil, fmt.Errorf("inspect running state for %s: %w", container.Name, err)
+		}
+		if strings.TrimSpace(out) != "true" {
+			continue
+		}
+		if _, ok := seen[container.Service]; ok {
+			continue
+		}
+		seen[container.Service] = struct{}{}
+		services = append(services, container.Service)
 	}
+	sort.Strings(services)
 	return services, nil
 }
 

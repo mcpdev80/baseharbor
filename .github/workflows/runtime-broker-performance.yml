@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   performance:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Build exact static broker binary
         run: |

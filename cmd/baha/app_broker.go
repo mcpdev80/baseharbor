@@ -26,7 +26,18 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files)
+	workloadDNSNames := []string{}
+	runtimeServices := map[string]struct{}{}
+	for _, service := range application.RuntimeAuthorizedServices(m) {
+		runtimeServices[service] = struct{}{}
+		workloadDNSNames = append(workloadDNSNames, service)
+	}
+	for _, source := range m.Metrics.Sources {
+		if _, ok := runtimeServices[source.Service]; ok {
+			workloadDNSNames = append(workloadDNSNames, application.MetricsTargetAlias(m, source.Service))
+		}
+	}
+	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files, workloadDNSNames)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
 	}

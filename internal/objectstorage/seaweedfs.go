@@ -29,7 +29,7 @@ const (
 	ProviderProject = "baseharbor-object-storage"
 	ProviderService = "seaweedfs"
 	ProviderNetwork = "baseharbor-object-storage"
-	ProviderImage   = "chrislusf/seaweedfs:4.47"
+	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 )
 
 type Runtime interface {
@@ -363,9 +363,9 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 }
 
 func providerComposeYAML() string {
-	return `services:
+	return fmt.Sprintf(`services:
   seaweedfs:
-    image: chrislusf/seaweedfs:4.47
+    image: %s
     restart: unless-stopped
     user: "seaweed"
     read_only: true
@@ -389,7 +389,7 @@ volumes:
 networks:
   object-storage:
     name: baseharbor-object-storage
-`
+`, ProviderImage)
 }
 
 func providerEndpoint(files ProviderFiles) (string, error) {

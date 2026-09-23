@@ -12,6 +12,7 @@ func TestProviderComposeAttachesOnlyDeclaredProviderNetworks(t *testing.T) {
 		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
 		nil,
 		[]string{"baseharbor-logs-internal", "baseharbor-telemetry"},
+		false,
 	)
 	for _, want := range []string{
 		"provider-0:",
@@ -31,5 +32,19 @@ func TestProviderTargetFileNameIsStableAndNamespaced(t *testing.T) {
 	second := providerTargetFileName("tempo:baseharbor-traces")
 	if first != second || !strings.HasPrefix(first, "provider--") || !strings.HasSuffix(first, ".json") {
 		t.Fatalf("unexpected provider target filename %q / %q", first, second)
+	}
+}
+
+func TestPrometheusConfigSeparatesApplicationAndProviderTargets(t *testing.T) {
+	rendered := prometheusConfig(nil, false)
+	for _, want := range []string{
+		"job_name: baseharbor-applications",
+		"/etc/prometheus/targets/*--*--*.json",
+		"job_name: baseharbor-providers",
+		"/etc/prometheus/targets/provider--*.json",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("Prometheus config missing %q:\n%s", want, rendered)
+		}
 	}
 }

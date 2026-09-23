@@ -23,9 +23,13 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	runtimeCommand := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+	if runtimeCommand == "" {
+		runtimeCommand = "docker"
+	}
 	if output, err := exec.CommandContext(
 		ctx,
-		"docker", "ps", "-a",
+		runtimeCommand, "ps", "-a",
 		"--filter", "label=com.docker.compose.project=baseharbor",
 		"--format", "{{.ID}}",
 	).Output(); err == nil && strings.TrimSpace(string(output)) != "" {

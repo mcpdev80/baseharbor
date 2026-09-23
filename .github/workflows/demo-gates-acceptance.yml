@@ -1,0 +1,265 @@
+name: "Demo · Docker + Podman Gates"
+
+run-name: "Demo Gates · Docker + Podman · ${{ inputs.ref || github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: BaseHarbor ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/demo/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    name: demo-gate-catalog
+    uses: ./.github/workflows/demo-gate-catalog.yml
+
+  docker:
+    name: Docker · ${{ matrix.gate }}
+    needs: catalog
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.catalog.outputs.matrix) }}
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - baseharbor
+      - docker
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      DEMO_GATE: ${{ matrix.gate }}
+      ARTIFACT_DIR: /tmp/baseharbor-demo-docker-${{ matrix.gate }}
+
+    steps:
+      - name: Checkout BaseHarbor
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reset runtime state
+        id: reset
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Run demo gate
+        id: demo
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
+          rm -rf "$workdir" "$ARTIFACT_DIR"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          cd "$workdir"
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh "$DEMO_GATE"
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Generate gate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/demo-gate-evidence"
+          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
+          Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
+          Runtime reset	${{ steps.reset.outcome }}	Clean docker runner state
+          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate
+          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
+          EOF
+          mkdir -p "$out/demo"
+          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$out" \
+            "BaseHarbor Demo Gate Evidence" \
+            "demo/docker/${{ matrix.gate }}" \
+            "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}" \
+            "${{ steps.candidate.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-docker-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-gate-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  podman:
+    name: Podman · ${{ matrix.gate }}
+    needs: catalog
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.catalog.outputs.matrix) }}
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - baseharbor
+      - podman
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      DEMO_GATE: ${{ matrix.gate }}
+      ARTIFACT_DIR: /tmp/baseharbor-demo-podman-${{ matrix.gate }}
+
+    steps:
+      - name: Checkout BaseHarbor
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reset runtime state
+        id: reset
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Run demo gate
+        id: demo
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_GATE}-repo"
+          rm -rf "$workdir" "$ARTIFACT_DIR"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          cd "$workdir"
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+            ARTIFACT_DIR="$ARTIFACT_DIR" \
+            bash scripts/acceptance.sh "$DEMO_GATE"
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Generate gate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/demo-gate-evidence"
+          rows="$RUNNER_TEMP/demo-gate-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
+          Go setup	${{ steps.setup_go.outcome }}	Go from go.mod; remote cache disabled
+          Runtime reset	${{ steps.reset.outcome }}	Clean podman runner state
+          Demo ${{ matrix.gate }}	${{ steps.demo.outcome }}	Selected product-contract gate
+          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
+          EOF
+          mkdir -p "$out/demo"
+          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$out" \
+            "BaseHarbor Demo Gate Evidence" \
+            "demo/podman/${{ matrix.gate }}" \
+            "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}" \
+            "${{ steps.candidate.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-podman-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-gate-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  evidence:
+    name: demo-gates-evidence
+    if: always()
+    needs:
+      - docker
+      - podman
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout evidence generator
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Generate demo gate summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/demo-gates-summary.tsv"
+          cat >"$rows" <<EOF
+          Docker demo matrix	${{ needs.docker.result }}	All registered demo gates on Docker
+          Podman demo matrix	${{ needs.podman.result }}	All registered demo gates on Podman
+          EOF
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/demo-gates-evidence" \
+            "BaseHarbor Demo Gates Evidence" \
+            "demo/all" \
+            "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}" \
+            "${{ github.sha }}" \
+            "$rows"
+
+      - name: Upload demo gate summary
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-gates-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-gates-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce all demo gates
+        shell: bash
+        run: |
+          test "${{ needs.docker.result }}" = "success"
+          test "${{ needs.podman.result }}" = "success"
