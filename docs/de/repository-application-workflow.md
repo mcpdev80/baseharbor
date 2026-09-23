@@ -25,7 +25,15 @@ Der normale interaktive Weg ist:
 baha app init
 ```
 
-BaseHarbor analysiert das Repository zuerst read-only, erkennt soweit moeglich Compose-Dateien, PostgreSQL/Redis/Valkey, Workload-Services und moegliche Secret-Namen und fragt nur nach fehlenden oder mehrdeutigen Informationen. Vor dem Schreiben wird das erzeugte Manifest angezeigt; eine vorhandene Datei wird niemals still ueberschrieben.
+BaseHarbor analysiert das Repository zuerst read-only, erkennt soweit moeglich Compose-Dateien, generische Service-Anforderungen, Workload-Services, Observability, Runtime-API-Nutzung und moegliche Application-Secret-Namen und fragt nur nach fehlenden oder mehrdeutigen Informationen. Fuer Secret-Kandidaten koennen Name, Required/Optional und Provisioning-Policy bestaetigt werden. Provider-interne Credentials bleiben davon getrennt und werden automatisch verwaltet. Vor dem Schreiben zeigt der Wizard eine menschenlesbare Adoption Summary; das rohe YAML ist nur mit `--verbose` zusaetzlich sichtbar. Eine vorhandene Datei wird niemals still ueberschrieben.
+
+Nach erfolgreichem interaktivem Init ist der normale naechste Schritt einfach:
+
+```bash
+baha up
+```
+
+Fehlende Required Application Secrets werden im interaktiven Apply/Up-Pfad verdeckt abgefragt; generated Secrets werden automatisch materialisiert. Optionale Secrets blockieren den Start nicht.
 
 Nicht-interaktiv und detect-first:
 
