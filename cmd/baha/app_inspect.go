@@ -14,8 +14,8 @@ func appInspectCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "inspect",
 		Summary: "Inspect a repository without changing it",
-		Usage:   "baha app inspect [PATH] [-o json|--output json|--json]",
-		Long:    "Analyzes a local repository/path or remote Git URL read-only and reports deterministic capability findings as detected, suggested or possible. -o json, --output json and the compatibility alias --json emit the shared machine-readable result used by future API/Web UI/Operator adapters.",
+		Usage:   "baha app inspect [PATH] [--verbose] [-o json|--output json|--json]",
+		Long:    "Analyzes a local repository/path or remote Git URL read-only. Human output summarizes detected service intent and Compose roles; --verbose adds detailed evidence. -o json, --output json and --json emit the complete shared machine-readable result.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			root, format, verbose, err := parseAppInspectArgs(args)
 			if err != nil {
