@@ -12,11 +12,11 @@ import (
 
 func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing.T) {
 	d := appProjectDetection{
-		Name:              "mailflow",
-		SQL:               true,
-		SQLInstances:      []string{"primary", "analytics"},
-		Cache:             true,
-		CacheInstances:    []string{"cache", "sessions"},
+		Name:           "mailflow",
+		SQL:            true,
+		SQLInstances:   []string{"primary", "analytics"},
+		Cache:          true,
+		CacheInstances: []string{"cache", "sessions"},
 	}
 	m, err := manifestFromDetectedProject(d, true)
 	if err != nil {
