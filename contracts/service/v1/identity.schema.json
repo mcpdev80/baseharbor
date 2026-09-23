@@ -1,46 +1,45 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:service:v1:identity",
-  "title": "BaseHarbor identity service contract v1",
+  "$id": "https://schemas.baseharbor.dev/service/v1/identity.schema.json",
+  "title": "BaseHarbor Identity Service Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "kind"
-  ],
   "properties": {
     "kind": {
       "const": "identity"
     },
+    "contractVersion": {
+      "const": "v1"
+    },
     "protocol": {
-      "enum": [
-        "oidc"
-      ]
+      "const": "oidc"
     },
-    "scopes": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
-      "uniqueItems": true
-    },
-    "claims": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
-      "uniqueItems": true
-    },
-    "extensions": {
+    "requirements": {
       "type": "object",
-      "patternProperties": {
-        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
-          "type": "object"
-        }
-      },
       "additionalProperties": false,
-      "description": "Versioned provider-neutral BaseHarbor extensions only."
+      "properties": {
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
     }
-  }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "protocol"
+  ]
 }
