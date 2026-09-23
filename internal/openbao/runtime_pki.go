@@ -313,7 +313,6 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
 }
 
-
 func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, identity ApplicationIdentity) ([]byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
