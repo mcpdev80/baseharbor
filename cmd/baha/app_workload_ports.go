@@ -386,7 +386,13 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 			}
 		}
 		if candidate == nil {
-			return fmt.Errorf("%w; conflicting published port %d is not backed by a configurable ${VAR:-PORT} Compose binding", err, conflict)
+			return &machine.Error{
+				Code:        machine.ErrorPortConflict,
+				Message:     fmt.Sprintf("Port %d is already in use.", conflict),
+				Remediation: "requires developer input",
+				Next:        fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", conflict),
+				Cause:       err,
+			}
 		}
 		if _, explicit := os.LookupEnv(candidate.Name); explicit {
 			return fmt.Errorf("%w; %s=%d was set explicitly by the operator, choose another free value and retry", err, candidate.Name, conflict)
