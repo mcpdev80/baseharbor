@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:service:v1:vector",
-  "title": "BaseHarbor vector service contract v1",
+  "$id": "https://schemas.baseharbor.dev/service/v1/vector.schema.json",
+  "title": "BaseHarbor Vector Service Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "kind"
-  ],
   "properties": {
     "kind": {
       "const": "vector"
+    },
+    "contractVersion": {
+      "const": "v1"
     },
     "name": {
       "type": "string",
@@ -22,19 +22,26 @@
     "distance": {
       "enum": [
         "cosine",
-        "dot-product",
+        "dot",
         "euclidean"
       ]
     },
-    "extensions": {
+    "requirements": {
       "type": "object",
-      "patternProperties": {
-        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
-          "type": "object"
-        }
-      },
       "additionalProperties": false,
-      "description": "Versioned provider-neutral BaseHarbor extensions only."
+      "properties": {
+        "metadataFilter": {
+          "type": "boolean"
+        },
+        "delete": {
+          "type": "boolean"
+        }
+      }
     }
-  }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
 }
