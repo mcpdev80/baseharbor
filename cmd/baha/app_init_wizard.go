@@ -27,11 +27,11 @@ type appProjectDetection struct {
 	WorkloadServices       []string
 	InfrastructureServices []string
 	AmbiguousServices      []string
-	Postgres               bool
-	PostgresSource         string
+	SQL                    bool
+	SQLSource              string
 	SQLInstances      []string
-	Redis                  bool
-	RedisSource            string
+	Cache                  bool
+	CacheSource            string
 	CacheInstances         []string
 	ObjectStorage          bool
 	ObjectStorageSuggested bool
@@ -72,7 +72,7 @@ func appGuidedInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Detect the current project and create baseharbor.yaml",
-		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			quick := false
@@ -157,23 +157,23 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			if !detected {
 				continue
 			}
-			d.Postgres = true
+			d.SQL = true
 			if finding.Name != "" {
 				d.SQLInstances = append(d.SQLInstances, finding.Name)
 			}
-			if d.PostgresSource == "" {
-				d.PostgresSource = source
+			if d.SQLSource == "" {
+				d.SQLSource = source
 			}
 		case "cache.key-value":
 			if !detected {
 				continue
 			}
-			d.Redis = true
+			d.Cache = true
 			if finding.Name != "" {
 				d.CacheInstances = append(d.CacheInstances, finding.Name)
 			}
-			if d.RedisSource == "" {
-				d.RedisSource = source
+			if d.CacheSource == "" {
+				d.CacheSource = source
 			}
 		case "object-storage.s3":
 			staticObjectStorageEvidence := false
@@ -434,8 +434,8 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 
 	defaults := []bool{
-		d.Postgres,
-		d.Redis,
+		d.SQL,
+		d.Cache,
 		d.ObjectStorage,
 		len(d.SecretCandidates) > 0,
 		d.Metrics,
@@ -572,8 +572,8 @@ func detectedApplicationManifest(name, environment string, postgres, redis, obje
 		Name:        name,
 		Environment: environment,
 		Services: application.Services{
-			Postgres:      postgres,
-			Redis:         redis,
+			SQL:      postgres,
+			Cache:         redis,
 			ObjectStorage: objectStorage,
 			Secrets:       secrets,
 		},
@@ -587,7 +587,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.AmbiguousServices) > 0 {
 		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
 	}
-	postgres, redis, objectStorage := d.Postgres, d.Redis, d.ObjectStorage
+	postgres, redis, objectStorage := d.SQL, d.Cache, d.ObjectStorage
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
@@ -657,16 +657,16 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	if len(d.AmbiguousServices) > 0 {
 		fmt.Fprintf(out, "? Compose services need classification: %s\n", strings.Join(d.AmbiguousServices, ", "))
 	}
-	if d.Postgres {
-		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
+	if d.SQL {
+		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.SQLSource)
 		if len(d.SQLInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.SQLInstances, ", "))
 		}
 	} else {
 		fmt.Fprintln(out, "- SQL Database not detected")
 	}
-	if d.Redis {
-		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.RedisSource)
+	if d.Cache {
+		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.CacheSource)
 		if len(d.CacheInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.CacheInstances, ", "))
 		}
@@ -1048,10 +1048,10 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 	if m.Services.SQL || m.Services.Cache || m.Services.ObjectStorage {
 		fmt.Fprintln(out, "\nManaged services")
 		if m.Services.SQL {
-			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.Postgres))
+			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.SQL))
 		}
 		if m.Services.Cache {
-			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Redis))
+			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Cache))
 		}
 		if m.Services.ObjectStorage {
 			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
