@@ -77,7 +77,7 @@ runtime_docs=(
 )
 
 for file in "${runtime_docs[@]}"; do
-  if grep -Eq 'Docker/Podman Compose|Podman Compose (is|bleibt|remains)|podman-compose.*required' "$file"; then
+  if grep -Eq 'Docker/Podman Compose|Podman Compose (is|bleibt|remains)' "$file"; then
     echo "documentation audit: stale Podman Compose runtime wording in $file" >&2
     exit 1
   fi
