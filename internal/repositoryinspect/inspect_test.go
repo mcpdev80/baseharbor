@@ -275,9 +275,9 @@ app:
   name: mailflow
   environment: production
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: true
   secrets:
     enabled: true
@@ -330,7 +330,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 	writeTestFile(t, root, ".env.example", "REDIS_URL=\nOTEL_EXPORTER_OTLP_ENDPOINT=\n")
@@ -375,7 +375,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 
@@ -389,7 +389,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "postgres:") {
+	if !strings.Contains(string(data), "sql:") {
 		t.Fatalf("inspection removed declared capability: %s", data)
 	}
 }
