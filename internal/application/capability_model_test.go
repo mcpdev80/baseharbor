@@ -13,8 +13,8 @@ func TestResolveCapabilityResourcesUsesReferenceProviders(t *testing.T) {
 		Name:        "mailflow",
 		Environment: "dev",
 		Services: Services{
-			Postgres: true,
-			Redis:    true,
+			SQL:      true,
+			Cache:    true,
 			Secrets:  true,
 		},
 	}
@@ -41,7 +41,7 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "mailflow",
 		Environment: "production",
-		Services:    Services{Postgres: true},
+		Services:    Services{SQL:      true},
 	}
 	bindings, err := CapabilityBindings(m)
 	if err != nil {
