@@ -2,8 +2,8 @@ package runtime
 
 import "strings"
 
-// IsPortBindingConflict reports whether a Docker/Podman Compose failure is a
-// host-port allocation conflict. Runtime engines phrase the same condition
+// IsPortBindingConflict reports whether a Docker Compose or Podman runtime
+// failure is a host-port allocation conflict. Runtime engines phrase the same condition
 // differently, so keep the classifier deliberately narrow but multi-engine.
 func IsPortBindingConflict(err error) bool {
 	if err == nil {
