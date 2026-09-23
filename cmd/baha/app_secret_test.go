@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -155,7 +156,11 @@ func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *te
 func TestReadSecretSetValueInteractiveNoInputRequiresExplicitSource(t *testing.T) {
 	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{NonInteractive: true})
 	_, err := readSecretSetValueInteractive(ctx, []string{"API_TOKEN"}, strings.NewReader("secret"), &bytes.Buffer{}, "API_TOKEN")
-	if err == nil || !strings.Contains(err.Error(), "--stdin") {
-		t.Fatalf("expected deterministic no-input remediation, got %v", err)
+	if err == nil {
+		t.Fatal("expected deterministic no-input remediation")
+	}
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) || !strings.Contains(usage.Hint, "--stdin") {
+		t.Fatalf("expected --stdin remediation hint, got %#v", err)
 	}
 }
