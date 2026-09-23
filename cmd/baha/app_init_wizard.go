@@ -118,15 +118,15 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		return appProjectDetection{}, err
 	}
 	d := appProjectDetection{
-		Name:              result.Application,
-		ComposeCandidates: append([]string(nil), result.ComposeCandidates...),
-		Compose:           result.SelectedCompose,
+		Name:                   result.Application,
+		ComposeCandidates:      append([]string(nil), result.ComposeCandidates...),
+		Compose:                result.SelectedCompose,
 		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
 		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
 		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
 		SecretCandidates:       append([]string(nil), result.SecretCandidates...),
 		SecretSources:          map[string]string{},
-		RuntimePermissions:    map[string][]string{},
+		RuntimePermissions:     map[string][]string{},
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
