@@ -140,7 +140,7 @@ func appCommand(store application.Store) *cli.Command {
 					{Name: "manifest permissions", Run: func(context.Context) error {
 						return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 					}},
-					{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+					{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 						var err error
 						compose, err = bhruntime.DetectCompose(ctx)
 						return err
