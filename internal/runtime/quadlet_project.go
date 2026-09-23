@@ -662,10 +662,15 @@ func renderQuadletHealthCommand(test []string) (string, error) {
 		if len(test) != 2 {
 			return "", errors.New("CMD-SHELL requires exactly one command")
 		}
-		return quadletSystemdJoin([]string{"/bin/sh", "-c", test[1]}), nil
+		return quadletSystemdValue(test[1]), nil
 	default:
 		return quadletSystemdJoin(test), nil
 	}
+}
+
+func quadletSystemdValue(value string) string {
+	value = strings.ReplaceAll(value, "%", "%%")
+	return strings.ReplaceAll(value, "$", "$")
 }
 
 func quadletSystemdJoin(values []string) string {
