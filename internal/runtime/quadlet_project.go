@@ -114,30 +114,48 @@ func (s *quadletStringSet) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func RenderComposeProjectQuadlets(composePath, envFile, project string, selectedServices ...string) (QuadletProject, error) {
+	return RenderComposeProjectFilesQuadlets([]string{composePath}, envFile, project, selectedServices...)
+}
+
+func RenderComposeProjectFilesQuadlets(composePaths []string, envFile, project string, selectedServices ...string) (QuadletProject, error) {
 	project = sanitizeQuadletName(project)
 	if project == "" {
 		return QuadletProject{}, errors.New("Quadlet project name is empty")
 	}
-
-	data, err := os.ReadFile(composePath)
-	if err != nil {
-		return QuadletProject{}, err
+	if len(composePaths) == 0 {
+		return QuadletProject{}, errors.New("at least one Compose file is required")
 	}
+
 	env, err := quadletComposeEnvironment(envFile)
 	if err != nil {
 		return QuadletProject{}, err
 	}
 
 	var document yaml.Node
-	if err := yaml.Unmarshal(data, &document); err != nil {
-		return QuadletProject{}, fmt.Errorf("decode Compose YAML: %w", err)
+	for index, composePath := range composePaths {
+		data, err := os.ReadFile(composePath)
+		if err != nil {
+			return QuadletProject{}, err
+		}
+		var current yaml.Node
+		if err := yaml.Unmarshal(data, &current); err != nil {
+			return QuadletProject{}, fmt.Errorf("decode Compose YAML %s: %w", composePath, err)
+		}
+		expandQuadletComposeNode(&current, env)
+		if index == 0 {
+			document = current
+			continue
+		}
+		if err := mergeQuadletComposeDocuments(&document, &current); err != nil {
+			return QuadletProject{}, fmt.Errorf("merge Compose YAML %s: %w", composePath, err)
+		}
 	}
-	expandQuadletComposeNode(&document, env)
 
 	var model quadletComposeProject
 	if err := document.Decode(&model); err != nil {
 		return QuadletProject{}, fmt.Errorf("decode rendered Compose model: %w", err)
 	}
+	composePath := composePaths[0]
 	if len(model.Services) == 0 {
 		return QuadletProject{Project: project, Files: map[string]string{}, ServiceUnits: map[string]string{}, Containers: map[string]string{}}, nil
 	}
@@ -565,4 +583,65 @@ func quadletSystemdJoin(values []string) string {
 		}
 	}
 	return strings.Join(quoted, " ")
+}
+
+
+func mergeQuadletComposeDocuments(base, override *yaml.Node) error {
+	baseMap, err := quadletDocumentMap(base)
+	if err != nil {
+		return err
+	}
+	overrideMap, err := quadletDocumentMap(override)
+	if err != nil {
+		return err
+	}
+	mergeQuadletYAMLMap(baseMap, overrideMap)
+	return nil
+}
+
+func quadletDocumentMap(document *yaml.Node) (*yaml.Node, error) {
+	if document == nil || document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
+		return nil, errors.New("Compose document must contain one root mapping")
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, errors.New("Compose document root must be a mapping")
+	}
+	return root, nil
+}
+
+func mergeQuadletYAMLMap(base, override *yaml.Node) {
+	for i := 0; i+1 < len(override.Content); i += 2 {
+		key := override.Content[i]
+		value := override.Content[i+1]
+		found := -1
+		for j := 0; j+1 < len(base.Content); j += 2 {
+			if base.Content[j].Value == key.Value {
+				found = j
+				break
+			}
+		}
+		if found < 0 {
+			base.Content = append(base.Content, cloneQuadletYAMLNode(key), cloneQuadletYAMLNode(value))
+			continue
+		}
+		baseValue := base.Content[found+1]
+		if baseValue.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
+			mergeQuadletYAMLMap(baseValue, value)
+			continue
+		}
+		base.Content[found+1] = cloneQuadletYAMLNode(value)
+	}
+}
+
+func cloneQuadletYAMLNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	copy := *node
+	copy.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		copy.Content[i] = cloneQuadletYAMLNode(child)
+	}
+	return &copy
 }
