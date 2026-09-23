@@ -48,13 +48,14 @@ const (
 )
 
 type Error struct {
-	Code        ErrorCode `json:"code"`
-	Message     string    `json:"message"`
-	Retryable   bool      `json:"retryable,omitempty"`
-	Next        string    `json:"next,omitempty"`
-	Resource    string    `json:"resource,omitempty"`
-	Remediation string    `json:"remediation_class,omitempty"`
-	Cause       error     `json:"-"`
+	Code         ErrorCode `json:"code"`
+	Message      string    `json:"message"`
+	CauseCode    string    `json:"cause,omitempty"`
+	Retryable    bool      `json:"retryable,omitempty"`
+	Next         string    `json:"next,omitempty"`
+	Resource     string    `json:"resource,omitempty"`
+	Remediation  string    `json:"remediation_class,omitempty"`
+	Cause        error     `json:"-"`
 }
 
 func (e *Error) Error() string {
