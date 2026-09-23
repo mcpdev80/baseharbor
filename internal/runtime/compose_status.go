@@ -73,22 +73,16 @@ func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project str
 		if container.Project != project {
 			continue
 		}
-		out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`, container.Name)
-		if err != nil {
-			return nil, fmt.Errorf("inspect state for %s: %w", container.Name, err)
-		}
-		runningRaw, healthRaw, _ := strings.Cut(strings.TrimSpace(out), "|")
 		state := "exited"
-		if strings.EqualFold(strings.TrimSpace(runningRaw), "true") {
+		if container.Running {
 			state = "running"
 		}
-		health := strings.TrimSpace(healthRaw)
 		current, exists := byService[container.Service]
 		if !exists || (current.State != "running" && state == "running") {
 			byService[container.Service] = ServiceState{
 				Service: container.Service,
 				State:   state,
-				Health:  health,
+				Health:  container.Health,
 			}
 		}
 	}
