@@ -258,6 +258,10 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 			}
 		} else {
 			renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+				if result.RuntimeDocsURL != "" {
+					term.Section("Runtime")
+					term.Info("Swagger/OpenAPI", result.RuntimeDocsURL)
+				}
 				if term.Verbose() && result.RuntimeArtifact != nil {
 					term.Section("Runtime artifact")
 					term.Info("reference", result.RuntimeArtifact.Reference)
@@ -284,11 +288,6 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 				}
 				renderApplicationTLSStatus(term, *result.tlsStatus)
 			})
-			if resolved, resolveErr := resolveApplication(store, filtered, "status"); resolveErr == nil {
-				if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
-					printRuntimeBrokerDocs(out, files)
-				}
-			}
 		}
 
 		if result.State == "stopped" || result.State == "not_applied" {
