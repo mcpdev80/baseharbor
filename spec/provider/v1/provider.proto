@@ -36,6 +36,9 @@ message DescribeResponse {
   string provider_id = 7;
   // Provider implementation version, independent from BaseHarbor and capability versions.
   string provider_version = 8;
+  // Provider-neutral service families, for example sql, cache or object-storage.
+  // These are broader than protocol/capability specifications.
+  repeated string service_kinds = 9;
 }
 
 message ProviderObservability {
