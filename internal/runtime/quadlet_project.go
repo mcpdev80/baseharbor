@@ -672,6 +672,7 @@ func quadletSystemdJoin(values []string) string {
 	quoted := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.ReplaceAll(value, "%", "%%")
+		value = strings.ReplaceAll(value, "$", "$")
 		if value == "" || strings.ContainsAny(value, " \t\n\"'\\") {
 			quoted = append(quoted, strconv.Quote(value))
 		} else {
