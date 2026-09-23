@@ -25,10 +25,10 @@ fi
 
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
 	printf '%s\n' \
-	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true' \
-	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true' \
-	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true' \
-	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false'
+	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy' \
+	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true|' \
+	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy' \
+	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false|'
 	exit 0
 fi
 
