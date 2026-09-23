@@ -258,6 +258,7 @@ Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/r
 
 ```bash
 baha app inspect .
+baha app inspect . --verbose
 baha app inspect . -o json
 ```
 
@@ -275,7 +276,9 @@ The JSON form is the canonical machine-readable result intended for reuse by fut
 
 When an existing `baseharbor.yaml` is present, `baha app inspect` also compares repository evidence with the declared contract. Human and JSON output can distinguish `satisfied`, `new`, `ambiguous` and `stale` capability state.
 
-Current semantic detectors include PostgreSQL/Redis consumption plus S3-compatible usage, likely S3 runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export. Findings include capability direction and may include runtime-operation hints such as `runtime.create`.
+Current semantic detectors include SQL/cache product evidence, S3-compatible object-storage usage, likely runtime bucket creation, OpenMetrics `/metrics` endpoints, explicit OTLP signal evidence, application log-collection proposals and BaseHarbor Runtime API usage. Product evidence is normalized to generic service families such as `sql`, `cache`, `object-storage` and `observability`; protocol compatibility such as RESP, S3, OpenMetrics and OTLP stays separate.
+
+Normal human output collapses repeated evidence into one capability summary and classifies ambiguous Compose candidates by workload versus replaceable infrastructure. `--verbose` shows the underlying evidence; JSON always preserves the complete machine-readable evidence.
 
 Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
 
@@ -333,10 +336,11 @@ baha app init
 
 Before asking setup questions, `baha` analyzes the repository read-only and detects as much as it can safely derive, including:
 
-- common Compose files in the repository root and supported conventional subdirectories;
-- PostgreSQL and Redis/Valkey usage;
-- likely application workload services;
-- infrastructure variables from common example/template env files;
+- common Compose files and application workload services;
+- replaceable PostgreSQL, Redis/Valkey and supported S3-compatible infrastructure without editing Compose;
+- generic SQL, cache and object-storage intent from product/protocol evidence;
+- OpenMetrics `/metrics`, explicit OTLP signal usage and application log-collection intent;
+- explicit BaseHarbor Runtime API usage and concrete runtime-operation evidence;
 - likely required application secret names.
 
 Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
