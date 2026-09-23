@@ -102,7 +102,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			}
 			return application.CheckManagedRuntimeDefinition(files, m)
 		}},
-		{Name: "container runtime + compose", Run: func(ctx context.Context) error {
+		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
 			compose, err = bhruntime.DetectCompose(ctx)
 			return err
@@ -112,7 +112,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 			return err
 		}},
-		{Name: "compose configuration", Run: func(ctx context.Context) error {
+		{Name: "runtime configuration", Run: func(ctx context.Context) error {
 			if runtimeErr != nil {
 				return runtimeErr
 			}
