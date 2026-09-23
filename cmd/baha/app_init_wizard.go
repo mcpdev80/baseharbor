@@ -611,30 +611,64 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 func printProjectDetection(out io.Writer, d appProjectDetection) {
 	fmt.Fprintf(out, "✓ Application name: %s\n", d.Name)
 	if d.Compose != "" {
-		fmt.Fprintf(out, "✓ Compose file: %s\n", d.Compose)
+		fmt.Fprintf(out, "✓ Compose file: %s (read-only)\n", d.Compose)
 	} else if len(d.ComposeCandidates) > 1 {
 		fmt.Fprintf(out, "? Compose file: %d candidates need confirmation\n", len(d.ComposeCandidates))
 	} else {
 		fmt.Fprintln(out, "- Compose file: not detected")
 	}
 	if len(d.WorkloadServices) > 0 {
-		fmt.Fprintf(out, "✓ Workload services: %s\n", strings.Join(d.WorkloadServices, ", "))
+		fmt.Fprintf(out, "✓ Application workload: %s\n", strings.Join(d.WorkloadServices, ", "))
+	}
+	if len(d.InfrastructureServices) > 0 {
+		fmt.Fprintf(out, "✓ Replaceable repository infrastructure: %s\n", strings.Join(d.InfrastructureServices, ", "))
 	}
 	if d.Postgres {
-		fmt.Fprintf(out, "✓ PostgreSQL detected from %s\n", d.PostgresSource)
+		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
 		if len(d.PostgresInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.PostgresInstances, ", "))
 		}
 	} else {
-		fmt.Fprintln(out, "- PostgreSQL not detected")
+		fmt.Fprintln(out, "- SQL Database not detected")
 	}
 	if d.Redis {
-		fmt.Fprintf(out, "✓ Redis/Valkey detected from %s\n", d.RedisSource)
+		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.RedisSource)
 		if len(d.RedisInstances) > 1 {
 			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.RedisInstances, ", "))
 		}
 	} else {
-		fmt.Fprintln(out, "- Redis/Valkey not detected")
+		fmt.Fprintln(out, "- Cache not detected")
+	}
+	switch {
+	case d.ObjectStorage:
+		fmt.Fprintf(out, "✓ Object Storage detected (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	case d.ObjectStorageSuggested:
+		fmt.Fprintf(out, "? Object Storage suggested (S3-compatible evidence: %s)\n", d.ObjectStorageSource)
+	default:
+		fmt.Fprintln(out, "- Object Storage not detected")
+	}
+	switch {
+	case d.Metrics:
+		fmt.Fprintf(out, "✓ Metrics detected at /metrics (%s)\n", d.MetricsSource)
+	case d.MetricsSuggested:
+		fmt.Fprintf(out, "? Metrics suggested (%s)\n", d.MetricsSource)
+	}
+	switch {
+	case d.OTLP && len(d.OTLPSignals) > 0:
+		fmt.Fprintf(out, "✓ Observability detected (OTLP: %s)\n", strings.Join(d.OTLPSignals, ", "))
+	case d.OTLP:
+		fmt.Fprintln(out, "? Observability detected via OTLP; signal set needs confirmation")
+	case d.OTLPSuggested:
+		fmt.Fprintln(out, "? Observability via OTLP suggested")
+	}
+	if d.LogsSuggested {
+		fmt.Fprintln(out, "? Application log collection available for the selected workload")
+	}
+	if d.RuntimeAPI {
+		fmt.Fprintln(out, "✓ BaseHarbor Runtime API usage detected")
+	}
+	for capabilityID, operations := range d.RuntimePermissions {
+		fmt.Fprintf(out, "✓ Runtime operations for %s: %s\n", capabilityID, strings.Join(operations, ", "))
 	}
 	if len(d.SecretCandidates) > 0 {
 		fmt.Fprintln(out, "✓ Potential required secret names:")
