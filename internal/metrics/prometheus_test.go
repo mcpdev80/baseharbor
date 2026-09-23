@@ -51,7 +51,8 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	configText := string(config)
 	if !strings.Contains(configText, "file_sd_configs:") ||
 		!strings.Contains(configText, "/etc/prometheus/targets/*--*--*.json") ||
-		!strings.Contains(configText, "target_label: __metrics_path__") {
+		!strings.Contains(configText, "target_label: __metrics_path__") ||
+		!strings.Contains(configText, "target_label: __scheme__") {
 		t.Fatalf("Prometheus config does not use dynamic file discovery/path relabeling:\n%s", configText)
 	}
 }
@@ -87,6 +88,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 				Direction: "provide",
 				Format:    "openmetrics",
 				Service:   "api",
+				Scheme:    "https",
 				Port:      8080,
 				Path:      "/metrics",
 			},
@@ -123,7 +125,8 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 		labels["baseharbor_environment"] != "dev" ||
 		labels["baseharbor_service"] != "api" ||
 		labels["baseharbor_source"] != "application" ||
-		labels["baseharbor_metrics_path"] != "/metrics" {
+		labels["baseharbor_metrics_path"] != "/metrics" ||
+		labels["baseharbor_metrics_scheme"] != "https" {
 		t.Fatalf("labels = %#v", labels)
 	}
 
