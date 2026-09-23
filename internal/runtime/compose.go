@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var ErrRuntimeNotFound = errors.New("docker compose or podman compose not found")
+var ErrRuntimeNotFound = errors.New("container runtime orchestration not found")
 var ErrResourceOwnership = errors.New("runtime resource ownership does not match the application project")
 
 type ProjectResource struct {
