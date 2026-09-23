@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
@@ -80,8 +82,12 @@ func TestPromptAndStoreMissingRequiredSecretsCancelIsActionable(t *testing.T) {
 		[]openbao.RequiredSecretStatus{{Name: "API_TOKEN"}},
 		&bytes.Buffer{},
 	)
-	if err == nil || !strings.Contains(err.Error(), "baha app secret set API_TOKEN") {
-		t.Fatalf("expected actionable cancellation error, got %v", err)
+	if err == nil {
+		t.Fatal("expected actionable cancellation error")
+	}
+	var typed *machine.Error
+	if !errors.As(err, &typed) || typed.Code != machine.ErrorRequiredSecretMissing || !strings.Contains(typed.Next, "baha app secret set API_TOKEN") {
+		t.Fatalf("expected typed actionable cancellation error, got %#v", err)
 	}
 }
 
@@ -94,8 +100,12 @@ func TestPromptAndStoreMissingRequiredSecretsNonInteractiveFailsClosed(t *testin
 		[]openbao.RequiredSecretStatus{{Name: "API_TOKEN"}},
 		&bytes.Buffer{},
 	)
-	if err == nil || !strings.Contains(err.Error(), "baha app secret set API_TOKEN") || !strings.Contains(err.Error(), "--stdin") {
-		t.Fatalf("expected deterministic remediation, got %v", err)
+	if err == nil {
+		t.Fatal("expected deterministic remediation")
+	}
+	var typed *machine.Error
+	if !errors.As(err, &typed) || typed.Code != machine.ErrorRequiredSecretMissing || !strings.Contains(typed.Next, "baha app secret set API_TOKEN") || !strings.Contains(typed.Next, "--stdin") {
+		t.Fatalf("expected typed deterministic remediation, got %#v", err)
 	}
 }
 
