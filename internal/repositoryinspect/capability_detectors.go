@@ -192,3 +192,43 @@ func (otlpDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, e
 	}
 	return nil, nil
 }
+
+
+type runtimeAPIDetector struct{}
+
+func (runtimeAPIDetector) Name() string { return "runtime-api" }
+
+func (runtimeAPIDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
+	var evidence []Evidence
+	for path, data := range snapshot.Files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		base := strings.ToLower(filepath.Base(path))
+		lower := strings.ToLower(string(data))
+		if isEnvFile(base) {
+			for _, name := range readEnvNames(data) {
+				if strings.HasPrefix(strings.ToUpper(name), "BASEHARBOR_RUNTIME_") {
+					evidence = append(evidence, Evidence{
+						Kind: EvidenceEnv, Path: path, Detail: "variable " + name,
+					})
+				}
+			}
+		}
+		if isSourceFile(base) && (strings.Contains(lower, "/runtime/v1/") || strings.Contains(lower, "baseharbor_runtime_")) {
+			evidence = append(evidence, Evidence{
+				Kind: EvidenceCall, Path: path,
+				Detail: "source references the BaseHarbor Runtime API",
+			})
+		}
+	}
+	if len(evidence) == 0 {
+		return nil, nil
+	}
+	return []Finding{{
+		Capability: "runtime-api",
+		Direction: DirectionConsume,
+		Confidence: ConfidenceDetected,
+		Evidence: uniqueEvidence(evidence),
+	}}, nil
+}
