@@ -41,7 +41,7 @@ type RuntimeMTLSFiles struct {
 // client identity from a BaseHarbor-internal CA. The CA private key is stored in
 // the manager-only OpenBao namespace and is never persisted in application or
 // control-plane filesystem state.
-func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles) (RuntimeMTLSFiles, bool, error) {
+func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles, workloadDNSNames []string) (RuntimeMTLSFiles, bool, error) {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
@@ -70,7 +70,7 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	files.ClientKey = filepath.Join(bindingDir, "client-key.pem")
 	files.WorkloadCert = filepath.Join(bindingDir, "workload-cert.pem")
 	files.WorkloadKey = filepath.Join(bindingDir, "workload-key.pem")
-	valid, err := runtimeMTLSIdentityValid(files, caCert, identity)
+	valid, err := runtimeMTLSIdentityValid(files, caCert, identity, workloadDNSNames)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
@@ -85,7 +85,7 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
-	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(caCert, caKey, identity)
+	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(caCert, caKey, identity, workloadDNSNames)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
@@ -105,7 +105,7 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	return files, true, nil
 }
 
-func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, identity ApplicationIdentity) (bool, error) {
+func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, identity ApplicationIdentity, workloadDNSNames []string) (bool, error) {
 	caPEM, err := os.ReadFile(files.CA)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -134,6 +134,16 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, iden
 	workloadOK, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, ca, x509.ExtKeyUsageServerAuth, "localhost", "")
 	if err != nil || !workloadOK {
 		return false, err
+	}
+	for _, dnsName := range workloadDNSNames {
+		dnsName = strings.TrimSpace(dnsName)
+		if dnsName == "" {
+			continue
+		}
+		ok, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, ca, x509.ExtKeyUsageServerAuth, dnsName, "")
+		if err != nil || !ok {
+			return false, err
+		}
 	}
 	return true, nil
 }
@@ -313,7 +323,7 @@ func issueRuntimeCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, iden
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
 }
 
-func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, identity ApplicationIdentity) ([]byte, []byte, error) {
+func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, identity ApplicationIdentity, extraDNSNames []string) ([]byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate workload TLS key: %w", err)
@@ -324,6 +334,22 @@ func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateK
 	}
 	now := time.Now().UTC()
 	commonName := identity.Name + "." + identity.Environment + ".baseharbor"
+	dnsNames := []string{"localhost", identity.Name, commonName}
+	seenDNS := map[string]struct{}{}
+	for _, name := range dnsNames {
+		seenDNS[name] = struct{}{}
+	}
+	for _, name := range extraDNSNames {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seenDNS[name]; exists {
+			continue
+		}
+		seenDNS[name] = struct{}{}
+		dnsNames = append(dnsNames, name)
+	}
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: commonName, Organization: []string{"BaseHarbor"}},
@@ -331,7 +357,7 @@ func issueRuntimeWorkloadCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateK
 		NotAfter:     now.Add(30 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost", identity.Name, commonName},
+		DNSNames:     dnsNames,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
 	if err != nil {
