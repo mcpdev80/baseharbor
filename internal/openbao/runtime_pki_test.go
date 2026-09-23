@@ -25,7 +25,7 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(ca, caKey, identity)
+	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(ca, caKey, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 		}
 	}
 
-	valid, err := runtimeMTLSIdentityValid(files, ca, identity)
+	valid, err := runtimeMTLSIdentityValid(files, ca, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 		t.Fatal("matching runtime identity should be reusable")
 	}
 
-	valid, err = runtimeMTLSIdentityValid(files, ca, ApplicationIdentity{Name: "other", Environment: "dev"})
+	valid, err = runtimeMTLSIdentityValid(files, ca, ApplicationIdentity{Name: "other", Environment: "dev"}, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(ca, caKey, identity)
+	workloadCert, workloadKey, err := issueRuntimeWorkloadCertificate(ca, caKey, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	valid, err := runtimeMTLSIdentityValid(files, otherCA, identity)
+	valid, err := runtimeMTLSIdentityValid(files, otherCA, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
