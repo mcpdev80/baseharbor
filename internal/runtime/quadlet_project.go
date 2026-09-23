@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -654,4 +655,49 @@ func cloneQuadletYAMLNode(node *yaml.Node) *yaml.Node {
 		copy.Content[i] = cloneQuadletYAMLNode(child)
 	}
 	return &copy
+}
+
+
+func RenderComposeProjectFilesJSON(composePaths []string, environment map[string]string) (string, error) {
+	if len(composePaths) == 0 {
+		return "", errors.New("at least one Compose file is required")
+	}
+	env, err := quadletComposeEnvironment("")
+	if err != nil {
+		return "", err
+	}
+	for key, value := range environment {
+		if strings.TrimSpace(key) == "" || strings.ContainsRune(key, '=') || strings.ContainsRune(value, 0) {
+			return "", errors.New("invalid Compose process environment")
+		}
+		env[key] = value
+	}
+	var document yaml.Node
+	for index, composePath := range composePaths {
+		data, err := os.ReadFile(composePath)
+		if err != nil {
+			return "", err
+		}
+		var current yaml.Node
+		if err := yaml.Unmarshal(data, &current); err != nil {
+			return "", fmt.Errorf("decode Compose YAML %s: %w", composePath, err)
+		}
+		expandQuadletComposeNode(&current, env)
+		if index == 0 {
+			document = current
+			continue
+		}
+		if err := mergeQuadletComposeDocuments(&document, &current); err != nil {
+			return "", fmt.Errorf("merge Compose YAML %s: %w", composePath, err)
+		}
+	}
+	var model any
+	if err := document.Decode(&model); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(model)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
