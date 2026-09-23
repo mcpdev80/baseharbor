@@ -189,7 +189,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			return telemetry.VerifyApplication(ctx, m, files)
 		}})
 	}
-	if m.Services.Postgres {
+	if m.Services.SQL {
 		checks = append(checks,
 			preflight.Check{Name: "postgres running", Run: func(context.Context) error {
 				if !containsString(running, "postgres") {
@@ -205,7 +205,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			}},
 		)
 	}
-	if m.Services.Redis {
+	if m.Services.Cache {
 		checks = append(checks,
 			preflight.Check{Name: "valkey running", Run: func(context.Context) error {
 				if !containsString(running, "valkey") {
