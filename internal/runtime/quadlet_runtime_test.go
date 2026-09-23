@@ -24,3 +24,13 @@ func TestQuadletProjectResourceUnitsOrdersPrerequisites(t *testing.T) {
 		t.Fatalf("build units = %#v", builds)
 	}
 }
+
+func TestQuadletDirectiveValueReadsResourceNames(t *testing.T) {
+	content := "[Network]\nNetworkName=baseharbor-demo_default\nLabel=key=value\n"
+	if got := quadletDirectiveValue(content, "NetworkName"); got != "baseharbor-demo_default" {
+		t.Fatalf("NetworkName = %q", got)
+	}
+	if got := quadletDirectiveValue(content, "VolumeName"); got != "" {
+		t.Fatalf("unexpected VolumeName = %q", got)
+	}
+}
