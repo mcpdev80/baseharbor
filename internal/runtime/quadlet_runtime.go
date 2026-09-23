@@ -293,16 +293,24 @@ func quadletRemoveProject(ctx context.Context, project QuadletProject, destroyVo
 	}
 
 	var networkUnits, volumeUnits []string
+	var networkNames, volumeNames []string
 	for _, name := range files {
+		content := project.Files[name]
 		switch filepath.Ext(name) {
 		case ".network":
 			if unit := quadletUnitForFile(name); unit != "" {
 				networkUnits = append(networkUnits, unit)
 			}
+			if resource := quadletDirectiveValue(content, "NetworkName"); resource != "" {
+				networkNames = append(networkNames, resource)
+			}
 		case ".volume":
 			if destroyVolumes {
 				if unit := quadletUnitForFile(name); unit != "" {
 					volumeUnits = append(volumeUnits, unit)
+				}
+				if resource := quadletDirectiveValue(content, "VolumeName"); resource != "" {
+					volumeNames = append(volumeNames, resource)
 				}
 			}
 		}
@@ -310,8 +318,16 @@ func quadletRemoveProject(ctx context.Context, project QuadletProject, destroyVo
 	if len(networkUnits) > 0 {
 		_, _ = quadletSystemctl(ctx, nil, append([]string{"stop"}, networkUnits...)...)
 	}
+	if err := quadletRemoveRuntimeResources(ctx, "network", networkNames); err != nil {
+		return err
+	}
 	if len(volumeUnits) > 0 {
 		_, _ = quadletSystemctl(ctx, nil, append([]string{"stop"}, volumeUnits...)...)
+	}
+	if destroyVolumes {
+		if err := quadletRemoveRuntimeResources(ctx, "volume", volumeNames); err != nil {
+			return err
+		}
 	}
 
 	for _, name := range files {
@@ -324,6 +340,42 @@ func quadletRemoveProject(ctx context.Context, project QuadletProject, destroyVo
 	}
 	_, err = quadletSystemctl(ctx, nil, "daemon-reload")
 	return err
+}
+
+func quadletDirectiveValue(content, key string) string {
+	prefix := key + "="
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
+}
+
+func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	path, err := exec.LookPath("podman")
+	if err != nil {
+		return err
+	}
+	sort.Strings(names)
+	args := []string{kind, "rm", "-f"}
+	args = append(args, names...)
+	cmd := exec.CommandContext(ctx, path, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("remove Podman %s resources: %s", kind, message)
+	}
+	return nil
 }
 
 func quadletExec(ctx context.Context, runtimeCommand, container string, input []byte, args ...string) (string, error) {
