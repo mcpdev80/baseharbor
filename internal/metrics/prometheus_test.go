@@ -312,3 +312,52 @@ func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 		t.Fatalf("Prometheus config rendered runtime target path for registration without runtime volume:\n%s", config)
 	}
 }
+
+func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+
+	caSource := filepath.Join(t.TempDir(), "ca.pem")
+	const caData = "test-runtime-ca"
+	if err := os.WriteFile(caSource, []byte(caData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	files, err := EnsureProviderFilesWithRuntimeCA(m, caSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := os.ReadFile(files.RuntimeCA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(copied) != caData {
+		t.Fatalf("runtime CA = %q, want %q", copied, caData)
+	}
+
+	config, err := os.ReadFile(files.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := string(config)
+	for _, want := range []string{
+		"tls_config:",
+		"ca_file: /etc/prometheus/baseharbor-runtime-ca.pem",
+		"target_label: __scheme__",
+	} {
+		if !strings.Contains(configText, want) {
+			t.Fatalf("Prometheus config missing %q:\n%s", want, configText)
+		}
+	}
+
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compose), "./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro") {
+		t.Fatalf("Prometheus compose does not mount runtime CA:\n%s", compose)
+	}
+}
