@@ -31,8 +31,8 @@ func appCommand(store application.Store) *cli.Command {
 		{
 			Name:    "create",
 			Summary: "Create an application manifest in BaseHarbor state",
-			Usage:   "baha app create NAME [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
-			Long:    "Creates legacy/BaseHarbor-managed declarative application state only; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default PostgreSQL instance is enabled.",
+			Usage:   "baha app create NAME [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+			Long:    "Creates legacy/BaseHarbor-managed declarative application state only; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				m, err := manifestFromCreateArgs(args)
 				if err != nil {
@@ -219,7 +219,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -253,7 +253,7 @@ func appInitCommand() *cli.Command {
 			absolute, _ := filepath.Abs(path)
 			fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
 			fmt.Fprintf(out, "manifest: %s\n", absolute)
-			fmt.Fprintln(out, "next: review baseharbor.yaml, commit it, then run 'baha app apply'")
+			fmt.Fprintln(out, "next: review baseharbor.yaml, commit it, then run 'baha up'")
 			return nil
 		},
 	}
@@ -267,7 +267,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "-e", "--postgres-instance", "--redis-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--sql-instance", "--postgres-instance", "--cache-instance", "--redis-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
@@ -327,24 +327,28 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "--postgres":
+		case arg == "--sql", arg == "--postgres":
 			postgres = true
-		case arg == "--postgres-instance":
+		case arg == "--sql-instance", arg == "--postgres-instance":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--postgres-instance requires a name", "Example: --postgres-instance analytics")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--sql-instance requires a name", "Example: --sql-instance analytics")
 			}
 			i++
 			postgresInstances = append(postgresInstances, args[i])
+		case strings.HasPrefix(arg, "--sql-instance="):
+			postgresInstances = append(postgresInstances, strings.TrimPrefix(arg, "--sql-instance="))
 		case strings.HasPrefix(arg, "--postgres-instance="):
 			postgresInstances = append(postgresInstances, strings.TrimPrefix(arg, "--postgres-instance="))
-		case arg == "--redis":
+		case arg == "--cache", arg == "--redis":
 			redis = true
-		case arg == "--redis-instance":
+		case arg == "--cache-instance", arg == "--redis-instance":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--redis-instance requires a name", "Example: --redis-instance sessions")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--cache-instance requires a name", "Example: --cache-instance sessions")
 			}
 			i++
 			redisInstances = append(redisInstances, args[i])
+		case strings.HasPrefix(arg, "--cache-instance="):
+			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--cache-instance="))
 		case strings.HasPrefix(arg, "--redis-instance="):
 			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--redis-instance="))
 		case arg == "--s3":
@@ -396,16 +400,16 @@ func serviceNames(m application.Manifest) string {
 	var names []string
 	if count := len(application.PostgresInstanceNames(m)); count > 0 {
 		if count == 1 {
-			names = append(names, "postgres")
+			names = append(names, "sql")
 		} else {
-			names = append(names, fmt.Sprintf("postgres(%d)", count))
+			names = append(names, fmt.Sprintf("sql(%d)", count))
 		}
 	}
 	if count := len(application.RedisInstanceNames(m)); count > 0 {
 		if count == 1 {
-			names = append(names, "redis")
+			names = append(names, "cache")
 		} else {
-			names = append(names, fmt.Sprintf("redis(%d)", count))
+			names = append(names, fmt.Sprintf("cache(%d)", count))
 		}
 	}
 	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {
