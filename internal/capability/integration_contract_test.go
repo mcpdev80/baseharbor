@@ -35,6 +35,22 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 	}
 }
 
+func TestIntegrationDescriptorRequiresProviderImplementationVersion(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.Version = ""
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without implementation version accepted")
+	}
+}
+
+func TestIntegrationDescriptorRequiresProviderID(t *testing.T) {
+	descriptor := PostgreSQLIntegration
+	descriptor.ID = ""
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("provider without distribution id accepted")
+	}
+}
+
 func TestIntegrationDescriptorRejectsUnversionedCapability(t *testing.T) {
 	descriptor := PostgreSQLIntegration
 	descriptor.Capabilities = []SpecificationID{"database.sql"}
