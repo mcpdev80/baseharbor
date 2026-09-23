@@ -295,6 +295,14 @@ func quadletBuildProject(ctx context.Context, project QuadletProject, selected [
 }
 
 func quadletStartProject(ctx context.Context, project QuadletProject, selected []string) error {
+	return quadletStartProjectMode(ctx, project, selected, true)
+}
+
+func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, selected []string) error {
+	return quadletStartProjectMode(ctx, project, selected, false)
+}
+
+func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
@@ -306,7 +314,7 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	if err := quadletEnsureResourceUnits(ctx, project, volumes, "volume", "VolumeName"); err != nil {
 		return err
 	}
-	if len(builds) > 0 {
+	if build && len(builds) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, builds...)...); err != nil {
 			return err
 		}
