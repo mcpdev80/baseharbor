@@ -363,7 +363,7 @@ Der Installations-Scope eines spaeteren Operators ist nicht dasselbe wie Provide
 
 Mehrere BaseHarbor-Installationen sind daher nicht notwendig, nur weil Gruppen von Applications bestimmte Provider gemeinsam nutzen. Getrennte BaseHarbor-Control-Planes bleiben echten administrativen, Trust-Domain-, Infrastruktur- oder Compliance-Grenzen vorbehalten.
 
-Der aktuelle Implementierungsumfang bleibt Docker/Podman Compose. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
+Der aktuelle lokale Implementierungsumfang umfasst Docker ueber Docker Compose und Podman ueber native Quadlets, die aus denselben Compose-basierten Definitionen erzeugt werden. Kubernetes-/OpenShift-Abbildungen sind hier nur Architektur-Kompatibilitaetsanforderungen und noch keine implementierte Runtime-Funktionalitaet.
 
 ## Progressive Disclosure und explizite Kontrolle
 
