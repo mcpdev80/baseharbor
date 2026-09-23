@@ -51,12 +51,12 @@ Every release is prepared on `develop` and promoted to `main` only after the rel
 4. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
 5. Review compatibility impact and select the SemVer increment.
 6. Run local/Hugging Face validation first where practical.
-7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo matrix on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
+7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo acceptance suite on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
 8. The successful pre-release produces immutable approval/evidence containing the tested BaseHarbor SHA and external demo SHA.
 9. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
 10. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
 11. Create an immutable tag `vX.Y.Z` on the resulting `main` release commit and push it.
-12. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo matrix. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
+12. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
 13. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
 
 Never move a published version tag. Fix a bad release with a new patch release.
