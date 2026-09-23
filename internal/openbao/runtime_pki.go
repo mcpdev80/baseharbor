@@ -67,7 +67,7 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		BrokerCert: filepath.Join(bindingDir, "broker-cert.pem"),
 		BrokerKey:  filepath.Join(bindingDir, "broker-key.pem"),
 		ClientCert: filepath.Join(bindingDir, "client-cert.pem"),
-		ClientKey:    filepath.Join(bindingDir, "client-key.pem"),
+		ClientKey:  filepath.Join(bindingDir, "client-key.pem"),
 		WorkloadCert: filepath.Join(bindingDir, "workload-cert.pem"),
 		WorkloadKey:  filepath.Join(bindingDir, "workload-key.pem"),
 	}
@@ -94,8 +94,8 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw}),
 		files.BrokerCert: brokerCert,
 		files.BrokerKey:  brokerKey,
-		files.ClientCert:   clientCert,
-		files.ClientKey:    clientKey,
+		files.ClientCert: clientCert,
+		files.ClientKey:  clientKey,
 		files.WorkloadCert: workloadCert,
 		files.WorkloadKey:  workloadKey,
 	} {
