@@ -29,7 +29,13 @@
     },
     "extensions": {
       "type": "object",
-      "description": "Versioned provider-neutral BaseHarbor extensions only; provider product configuration is forbidden here."
+      "patternProperties": {
+        "^baha\\.[a-z0-9][a-z0-9.-]*/v[0-9]+$": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Versioned provider-neutral BaseHarbor extensions only."
     }
   }
 }
