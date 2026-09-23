@@ -147,3 +147,24 @@ baha app tls update
 ```
 
 `--check` ist read-only. Mutation prueft Quelle/Key-Pair/FQDN, verweigert Downgrades, installiert geschuetzte Dateien, startet bei Bedarf neu und verifiziert Readiness. ACME-Automation und providerneutraler TLS-Contract bleiben Future Work.
+
+## Standards-First Repository Adoption
+
+Repository-Evidence und portabler Application Intent bleiben getrennt.
+
+BaseHarbor kann konkrete Produkt-Evidence erkennen, normalisiert sie fuer den gefuehrten Adoption-Flow aber auf generische Service-Bedeutung:
+
+```text
+PostgreSQL evidence  -> SQL Database
+Redis/Valkey evidence -> Cache
+MinIO/SeaweedFS/S3 evidence -> Object Storage + S3 compatibility
+OpenTelemetry evidence -> Observability + OTLP
+```
+
+Das bestehende v0.4-Manifest bleibt bis zur expliziten Contract-Migration kompatibel. Produktnamen in bestehenden v0.4-Feldern sind dabei eine Compatibility Surface und keine neue Architekturgrenze.
+
+Repository-Compose ist immer read-only. Bei gemischten Compose-Dateien trennt die Inspection bekannte ersetzbare Infrastruktur von Application Workload. PostgreSQL-, Redis/Valkey- und unterstuetzte S3-kompatible Services bleiben im Original-Compose unveraendert vorhanden, werden aber fuer den BaseHarbor-managed Pfad nicht in `workload.services` aufgenommen. `docker compose up` ausserhalb BaseHarbor bleibt dadurch unveraendert moeglich.
+
+`baha app init --quick` uebernimmt nur eindeutige Detected-Evidence. Metrics werden nur automatisch geschrieben, wenn Workload-Service und Container-Port eindeutig ableitbar sind. OTLP wird nur automatisch geschrieben, wenn der Signaltyp eindeutig erkannt wurde. Konkrete Runtime-Operationen erzeugen nur dann Runtime-Permissions, wenn auch deren Workload-Scope eindeutig ist; sonst bricht Quick-Init fail-closed ab.
+
+Application-Logs werden bei erkanntem Workload als opt-in vorgeschlagen und nicht still aktiviert.
