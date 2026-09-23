@@ -167,7 +167,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
 				return startManagedRuntime(ctx, progress, compose, m, files)
 			}); err != nil {
-				return err
+				return classifyOperationalFailure(err, "managed application services")
 			}
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
@@ -240,7 +240,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
 				return err
 			}); err != nil {
-				return err
+				resource := "repository workload"
+				if len(m.Workload.Services) == 1 {
+					resource = m.Workload.Services[0]
+				}
+				return classifyOperationalFailure(err, resource)
 			}
 			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
