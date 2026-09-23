@@ -8,12 +8,22 @@ info:
 servers:
   - url: https://baseharbor-runtime:8443
     description: Canonical per-application Runtime Broker endpoint inside the application network.
+tags:
+  - name: Secrets
+    description: Application-scoped runtime secret operations.
+  - name: Capabilities
+    description: Runtime capabilities available to the authenticated application.
+  - name: Resources
+    description: Application-owned logical runtime resources and bindings.
+  - name: Operations
+    description: Asynchronous runtime operation state.
 security:
   - runtimeMTLS: []
     runtimeBearer: []
 paths:
   /runtime/v1/secrets:
     post:
+      tags: [Secrets]
       operationId: createRuntimeSecret
       summary: Create an application-scoped dynamic secret
       requestBody:
@@ -33,6 +43,7 @@ paths:
           $ref: '#/components/responses/Problem'
   /runtime/v1/secrets/resolve:
     post:
+      tags: [Secrets]
       operationId: resolveRuntimeSecret
       summary: Resolve an application-scoped dynamic secret reference
       requestBody:
@@ -51,6 +62,7 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
     put:
+      tags: [Secrets]
       operationId: rotateRuntimeSecret
       summary: Replace the value behind an existing dynamic secret reference
       requestBody:
@@ -69,6 +81,7 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
     delete:
+      tags: [Secrets]
       operationId: deleteRuntimeSecret
       summary: Delete an application-scoped dynamic secret reference
       requestBody:
@@ -84,6 +97,7 @@ paths:
           $ref: '#/components/responses/Problem'
   /runtime/v1/capabilities:
     get:
+      tags: [Capabilities]
       operationId: listRuntimeCapabilities
       summary: List runtime capabilities available to the authenticated application
       responses:
@@ -103,6 +117,7 @@ paths:
           $ref: '#/components/responses/Problem'
   /runtime/v1/resources:
     post:
+      tags: [Resources]
       operationId: createRuntimeResource
       summary: Request an application-owned logical resource
       parameters:
@@ -132,6 +147,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ResourceId'
     get:
+      tags: [Resources]
       operationId: getRuntimeResource
       summary: Get an application-owned logical resource
       responses:
@@ -144,6 +160,7 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
     delete:
+      tags: [Resources]
       operationId: deleteRuntimeResource
       summary: Request deletion of an application-owned logical resource
       parameters:
@@ -167,6 +184,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ResourceId'
     get:
+      tags: [Resources]
       operationId: getRuntimeResourceBinding
       summary: Get the application-facing binding for a ready resource
       responses:
@@ -187,6 +205,7 @@ paths:
           type: string
           minLength: 1
     get:
+      tags: [Operations]
       operationId: getRuntimeOperation
       summary: Get asynchronous operation state
       responses:
