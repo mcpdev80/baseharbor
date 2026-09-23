@@ -339,3 +339,22 @@ func quadletLogs(ctx context.Context, runtimeCommand string, project QuadletProj
 	}
 	return result.String(), nil
 }
+
+func quadletResolveComposeFiles(workdir string, composeFiles []string) ([]string, error) {
+	result := make([]string, 0, len(composeFiles))
+	for _, file := range composeFiles {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			return nil, errors.New("Compose file path is empty")
+		}
+		if !filepath.IsAbs(file) && strings.TrimSpace(workdir) != "" {
+			file = filepath.Join(workdir, file)
+		}
+		absolute, err := filepath.Abs(file)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, absolute)
+	}
+	return result, nil
+}
