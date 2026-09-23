@@ -19,6 +19,7 @@ import (
 
 var appApplySecretInput io.Reader = os.Stdin
 var appApplySecretReadHidden = readApplicationSecretFromTerminal
+var appApplySecretIsTerminal = appInitReaderIsTerminal
 
 func appApplyCommand(store application.Store) *cli.Command {
 	secretService := applicationsecret.New(store)
@@ -318,7 +319,7 @@ func promptAndStoreMissingRequiredSecrets(
 	if len(missing) == 0 {
 		return nil
 	}
-	if noInput(ctx) || !appInitReaderIsTerminal(appApplySecretInput) {
+	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
 		return fmt.Errorf("missing required application secret %s; run 'baha app secret set %s' interactively or use --stdin for automation", missing[0].Name, missing[0].Name)
 	}
 
