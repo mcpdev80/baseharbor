@@ -30,6 +30,9 @@ const (
 
 type ProviderInstance struct {
 	ID               string            `json:"id"`
+	ProviderID       string            `json:"provider_id,omitempty"`
+	ProviderVersion  string            `json:"provider_version,omitempty"`
+	ProviderProtocol string            `json:"provider_protocol,omitempty"`
 	Provider         Provider          `json:"provider"`
 	Scope            ProviderScope     `json:"scope"`
 	SharingBoundary  string            `json:"sharing_boundary,omitempty"`
@@ -464,7 +467,8 @@ func sameLogicalResource(a, b Resource) bool {
 }
 
 func sameProviderInstance(a, b ProviderInstance) bool {
-	if a.ID != b.ID || a.Provider.Kind != b.Provider.Kind || a.Scope != b.Scope ||
+	if a.ID != b.ID || a.ProviderID != b.ProviderID || a.ProviderVersion != b.ProviderVersion || a.ProviderProtocol != b.ProviderProtocol ||
+		a.Provider.Kind != b.Provider.Kind || a.Scope != b.Scope ||
 		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.Reference != b.Reference ||
 		len(a.Provider.Capabilities) != len(b.Provider.Capabilities) {
 		return false
