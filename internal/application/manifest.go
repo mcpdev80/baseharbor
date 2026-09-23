@@ -103,6 +103,7 @@ type ServiceInstance struct{}
 // BaseHarbor to create a missing value directly in the managed secret backend.
 type SecretRequirements struct {
 	Required []SecretRequirement
+	Optional []SecretRequirement
 }
 
 type SecretRequirement struct {
@@ -274,7 +275,25 @@ func WithRequiredSecrets(m Manifest, names ...string) Manifest {
 	return m
 }
 
+func WithOptionalSecrets(m Manifest, names ...string) Manifest {
+	for _, name := range names {
+		m.Secrets.Optional = append(m.Secrets.Optional, SecretRequirement{Name: name})
+	}
+	if len(names) > 0 {
+		m.Services.Secrets = true
+	}
+	return m
+}
+
 func WithGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, true, name, generationType, size)
+}
+
+func WithOptionalGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, false, name, generationType, size)
+}
+
+func withGeneratedSecret(m Manifest, required bool, name, generationType string, size int) Manifest {
 	generation := &SecretGeneration{Type: generationType}
 	switch generationType {
 	case "random":
@@ -282,7 +301,12 @@ func WithGeneratedSecret(m Manifest, name, generationType string, size int) Mani
 	case "hex":
 		generation.Bytes = size
 	}
-	m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name, Generate: generation})
+	requirement := SecretRequirement{Name: name, Generate: generation}
+	if required {
+		m.Secrets.Required = append(m.Secrets.Required, requirement)
+	} else {
+		m.Secrets.Optional = append(m.Secrets.Optional, requirement)
+	}
 	m.Services.Secrets = true
 	return m
 }
@@ -295,9 +319,17 @@ func RequiredSecretNames(m Manifest) []string {
 	return names
 }
 
+func OptionalSecretNames(m Manifest) []string {
+	names := make([]string, 0, len(m.Secrets.Optional))
+	for _, requirement := range m.Secrets.Optional {
+		names = append(names, requirement.Name)
+	}
+	return names
+}
+
 func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
 	var generated []SecretRequirement
-	for _, requirement := range m.Secrets.Required {
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
 		if requirement.Generate != nil {
 			generated = append(generated, requirement)
 		}
@@ -307,7 +339,7 @@ func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
 }
 
 func SecretRequirementByName(m Manifest, name string) (SecretRequirement, bool) {
-	for _, requirement := range m.Secrets.Required {
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
 		if requirement.Name == name {
 			return requirement, true
 		}
@@ -346,20 +378,28 @@ func (m Manifest) Validate() error {
 			return err
 		}
 	}
-	if len(m.Secrets.Required) > 0 && !m.Services.Secrets {
-		return fmt.Errorf("secrets.required needs services.secrets enabled")
+	if (len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0) && !m.Services.Secrets {
+		return fmt.Errorf("secret requirements need services.secrets enabled")
 	}
-	seen := make(map[string]struct{}, len(m.Secrets.Required))
-	for _, requirement := range m.Secrets.Required {
-		if err := validateSecretKey(requirement.Name); err != nil {
-			return err
-		}
-		if _, exists := seen[requirement.Name]; exists {
-			return fmt.Errorf("duplicate required secret %q", requirement.Name)
-		}
-		seen[requirement.Name] = struct{}{}
-		if err := validateSecretGeneration(requirement.Name, requirement.Generate); err != nil {
-			return err
+	seen := make(map[string]struct{}, len(m.Secrets.Required)+len(m.Secrets.Optional))
+	for _, group := range []struct {
+		label string
+		items []SecretRequirement
+	}{
+		{label: "required", items: m.Secrets.Required},
+		{label: "optional", items: m.Secrets.Optional},
+	} {
+		for _, requirement := range group.items {
+			if err := validateSecretKey(requirement.Name); err != nil {
+				return err
+			}
+			if _, exists := seen[requirement.Name]; exists {
+				return fmt.Errorf("duplicate application secret %q", requirement.Name)
+			}
+			seen[requirement.Name] = struct{}{}
+			if err := validateSecretGeneration(requirement.Name, requirement.Generate); err != nil {
+				return err
+			}
 		}
 	}
 	if err := validateWorkload(m.Workload); err != nil {
@@ -685,22 +725,10 @@ func (m Manifest) YAML() string {
 			b.WriteString("  secrets:\n    enabled: true\n")
 		}
 	}
-	if len(m.Secrets.Required) > 0 {
-		requirements := append([]SecretRequirement(nil), m.Secrets.Required...)
-		sort.Slice(requirements, func(i, j int) bool { return requirements[i].Name < requirements[j].Name })
-		b.WriteString("secrets:\n  required:\n")
-		for _, requirement := range requirements {
-			fmt.Fprintf(&b, "    - name: %s\n", requirement.Name)
-			if requirement.Generate != nil {
-				fmt.Fprintf(&b, "      generate:\n        type: %s\n", requirement.Generate.Type)
-				switch requirement.Generate.Type {
-				case "random":
-					fmt.Fprintf(&b, "        length: %d\n", requirement.Generate.Length)
-				case "hex":
-					fmt.Fprintf(&b, "        bytes: %d\n", requirement.Generate.Bytes)
-				}
-			}
-		}
+	if len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0 {
+		b.WriteString("secrets:\n")
+		writeSecretRequirementsYAML(&b, "required", m.Secrets.Required)
+		writeSecretRequirementsYAML(&b, "optional", m.Secrets.Optional)
 	}
 	if len(m.Runtime.Permissions) > 0 {
 		permissions := append([]RuntimePermission(nil), m.Runtime.Permissions...)
@@ -778,6 +806,27 @@ func (m Manifest) YAML() string {
 	return b.String()
 }
 
+func writeSecretRequirementsYAML(b *strings.Builder, field string, source []SecretRequirement) {
+	if len(source) == 0 {
+		return
+	}
+	requirements := append([]SecretRequirement(nil), source...)
+	sort.Slice(requirements, func(i, j int) bool { return requirements[i].Name < requirements[j].Name })
+	fmt.Fprintf(b, "  %s:\n", field)
+	for _, requirement := range requirements {
+		fmt.Fprintf(b, "    - name: %s\n", requirement.Name)
+		if requirement.Generate != nil {
+			fmt.Fprintf(b, "      generate:\n        type: %s\n", requirement.Generate.Type)
+			switch requirement.Generate.Type {
+			case "random":
+				fmt.Fprintf(b, "        length: %d\n", requirement.Generate.Length)
+			case "hex":
+				fmt.Fprintf(b, "        bytes: %d\n", requirement.Generate.Bytes)
+			}
+		}
+	}
+}
+
 func hasManifestServices(services Services) bool {
 	return services.Postgres || services.Redis || services.Secrets || services.ObjectStorage ||
 		len(services.PostgresInstances) > 0 || len(services.RedisInstances) > 0 || len(services.ObjectStorageBuckets) > 0
@@ -804,6 +853,26 @@ func writeServiceYAML(b *strings.Builder, service string, enabled bool, instance
 	b.WriteString("    instances:\n")
 	for _, name := range serviceInstanceNames(true, instances) {
 		fmt.Fprintf(b, "      %s: {}\n", name)
+	}
+}
+
+func secretRequirementPointer(m *Manifest, field string, index int) *SecretRequirement {
+	if index < 0 {
+		return nil
+	}
+	switch field {
+	case "required":
+		if index >= len(m.Secrets.Required) {
+			return nil
+		}
+		return &m.Secrets.Required[index]
+	case "optional":
+		if index >= len(m.Secrets.Optional) {
+			return nil
+		}
+		return &m.Secrets.Optional[index]
+	default:
+		return nil
 	}
 }
 
@@ -908,8 +977,8 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && trim == "required:" {
-				secretField = "required"
+			if section == "secrets" && (trim == "required:" || trim == "optional:") {
+				secretField = strings.TrimSuffix(trim, ":")
 				continue
 			}
 			if section == "exposure" && trim == "http:" {
@@ -977,17 +1046,22 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && secretField == "required" && strings.HasPrefix(trim, "- ") {
+			if section == "secrets" && (secretField == "required" || secretField == "optional") && strings.HasPrefix(trim, "- ") {
 				item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
 				name := item
 				if strings.HasPrefix(item, "name:") {
 					name = strings.TrimSpace(strings.TrimPrefix(item, "name:"))
 				}
 				if name == "" {
-					return Manifest{}, fmt.Errorf("line %d: required secret key is empty", lineNo)
+					return Manifest{}, fmt.Errorf("line %d: application secret key is empty", lineNo)
 				}
-				m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
-				secretIndex = len(m.Secrets.Required) - 1
+				if secretField == "required" {
+					m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
+					secretIndex = len(m.Secrets.Required) - 1
+				} else {
+					m.Secrets.Optional = append(m.Secrets.Optional, SecretRequirement{Name: name})
+					secretIndex = len(m.Secrets.Optional) - 1
+				}
 				continue
 			}
 			if section == "workload" && workloadField == "services" && strings.HasPrefix(trim, "- ") {
@@ -1104,8 +1178,12 @@ func ParseYAML(input string) (Manifest, error) {
 				}
 				continue
 			}
-			if section == "secrets" && secretField == "required" && secretIndex >= 0 && trim == "generate:" {
-				m.Secrets.Required[secretIndex].Generate = &SecretGeneration{}
+			if section == "secrets" && (secretField == "required" || secretField == "optional") && secretIndex >= 0 && trim == "generate:" {
+				requirement := secretRequirementPointer(&m, secretField, secretIndex)
+				if requirement == nil {
+					return Manifest{}, fmt.Errorf("line %d: invalid secret requirement", lineNo)
+				}
+				requirement.Generate = &SecretGeneration{}
 				secretGenerate = true
 				continue
 			}
@@ -1158,7 +1236,8 @@ func ParseYAML(input string) (Manifest, error) {
 					continue
 				}
 			}
-			if section != "secrets" || secretField != "required" || secretIndex < 0 || !secretGenerate || m.Secrets.Required[secretIndex].Generate == nil {
+			requirement := secretRequirementPointer(&m, secretField, secretIndex)
+			if section != "secrets" || requirement == nil || !secretGenerate || requirement.Generate == nil {
 				return Manifest{}, fmt.Errorf("line %d: invalid manifest structure", lineNo)
 			}
 			key, value, ok := strings.Cut(trim, ":")
@@ -1166,7 +1245,7 @@ func ParseYAML(input string) (Manifest, error) {
 				return Manifest{}, fmt.Errorf("line %d: expected generated secret key: value", lineNo)
 			}
 			value = strings.TrimSpace(value)
-			generation := m.Secrets.Required[secretIndex].Generate
+			generation := requirement.Generate
 			switch key {
 			case "type":
 				generation.Type = value

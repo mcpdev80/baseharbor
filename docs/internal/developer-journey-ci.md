@@ -54,7 +54,7 @@ app down + baha up --yes + doctor
 READY
 ```
 
-The normal repository happy path is therefore `baha up`. Advanced commands such as `baha app plan`, `baha app apply` and `baha app doctor` remain available for CI, automation and troubleshooting, but they are not required knowledge for the basic developer path.
+For a pristine repository the canonical human adoption path is `baha app init` followed by `baha up`. Once `baseharbor.yaml` exists, `baha up` remains the normal lifecycle command. Advanced commands such as `baha app plan`, `baha app apply` and `baha app doctor` remain available for CI, automation and troubleshooting, but they are not required knowledge for the basic developer path.
 
 ## Why this is separate from unit and integration tests
 
@@ -72,14 +72,7 @@ The workflow intentionally creates port conflicts on the default PostgreSQL and 
 
 On a fresh managed-secret installation, BaseHarbor cannot safely invent where the operator wants OpenBao recovery material stored. Interactive use asks for that path. Non-interactive use supplies `--recovery-file PATH`; the path remains outside BaseHarbor application state.
 
-A required external application secret is intentionally absent during the first `baha up`. BaseHarbor must:
-
-- start/reuse only the infrastructure needed to reach the readiness decision;
-- refuse workload startup;
-- identify the missing secret by name;
-- keep the workload stopped;
-- allow the developer to provide the value securely;
-- continue successfully on the next `baha up` without manual state repair.
+A required external application secret is intentionally absent during the first apply/up. In an interactive terminal BaseHarbor must identify it, offer secure hidden-value entry, store it directly in managed secret storage and continue the same lifecycle operation. In CI/non-interactive mode it must remain fail-closed and print the exact explicit `baha app secret set KEY --stdin` remediation path.
 
 After successful startup, the workflow verifies that MailFlow receives standard application-facing interfaces such as `DATABASE_URL` and `REDIS_URL`. The application does not need a BaseHarbor SDK or runtime login.
 

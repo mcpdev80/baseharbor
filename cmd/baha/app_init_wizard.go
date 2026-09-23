@@ -52,6 +52,13 @@ type appProjectDetection struct {
 	EnvFiles               []string
 }
 
+type guidedSecretPolicy struct {
+	Name      string
+	Source    string
+	Required  bool
+	Provision string
+}
+
 type composeServiceDetection struct {
 	Name     string
 	Postgres bool
@@ -108,7 +115,7 @@ func appGuidedInitCommand() *cli.Command {
 			if !appInitReaderIsTerminal(appInitInput) {
 				return usageError("interactive app init requires a terminal", "Use 'baha app init --quick' for detected safe defaults or explicit flags for CI/scripts.")
 			}
-			return runAppInitWizard(detected, out)
+			return runAppInitWizard(ctx, detected, out)
 		},
 	}
 }
@@ -380,7 +387,7 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	return name
 }
 
-func runAppInitWizard(d appProjectDetection, out io.Writer) error {
+func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer) error {
 	reader := bufio.NewReader(appInitInput)
 	fmt.Fprintln(out, "Analyzing repository...")
 	printProjectDetection(out, d)
@@ -464,23 +471,23 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		}
 	}
 
-	required := []string(nil)
+	var secretPolicies []guidedSecretPolicy
 	if selected[3] {
-		required, err = promptSecretCandidates(reader, out, d.SecretCandidates, d.SecretSources)
+		printManagedCredentialSummary(out, selected, len(d.RuntimePermissions) > 0)
+		secretPolicies, err = promptSecretPolicies(reader, out, d.SecretCandidates, d.SecretSources)
 		if err != nil {
 			return err
 		}
-		additional, err := promptLine(reader, out, "Additional required secret names (comma-separated, Enter for none)", "")
+		additional, err := promptLine(reader, out, "Additional application secret names (comma-separated, Enter for none)", "")
 		if err != nil {
 			return err
 		}
 		for _, item := range strings.Split(additional, ",") {
 			item = strings.TrimSpace(item)
 			if item != "" {
-				required = append(required, item)
+				secretPolicies = append(secretPolicies, guidedSecretPolicy{Name: item, Required: true, Provision: "later"})
 			}
 		}
-		required = uniqueSorted(required)
 	}
 
 	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
@@ -493,7 +500,7 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 	if len(objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
 	}
-	m = application.WithRequiredSecrets(m, required...)
+	m = applyGuidedSecretPolicies(m, secretPolicies)
 	if compose != "" && len(workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(compose), workloadServices...)
 	}
@@ -538,11 +545,14 @@ func runAppInitWizard(d appProjectDetection, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "\nManifest preview:")
-	fmt.Fprintln(out, "----------------------------------------")
-	fmt.Fprint(out, m.YAML())
-	fmt.Fprintln(out, "----------------------------------------")
-	confirm, err := promptYesNo(reader, out, "Write ./baseharbor.yaml?", true)
+	printAdoptionSummary(out, m, d, secretPolicies)
+	if cli.OutputOptionsFromContext(ctx).Verbose {
+		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
+		fmt.Fprintln(out, "----------------------------------------")
+		fmt.Fprint(out, m.YAML())
+		fmt.Fprintln(out, "----------------------------------------")
+	}
+	confirm, err := promptYesNo(reader, out, "Write baseharbor.yaml?", true)
 	if err != nil {
 		return err
 	}
@@ -913,30 +923,192 @@ func quickNamedInstances(detected []string) []string {
 	return nil
 }
 
-func promptSecretCandidates(reader *bufio.Reader, out io.Writer, candidates []string, sources map[string]string) ([]string, error) {
+func promptSecretPolicies(reader *bufio.Reader, out io.Writer, candidates []string, sources map[string]string) ([]guidedSecretPolicy, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
-	fmt.Fprintln(out, "\nDetected potential required application secrets (Enter keeps all; otherwise enter selected numbers):")
-	for i, name := range candidates {
-		fmt.Fprintf(out, "[x] %d. %s (%s)\n", i+1, name, sources[name])
-	}
-	line, err := readPrompt(reader, out, "> ")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(line) == "" {
-		return append([]string(nil), candidates...), nil
-	}
-	var selected []string
-	for _, raw := range strings.Split(line, ",") {
-		n, err := strconv.Atoi(strings.TrimSpace(raw))
-		if err != nil || n < 1 || n > len(candidates) {
-			return nil, fmt.Errorf("invalid secret selection %q", raw)
+	fmt.Fprintln(out, "\nApplication secrets")
+	fmt.Fprintln(out, "Detected names are evidence only. Repository values are never displayed or imported.")
+	var policies []guidedSecretPolicy
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		source := sources[candidate]
+		fmt.Fprintf(out, "\nPotential secret detected\n  Source: %s\n  Detected variable: %s\n", source, candidate)
+		use, err := promptYesNo(reader, out, "Manage this application secret with BaseHarbor?", true)
+		if err != nil {
+			return nil, err
 		}
-		selected = append(selected, candidates[n-1])
+		if !use {
+			continue
+		}
+		name, err := promptLine(reader, out, "BaseHarbor secret name", candidate)
+		if err != nil {
+			return nil, err
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, errors.New("application secret name cannot be empty")
+		}
+		if _, exists := seen[name]; exists {
+			return nil, fmt.Errorf("duplicate application secret %q", name)
+		}
+		seen[name] = struct{}{}
+		required, err := promptYesNo(reader, out, "Required for application startup?", true)
+		if err != nil {
+			return nil, err
+		}
+		provision, err := promptSecretProvisionPolicy(reader, out)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, guidedSecretPolicy{
+			Name: name, Source: source, Required: required, Provision: provision,
+		})
 	}
-	return uniqueSorted(selected), nil
+	return policies, nil
+}
+
+func promptSecretProvisionPolicy(reader *bufio.Reader, out io.Writer) (string, error) {
+	fmt.Fprintln(out, "How should it be provided?")
+	fmt.Fprintln(out, "  1. Ask for value during first apply")
+	fmt.Fprintln(out, "  2. Generate automatically")
+	fmt.Fprintln(out, "  3. Configure later")
+	value, err := promptLine(reader, out, "Selection", "1")
+	if err != nil {
+		return "", err
+	}
+	switch strings.TrimSpace(value) {
+	case "1":
+		return "prompt", nil
+	case "2":
+		return "generate", nil
+	case "3":
+		return "later", nil
+	default:
+		return "", fmt.Errorf("invalid secret provision selection %q", value)
+	}
+}
+
+func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPolicy) application.Manifest {
+	for _, policy := range policies {
+		switch {
+		case policy.Required && policy.Provision == "generate":
+			m = application.WithGeneratedSecret(m, policy.Name, "random", 32)
+		case !policy.Required && policy.Provision == "generate":
+			m = application.WithOptionalGeneratedSecret(m, policy.Name, "random", 32)
+		case policy.Required:
+			m = application.WithRequiredSecrets(m, policy.Name)
+		default:
+			m = application.WithOptionalSecrets(m, policy.Name)
+		}
+	}
+	return m
+}
+
+func printManagedCredentialSummary(out io.Writer, selected []bool, runtimePermissions bool) {
+	var managed []string
+	if len(selected) > 0 && selected[0] {
+		managed = append(managed, "SQL service credentials")
+	}
+	if len(selected) > 1 && selected[1] {
+		managed = append(managed, "Cache service credentials")
+	}
+	if len(selected) > 2 && selected[2] {
+		managed = append(managed, "Object-storage access credentials")
+	}
+	if runtimePermissions {
+		managed = append(managed, "Runtime identity / mTLS credentials")
+	}
+	if len(managed) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nManaged automatically by BaseHarbor")
+	for _, item := range managed {
+		fmt.Fprintf(out, "  - %s\n", item)
+	}
+	fmt.Fprintln(out, "You do not need to create or enter these managed credentials.")
+}
+
+func printAdoptionSummary(out io.Writer, m application.Manifest, detected appProjectDetection, policies []guidedSecretPolicy) {
+	fmt.Fprintln(out, "\nAdoption summary")
+	fmt.Fprintln(out, "\nApplication")
+	fmt.Fprintf(out, "  Name          %s\n", m.Name)
+	fmt.Fprintf(out, "  Environment   %s\n", m.Environment)
+
+	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
+		fmt.Fprintln(out, "\nWorkload")
+		if m.Workload.Compose != "" {
+			fmt.Fprintf(out, "  Compose       %s (repository-owned, read-only)\n", m.Workload.Compose)
+		}
+		if len(m.Workload.Services) > 0 {
+			fmt.Fprintf(out, "  Services      %s\n", strings.Join(m.Workload.Services, ", "))
+		}
+	}
+
+	if m.Services.Postgres || m.Services.Redis || m.Services.ObjectStorage {
+		fmt.Fprintln(out, "\nManaged services")
+		if m.Services.Postgres {
+			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.Postgres))
+		}
+		if m.Services.Redis {
+			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Redis))
+		}
+		if m.Services.ObjectStorage {
+			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
+		}
+	}
+
+	if application.HasMetricsSources(m) || application.HasOTLPTelemetry(m) || application.HasLogsCollection(m) {
+		fmt.Fprintln(out, "\nObservability")
+		if application.HasMetricsSources(m) {
+			fmt.Fprintln(out, "  Metrics       /metrics")
+		}
+		if application.HasOTLPTelemetry(m) {
+			fmt.Fprintf(out, "  OTLP          %s\n", strings.Join(m.Telemetry.OTLP.Signals, ", "))
+		}
+		if application.HasLogsCollection(m) {
+			fmt.Fprintln(out, "  Logs          application")
+		}
+	}
+
+	printGuidedSecretSummary(out, policies)
+
+	if len(m.Runtime.Permissions) > 0 {
+		fmt.Fprintln(out, "\nRuntime permissions")
+		for _, permission := range m.Runtime.Permissions {
+			fmt.Fprintf(out, "  %s\n", permission.Capability)
+			fmt.Fprintf(out, "    services: %s\n", strings.Join(permission.Services, ", "))
+			fmt.Fprintf(out, "    operations: %s\n", strings.Join(permission.Operations, ", "))
+		}
+	}
+}
+
+func adoptionOrigin(detected bool) string {
+	if detected {
+		return "detected and confirmed"
+	}
+	return "user confirmed"
+}
+
+func printGuidedSecretSummary(out io.Writer, policies []guidedSecretPolicy) {
+	if len(policies) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nSecret policy")
+	for _, policy := range policies {
+		requirement := "optional"
+		if policy.Required {
+			requirement = "required for startup"
+		}
+		action := "configure later"
+		switch policy.Provision {
+		case "prompt":
+			action = "ask securely during first apply"
+		case "generate":
+			action = "generate automatically"
+		}
+		fmt.Fprintf(out, "  %s: %s; %s\n", policy.Name, requirement, action)
+	}
 }
 
 func promptCompose(reader *bufio.Reader, out io.Writer, candidates []string) (string, error) {
@@ -1028,10 +1200,8 @@ func writeRepositoryManifest(m application.Manifest, out io.Writer) error {
 	fmt.Fprintf(out, "manifest: %s\n", absolute)
 	if len(application.RequiredSecretNames(m)) > 0 {
 		fmt.Fprintf(out, "required application secrets: %s\n", strings.Join(application.RequiredSecretNames(m), ", "))
-		fmt.Fprintln(out, "next: run 'baha app preflight' to check secret readiness, then 'baha app apply'")
-	} else {
-		fmt.Fprintln(out, "next: run 'baha app apply'")
 	}
+	fmt.Fprintln(out, "next: run 'baha up'")
 	return nil
 }
 

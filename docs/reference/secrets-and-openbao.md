@@ -78,7 +78,7 @@ Readiness output distinguishes the cases:
 ```text
 REQUIRED SECRET    STATUS                                      ACTION
 SECRET_KEY         missing - will be generated automatically   baha app apply
-OPENAI_API_KEY     missing - user input required                baha app secret set OPENAI_API_KEY --stdin
+OPENAI_API_KEY     missing - user input required                baha app secret set OPENAI_API_KEY
 ```
 
 This follows the developer rule: provide only values BaseHarbor cannot safely know or generate.
@@ -87,7 +87,13 @@ This follows the developer rule: provide only values BaseHarbor cannot safely kn
 
 Secret values are never accepted as positional command-line arguments and are never printed back.
 
-From stdin:
+Interactive terminal input is the normal human path:
+
+```bash
+baha app secret set API_TOKEN
+```
+
+The value is entered with terminal echo disabled. Automation keeps the explicit stdin path:
 
 ```bash
 printf '%s' "$API_KEY" | baha app secret set API_TOKEN --stdin
@@ -99,7 +105,7 @@ Directly from a file:
 baha app secret set TLS_KEY_FILE --file ./private-key.pem
 ```
 
-Exactly one input source is required. Input is limited to 1 MiB and must be non-empty.
+When `--stdin` or `--file` is used, that explicit source is authoritative. Without either option BaseHarbor requires an interactive terminal and prompts securely. Input is limited to 1 MiB and must be non-empty.
 
 List configured names without values:
 
@@ -135,9 +141,25 @@ TLS_KEY_FILE
 
 The source file paths are not stored in the application manifest.
 
+## Required and optional application secrets
+
+The portable contract distinguishes startup-gating secrets from optional application configuration:
+
+```yaml
+secrets:
+  required:
+    - name: API_TOKEN
+  optional:
+    - name: SMTP_PASSWORD
+```
+
+Missing required secrets block workload startup. Missing optional secrets do not. When an optional secret is configured in managed storage, BaseHarbor projects it through the same environment/file binding rules as a required secret.
+
+Generated values are supported in either group. The guided init flow may ask whether a non-generated secret should be entered on first apply or configured later; that is onboarding UX, not a separate portable secret type.
+
 ## Static runtime delivery
 
-Required secrets use two normal application-consumption forms.
+Application secrets use two normal application-consumption forms.
 
 ### Environment value
 

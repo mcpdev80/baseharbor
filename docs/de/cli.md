@@ -251,7 +251,7 @@ Secret-Werte werden dabei weder angezeigt noch in `baseharbor.yaml` uebernommen.
 
 Anschliessend zeigt der Wizard eine kompakte Auswahl der erkannten Capabilities. Vorausgewaehlte Werte koennen geaendert werden. Bei mehreren moeglichen Compose-Dateien raet `baha` nicht, sondern fragt explizit nach.
 
-Vor dem Schreiben wird das erzeugte `baseharbor.yaml` als Vorschau angezeigt. Eine vorhandene Datei wird niemals still ueberschrieben.
+Vor dem Schreiben zeigt der interaktive Wizard zuerst eine kompakte, menschenlesbare Zusammenfassung von Anwendung, Workload, Managed Services, Observability, Application Secrets und Runtime-Berechtigungen. Das rohe YAML ist nur noch mit `--verbose` zusaetzlich sichtbar. Eine vorhandene Datei wird niemals still ueberschrieben.
 
 Nicht-interaktiv und erkennungsbasiert:
 
@@ -296,7 +296,13 @@ Mehrere Instanzen sind mehrere logische Services und keine HA-Replikate.
 
 Repository-Deployments initialisieren in v0.4 geschuetzten Deployment-State ueber den deklarativen Input-Resolver. Interaktiv koennen **Public FQDN** und TLS-Modus abgefragt werden. Existing/BYOC-TLS akzeptiert ein Zertifikatsverzeichnis, validiert Zertifikat/Key/FQDN und normalisiert die Dateien in owner-only BaseHarbor-State. Diese Deployment-Details gehoeren nicht in den providerneutralen `PortableContract`; Manifest v1 bleibt der oeffentliche Kompatibilitaetsvertrag.
 
-Danach:
+Der normale naechste Schritt nach `baha app init` ist:
+
+```bash
+baha up
+```
+
+Die detaillierten Lifecycle-Befehle bleiben fuer Automation, Diagnose und Expert Workflows verfuegbar:
 
 ```bash
 baha app plan
@@ -308,6 +314,10 @@ baha app doctor
 ```
 
 Fehlende Pflicht-Secrets blockieren `apply`/`up`. Secret-Werte selbst werden nie ausgegeben.
+
+Im interaktiven Happy Path fragt `baha app apply` beziehungsweise `baha up` fehlende, nicht generierte Pflicht-Secrets direkt im selben Lauf ab. Die Eingabe erfolgt ohne Terminal-Echo und wird direkt im Managed Secret Storage abgelegt. Generierte Secrets werden automatisch erzeugt. Fuer CI/Skripte bleibt `baha app secret set KEY --stdin` der deterministische Weg; fuer Menschen reicht `baha app secret set KEY` mit verdeckter Eingabe.
+
+Optionale Application Secrets blockieren den Start nicht. Sind sie konfiguriert, werden sie in den Workload projiziert; fehlen sie, laeuft die Anwendung ohne diese Bindings weiter.
 
 Wurde eine Repository-Anwendung noch nicht angewendet oder bewusst zerstoert, waehrend `baseharbor.yaml` erhalten bleibt, melden `status` und `doctor` den expliziten Lifecycle-Zustand `NOT APPLIED`. Es werden dann keine kuenstlichen Backend-/OpenBao-Fehler erzeugt und keine Reparatur vorgeschlagen; der normale naechste Schritt ist `baha up` oder `baha app apply`.
 

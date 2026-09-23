@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -55,7 +56,21 @@ func checkRequiredApplicationSecrets(
 		return err
 	}
 	if err := openbao.RequireApplicationSecrets(statuses); err != nil {
-		return fmt.Errorf("%w; run 'baha app preflight' for the exact safe remediation command for each secret", err)
+		for _, status := range statuses {
+			if status.Present && status.Usable {
+				continue
+			}
+			return &machine.Error{
+				Code:        machine.ErrorRequiredSecretMissing,
+				CauseCode:   "required_secret_missing",
+				Message:     fmt.Sprintf("Required application secret %s is missing or unusable.", status.Name),
+				Resource:    status.Name,
+				Remediation: "requires developer input",
+				Next:        "Run 'baha app secret set " + status.Name + "' interactively or use --stdin for automation.",
+				Cause:       err,
+			}
+		}
+		return err
 	}
 	return nil
 }
@@ -81,7 +96,7 @@ func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretS
 			action = "baha app apply"
 		case !status.Present:
 			state = "missing - user input required"
-			action = "baha app secret set " + status.Name + " --stdin"
+			action = "baha app secret set " + status.Name
 		case !status.Usable:
 			state = "present but unusable"
 			action = "baha app secret set " + status.Name + " --stdin"

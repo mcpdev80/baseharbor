@@ -255,37 +255,80 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 		environment["BASEHARBOR_RUNTIME_API_URL"] = runtimeURL
 		environment["BASEHARBOR_RUNTIME_TOKEN_FILE"] = application.RuntimeIdentityContainerTokenPath
 	}
-	if len(resolved.Manifest.Secrets.Required) == 0 {
+	if len(resolved.Manifest.Secrets.Required) == 0 && len(resolved.Manifest.Secrets.Optional) == 0 {
 		return environment, nil
 	}
 	service := applicationsecret.New(resolved.Store)
 	requiredNames := application.RequiredSecretNames(resolved.Manifest)
-	values, err := service.GetMany(ctx, resolved.Manifest.Name, requiredNames)
-	if err != nil {
-		return nil, fmt.Errorf("resolve required workload secrets: %w", err)
-	}
-	for _, requirement := range resolved.Manifest.Secrets.Required {
-		if !validWorkloadEnvironmentName(requirement.Name) {
-			return nil, fmt.Errorf("required secret %q cannot be projected as a workload environment variable; use an environment-compatible secret name", requirement.Name)
+	if len(requiredNames) > 0 {
+		values, err := service.GetMany(ctx, resolved.Manifest.Name, requiredNames)
+		if err != nil {
+			return nil, fmt.Errorf("resolve required workload secrets: %w", err)
 		}
-		value, ok := values[requirement.Name]
-		if !ok {
-			return nil, fmt.Errorf("resolve required workload secret %s: missing from batch result", requirement.Name)
-		}
-		if application.RequiredSecretUsesFileBinding(requirement.Name) {
-			path := application.SecretFileHostPath(files, requirement.Name)
-			if err := writeWorkloadSecretFile(path, value); err != nil {
-				return nil, fmt.Errorf("materialize required workload secret file %s: %w", requirement.Name, err)
+		for _, requirement := range resolved.Manifest.Secrets.Required {
+			value, ok := values[requirement.Name]
+			if !ok {
+				return nil, fmt.Errorf("resolve required workload secret %s: missing from batch result", requirement.Name)
 			}
-			environment[requirement.Name] = application.SecretFileContainerPath(requirement.Name)
-			continue
+			if err := projectWorkloadSecret(environment, files, requirement.Name, value, true); err != nil {
+				return nil, err
+			}
 		}
-		if strings.IndexByte(string(value), 0) >= 0 {
-			return nil, fmt.Errorf("required secret %q contains a NUL byte and cannot be projected to a process environment", requirement.Name)
+	}
+
+	if len(resolved.Manifest.Secrets.Optional) > 0 {
+		metadata, err := service.List(ctx, resolved.Manifest.Name)
+		if err != nil {
+			return nil, fmt.Errorf("inspect optional workload secrets: %w", err)
 		}
-		environment[requirement.Name] = string(value)
+		present := map[string]struct{}{}
+		for _, item := range metadata {
+			if item.Present && item.Usable && !item.Required {
+				present[item.Name] = struct{}{}
+			}
+		}
+		var names []string
+		for _, requirement := range resolved.Manifest.Secrets.Optional {
+			if _, ok := present[requirement.Name]; ok {
+				names = append(names, requirement.Name)
+			}
+		}
+		if len(names) > 0 {
+			values, err := service.GetMany(ctx, resolved.Manifest.Name, names)
+			if err != nil {
+				return nil, fmt.Errorf("resolve optional workload secrets: %w", err)
+			}
+			for _, name := range names {
+				if err := projectWorkloadSecret(environment, files, name, values[name], false); err != nil {
+					return nil, err
+				}
+			}
+		}
 	}
 	return environment, nil
+}
+
+func projectWorkloadSecret(environment map[string]string, files application.RuntimeFiles, name string, value []byte, required bool) error {
+	label := "optional"
+	if required {
+		label = "required"
+	}
+	if !validWorkloadEnvironmentName(name) {
+		return fmt.Errorf("%s secret %q cannot be projected as a workload environment variable; use an environment-compatible secret name", label, name)
+	}
+	if application.RequiredSecretUsesFileBinding(name) {
+		path := application.SecretFileHostPath(files, name)
+		if err := writeWorkloadSecretFile(path, value); err != nil {
+			return fmt.Errorf("materialize %s workload secret file %s: %w", label, name, err)
+		}
+		environment[name] = application.SecretFileContainerPath(name)
+		return nil
+	}
+	if strings.IndexByte(string(value), 0) >= 0 {
+		return fmt.Errorf("%s secret %q contains a NUL byte and cannot be projected to a process environment", label, name)
+	}
+	environment[name] = string(value)
+	return nil
 }
 
 func writeWorkloadSecretFile(path string, value []byte) error {
@@ -383,6 +426,11 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	beforeServices := make(map[string]struct{}, len(beforeStates))
 	for _, state := range beforeStates {
 		beforeServices[state.Service] = struct{}{}
+	}
+	if len(beforeStates) == 0 {
+		if err := preflightRepositoryWorkloadPublishedPorts(ctx, runtimeInput, out, workload, files, environment); err != nil {
+			return false, err
+		}
 	}
 
 	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)

@@ -102,3 +102,42 @@ func TestGenerateSecretValueHex(t *testing.T) {
 		t.Fatalf("decoded length = %d", len(decoded))
 	}
 }
+
+func TestOptionalSecretManifestRoundTrip(t *testing.T) {
+	m := New("demo", "dev", true, false, true)
+	m = WithRequiredSecrets(m, "REQUIRED_TOKEN")
+	m = WithOptionalSecrets(m, "OPTIONAL_TOKEN")
+	m = WithOptionalGeneratedSecret(m, "OPTIONAL_GENERATED", "random", 32)
+
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	normalized := m.YAML()
+	for _, want := range []string{
+		"  required:\n",
+		"    - name: REQUIRED_TOKEN\n",
+		"  optional:\n",
+		"    - name: OPTIONAL_GENERATED\n",
+		"    - name: OPTIONAL_TOKEN\n",
+	} {
+		if !strings.Contains(normalized, want) {
+			t.Fatalf("manifest missing %q:\n%s", want, normalized)
+		}
+	}
+	roundTripped, err := ParseYAML(normalized)
+	if err != nil {
+		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
+	}
+	if got := roundTripped.YAML(); got != normalized {
+		t.Fatalf("optional secret manifest is not stable:\n--- first ---\n%s\n--- second ---\n%s", normalized, got)
+	}
+}
+
+func TestSecretValidationRejectsRequiredOptionalDuplicate(t *testing.T) {
+	m := New("demo", "dev", true, false, true)
+	m = WithRequiredSecrets(m, "TOKEN")
+	m = WithOptionalSecrets(m, "TOKEN")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate application secret") {
+		t.Fatalf("expected duplicate application secret error, got %v", err)
+	}
+}

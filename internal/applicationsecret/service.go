@@ -51,7 +51,7 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	}
 
 	required := make(map[string]struct{}, len(resolved.manifest.Secrets.Required))
-	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required))
+	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required)+len(resolved.manifest.Secrets.Optional))
 	for _, key := range keys {
 		if strings.HasPrefix(key, dynamicKeyPrefix) {
 			continue
@@ -60,6 +60,9 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	}
 	for _, requirement := range resolved.manifest.Secrets.Required {
 		required[requirement.Name] = struct{}{}
+		names[requirement.Name] = struct{}{}
+	}
+	for _, requirement := range resolved.manifest.Secrets.Optional {
 		names[requirement.Name] = struct{}{}
 	}
 	ordered := make([]string, 0, len(names))

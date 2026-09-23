@@ -43,7 +43,7 @@ func main() {
 		_ = writeJSON(os.Stderr, machine.ResultError(classifyMachineCLIError(err)))
 		os.Exit(cli.ExitCode(err))
 	}
-	formatCLIError(os.Stderr, err)
+	formatCLIErrorVerbose(os.Stderr, err, hasVerboseArgument(os.Args[1:]))
 	os.Exit(cli.ExitCode(err))
 }
 
@@ -161,10 +161,36 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, boo
 }
 
 func formatCLIError(w io.Writer, err error) {
+	formatCLIErrorVerbose(w, err, false)
+}
+
+func formatCLIErrorVerbose(w io.Writer, err error, verbose bool) {
 	if errors.Is(err, syscall.EPIPE) {
 		return
 	}
 	if cli.IsPresented(err) {
+		return
+	}
+	var operational *machine.Error
+	if errors.As(err, &operational) {
+		fmt.Fprintln(w, "Error")
+		fmt.Fprintf(w, "  %s\n", operational.Message)
+		if operational.Resource != "" {
+			fmt.Fprintln(w, "\nAffected")
+			fmt.Fprintf(w, "  %s\n", operational.Resource)
+		}
+		if operational.Remediation != "" {
+			fmt.Fprintln(w, "\nResolution")
+			fmt.Fprintf(w, "  %s\n", operational.Remediation)
+		}
+		if strings.TrimSpace(operational.Next) != "" {
+			fmt.Fprintln(w, "\nWhat to do")
+			fmt.Fprintf(w, "  %s\n", operational.Next)
+		}
+		if verbose && operational.Cause != nil {
+			fmt.Fprintln(w, "\nDetails")
+			fmt.Fprintf(w, "  %v\n", operational.Cause)
+		}
 		return
 	}
 	fmt.Fprintf(w, "Error: %v\n", err)
@@ -179,6 +205,15 @@ func formatCLIError(w io.Writer, err error) {
 	fmt.Fprintln(w, "\nNext:")
 	fmt.Fprintln(w, "  baha doctor")
 	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
+}
+
+func hasVerboseArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "-v" || arg == "--verbose" {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyMachineCLIError(err error) error {

@@ -15,6 +15,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -236,6 +238,88 @@ func workloadPublishedPortVariables(workload application.WorkloadFiles) ([]workl
 	return result, nil
 }
 
+func preflightRepositoryWorkloadPublishedPorts(
+	ctx context.Context,
+	in io.Reader,
+	out io.Writer,
+	workload application.WorkloadFiles,
+	files application.RuntimeFiles,
+	environment map[string]string,
+) error {
+	variables, err := workloadPublishedPortVariables(workload)
+	if err != nil {
+		return fmt.Errorf("inspect configurable workload host ports: %w", err)
+	}
+	for _, variable := range variables {
+		port := currentWorkloadPort(variable, environment)
+		if portAvailable(port) {
+			continue
+		}
+		if _, explicit := os.LookupEnv(variable.Name); explicit {
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry; BaseHarbor will not replace an explicit operator value.", variable.Name)}
+		}
+		fallback := proposedWorkloadPort(port)
+		if fallback == 0 {
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use and no safe fallback was found.", port), Resource: variable.Name, Remediation: "manual action required", Next: "Free the port or choose a free configurable host port and retry."}
+		}
+		accepted, err := acceptWorkloadPortFallback(ctx, in, out, variable.Name, port, fallback)
+		if err != nil {
+			return err
+		}
+		if !accepted {
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry.", variable.Name)}
+		}
+		if err := persistWorkloadPortOverride(files, environment, variable.Name, fallback); err != nil {
+			return fmt.Errorf("persist workload host-port preflight selection: %w", err)
+		}
+		fmt.Fprintf(out, "[OK] workload-port      %s=%d saved for this deployment\n", variable.Name, fallback)
+	}
+
+	rel, err := filepath.Rel(workload.RepositoryRoot, workload.Compose)
+	if err != nil {
+		return err
+	}
+	analysis, err := repositoryinspect.AnalyzeComposeFile(workload.RepositoryRoot, filepath.ToSlash(rel))
+	if err != nil {
+		return fmt.Errorf("inspect fixed workload host ports: %w", err)
+	}
+	selected := map[string]struct{}{}
+	for _, service := range workload.Services {
+		selected[service] = struct{}{}
+	}
+	for _, evidence := range analysis.Ports {
+		if _, ok := selected[evidence.Service]; !ok {
+			continue
+		}
+		port, fixed := fixedComposeHostPort(evidence.Value)
+		if !fixed || portAvailable(port) {
+			continue
+		}
+		return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: evidence.Service, Remediation: "requires developer input", Next: fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", port)}
+	}
+	return nil
+}
+
+func fixedComposeHostPort(value string) (int, bool) {
+	value = strings.TrimSpace(strings.Trim(value, "\"'"))
+	if value == "" || strings.Contains(value, "${") {
+		return 0, false
+	}
+	if before, _, ok := strings.Cut(value, "/"); ok {
+		value = before
+	}
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 {
+		return 0, false
+	}
+	host := strings.TrimSpace(parts[len(parts)-2])
+	port, err := strconv.Atoi(host)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, false
+	}
+	return port, true
+}
+
 func conflictingWorkloadHostPort(err error) int {
 	if err == nil {
 		return 0
@@ -332,7 +416,14 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 			}
 		}
 		if candidate == nil {
-			return fmt.Errorf("%w; conflicting published port %d is not backed by a configurable ${VAR:-PORT} Compose binding", err, conflict)
+			return &machine.Error{
+				Code:        machine.ErrorPortConflict,
+				CauseCode:   "host_port_in_use",
+				Message:     fmt.Sprintf("Port %d is already in use.", conflict),
+				Remediation: "requires developer input",
+				Next:        fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", conflict),
+				Cause:       err,
+			}
 		}
 		if _, explicit := os.LookupEnv(candidate.Name); explicit {
 			return fmt.Errorf("%w; %s=%d was set explicitly by the operator, choose another free value and retry", err, candidate.Name, conflict)

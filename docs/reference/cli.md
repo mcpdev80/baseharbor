@@ -343,13 +343,13 @@ Before asking setup questions, `baha` analyzes the repository read-only and dete
 - explicit BaseHarbor Runtime API usage and concrete runtime-operation evidence;
 - likely required application secret names.
 
-Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
+Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**. Potential application secret names are handled individually: the developer may skip or rename them, mark them required or optional, and choose generate, secure first-apply input, or configure-later behavior. Provider/runtime credentials remain BaseHarbor-managed and are not requested from the developer.
 
 The wizard shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
 
 When more than one PostgreSQL or Redis/Valkey backend is visible, the wizard proposes logical instance names automatically. A single detected backend stays the simple `default` instance.
 
-Before writing anything, the generated `baseharbor.yaml` is shown as a preview. An existing manifest is never silently overwritten.
+Before writing anything, interactive init shows a concise adoption summary covering the application, workload, managed services, observability, application-secret policy and runtime permissions that are actually selected. Generic service intent is shown first; concrete default/provider compatibility is shown separately. Raw generated YAML is secondary detail shown with `--verbose`. An existing manifest is never silently overwritten.
 
 For a non-interactive detection-based path:
 
@@ -427,6 +427,22 @@ plan -> preflight -> apply -> verify
 `plan` and `preflight` are read-only. `apply` validates desired state, materializes owned runtime state, converges managed services, secret scope, runtime identity/broker and repository workload where applicable, then returns success only after verification.
 
 Required secrets are a startup gate. Missing or unusable required secrets prevent the workload from starting.
+
+Interactive `baha app apply` and repository `baha up` resolve missing non-generated required application secrets in the same flow when a terminal is available. Values are entered with terminal echo disabled and are written directly to managed secret storage; they are never written to the manifest or normal output. Generated requirements are created automatically. Non-interactive mode remains fail-closed and points to the explicit automation command.
+
+Normal human entry:
+
+```bash
+baha app secret set API_TOKEN
+```
+
+Automation:
+
+```bash
+printf '%s' "$API_TOKEN" | baha app secret set API_TOKEN --stdin
+```
+
+Optional application secrets may be declared without gating startup. When configured, they are projected to the workload like other application-owned secret bindings; when absent, startup continues.
 
 Repository workload readiness is service-level and health-aware. When conventional HTTP/HTTPS publishers exist, BaseHarbor also probes the locally published endpoint. Redirects count as reachable exposure; 5xx/unreachable endpoints do not. For hostname-bound HTTPS, the local socket is probed using the configured public FQDN as HTTP Host/TLS ServerName.
 

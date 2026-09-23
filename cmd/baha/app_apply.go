@@ -1,20 +1,29 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+var appApplySecretInput io.Reader = os.Stdin
+var appApplySecretReadHidden = readApplicationSecretFromTerminal
+var appApplySecretIsTerminal = appInitReaderIsTerminal
+
 func appApplyCommand(store application.Store) *cli.Command {
+	secretService := applicationsecret.New(store)
 	return &cli.Command{
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
@@ -148,6 +157,9 @@ func appApplyCommand(store application.Store) *cli.Command {
 				for _, name := range generated {
 					fmt.Fprintf(out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
 				}
+				if err := resolveMissingRequiredSecretsInteractive(ctx, secretService, compose, platformFiles, m, files, out); err != nil {
+					return err
+				}
 				if err := checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files); err != nil {
 					return fmt.Errorf("required secrets check failed: %w", err)
 				}
@@ -156,7 +168,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
 				return startManagedRuntime(ctx, progress, compose, m, files)
 			}); err != nil {
-				return err
+				return classifyOperationalFailure(err, "managed application services")
 			}
 
 			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
@@ -229,7 +241,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
 				return err
 			}); err != nil {
-				return err
+				resource := "repository workload"
+				if len(m.Workload.Services) == 1 {
+					resource = m.Workload.Services[0]
+				}
+				return classifyOperationalFailure(err, resource)
 			}
 			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
@@ -265,6 +281,93 @@ func appApplyCommand(store application.Store) *cli.Command {
 			return nil
 		},
 	}
+}
+
+type applicationSecretSetter interface {
+	Set(context.Context, string, string, []byte) error
+}
+
+func resolveMissingRequiredSecretsInteractive(
+	ctx context.Context,
+	service applicationSecretSetter,
+	compose bhruntime.Compose,
+	platformFiles bhruntime.Files,
+	m application.Manifest,
+	files application.RuntimeFiles,
+	out io.Writer,
+) error {
+	statuses, err := inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+	if err != nil {
+		return fmt.Errorf("inspect required application secrets: %w", err)
+	}
+	var missing []openbao.RequiredSecretStatus
+	for _, status := range statuses {
+		if status.Generated || (status.Present && status.Usable) {
+			continue
+		}
+		missing = append(missing, status)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return promptAndStoreMissingRequiredSecrets(ctx, service, m.Name, missing, out)
+}
+
+func promptAndStoreMissingRequiredSecrets(
+	ctx context.Context,
+	service applicationSecretSetter,
+	applicationName string,
+	missing []openbao.RequiredSecretStatus,
+	out io.Writer,
+) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
+		return &machine.Error{
+			Code:        machine.ErrorRequiredSecretMissing,
+			CauseCode:   "required_secret_missing",
+			Message:     "Required application secret " + missing[0].Name + " is missing.",
+			Resource:    missing[0].Name,
+			Remediation: "requires developer input",
+			Next:        "Run 'baha app secret set " + missing[0].Name + "' interactively or use --stdin for automation.",
+		}
+	}
+
+	fmt.Fprintln(out, "\nMissing required application secrets")
+	for _, status := range missing {
+		fmt.Fprintf(out, "  %s\n", status.Name)
+	}
+	reader := bufio.NewReader(appApplySecretInput)
+	confirmed, err := promptYesNo(reader, out, "Configure now?", true)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return &machine.Error{
+			Code:        machine.ErrorRequiredSecretMissing,
+			CauseCode:   "required_secret_missing",
+			Message:     "Required application secret " + missing[0].Name + " remains unresolved.",
+			Resource:    missing[0].Name,
+			Remediation: "requires developer input",
+			Next:        "Run 'baha app secret set " + missing[0].Name + "' and retry.",
+		}
+	}
+
+	for _, status := range missing {
+		value, err := appApplySecretReadHidden(appApplySecretInput, out, status.Name)
+		if err != nil {
+			return err
+		}
+		if err := service.Set(ctx, applicationName, status.Name, value); err != nil {
+			zeroBytes(value)
+			return fmt.Errorf("store application secret %s: %w", status.Name, err)
+		}
+		zeroBytes(value)
+		fmt.Fprintf(out, "[OK] secret %s stored securely\n", status.Name)
+	}
+	return nil
 }
 
 func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {

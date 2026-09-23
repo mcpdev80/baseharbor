@@ -107,7 +107,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 	withWizardTestDir(t, dir)
 
 	oldInput := appInitInput
-	appInitInput = strings.NewReader("\n\n\n\n\n\ny\n")
+	appInitInput = strings.NewReader("\n\n\n\n\n\n\n\n\ny\n")
 	t.Cleanup(func() { appInitInput = oldInput })
 
 	var out bytes.Buffer
@@ -115,7 +115,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Analyzing repository") || !strings.Contains(text, "Manifest preview") {
+	if !strings.Contains(text, "Analyzing repository") || !strings.Contains(text, "Adoption summary") {
 		t.Fatalf("wizard output missing expected sections:\n%s", text)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "baseharbor.yaml"))
@@ -353,5 +353,120 @@ func TestPromptAmbiguousComposeServicesConfirmsWorkloadSelection(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "worker" {
 		t.Fatalf("selected workload services = %#v", got)
+	}
+}
+
+func TestPromptSecretPoliciesSupportsRenameOptionalGenerateAndSkip(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader(
+		"y\nRENAMED_TOKEN\nn\n2\n" +
+			"n\n",
+	))
+	var out bytes.Buffer
+	policies, err := promptSecretPolicies(
+		reader,
+		&out,
+		[]string{"API_TOKEN", "SMTP_PASSWORD"},
+		map[string]string{
+			"API_TOKEN":     ".env.example variable API_TOKEN",
+			"SMTP_PASSWORD": ".env.example variable SMTP_PASSWORD",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policies) != 1 {
+		t.Fatalf("policies = %#v", policies)
+	}
+	policy := policies[0]
+	if policy.Name != "RENAMED_TOKEN" || policy.Required || policy.Provision != "generate" {
+		t.Fatalf("policy = %#v", policy)
+	}
+	m := detectedApplicationManifest("demo", "dev", false, false, false, true, true)
+	m = applyGuidedSecretPolicies(m, policies)
+	if len(m.Secrets.Required) != 0 || len(m.Secrets.Optional) != 1 {
+		t.Fatalf("secret contract = %#v", m.Secrets)
+	}
+	if m.Secrets.Optional[0].Name != "RENAMED_TOKEN" || m.Secrets.Optional[0].Generate == nil {
+		t.Fatalf("optional generated secret = %#v", m.Secrets.Optional[0])
+	}
+	if strings.Contains(out.String(), "must-not-be-visible") {
+		t.Fatal("secret value leaked")
+	}
+}
+
+func TestGuidedSecretSummaryShowsPolicyWithoutValues(t *testing.T) {
+	var out bytes.Buffer
+	printGuidedSecretSummary(&out, []guidedSecretPolicy{
+		{Name: "API_TOKEN", Required: true, Provision: "prompt"},
+		{Name: "SESSION_SECRET", Required: true, Provision: "generate"},
+		{Name: "OPTIONAL_TOKEN", Required: false, Provision: "later"},
+	})
+	text := out.String()
+	for _, want := range []string{
+		"API_TOKEN: required for startup; ask securely during first apply",
+		"SESSION_SECRET: required for startup; generate automatically",
+		"OPTIONAL_TOKEN: optional; configure later",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdoptionSummaryMinimal(t *testing.T) {
+	m := detectedApplicationManifest("demo", "dev", false, false, false, false, true)
+	m = application.WithWorkload(m, "compose.yaml", "api")
+	var out bytes.Buffer
+	printAdoptionSummary(&out, m, appProjectDetection{}, nil)
+	text := out.String()
+	for _, want := range []string{
+		"Adoption summary",
+		"Application",
+		"Name          demo",
+		"Environment   dev",
+		"Workload",
+		"compose.yaml (repository-owned, read-only)",
+		"Services      api",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "version: 1") {
+		t.Fatalf("normal summary unexpectedly dumped YAML:\n%s", text)
+	}
+}
+
+func TestAdoptionSummaryFullyPopulated(t *testing.T) {
+	m := detectedApplicationManifest("demo", "dev", true, true, true, true, true)
+	m = application.WithWorkload(m, "compose.yaml", "api")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	m = application.WithOTLPTelemetry(m, "traces")
+	m = application.WithLogsCollection(m, "application")
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create")
+	policies := []guidedSecretPolicy{{Name: "APP_SECRET", Required: true, Provision: "prompt"}}
+
+	var out bytes.Buffer
+	printAdoptionSummary(&out, m, appProjectDetection{
+		Postgres: true, Redis: true, ObjectStorage: true,
+	}, policies)
+	text := out.String()
+	for _, want := range []string{
+		"Managed services",
+		"SQL Database  detected and confirmed",
+		"Cache         detected and confirmed",
+		"Object Storage detected and confirmed",
+		"Observability",
+		"Metrics       /metrics",
+		"OTLP          traces",
+		"Logs          application",
+		"APP_SECRET: required for startup; ask securely during first apply",
+		"Runtime permissions",
+		"object-storage.s3/v1",
+		"operations: runtime.create",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("summary missing %q:\n%s", want, text)
+		}
 	}
 }
