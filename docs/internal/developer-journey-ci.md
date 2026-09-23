@@ -90,7 +90,7 @@ Focused component gates may continue to use explicit low-level commands where th
 
 ## Runtime parity
 
-The release-facing demo matrix runs against both supported local runtime implementations:
+The release-facing demo acceptance suite runs against both supported local runtime implementations:
 
 - Docker / Docker Compose;
 - Podman / native Quadlet + rootless `systemd --user`.
@@ -118,9 +118,9 @@ Pre-release must pin and record both:
 - the exact BaseHarbor candidate SHA;
 - the exact `baseharbor-demo` SHA used as the external consumer contract.
 
-The pre-release approval is valid only when source/build validation, Docker runtime core, Podman runtime core and the complete external demo matrix—including the guided human gate—are green.
+The pre-release approval is valid only when source/build validation, Docker runtime core, Podman runtime core and the complete external demo acceptance suite—including the guided human gate—are green.
 
-The final release workflow consumes that immutable approval/evidence. It must not rerun the same expensive acceptance matrix; it performs only checks/publishing that were not already proven by pre-release.
+The final release workflow consumes that immutable approval/evidence. It must not rerun the same expensive acceptance suite; it performs only checks/publishing that were not already proven by pre-release.
 
 ## Product rule
 
