@@ -171,3 +171,34 @@ networks:
 		t.Fatalf("merged environment incomplete:\n%s", env)
 	}
 }
+
+func TestRenderComposeProjectQuadletsMapsFileSecrets(t *testing.T) {
+	root := t.TempDir()
+	secret := filepath.Join(root, "broker.key")
+	if err := os.WriteFile(secret, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compose := filepath.Join(root, "compose.yaml")
+	data := `services:
+  broker:
+    image: ghcr.io/example/runtime:test
+    secrets:
+      - broker-key
+secrets:
+  broker-key:
+    file: ./broker.key
+`
+	if err := os.WriteFile(compose, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-broker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-broker-broker.container"]
+	want := "Volume=" + secret + ":/run/secrets/broker-key:ro"
+	if !strings.Contains(unit, want) {
+		t.Fatalf("Quadlet secret mapping missing %q:\n%s", want, unit)
+	}
+}
