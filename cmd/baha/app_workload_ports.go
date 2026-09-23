@@ -252,13 +252,13 @@ func preflightRepositoryWorkloadPublishedPorts(
 		port := currentWorkloadPort(variable, environment)
 		if portAvailable(port) { continue }
 		if _, explicit := os.LookupEnv(variable.Name); explicit {
-			return &machine.Error{Code: machine.ErrorPortConflict, Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry; BaseHarbor will not replace an explicit operator value.", variable.Name)}
+			return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry; BaseHarbor will not replace an explicit operator value.", variable.Name)}
 		}
 		fallback := proposedWorkloadPort(port)
-		if fallback == 0 { return &machine.Error{Code: machine.ErrorPortConflict, Message: fmt.Sprintf("Port %d is already in use and no safe fallback was found.", port), Resource: variable.Name, Remediation: "manual action required", Next: "Free the port or choose a free configurable host port and retry."} }
+		if fallback == 0 { return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use and no safe fallback was found.", port), Resource: variable.Name, Remediation: "manual action required", Next: "Free the port or choose a free configurable host port and retry."} }
 		accepted, err := acceptWorkloadPortFallback(ctx, in, out, variable.Name, port, fallback)
 		if err != nil { return err }
-		if !accepted { return &machine.Error{Code: machine.ErrorPortConflict, Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry.", variable.Name)} }
+		if !accepted { return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: variable.Name, Remediation: "requires developer input", Next: fmt.Sprintf("Choose a free value for %s and retry.", variable.Name)} }
 		if err := persistWorkloadPortOverride(files, environment, variable.Name, fallback); err != nil { return fmt.Errorf("persist workload host-port preflight selection: %w", err) }
 		fmt.Fprintf(out, "[OK] workload-port      %s=%d saved for this deployment\n", variable.Name, fallback)
 	}
@@ -273,7 +273,7 @@ func preflightRepositoryWorkloadPublishedPorts(
 		if _, ok := selected[evidence.Service]; !ok { continue }
 		port, fixed := fixedComposeHostPort(evidence.Value)
 		if !fixed || portAvailable(port) { continue }
-		return &machine.Error{Code: machine.ErrorPortConflict, Message: fmt.Sprintf("Port %d is already in use.", port), Resource: evidence.Service, Remediation: "requires developer input", Next: fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", port)}
+		return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use.", port), Resource: evidence.Service, Remediation: "requires developer input", Next: fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", port)}
 	}
 	return nil
 }
@@ -388,6 +388,7 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 		if candidate == nil {
 			return &machine.Error{
 				Code:        machine.ErrorPortConflict,
+				CauseCode:   "host_port_in_use",
 				Message:     fmt.Sprintf("Port %d is already in use.", conflict),
 				Remediation: "requires developer input",
 				Next:        fmt.Sprintf("Free port %d or make the Compose host binding configurable with a supported ${VAR:-PORT} form.", conflict),
