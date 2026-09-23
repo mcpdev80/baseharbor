@@ -1200,10 +1200,8 @@ func writeRepositoryManifest(m application.Manifest, out io.Writer) error {
 	fmt.Fprintf(out, "manifest: %s\n", absolute)
 	if len(application.RequiredSecretNames(m)) > 0 {
 		fmt.Fprintf(out, "required application secrets: %s\n", strings.Join(application.RequiredSecretNames(m), ", "))
-		fmt.Fprintln(out, "next: run 'baha app preflight' to check secret readiness, then 'baha app apply'")
-	} else {
-		fmt.Fprintln(out, "next: run 'baha app apply'")
 	}
+	fmt.Fprintln(out, "next: run 'baha up'")
 	return nil
 }
 
