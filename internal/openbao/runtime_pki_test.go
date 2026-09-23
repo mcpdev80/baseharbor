@@ -61,6 +61,14 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 		t.Fatal("matching runtime identity should be reusable")
 	}
 
+	valid, err = runtimeMTLSIdentityValid(files, ca, identity, []string{"bhm-other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid {
+		t.Fatal("runtime identity missing a required workload DNS alias must rotate")
+	}
+
 	valid, err = runtimeMTLSIdentityValid(files, ca, ApplicationIdentity{Name: "other", Environment: "dev"}, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
