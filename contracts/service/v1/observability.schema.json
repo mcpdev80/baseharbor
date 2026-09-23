@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:baseharbor:contracts:service:v1:observability",
+  "title": "BaseHarbor observability service contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "signals"
+  ],
+  "properties": {
+    "kind": {
+      "const": "observability"
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "traces",
+          "metrics",
+          "logs"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {
+          "enum": [
+            "otlp"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Backend-neutral BaseHarbor policy extensions only."
+    }
+  }
+}
