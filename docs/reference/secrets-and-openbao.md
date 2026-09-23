@@ -78,7 +78,7 @@ Readiness output distinguishes the cases:
 ```text
 REQUIRED SECRET    STATUS                                      ACTION
 SECRET_KEY         missing - will be generated automatically   baha app apply
-OPENAI_API_KEY     missing - user input required                baha app secret set OPENAI_API_KEY --stdin
+OPENAI_API_KEY     missing - user input required                baha app secret set OPENAI_API_KEY
 ```
 
 This follows the developer rule: provide only values BaseHarbor cannot safely know or generate.
