@@ -105,10 +105,10 @@ app:
   environment: production
 
 services:
-  postgres:
+  sql:
     enabled: true
 
-  redis:
+  cache:
     enabled: true
 
   object_storage:
