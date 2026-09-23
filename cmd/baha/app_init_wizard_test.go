@@ -471,7 +471,6 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	}
 }
 
-
 func TestAdoptionSummaryMinimalWorkload(t *testing.T) {
 	m := detectedApplicationManifest("demo", "dev", false, false, false, false, true)
 	m = application.WithWorkload(m, "compose.yaml", "api")
