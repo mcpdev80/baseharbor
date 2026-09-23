@@ -403,12 +403,12 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 }
 
 func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if m.Services.Postgres {
+	if m.Services.SQL {
 		if err := application.VerifyPostgresRuntime(ctx, compose, m, files); err != nil {
 			return err
 		}
 	}
-	if m.Services.Redis {
+	if m.Services.Cache {
 		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
 			return err
 		}
@@ -418,10 +418,10 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose
 
 func renderRuntimeReady(term *cli.Terminal, m application.Manifest) {
 	term.Section("Services")
-	if m.Services.Postgres {
+	if m.Services.SQL {
 		term.Result("READY", "PostgreSQL", "authenticated SELECT 1")
 	}
-	if m.Services.Redis {
+	if m.Services.Cache {
 		term.Result("READY", "Valkey", "authenticated PING")
 	}
 	if m.Services.Secrets {
