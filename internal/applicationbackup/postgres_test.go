@@ -10,7 +10,7 @@ import (
 )
 
 func TestPostgresPayloadEntriesRoundTrip(t *testing.T) {
-	m := application.WithPostgresInstances(application.New("mailflow", "dev", true, false, false), "analytics", "primary")
+	m := application.WithSQLInstances(application.New("mailflow", "dev", true, false, false), "analytics", "primary")
 	backups := []application.PostgresBackup{
 		{Instance: "primary", SQL: []byte("CREATE TABLE primary_probe(id integer);\n")},
 		{Instance: "analytics", SQL: []byte("CREATE TABLE analytics_probe(id integer);\n")},
@@ -48,7 +48,7 @@ func TestPostgresPayloadEntriesRoundTrip(t *testing.T) {
 }
 
 func TestPostgresBackupsFromPayloadRejectsCrossInstanceSet(t *testing.T) {
-	m := application.WithPostgresInstances(application.New("mailflow", "dev", true, false, false), "analytics", "primary")
+	m := application.WithSQLInstances(application.New("mailflow", "dev", true, false, false), "analytics", "primary")
 	payload := Payload{Entries: []PayloadEntry{
 		{Name: "postgres/primary.sql", Data: []byte("SELECT 1;\n")},
 		{Name: "postgres/other.sql", Data: []byte("SELECT 1;\n")},
