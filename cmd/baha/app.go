@@ -220,7 +220,7 @@ func appInitCommand() *cli.Command {
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
 		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
-		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive checkbox-based capability picker will build on this same manifest generator; flags already provide a deterministic non-interactive path for scripts and CI.",
+		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive capability picker uses detected defaults and lets you confirm them with a terminal checkbox UI; flags provide the deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
 			if !hasCreateName(prepared) {
