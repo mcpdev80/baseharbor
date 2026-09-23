@@ -195,7 +195,6 @@ func TestUpdateRepositoryInitValuesPreservesDeploymentInputs(t *testing.T) {
 	}
 }
 
-
 func TestFixedComposeHostPort(t *testing.T) {
 	cases := []struct {
 		value string

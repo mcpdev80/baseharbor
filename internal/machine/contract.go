@@ -28,7 +28,7 @@ type Operation struct {
 type ErrorCode string
 
 const (
-	ErrorValidationFailed    ErrorCode = "validation_failed"
+	ErrorValidationFailed      ErrorCode = "validation_failed"
 	ErrorPortConflict          ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
 	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
@@ -36,26 +36,26 @@ const (
 	ErrorAuthenticationFailed  ErrorCode = "authentication_failed"
 	ErrorInvalidWorkload       ErrorCode = "invalid_workload"
 	ErrorCapabilityMissing     ErrorCode = "capability_missing"
-	ErrorPolicyDenied        ErrorCode = "policy_denied"
-	ErrorConflict            ErrorCode = "conflict"
-	ErrorOwnershipAmbiguous  ErrorCode = "ownership_ambiguous"
-	ErrorProviderUnavailable ErrorCode = "provider_unavailable"
-	ErrorRuntimeUnavailable  ErrorCode = "runtime_unavailable"
-	ErrorTimeout             ErrorCode = "timeout"
-	ErrorVerificationFailed  ErrorCode = "verification_failed"
-	ErrorUnsupported         ErrorCode = "unsupported_operation"
-	ErrorInternal            ErrorCode = "internal_error"
+	ErrorPolicyDenied          ErrorCode = "policy_denied"
+	ErrorConflict              ErrorCode = "conflict"
+	ErrorOwnershipAmbiguous    ErrorCode = "ownership_ambiguous"
+	ErrorProviderUnavailable   ErrorCode = "provider_unavailable"
+	ErrorRuntimeUnavailable    ErrorCode = "runtime_unavailable"
+	ErrorTimeout               ErrorCode = "timeout"
+	ErrorVerificationFailed    ErrorCode = "verification_failed"
+	ErrorUnsupported           ErrorCode = "unsupported_operation"
+	ErrorInternal              ErrorCode = "internal_error"
 )
 
 type Error struct {
-	Code         ErrorCode `json:"code"`
-	Message      string    `json:"message"`
-	CauseCode    string    `json:"cause,omitempty"`
-	Retryable    bool      `json:"retryable,omitempty"`
-	Next         string    `json:"next,omitempty"`
-	Resource     string    `json:"resource,omitempty"`
-	Remediation  string    `json:"remediation_class,omitempty"`
-	Cause        error     `json:"-"`
+	Code        ErrorCode `json:"code"`
+	Message     string    `json:"message"`
+	CauseCode   string    `json:"cause,omitempty"`
+	Retryable   bool      `json:"retryable,omitempty"`
+	Next        string    `json:"next,omitempty"`
+	Resource    string    `json:"resource,omitempty"`
+	Remediation string    `json:"remediation_class,omitempty"`
+	Cause       error     `json:"-"`
 }
 
 func (e *Error) Error() string {

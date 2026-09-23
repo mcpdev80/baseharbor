@@ -10,10 +10,14 @@ import (
 )
 
 func classifyOperationalFailure(err error, resource string) error {
-	if err == nil { return nil }
+	if err == nil {
+		return nil
+	}
 	var typed *machine.Error
 	if errors.As(err, &typed) {
-		if typed.Resource == "" { typed.Resource = resource }
+		if typed.Resource == "" {
+			typed.Resource = resource
+		}
 		return typed
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
