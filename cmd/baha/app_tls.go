@@ -268,6 +268,11 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 				}
 				renderApplicationTLSStatus(term, *result.tlsStatus)
 			})
+			if resolved, resolveErr := resolveApplication(store, filtered, "status"); resolveErr == nil {
+				if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
+					printRuntimeBrokerDocs(out, files)
+				}
+			}
 		}
 
 		if result.State == "stopped" || result.State == "not_applied" {
