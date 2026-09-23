@@ -2,9 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -171,8 +176,71 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 	if err != nil {
 		return fmt.Errorf("application runtime broker mTLS readiness probe failed: %w", err)
 	}
-	if !strings.Contains(out, `"status":"ready"`) {
+	var ready struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}
+	if err := json.Unmarshal([]byte(out), &ready); err != nil || ready.Status != "ready" {
 		return errors.New("application runtime broker readiness response is invalid")
+	}
+	if err := verifyRuntimeBrokerBuildIdentity(ready.Version, ready.Commit); err != nil {
+		return err
+	}
+	if strings.TrimSpace(brokerFiles.DocsURL) != "" {
+		if err := verifyRuntimeBrokerDocs(ctx, brokerFiles.DocsURL, files); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error {
+	expectedVersion := strings.TrimSpace(version)
+	expectedCommit := strings.TrimSpace(commit)
+	actualVersion = strings.TrimSpace(actualVersion)
+	actualCommit = strings.TrimSpace(actualCommit)
+	if actualVersion == "" {
+		return errors.New("runtime broker image is incompatible: build identity is missing")
+	}
+	if expectedVersion != "" && actualVersion != expectedVersion {
+		return fmt.Errorf("runtime broker image is incompatible: CLI version %s requires runtime version %s, got %s", expectedVersion, expectedVersion, actualVersion)
+	}
+	if expectedCommit != "" && expectedCommit != "none" && actualCommit != expectedCommit {
+		if actualCommit == "" {
+			actualCommit = "unknown"
+		}
+		return fmt.Errorf("runtime broker image is incompatible: CLI commit %s, runtime commit %s", expectedCommit, actualCommit)
+	}
+	return nil
+}
+
+func verifyRuntimeBrokerDocs(ctx context.Context, docsURL string, files application.RuntimeFiles) error {
+	caPEM, err := os.ReadFile(filepath.Join(files.Bindings, "runtime-identity", "ca.pem"))
+	if err != nil {
+		return fmt.Errorf("read Runtime Docs CA certificate: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return errors.New("Runtime Docs CA certificate is invalid")
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+	}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, docsURL, nil)
+	if err != nil {
+		return fmt.Errorf("build Runtime Docs readiness request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Runtime Docs HTTPS readiness failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("Runtime Docs HTTPS readiness returned HTTP %d", resp.StatusCode)
 	}
 	return nil
 }
