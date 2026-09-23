@@ -470,4 +470,3 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 		}
 	}
 }
-
