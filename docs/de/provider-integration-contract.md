@@ -31,6 +31,14 @@ Provider Integration Contract v1
 
 BaseHarbor definiert die verbindliche Semantik. Ein Provider darf erklaeren, dass er eine BaseHarbor Capability Specification implementiert; er darf diese Semantik nicht selbst neu definieren.
 
+## Standards First
+
+BaseHarbor verwendet etablierte offene Standards, bevor eigene Contracts definiert werden. De-facto-Standards und etablierte Oekosystem-Konventionen werden bevorzugt, wenn kein passender formaler Standard existiert.
+
+BaseHarbor-eigene Erweiterungen duerfen nur fehlende Semantik abdecken, muessen versioniert/providerneutral bleiben und duerfen produktspezifische Provider-Vertraege nicht in den Core ziehen.
+
+Fuer neue Service-Kinds und Provider werden vor der Implementierung dokumentiert: Existing Standards, Adopted Standards, Deviations, BaseHarbor Extensions und Compatibility Impact.
+
 ## Offene Standards als Bausteine
 
 BaseHarbor verwendet offene Standards dort, wo sie Infrastruktur-Plumbing bereits sinnvoll loesen:
@@ -39,7 +47,7 @@ BaseHarbor verwendet offene Standards dort, wo sie Infrastruktur-Plumbing bereit
 - **OCI Image/Distribution Specifications** fuer registry-neutrales Provider-Packaging und Distribution.
 - **JSON Schema 2020-12** fuer Provider-Konfiguration und Validierung.
 - **Open Service Broker API Konzepte** als Input fuer Provision/Update/Bind/Deprovision-Semantik.
-- **Service Binding Konzepte** als Input fuer Workload Bindings.
+- **Service Binding Specification 1.1** fuer standardisierte Connection-Outputs; die Well-known Names `type`, `provider`, `host`, `port`, `uri`, `username`, `password`, `certificates` und `private-key` werden verwendet, wenn ihre Semantik passt.
 
 Diese Bausteine ersetzen nicht die BaseHarbor-Regeln fuer Capabilities, Lifecycle, Ownership, Security und Verification.
 
