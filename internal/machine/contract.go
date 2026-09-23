@@ -114,7 +114,6 @@ func Operations() []Operation {
 	}
 }
 
-
 func CapabilitySpecifications() []string {
 	return []string{
 		"cache.key-value/v1",
