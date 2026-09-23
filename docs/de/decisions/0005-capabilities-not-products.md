@@ -108,7 +108,7 @@ Manifest v1 verwendet weiterhin PostgreSQL-/Redis-/Valkey-orientierte Felder, we
 
 v0.3 fuegt konkrete Compose-Deployment-Funktionen hinzu: Public-FQDN/TLS-Runtime-State, Existing/BYOC-Zertifikats-Lifecycle, app-eigene HTTP/TLS-Readiness und Host-Port-Fallback. Diese Details bleiben absichtlich ausserhalb des portablen Manifests und bestaetigen damit die Architekturentscheidung statt sie aufzuweichen.
 
-Compose bleibt der aktuelle Runtime-Fokus. PostgreSQL, Valkey und OpenBao bleiben die derzeitigen konkreten Managed-Implementierungen.
+Compose bleibt das aktuelle Repository-/Runtime-Kompatibilitaetsmodell. Docker fuehrt es ueber Docker Compose aus; Podman uebersetzt es in native Quadlets. PostgreSQL, Valkey und OpenBao bleiben die derzeitigen konkreten Managed-Implementierungen.
 
 ## Konsequenzen
 
