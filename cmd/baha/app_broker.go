@@ -204,9 +204,9 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 }
 
 func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error {
-	expectedVersion := strings.TrimSpace(version)
+	expectedVersion := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(version), "v"))
 	expectedCommit := strings.TrimSpace(commit)
-	actualVersion = strings.TrimSpace(actualVersion)
+	actualVersion = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(actualVersion), "v"))
 	actualCommit = strings.TrimSpace(actualCommit)
 	if actualVersion == "" {
 		return errors.New("runtime broker image is incompatible: build identity is missing")
