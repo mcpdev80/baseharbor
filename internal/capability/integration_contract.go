@@ -52,6 +52,8 @@ type ProviderObservability struct {
 }
 
 type IntegrationDescriptor struct {
+	ID              string                   `json:"id"`
+	Version         string                   `json:"version"`
 	Protocol        string                   `json:"protocol"`
 	Provider        Provider                 `json:"provider"`
 	Capabilities    []SpecificationID        `json:"capabilities"`
@@ -61,6 +63,12 @@ type IntegrationDescriptor struct {
 }
 
 func (d IntegrationDescriptor) Validate() error {
+	if strings.TrimSpace(d.ID) == "" {
+		return fmt.Errorf("provider id is required")
+	}
+	if strings.TrimSpace(d.Version) == "" {
+		return fmt.Errorf("provider %q implementation version is required", d.ID)
+	}
 	if d.Protocol != ProviderProtocolV1 {
 		return fmt.Errorf("provider protocol %q is unsupported; expected %q", d.Protocol, ProviderProtocolV1)
 	}
