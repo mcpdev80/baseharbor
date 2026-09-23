@@ -30,6 +30,23 @@ messaging.pubsub/v1
 messaging.stream/v1
 ```
 
+## Standards-first service model
+
+Capability specifications remain the shipped v0.4 semantic contracts. Before the v0.5 freeze they are mapped onto the broader provider-neutral service model under `contracts/service/v1/`.
+
+The mapping intentionally separates service identity from protocol compatibility:
+
+| Existing capability | Standards-first classification |
+| --- | --- |
+| `database.sql/v1` | SQL service semantics; keep compatible while `sql/v1` service contract is frozen |
+| `cache.key-value/v1` | cache service semantics; RESP is a provider compatibility declaration, not the service identity |
+| `secrets/v1` | secrets service contract |
+| `object-storage.s3/v1` | S3-compatible object-storage semantics; migrate toward generic object-storage service + S3 compatibility |
+| `telemetry.otlp/v1` | OTLP protocol/transport capability under backend-neutral observability intent |
+| `metrics/v1`, `logs/v1`, `traces/v1` | observability intent/storage semantics; telemetry transport remains OpenTelemetry/OTLP |
+
+Existing IDs remain accepted until their compatibility migration is documented and tested.
+
 ## Versioning rules
 
 - A provider must declare the exact capability specification versions it implements.
