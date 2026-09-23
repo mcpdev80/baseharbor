@@ -72,7 +72,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "postgres,redis") {
+	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "cache,sql") {
 		t.Fatalf("unexpected list: %s", out.String())
 	}
 
