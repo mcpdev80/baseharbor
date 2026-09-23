@@ -88,7 +88,7 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image)\.yml$' || true)"
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml$' || true)"
             if [ -n "${unexpected}" ]; then
               return 1
             fi
@@ -119,6 +119,7 @@ jobs:
               echo "  .github/workflows/pre-release.yml" >&2
               echo "  .github/workflows/release.yml" >&2
               echo "  .github/workflows/runtime-image.yml" >&2
+              echo "  .github/workflows/supplemental-release-validation.yml" >&2
               echo "Actual changed files:" >&2
               git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
               exit 1
@@ -197,38 +198,101 @@ jobs:
     name: release-only-checks-not-covered-by-pre-release
     needs: approval
     runs-on: ubuntu-latest
+    outputs:
+      validation_run_id: ${{ steps.coverage.outputs.run_id }}
+      validation_artifact: ${{ steps.coverage.outputs.artifact }}
+      reused_validation: ${{ steps.coverage.outputs.covered }}
     steps:
-      - name: Explain coverage
+      - name: Reuse successful supplemental validation when available
+        id: coverage
+        if: needs.approval.outputs.legacy_pre_release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_SHA: ${{ needs.approval.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+
+          runs_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/actions/workflows/supplemental-release-validation.yml/runs?status=success&head_sha=${TAG_SHA}&per_page=20")"
+
+          run_id="$(jq -r --arg sha "${TAG_SHA}" '
+            [.workflow_runs[]
+             | select(.head_sha == $sha)
+             | select(.conclusion == "success")]
+            | sort_by(.run_number)
+            | last
+            | .id // empty
+          ' <<<"${runs_json}")"
+
+          if [ -z "${run_id}" ]; then
+            echo "covered=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          artifacts_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/actions/runs/${run_id}/artifacts?per_page=100")"
+
+          artifact="$(jq -r '
+            [.artifacts[]
+             | select(.expired == false)
+             | select(.name | startswith("supplemental-release-validation-"))]
+            | first
+            | .name // empty
+          ' <<<"${artifacts_json}")"
+
+          test -n "${artifact}" || {
+            echo "Successful supplemental validation run ${run_id} has no evidence artifact." >&2
+            exit 1
+          }
+
+          echo "covered=true" >> "${GITHUB_OUTPUT}"
+          echo "run_id=${run_id}" >> "${GITHUB_OUTPUT}"
+          echo "artifact=${artifact}" >> "${GITHUB_OUTPUT}"
+          echo "Reusing supplemental validation run ${run_id} for ${TAG_SHA}."
+
+      - name: Explain complete Pre-Release coverage
         if: needs.approval.outputs.legacy_pre_release != 'true'
         run: echo "All release checks were already covered by the approved Pre-Release."
 
-      - name: Checkout approved tag
-        if: needs.approval.outputs.legacy_pre_release == 'true'
+      - name: Explain supplemental evidence reuse
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered == 'true'
+        run: echo "Recovery, Loki/Alloy and Tempo checks are covered by supplemental validation run ${{ steps.coverage.outputs.run_id }}."
+
+      - name: Checkout approved tag for fallback checks
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.approval.outputs.tag }}
 
-      - name: Set up Go
-        if: needs.approval.outputs.legacy_pre_release == 'true'
+      - name: Set up Go for fallback checks
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Verify control-plane restart and operator-held unseal recovery
-        if: needs.approval.outputs.legacy_pre_release == 'true'
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
         env:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
 
       - name: Verify real Loki and Alloy workload log ingestion
-        if: needs.approval.outputs.legacy_pre_release == 'true'
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
         env:
           BASEHARBOR_LOGS_INTEGRATION: "1"
         run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
 
       - name: Verify real OpenTelemetry to Tempo trace ingestion
-        if: needs.approval.outputs.legacy_pre_release == 'true'
+        if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
         env:
           BASEHARBOR_TRACES_INTEGRATION: "1"
         run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
@@ -302,7 +366,7 @@ jobs:
           Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}
           Pre-Release tested SHA	success	${{ needs.approval.outputs.tested_sha }}
           Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
-          Supplemental release-only checks	${{ needs.supplemental.result }}	only checks absent from the consumed Pre-Release
+          Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}, artifact ${{ needs.supplemental.outputs.validation_artifact || 'fallback' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           GoReleaser publish	${{ steps.goreleaser.outcome }}	release archives and GitHub release
           Archive attestation	${{ steps.attest_archives.outcome }}	artifact provenance
@@ -341,7 +405,7 @@ jobs:
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
           Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}
-          Supplemental release-only checks	${{ needs.supplemental.result }}	only checks absent from the consumed Pre-Release
+          Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	archives, GitHub release and attestations
           EOF
