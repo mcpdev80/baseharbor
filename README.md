@@ -37,9 +37,9 @@ Structured, secret-safe JSON · bounded MCP · no generic shell · no Docker acc
 ```bash
 baha app inspect .
 baha app init
-baha plan
-baha up -e dev
-baha doctor -e dev
+baha up
+baha status
+baha doctor
 ```
 
 > **Runtime status:** Docker uses Docker Compose. Podman translates the same Compose-based workload/runtime definitions into native Quadlets managed through rootless `systemd --user`; `podman-compose` is not required. Kubernetes and OpenShift are planned runtime providers and are not implemented yet.
@@ -72,7 +72,8 @@ Kubernetes / OpenShift planned
 - Repository inspection with **Detected / Suggested / Possible** evidence.
 - Portable application intent with provider-neutral capability boundaries.
 - PostgreSQL, Valkey/Redis, S3, secrets, HTTP exposure, metrics, logs, traces and OTLP.
-- Plan, preflight, policy, apply, verify, status and doctor from one CLI.
+- A canonical guided developer path: `baha app init` -> `baha up` -> verified READY.
+- Plan, preflight, policy and explicit apply remain available for automation and troubleshooting.
 - Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
 - Provider placement for application-scoped, shared or externally managed infrastructure.
 - Machine-readable results and a versioned local MCP interface for agent workflows.
