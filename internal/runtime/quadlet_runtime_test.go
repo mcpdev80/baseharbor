@@ -76,7 +76,7 @@ func TestQuadletProjectInstalledUnchanged(t *testing.T) {
 
 func TestQuadletFileForUnitResolvesManagedResources(t *testing.T) {
 	project := QuadletProject{Files: map[string]string{
-		"demo-app.container":   "",
+		"demo-app.container":    "",
 		"demo-internal.network": "[Network]\nNetworkName=demo_internal\n",
 		"demo-data.volume":      "[Volume]\nVolumeName=demo_data\n",
 	}}
