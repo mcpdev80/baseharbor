@@ -171,6 +171,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           diagnose_quadlet_integration() {
             export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
             export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
@@ -186,7 +187,18 @@ jobs:
             echo "::endgroup::"
           }
 
-          if ! go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)
+          run_integration_test() {
+            if ! "$@"; then
+              diagnose_quadlet_integration
+              return 1
+            fi
+          }
+
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryWorkflowRealLifecycle -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadOnlyLifecycleInCI -count=1 -v
+          run_integration_test go test -p 1 ./internal/application -run TestMultiInstanceComposeLifecycleInCI -count=1 -v
+
       - name: Verify control-plane recovery
         id: recovery
         env:
