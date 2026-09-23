@@ -13,9 +13,9 @@ import (
 func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing.T) {
 	d := appProjectDetection{
 		Name:              "mailflow",
-		Postgres:          true,
+		SQL:               true,
 		SQLInstances: []string{"primary", "analytics"},
-		Redis:             true,
+		Cache:             true,
 		CacheInstances:    []string{"cache", "sessions"},
 	}
 	m, err := manifestFromDetectedProject(d, true)
@@ -23,10 +23,10 @@ func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing
 		t.Fatal(err)
 	}
 	if got := strings.Join(application.SQLInstanceNames(m), ","); got != "analytics,primary" {
-		t.Fatalf("postgres instances = %q", got)
+		t.Fatalf("sql instances = %q", got)
 	}
 	if got := strings.Join(application.CacheInstanceNames(m), ","); got != "cache,sessions" {
-		t.Fatalf("redis instances = %q", got)
+		t.Fatalf("cache instances = %q", got)
 	}
 }
 
