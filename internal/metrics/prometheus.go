@@ -414,8 +414,8 @@ func EnsureProviderFilesWithRuntimeCA(m application.Manifest, runtimeCASource st
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
 		Registrations: filepath.Join(dir, "registrations.json"),
-		RuntimeCA: filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
+	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
 	registrations := []sourceRegistration{registrationFor(m)}
 	if placement.Scope == capability.ScopeShared {
 		registrations, err = reconcileSharedRegistration(files.Registrations, m, true)
@@ -729,8 +729,8 @@ func ExistingSharedProviderFiles() (ProviderFiles, error) {
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
-		RuntimeCA: filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
+	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
 		if _, err := os.Stat(path); err != nil {
 			return ProviderFiles{}, err
