@@ -34,3 +34,16 @@ func TestMergeProcessEnvironmentRejectsNUL(t *testing.T) {
 		t.Fatal("expected NUL-containing environment value to be rejected")
 	}
 }
+
+
+func TestComposeUpArgsAlwaysBuildCurrentRepositorySource(t *testing.T) {
+	got := strings.Join(composeUpArgs(nil), " ")
+	if got != "up -d --build" {
+		t.Fatalf("compose up args=%q want %q", got, "up -d --build")
+	}
+
+	got = strings.Join(composeUpArgs([]string{"api", "worker"}), " ")
+	if got != "up -d --build --no-deps api worker" {
+		t.Fatalf("selected compose up args=%q want %q", got, "up -d --build --no-deps api worker")
+	}
+}
