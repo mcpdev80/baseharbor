@@ -73,7 +73,7 @@ func detectCompose(ctx context.Context) (Compose, error) {
 	}
 
 	if path, err := exec.LookPath("podman"); err == nil {
-		if quadletAvailable(ctx) {
+		if QuadletAvailable(ctx) {
 			return Compose{command: path, quadlet: true}, nil
 		}
 		cmd := exec.CommandContext(ctx, path, "compose", "version")
