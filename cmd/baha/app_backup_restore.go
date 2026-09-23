@@ -109,13 +109,13 @@ func appBackupCommand(store application.Store) *cli.Command {
 			}
 
 			captureErr := func() error {
-				entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.PostgresInstanceNames(m)))
+				entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.SQLInstanceNames(m)))
 				metadata, err := applicationbackup.ApplicationManifestPayloadEntry(m)
 				if err != nil {
 					return err
 				}
 				entries = append(entries, metadata)
-				dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
+				dumps, err := application.DumpSQLInstances(ctx, compose, m, files)
 				if err != nil {
 					return err
 				}
@@ -276,7 +276,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
 				return err
 			}
-			if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
+			if err := application.RestoreSQLInstances(ctx, compose, m, files, postgresBackups); err != nil {
 				return err
 			}
 			if m.Services.Secrets {
