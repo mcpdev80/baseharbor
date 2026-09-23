@@ -31,24 +31,22 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	files := RuntimeMTLSFiles{
-		CA:         filepath.Join(dir, "ca.pem"),
-		BrokerCert: filepath.Join(dir, "broker-cert.pem"),
-		BrokerKey:  filepath.Join(dir, "broker-key.pem"),
-		ClientCert:   filepath.Join(dir, "client-cert.pem"),
-		ClientKey:    filepath.Join(dir, "client-key.pem"),
-		WorkloadCert: filepath.Join(dir, "workload-cert.pem"),
-		WorkloadKey:  filepath.Join(dir, "workload-key.pem"),
-	}
-	values := map[string][]byte{
-		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}),
-		files.BrokerCert: brokerCert,
-		files.BrokerKey:  brokerKey,
-		files.ClientCert:   clientCert,
-		files.ClientKey:    clientKey,
-		files.WorkloadCert: workloadCert,
-		files.WorkloadKey:  workloadKey,
-	}
+	files := RuntimeMTLSFiles{}
+	files.CA = filepath.Join(dir, "ca.pem")
+	files.BrokerCert = filepath.Join(dir, "broker-cert.pem")
+	files.BrokerKey = filepath.Join(dir, "broker-key.pem")
+	files.ClientCert = filepath.Join(dir, "client-cert.pem")
+	files.ClientKey = filepath.Join(dir, "client-key.pem")
+	files.WorkloadCert = filepath.Join(dir, "workload-cert.pem")
+	files.WorkloadKey = filepath.Join(dir, "workload-key.pem")
+	values := map[string][]byte{}
+	values[files.CA] = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})
+	values[files.BrokerCert] = brokerCert
+	values[files.BrokerKey] = brokerKey
+	values[files.ClientCert] = clientCert
+	values[files.ClientKey] = clientKey
+	values[files.WorkloadCert] = workloadCert
+	values[files.WorkloadKey] = workloadKey
 	for path, value := range values {
 		if err := os.WriteFile(path, value, 0o600); err != nil {
 			t.Fatal(err)
@@ -103,24 +101,23 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	files := RuntimeMTLSFiles{
-		CA:         filepath.Join(dir, "ca.pem"),
-		BrokerCert: filepath.Join(dir, "broker-cert.pem"),
-		BrokerKey:  filepath.Join(dir, "broker-key.pem"),
-		ClientCert:   filepath.Join(dir, "client-cert.pem"),
-		ClientKey:    filepath.Join(dir, "client-key.pem"),
-		WorkloadCert: filepath.Join(dir, "workload-cert.pem"),
-		WorkloadKey:  filepath.Join(dir, "workload-key.pem"),
-	}
-	for path, value := range map[string][]byte{
-		files.CA:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}),
-		files.BrokerCert: brokerCert,
-		files.BrokerKey:  brokerKey,
-		files.ClientCert:   clientCert,
-		files.ClientKey:    clientKey,
-		files.WorkloadCert: workloadCert,
-		files.WorkloadKey:  workloadKey,
-	} {
+	files := RuntimeMTLSFiles{}
+	files.CA = filepath.Join(dir, "ca.pem")
+	files.BrokerCert = filepath.Join(dir, "broker-cert.pem")
+	files.BrokerKey = filepath.Join(dir, "broker-key.pem")
+	files.ClientCert = filepath.Join(dir, "client-cert.pem")
+	files.ClientKey = filepath.Join(dir, "client-key.pem")
+	files.WorkloadCert = filepath.Join(dir, "workload-cert.pem")
+	files.WorkloadKey = filepath.Join(dir, "workload-key.pem")
+	values := map[string][]byte{}
+	values[files.CA] = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})
+	values[files.BrokerCert] = brokerCert
+	values[files.BrokerKey] = brokerKey
+	values[files.ClientCert] = clientCert
+	values[files.ClientKey] = clientKey
+	values[files.WorkloadCert] = workloadCert
+	values[files.WorkloadKey] = workloadKey
+	for path, value := range values {
 		if err := os.WriteFile(path, value, 0o600); err != nil {
 			t.Fatal(err)
 		}
