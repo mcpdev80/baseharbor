@@ -44,7 +44,7 @@ func TestQuadletProjectInstalledUnchanged(t *testing.T) {
 	project := QuadletProject{
 		Project: "baseharbor-demo",
 		Files: map[string]string{
-			"baseharbor-demo-api.container": "[Container]\nImage=example\n",
+			"baseharbor-demo-api.container":   "[Container]\nImage=example\n",
 			"baseharbor-demo-default.network": "[Network]\nNetworkName=baseharbor-demo_default\n",
 		},
 	}
