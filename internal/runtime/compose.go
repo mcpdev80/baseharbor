@@ -614,6 +614,17 @@ func firstRuntimeLabel(values ...string) string {
 	return ""
 }
 
+func (c Compose) PullImage(ctx context.Context, image string) error {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return errors.New("image reference is required")
+	}
+	if _, err := c.directOutput(ctx, "image", "pull", image); err != nil {
+		return fmt.Errorf("pull image %s: %w", image, err)
+	}
+	return nil
+}
+
 func (c Compose) ContainerHealthStatus(ctx context.Context, container string) (string, error) {
 	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}`, strings.TrimSpace(container))
 	if err != nil {
