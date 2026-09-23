@@ -21,7 +21,7 @@ on:
       - 'runtime-validation/podman/**'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-podman-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
