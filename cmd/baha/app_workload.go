@@ -383,6 +383,41 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	for _, state := range beforeStates {
 		beforeServices[state.Service] = struct{}{}
 	}
+
+	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
+	if err != nil {
+		return false, fmt.Errorf("resolve application workload build identity: %w", err)
+	}
+	buildState, err := loadRepositoryWorkloadBuildState(files)
+	if err != nil {
+		return false, fmt.Errorf("load application workload build identity: %w", err)
+	}
+	changedBuildServices := changedRepositoryWorkloadBuildServices(buildFingerprints, buildState)
+	if len(buildFingerprints) > 0 {
+		if len(changedBuildServices) == 0 {
+			fmt.Fprintln(out, "[OK] workload            source unchanged")
+		} else {
+			fmt.Fprintf(out, "[INFO] workload          source changes detected: %s\n", strings.Join(changedBuildServices, ", "))
+			if err := compose.BuildProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, changedBuildServices, func(detail string) {
+				cli.ReportActivityDetail(out, detail)
+			}, composeFiles...); err != nil {
+				return false, fmt.Errorf("rebuild changed application workload: %w", err)
+			}
+			var replace []string
+			for _, service := range changedBuildServices {
+				if _, existed := beforeServices[service]; existed {
+					replace = append(replace, service)
+				}
+			}
+			if len(replace) > 0 {
+				if err := compose.StopProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, replace, composeFiles...); err != nil {
+					return false, fmt.Errorf("replace changed application workload services: %w", err)
+				}
+			}
+			fmt.Fprintf(out, "[OK] workload            rebuilt %s\n", strings.Join(changedBuildServices, ", "))
+		}
+	}
+
 	cleanupNewResources := func() {
 		timeout := 30 * time.Second
 		if ctx.Err() != nil {
@@ -444,6 +479,11 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 			fmt.Fprintf(out, "[READY] workload         %d Compose service(s) ready\n", len(expectedServices))
 			if len(lastStatus.Exposures) > 0 {
 				fmt.Fprintf(out, "[READY] exposure         %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+			}
+			if len(buildFingerprints) > 0 {
+				if err := persistRepositoryWorkloadBuildState(files, buildFingerprints); err != nil {
+					return false, fmt.Errorf("record verified workload build identity: %w", err)
+				}
 			}
 			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
 			return true, nil
