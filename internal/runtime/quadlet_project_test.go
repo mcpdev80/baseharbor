@@ -92,11 +92,13 @@ networks:
 		"HealthTimeout=3s",
 		"HealthRetries=4",
 		"HealthStartPeriod=1s",
-		"Notify=healthy",
 	} {
 		if !strings.Contains(db, want) {
 			t.Fatalf("db Quadlet missing %q:\n%s", want, db)
 		}
+	}
+	if strings.Contains(db, "Notify=healthy") {
+		t.Fatalf("Quadlet service start must not duplicate BaseHarbor readiness waits:\n%s", db)
 	}
 	if !strings.Contains(got.Files["baseharbor-demo-internal.network"], "Internal=true") {
 		t.Fatalf("internal network lost semantics:\n%s", got.Files["baseharbor-demo-internal.network"])
