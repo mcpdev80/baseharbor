@@ -322,6 +322,9 @@ func provision(client *S3Client) { client.CreateBucket("tenant") }
 			t.Fatalf("runtime intent missing %q:\n%s", want, manifest)
 		}
 	}
+	if strings.Contains(manifest, "object_storage:") {
+		t.Fatalf("runtime-only bucket creation invented a static object-storage service:\n%s", manifest)
+	}
 }
 
 func TestQuickInitFailsClosedOnAmbiguousComposeServiceRole(t *testing.T) {
