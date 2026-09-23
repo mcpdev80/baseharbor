@@ -322,3 +322,36 @@ func provision(client *S3Client) { client.CreateBucket("tenant") }
 		}
 	}
 }
+
+
+func TestQuickInitFailsClosedOnAmbiguousComposeServiceRole(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  api:
+    image: example/api
+  database:
+    image: company/custom-database
+`)
+	withWizardTestDir(t, root)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(context.Background(), []string{"--quick"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "ambiguous Compose service classification") {
+		t.Fatalf("expected ambiguous service classification failure, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, application.RepositoryManifestName)); !os.IsNotExist(statErr) {
+		t.Fatalf("manifest should not be written on ambiguous classification, stat err=%v", statErr)
+	}
+}
+
+func TestPromptAmbiguousComposeServicesConfirmsWorkloadSelection(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("2\n"))
+	var out bytes.Buffer
+	got, err := promptAmbiguousComposeServices(reader, &out, []string{"database", "worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "worker" {
+		t.Fatalf("selected workload services = %#v", got)
+	}
+}
