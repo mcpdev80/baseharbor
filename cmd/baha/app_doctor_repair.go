@@ -217,7 +217,7 @@ func classifyAppDoctorFinding(name, detail string, required map[string]struct {
 	case "OpenBao control-plane runtime":
 		finding.Class = doctorNeedsInput
 		finding.Action = "repair the BaseHarbor control plane first with 'baha doctor' or operator-held OpenBao recovery material"
-	case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "container runtime + compose", "compose configuration":
+	case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "runtime orchestration", "runtime configuration":
 		finding.Class = doctorManualAction
 	}
 	return finding
