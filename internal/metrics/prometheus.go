@@ -729,6 +729,7 @@ func ExistingSharedProviderFiles() (ProviderFiles, error) {
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
+		RuntimeCA: filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
 		if _, err := os.Stat(path); err != nil {
