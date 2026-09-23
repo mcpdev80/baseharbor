@@ -221,6 +221,17 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
+
+	networks, volumes, builds := quadletProjectResourceUnits(project)
+	for _, units := range [][]string{networks, volumes, builds} {
+		if len(units) == 0 {
+			continue
+		}
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
+			return err
+		}
+	}
+
 	units, err := quadletProjectServiceUnits(project, selected)
 	if err != nil {
 		return err
@@ -230,6 +241,27 @@ func quadletStartProject(ctx context.Context, project QuadletProject, selected [
 	}
 	_, err = quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...)
 	return err
+}
+
+func quadletProjectResourceUnits(project QuadletProject) (networks, volumes, builds []string) {
+	for name := range project.Files {
+		unit := quadletUnitForFile(name)
+		if unit == "" {
+			continue
+		}
+		switch filepath.Ext(name) {
+		case ".network":
+			networks = append(networks, unit)
+		case ".volume":
+			volumes = append(volumes, unit)
+		case ".build":
+			builds = append(builds, unit)
+		}
+	}
+	sort.Strings(networks)
+	sort.Strings(volumes)
+	sort.Strings(builds)
+	return networks, volumes, builds
 }
 
 func quadletStopProject(ctx context.Context, project QuadletProject, selected []string) error {
