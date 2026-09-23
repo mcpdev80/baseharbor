@@ -24,6 +24,7 @@ type quadletComposeProject struct {
 	Services map[string]quadletComposeService  `yaml:"services"`
 	Volumes  map[string]quadletComposeResource `yaml:"volumes"`
 	Networks map[string]quadletComposeResource `yaml:"networks"`
+	Secrets  map[string]quadletComposeSecret   `yaml:"secrets"`
 }
 
 type quadletComposeService struct {
@@ -44,12 +45,18 @@ type quadletComposeService struct {
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
 	Logging     quadletComposeLogging     `yaml:"logging"`
+	Secrets     quadletStringSet           `yaml:"secrets"`
 }
 
 type quadletComposeResource struct {
 	Name     string `yaml:"name"`
 	External bool   `yaml:"external"`
 	Internal bool   `yaml:"internal"`
+}
+
+type quadletComposeSecret struct {
+	File     string `yaml:"file"`
+	External bool   `yaml:"external"`
 }
 
 type quadletComposeHealthcheck struct {
@@ -429,6 +436,28 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 				return QuadletProject{}, fmt.Errorf("Compose service %q volume %q: %w", serviceName, mount, err)
 			}
 			fmt.Fprintf(&unit, "Volume=%s\n", quadletMount)
+		}
+
+		for _, secretName := range service.Secrets {
+			secret, ok := model.Secrets[secretName]
+			if !ok {
+				return QuadletProject{}, fmt.Errorf("Compose service %q references undeclared secret %q", serviceName, secretName)
+			}
+			if secret.External {
+				return QuadletProject{}, fmt.Errorf("Compose service %q uses external secret %q which is unsupported by the Quadlet runtime", serviceName, secretName)
+			}
+			source := strings.TrimSpace(secret.File)
+			if source == "" {
+				return QuadletProject{}, fmt.Errorf("Compose secret %q has no file source", secretName)
+			}
+			if !filepath.IsAbs(source) {
+				source = filepath.Join(filepath.Dir(composePath), source)
+			}
+			source, err = filepath.Abs(source)
+			if err != nil {
+				return QuadletProject{}, err
+			}
+			fmt.Fprintf(&unit, "Volume=%s:/run/secrets/%s:ro\n", source, secretName)
 		}
 
 		if len(service.Command) > 0 {
