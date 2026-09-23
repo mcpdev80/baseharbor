@@ -21,19 +21,30 @@ import (
 var appInitInput io.Reader = os.Stdin
 
 type appProjectDetection struct {
-	Name              string
-	ComposeCandidates []string
-	Compose           string
-	WorkloadServices  []string
-	Postgres          bool
-	PostgresSource    string
-	PostgresInstances []string
-	Redis             bool
-	RedisSource       string
-	RedisInstances    []string
-	SecretCandidates  []string
-	SecretSources     map[string]string
-	EnvFiles          []string
+	Name                   string
+	ComposeCandidates      []string
+	Compose                string
+	WorkloadServices       []string
+	InfrastructureServices []string
+	Postgres               bool
+	PostgresSource         string
+	PostgresInstances      []string
+	Redis                  bool
+	RedisSource            string
+	RedisInstances         []string
+	ObjectStorage          bool
+	ObjectStorageSource    string
+	Metrics                bool
+	MetricsSource          string
+	OTLP                   bool
+	OTLPSource             string
+	LogsSuggested          bool
+	RuntimeAPI             bool
+	RuntimePermissions     map[string][]string
+	Ports                  []repositoryinspect.PortEvidence
+	SecretCandidates       []string
+	SecretSources          map[string]string
+	EnvFiles               []string
 }
 
 type composeServiceDetection struct {
@@ -106,9 +117,12 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		Name:              result.Application,
 		ComposeCandidates: append([]string(nil), result.ComposeCandidates...),
 		Compose:           result.SelectedCompose,
-		WorkloadServices:  append([]string(nil), result.WorkloadServices...),
-		SecretCandidates:  append([]string(nil), result.SecretCandidates...),
-		SecretSources:     map[string]string{},
+		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
+		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
+		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
+		SecretCandidates:       append([]string(nil), result.SecretCandidates...),
+		SecretSources:          map[string]string{},
+		RuntimePermissions:    map[string][]string{},
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
