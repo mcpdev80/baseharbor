@@ -344,6 +344,42 @@ func TestQuickInitFailsClosedOnAmbiguousComposeServiceRole(t *testing.T) {
 	}
 }
 
+func TestPromptCapabilityListNonTTYKeepsDetectedDefaults(t *testing.T) {
+	oldInput := appInitInput
+	defer func() { appInitInput = oldInput }()
+
+	input := strings.NewReader("\n")
+	appInitInput = input
+	reader := bufio.NewReader(input)
+	defaults := []bool{true, true, false, true, false, false, false}
+
+	got, err := promptCapabilityList(reader, io.Discard, defaults, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("selection = %#v, want %#v", got, defaults)
+	}
+}
+
+func TestPromptCapabilityListNonTTYAcceptsExplicitSelection(t *testing.T) {
+	oldInput := appInitInput
+	defer func() { appInitInput = oldInput }()
+
+	input := strings.NewReader("1,3,7\n")
+	appInitInput = input
+	reader := bufio.NewReader(input)
+
+	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 7), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []bool{true, false, true, false, false, false, true}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selection = %#v, want %#v", got, want)
+	}
+}
+
 func TestPromptAmbiguousComposeServicesConfirmsWorkloadSelection(t *testing.T) {
 	reader := bufio.NewReader(strings.NewReader("2\n"))
 	var out bytes.Buffer
