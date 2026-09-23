@@ -16,6 +16,7 @@ import (
 
 var appSecretInput io.Reader = os.Stdin
 var appSecretReadHidden = readApplicationSecretFromTerminal
+var appSecretIsTerminal = appInitReaderIsTerminal
 
 func appSecretCommand(store application.Store) *cli.Command {
 	service := applicationsecret.New(store)
@@ -209,7 +210,7 @@ func readSecretSetValueInteractive(ctx context.Context, args []string, stdin io.
 	if noInput(ctx) {
 		return nil, usageError("secret value input is required in --no-input mode", "Use 'baha app secret set "+key+" --stdin' or --file PATH.")
 	}
-	if !appInitReaderIsTerminal(stdin) {
+	if !appSecretIsTerminal(stdin) {
 		return nil, usageError("interactive secret entry requires a terminal", "Use 'baha app secret set "+key+" --stdin' for scripts/CI.")
 	}
 	return appSecretReadHidden(stdin, out, key)
