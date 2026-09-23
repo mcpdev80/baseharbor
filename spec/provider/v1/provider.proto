@@ -310,6 +310,11 @@ message BindResponse {
 
 // Binding values distinguish explicitly between safe public configuration and
 // an opaque secret reference. Plaintext credentials are forbidden.
+//
+// When a value represents a Service Binding Specification 1.1 well-known entry,
+// name MUST use the standard entry name exactly: type, provider, host, port,
+// uri, username, password, certificates or private-key. BaseHarbor-only output
+// names use the explicit baha.* extension namespace.
 message BindingValue {
   string name = 1;
 
