@@ -126,7 +126,9 @@ func TestReadSecretValueRejectsEmptyAndOversizedInput(t *testing.T) {
 func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *testing.T) {
 	oldInput := appSecretInput
 	oldHidden := appSecretReadHidden
+	oldTerminal := appSecretIsTerminal
 	appSecretInput = os.Stdin
+	appSecretIsTerminal = func(io.Reader) bool { return true }
 	appSecretReadHidden = func(input io.Reader, out io.Writer, key string) ([]byte, error) {
 		if key != "API_TOKEN" {
 			t.Fatalf("key = %q", key)
@@ -137,6 +139,7 @@ func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *te
 	t.Cleanup(func() {
 		appSecretInput = oldInput
 		appSecretReadHidden = oldHidden
+		appSecretIsTerminal = oldTerminal
 	})
 
 	var out bytes.Buffer
