@@ -45,7 +45,7 @@ type quadletComposeService struct {
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
 	Logging     quadletComposeLogging     `yaml:"logging"`
-	Secrets     quadletStringSet           `yaml:"secrets"`
+	Secrets     quadletStringSet          `yaml:"secrets"`
 }
 
 type quadletComposeResource struct {
