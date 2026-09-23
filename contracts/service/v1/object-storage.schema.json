@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:baseharbor:contracts:service:v1:object-storage",
+  "title": "BaseHarbor object-storage service contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind"
+  ],
+  "properties": {
+    "kind": {
+      "const": "object-storage"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "s3": {
+          "type": "boolean",
+          "description": "Requires S3 API compatibility; this does not select AWS S3 or any product."
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Versioned provider-neutral BaseHarbor extensions only."
+    }
+  }
+}
