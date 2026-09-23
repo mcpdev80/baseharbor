@@ -18,6 +18,12 @@ Realisieren Anforderungen wie SQL, Cache, Object Storage, Secrets, Identity oder
 
 Bestimmen, wie gewünschter Runtime-State ausgeliefert und reconciled wird.
 
+## Mitgelieferte und externe Provider
+
+Die aktuellen First-Party-Provider liegen noch im BaseHarbor-Repository, besitzen aber eine eigene Provider-ID und Implementierungsversion. BaseHarbor-Version, Provider-Version, Capability-Spezifikation und konkrete Produktversion sind getrennte Informationen.
+
+Mitgelieferte Provider werden über dieselbe Provider-Contract-Grenze aufgelöst, die später externe Provider verwenden. Eine spätere Auslagerung in ein eigenes Repository ändert deshalb nicht den Application Intent.
+
 ## Placement
 
 - `application`: BaseHarbor besitzt den Lifecycle.
