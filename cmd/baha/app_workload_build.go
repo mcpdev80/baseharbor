@@ -157,8 +157,9 @@ func fingerprintRepositoryBuildContext(contextDir, dockerfile string, canonicalB
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(dockerfilePath); err != nil {
-		return "", fmt.Errorf("inspect Dockerfile/Containerfile: %w", err)
+	dockerfileData, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return "", fmt.Errorf("read Dockerfile/Containerfile: %w", err)
 	}
 
 	rules, err := loadDockerIgnoreRules(root)
@@ -173,6 +174,8 @@ func fingerprintRepositoryBuildContext(contextDir, dockerfile string, canonicalB
 		_, _ = h.Write([]byte{0})
 	}
 	writeBytes("build-definition", canonicalBuild)
+	writeBytes("dockerfile-path", []byte(filepath.ToSlash(dockerfile)))
+	writeBytes("dockerfile", dockerfileData)
 
 	var paths []string
 	err = filepath.WalkDir(root, func(filePath string, entry os.DirEntry, walkErr error) error {
@@ -188,8 +191,7 @@ func fingerprintRepositoryBuildContext(contextDir, dockerfile string, canonicalB
 			return nil
 		}
 		if entry.IsDir() {
-			switch entry.Name() {
-			case ".git", ".baseharbor":
+			if entry.Name() == ".baseharbor" {
 				return filepath.SkipDir
 			}
 			return nil
