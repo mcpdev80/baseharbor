@@ -343,7 +343,9 @@ Before asking setup questions, `baha` analyzes the repository read-only and dete
 - explicit BaseHarbor Runtime API usage and concrete runtime-operation evidence;
 - likely required application secret names.
 
-Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**. Potential application secret names are handled individually: the developer may skip or rename them, mark them required or optional, and choose generate, secure first-apply input, or configure-later behavior. Provider/runtime credentials remain BaseHarbor-managed and are not requested from the developer.
+Secret values are never copied into the manifest. The canonical human repository path is `baha app init` followed by `baha up`; `status` and `doctor` verify the result. `plan`, `preflight` and explicit `app apply` remain advanced/automation interfaces rather than required happy-path steps.
+
+The interactive rule is **detect first, ask only what is unclear**. Potential application secret names are handled individually: the developer may skip or rename them, mark them required or optional, and choose generate, secure first-apply input, or configure-later behavior. Provider/runtime credentials remain BaseHarbor-managed and are not requested from the developer.
 
 The wizard shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
 
