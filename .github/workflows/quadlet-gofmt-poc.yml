@@ -1,0 +1,21 @@
+name: "PoC · GoFmt Diff"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/gofmt/quadlet'
+
+permissions:
+  contents: read
+
+jobs:
+  gofmt:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Show gofmt diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -d internal/runtime/quadlet.go internal/runtime/quadlet_project.go
+          test -z "$(gofmt -l internal/runtime/quadlet.go internal/runtime/quadlet_project.go)"
