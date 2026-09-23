@@ -27,7 +27,15 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m); err != nil {
+	runtimeImage := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	refreshMutableImage := runtimebroker.IsMutableDevelopmentImage(runtimeImage)
+	if refreshMutableImage {
+		cli.ReportActivityDetail(progress, "checking current development runtime image")
+		if err := compose.PullImage(ctx, runtimeImage); err != nil {
+			return fmt.Errorf("refresh development runtime image: %w", err)
+		}
+	}
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, refreshMutableImage); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -54,12 +62,12 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	if err := compose.ConfigProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate application runtime broker: %w", err)
 	}
-	if identityChanged {
-		// Runtime identity files are installed atomically. Existing containers can
-		// otherwise retain the old bind-mounted inode, so an actual rotation must
-		// recreate the broker before readiness is evaluated.
+	if identityChanged || refreshMutableImage {
+		// Runtime identity files are installed atomically and mutable development
+		// images can change behind the same tag. Recreate the broker so readiness
+		// always verifies the desired identity rather than a stale container.
 		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
-			return fmt.Errorf("restart application runtime broker after mTLS rotation: %w", err)
+			return fmt.Errorf("recreate application runtime broker for desired identity: %w", err)
 		}
 	}
 	if err := compose.UpProjectProgress(ctx, project, brokerFiles.Compose, files.Env, func(detail string) {
@@ -85,7 +93,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -112,9 +120,9 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
 		return fmt.Errorf("validate runtime provider executor: %w", err)
 	}
-	if identityChanged {
+	if identityChanged || refreshMutableImage {
 		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
-			return fmt.Errorf("restart runtime provider executor after mTLS rotation: %w", err)
+			return fmt.Errorf("recreate runtime provider executor for desired identity: %w", err)
 		}
 	}
 	if err := compose.UpProjectProgress(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env, func(detail string) {
