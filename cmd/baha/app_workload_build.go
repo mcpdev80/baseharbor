@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -40,6 +39,7 @@ type repositoryBuildDefinition struct {
 }
 
 type dockerIgnoreRule struct {
+	pattern  string
 	re       *regexp.Regexp
 	negate   bool
 	dirOnly  bool
@@ -275,7 +275,7 @@ func loadDockerIgnoreRules(root string) ([]dockerIgnoreRule, error) {
 			// a false-positive rebuild is safer than silently keeping stale code.
 			continue
 		}
-		rules = append(rules, dockerIgnoreRule{re: re, negate: negate, dirOnly: dirOnly, basename: !strings.Contains(line, "/")})
+		rules = append(rules, dockerIgnoreRule{pattern: line, re: re, negate: negate, dirOnly: dirOnly, basename: !strings.Contains(line, "/")})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -309,9 +309,6 @@ func dockerIgnoreExcludes(rules []dockerIgnoreRule, rel string, isDir bool) bool
 	rel = path.Clean(filepath.ToSlash(rel))
 	excluded := false
 	for _, rule := range rules {
-		if rule.dirOnly && !isDir && !strings.Contains(rel, "/") {
-			continue
-		}
 		matched := rule.re.MatchString(rel)
 		if !matched && rule.basename {
 			for _, part := range strings.Split(rel, "/") {
@@ -321,8 +318,17 @@ func dockerIgnoreExcludes(rules []dockerIgnoreRule, rel string, isDir bool) bool
 				}
 			}
 		}
-		if !matched && rule.dirOnly {
-			matched = strings.HasPrefix(rel, strings.TrimSuffix(rule.re.String(), "$"))
+		if rule.dirOnly && !matched {
+			if rel == rule.pattern || strings.HasPrefix(rel, rule.pattern+"/") {
+				matched = true
+			} else if rule.basename {
+				for _, part := range strings.Split(rel, "/") {
+					if rule.re.MatchString(part) {
+						matched = true
+						break
+					}
+				}
+			}
 		}
 		if matched {
 			excluded = !rule.negate
