@@ -59,15 +59,15 @@ func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
 	}
 }
 
-func TestManifestParsesLegacyScalarRequiredSecrets(t *testing.T) {
+func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: true
@@ -80,11 +80,11 @@ secrets:
 		t.Fatal(err)
 	}
 	if got := RequiredSecretNames(m); !reflect.DeepEqual(got, []string{"API_TOKEN"}) {
-		t.Fatalf("unexpected legacy required secrets %#v", got)
+		t.Fatalf("unexpected required secrets %#v", got)
 	}
 }
 
-func TestManifestDefaultsToPostgres(t *testing.T) {
+func TestManifestDefaultsToSQL(t *testing.T) {
 	m := New("demo", "", false, false, false)
 	if m.Environment != "dev" || !m.Services.SQL {
 		t.Fatalf("unexpected defaults: %#v", m)
@@ -101,12 +101,12 @@ func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
 func TestManifestValidationFailsClosed(t *testing.T) {
 	cases := []Manifest{
 		New("UPPER", "dev", true, false, false),
-		{Version: 99, Name: "demo", Environment: "dev", Services: Services{Postgres: true}},
+		{Version: 99, Name: "demo", Environment: "dev", Services: Services{SQL: true}},
 		{Version: 1, Name: "demo", Environment: "dev"},
-		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
-		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true, SQLInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true, SQLInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
@@ -203,34 +203,16 @@ func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
 	m := New("demo", "dev", true, false, false)
 	yaml := m.YAML()
-	if !strings.Contains(yaml, "  postgres:\n    enabled: true\n") {
-		t.Fatalf("enabled PostgreSQL missing from sparse YAML:\n%s", yaml)
+	if !strings.Contains(yaml, "  sql:\n    enabled: true\n") {
+		t.Fatalf("enabled SQL capability missing from sparse YAML:\n%s", yaml)
 	}
-	for _, unwanted := range []string{"redis:", "secrets:", "object_storage:", "enabled: false"} {
+	for _, unwanted := range []string{"cache:", "secrets:", "object_storage:", "enabled: false", "postgres:", "redis:"} {
 		if strings.Contains(yaml, unwanted) {
 			t.Fatalf("sparse YAML contains disabled capability %q:\n%s", unwanted, yaml)
 		}
 	}
 
-	legacy := `version: 1
-app:
-  name: demo
-  environment: dev
-services:
-  postgres:
-    enabled: true
-  redis:
-    enabled: false
-  secrets:
-    enabled: false
-`
-	parsed, err := ParseYAML(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !parsed.Services.SQL || parsed.Services.Cache || parsed.Services.Secrets {
-		t.Fatalf("legacy explicit false flags changed semantics: %#v", parsed.Services)
-	}
+
 }
 
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
