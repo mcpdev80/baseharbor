@@ -28,7 +28,8 @@ func quadletGeneratorPath() (string, error) {
 	return "", errors.New("Podman Quadlet generator not found")
 }
 
-func quadletAvailable(ctx context.Context) bool {
+// QuadletAvailable reports whether this host can run rootless Podman Quadlet units.
+func QuadletAvailable(ctx context.Context) bool {
 	if _, err := quadletGeneratorPath(); err != nil {
 		return false
 	}
