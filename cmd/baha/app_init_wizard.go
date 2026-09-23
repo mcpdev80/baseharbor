@@ -29,10 +29,10 @@ type appProjectDetection struct {
 	AmbiguousServices      []string
 	Postgres               bool
 	PostgresSource         string
-	PostgresInstances      []string
+	SQLInstances      []string
 	Redis                  bool
 	RedisSource            string
-	RedisInstances         []string
+	CacheInstances         []string
 	ObjectStorage          bool
 	ObjectStorageSuggested bool
 	ObjectStorageSource    string
@@ -159,7 +159,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			}
 			d.Postgres = true
 			if finding.Name != "" {
-				d.PostgresInstances = append(d.PostgresInstances, finding.Name)
+				d.SQLInstances = append(d.SQLInstances, finding.Name)
 			}
 			if d.PostgresSource == "" {
 				d.PostgresSource = source
@@ -170,7 +170,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			}
 			d.Redis = true
 			if finding.Name != "" {
-				d.RedisInstances = append(d.RedisInstances, finding.Name)
+				d.CacheInstances = append(d.CacheInstances, finding.Name)
 			}
 			if d.RedisSource == "" {
 				d.RedisSource = source
@@ -218,8 +218,8 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 	}
 	d.EnvFiles = uniqueSorted(d.EnvFiles)
-	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
-	d.RedisInstances = uniqueSorted(d.RedisInstances)
+	d.SQLInstances = uniqueSorted(d.SQLInstances)
+	d.CacheInstances = uniqueSorted(d.CacheInstances)
 	d.OTLPSignals = uniqueSorted(d.OTLPSignals)
 	for capabilityID, operations := range d.RuntimePermissions {
 		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
@@ -450,13 +450,13 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 
 	var postgresInstances, redisInstances, objectStorageBuckets []string
 	if selected[0] {
-		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.PostgresInstances)
+		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
 		if err != nil {
 			return err
 		}
 	}
 	if selected[1] {
-		redisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.RedisInstances)
+		redisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
 		if err != nil {
 			return err
 		}
@@ -492,10 +492,10 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 
 	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
 	if len(postgresInstances) > 0 {
-		m = application.WithPostgresInstances(m, postgresInstances...)
+		m = application.WithSQLInstances(m, postgresInstances...)
 	}
 	if len(redisInstances) > 0 {
-		m = application.WithRedisInstances(m, redisInstances...)
+		m = application.WithCacheInstances(m, redisInstances...)
 	}
 	if len(objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
@@ -600,11 +600,11 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 		)
 	}
 	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, objectStorage, secrets, hasWorkload)
-	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
-		m = application.WithPostgresInstances(m, postgresNamed...)
+	if postgresNamed := quickNamedInstances(d.SQLInstances); len(postgresNamed) > 0 {
+		m = application.WithSQLInstances(m, postgresNamed...)
 	}
-	if redisNamed := quickNamedInstances(d.RedisInstances); len(redisNamed) > 0 {
-		m = application.WithRedisInstances(m, redisNamed...)
+	if redisNamed := quickNamedInstances(d.CacheInstances); len(redisNamed) > 0 {
+		m = application.WithCacheInstances(m, redisNamed...)
 	}
 	if !quick {
 		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
@@ -659,16 +659,16 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	}
 	if d.Postgres {
 		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
-		if len(d.PostgresInstances) > 1 {
-			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.PostgresInstances, ", "))
+		if len(d.SQLInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.SQLInstances, ", "))
 		}
 	} else {
 		fmt.Fprintln(out, "- SQL Database not detected")
 	}
 	if d.Redis {
 		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.RedisSource)
-		if len(d.RedisInstances) > 1 {
-			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.RedisInstances, ", "))
+		if len(d.CacheInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.CacheInstances, ", "))
 		}
 	} else {
 		fmt.Fprintln(out, "- Cache not detected")
@@ -1045,12 +1045,12 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
-	if m.Services.Postgres || m.Services.Redis || m.Services.ObjectStorage {
+	if m.Services.SQL || m.Services.Cache || m.Services.ObjectStorage {
 		fmt.Fprintln(out, "\nManaged services")
-		if m.Services.Postgres {
+		if m.Services.SQL {
 			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.Postgres))
 		}
-		if m.Services.Redis {
+		if m.Services.Cache {
 			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Redis))
 		}
 		if m.Services.ObjectStorage {
