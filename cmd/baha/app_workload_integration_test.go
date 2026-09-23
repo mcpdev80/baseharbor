@@ -282,7 +282,6 @@ networks:
 	}
 }
 
-
 func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository build convergence requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
