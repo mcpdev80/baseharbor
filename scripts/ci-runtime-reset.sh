@@ -92,6 +92,9 @@ remove_volumes() {
 remove_quadlet_units() {
   [ "$engine" = "podman" ] || return 0
 
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
   local config_home unit_dir file base unit
   config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
   unit_dir="$config_home/containers/systemd"
