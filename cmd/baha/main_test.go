@@ -60,7 +60,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
 	manifest := filepath.Join(dir, ".baseharbor", "apps", "demo", "baseharbor.yaml")
