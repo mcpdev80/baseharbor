@@ -47,6 +47,21 @@ The mapping intentionally separates service identity from protocol compatibility
 
 Existing IDs remain accepted until their compatibility migration is documented and tested.
 
+## Standards-first service mapping
+
+Capability specifications are the shipped v0.4 semantic compatibility surface. They map to broader provider-neutral service families:
+
+| Capability specification | Service family | Standard/protocol role |
+| --- | --- | --- |
+| `database.sql/v1` | `sql` | SQL semantics; Service Binding for connection outputs |
+| `cache.key-value/v1` | `cache` | RESP may be a provider compatibility requirement |
+| `secrets/v1` | `secrets` | Service Binding names where service connection material is projected |
+| `object-storage.s3/v1` | `object-storage` | S3 is API compatibility, not provider/product identity |
+| `telemetry.otlp/v1` | `observability` | OpenTelemetry/OTLP transport |
+| `metrics/v1`, `logs/v1`, `traces/v1` | `observability` | backend-neutral platform intent; OpenTelemetry remains authoritative for telemetry data |
+
+The mapping is additive. Existing IDs remain valid until an explicit migration is documented and tested.
+
 ## Versioning rules
 
 - A provider must declare the exact capability specification versions it implements.
