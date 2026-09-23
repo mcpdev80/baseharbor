@@ -301,11 +301,12 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
+			TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 		}
 		ch := make(chan error, 1)
 		docsErrCh = ch
 		go func() {
-			err := docsServer.ListenAndServe()
+			err := docsServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				ch <- err
 				return
