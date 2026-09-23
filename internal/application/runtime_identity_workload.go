@@ -18,6 +18,8 @@ const (
 	RuntimeIdentityContainerCAPath         = "/run/secrets/baseharbor-runtime-ca"
 	RuntimeIdentityContainerClientCertPath = "/run/secrets/baseharbor-runtime-client-cert"
 	RuntimeIdentityContainerClientKeyPath  = "/run/secrets/baseharbor-runtime-client-key"
+	RuntimeIdentityContainerTLSCertPath    = "/run/secrets/baseharbor-tls-cert"
+	RuntimeIdentityContainerTLSKeyPath     = "/run/secrets/baseharbor-tls-key"
 	SecretFileBindingContainerDir          = "/run/baseharbor/bindings/secrets"
 )
 
@@ -190,6 +192,8 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			"baseharbor-runtime-ca":          filepath.Join(identityDir, "ca.pem"),
 			"baseharbor-runtime-client-cert": filepath.Join(identityDir, "client-cert.pem"),
 			"baseharbor-runtime-client-key":  filepath.Join(identityDir, "client-key.pem"),
+			"baseharbor-tls-cert":            filepath.Join(identityDir, "workload-cert.pem"),
+			"baseharbor-tls-key":             filepath.Join(identityDir, "workload-key.pem"),
 		}
 		runtimeSecretFiles = make(map[string]string, len(sources))
 		for name, hostPath := range sources {
@@ -252,10 +256,12 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CA_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerCAPath))
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_CERT_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientCertPath))
 			fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_CLIENT_KEY_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerClientKeyPath))
+			fmt.Fprintf(&b, "      TLS_CERT_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerTLSCertPath))
+			fmt.Fprintf(&b, "      TLS_KEY_FILE: %s\n", strconv.Quote(RuntimeIdentityContainerTLSKeyPath))
 			b.WriteString("    secrets:\n")
 			fmt.Fprintf(&b, "      - source: %s\n", serviceTokenNames[service])
 			b.WriteString("        target: baseharbor-runtime-token\n")
-			for _, name := range []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"} {
+			for _, name := range []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key", "baseharbor-tls-cert", "baseharbor-tls-key"} {
 				fmt.Fprintf(&b, "      - %s\n", name)
 			}
 		}
@@ -285,7 +291,7 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 	}
 	if len(runtimeServices) > 0 {
 		b.WriteString("\nsecrets:\n")
-		ordered := []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key"}
+		ordered := []string{"baseharbor-runtime-ca", "baseharbor-runtime-client-cert", "baseharbor-runtime-client-key", "baseharbor-tls-cert", "baseharbor-tls-key"}
 		for _, name := range ordered {
 			absolute, err := filepath.Abs(runtimeSecretFiles[name])
 			if err != nil {

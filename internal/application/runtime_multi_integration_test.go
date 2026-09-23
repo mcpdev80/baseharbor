@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,7 +26,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	}
 
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
-	m := New("multi-ci", "dev", false, false, false)
+	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
 	m = WithPostgresInstances(m, "primary", "analytics")
 	m = WithRedisInstances(m, "cache", "sessions")
 	files, err := EnsureRuntime(store, m)

@@ -12,6 +12,7 @@ func TestProviderComposeAttachesOnlyDeclaredProviderNetworks(t *testing.T) {
 		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
 		nil,
 		[]string{"baseharbor-logs-internal", "baseharbor-telemetry"},
+		false,
 	)
 	for _, want := range []string{
 		"provider-0:",
@@ -35,7 +36,7 @@ func TestProviderTargetFileNameIsStableAndNamespaced(t *testing.T) {
 }
 
 func TestPrometheusConfigSeparatesApplicationAndProviderTargets(t *testing.T) {
-	rendered := prometheusConfig(nil)
+	rendered := prometheusConfig(nil, false)
 	for _, want := range []string{
 		"job_name: baseharbor-applications",
 		"/etc/prometheus/targets/*--*--*.json",

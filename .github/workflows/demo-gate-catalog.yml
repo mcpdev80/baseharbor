@@ -1,0 +1,33 @@
+name: demo-gate-catalog
+
+on:
+  workflow_call:
+    outputs:
+      matrix:
+        description: Demo gate matrix discovered from baseharbor-demo
+        value: ${{ jobs.catalog.outputs.matrix }}
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gates.outputs.matrix }}
+    steps:
+      - name: Read demo gate registry
+        id: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git "$tmp/demo"
+          jq -e '
+            type == "array" and length > 0 and
+            all(.[];
+              (.name | type == "string" and length > 0) and
+              (.requires | type == "array")
+            )
+          ' "$tmp/demo/tests/gates.json" >/dev/null
+          printf 'matrix=%s\n' "$(jq -c '{gate:[.[].name]}' "$tmp/demo/tests/gates.json")" >> "$GITHUB_OUTPUT"

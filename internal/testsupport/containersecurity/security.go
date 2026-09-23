@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -15,8 +16,10 @@ type Requirements struct {
 }
 
 type inspectRecord struct {
-	Config struct {
-		User string
+	EffectiveCaps []string
+	Config        struct {
+		User   string
+		Labels map[string]string
 	}
 	HostConfig struct {
 		Privileged     bool
@@ -31,22 +34,12 @@ type inspectRecord struct {
 }
 
 func VerifyComposeService(ctx context.Context, project, service string, req Requirements) error {
-	idOut, err := exec.CommandContext(ctx, "docker", "ps", "-q",
-		"--filter", "label=com.docker.compose.project="+project,
-		"--filter", "label=com.docker.compose.service="+service,
-	).Output()
+	id, err := composeServiceContainerID(ctx, project, service)
 	if err != nil {
-		return fmt.Errorf("list %s/%s container: %w", project, service, err)
-	}
-	id := strings.TrimSpace(string(idOut))
-	if id == "" {
-		return fmt.Errorf("running container for %s/%s not found", project, service)
-	}
-	if strings.Contains(id, "\n") {
-		return fmt.Errorf("multiple running containers found for %s/%s", project, service)
+		return err
 	}
 
-	raw, err := exec.CommandContext(ctx, "docker", "inspect", id).Output()
+	raw, err := exec.CommandContext(ctx, containerRuntime(), "inspect", id).Output()
 	if err != nil {
 		return fmt.Errorf("inspect %s/%s: %w", project, service, err)
 	}
@@ -61,7 +54,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	if !r.State.Running {
 		return fmt.Errorf("%s/%s is not running", project, service)
 	}
-	if isRootUser(r.Config.User) {
+	if isRootUser(r.Config.User) && !rootlessPodman() {
 		return fmt.Errorf("%s/%s runs as root (Config.User=%q)", project, service, r.Config.User)
 	}
 	if r.HostConfig.Privileged {
@@ -73,13 +66,75 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 	if req.ReadOnlyRootfs && !r.HostConfig.ReadonlyRootfs {
 		return fmt.Errorf("%s/%s root filesystem is writable", project, service)
 	}
-	if req.DropAllCaps && !containsFold(r.HostConfig.CapDrop, "ALL") {
-		return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
+	if req.DropAllCaps {
+		if containerRuntime() == "podman" {
+			if len(r.EffectiveCaps) != 0 {
+				return fmt.Errorf("%s/%s retains effective capabilities under Podman: %v", project, service, r.EffectiveCaps)
+			}
+		} else if !containsFold(r.HostConfig.CapDrop, "ALL") {
+			return fmt.Errorf("%s/%s does not drop ALL capabilities: %v", project, service, r.HostConfig.CapDrop)
+		}
 	}
 	if req.NoNewPrivs && !containsSecurityOpt(r.HostConfig.SecurityOpt, "no-new-privileges") {
 		return fmt.Errorf("%s/%s does not enable no-new-privileges: %v", project, service, r.HostConfig.SecurityOpt)
 	}
 	return nil
+}
+
+func composeServiceContainerID(ctx context.Context, project, service string) (string, error) {
+	runtime := containerRuntime()
+	if runtime != "podman" {
+		idOut, err := exec.CommandContext(ctx, runtime, "ps", "-q",
+			"--filter", "label=com.docker.compose.project="+project,
+			"--filter", "label=com.docker.compose.service="+service,
+		).Output()
+		if err != nil {
+			return "", fmt.Errorf("list %s/%s container: %w", project, service, err)
+		}
+		ids := strings.Fields(string(idOut))
+		if len(ids) == 0 {
+			return "", fmt.Errorf("running container for %s/%s not found", project, service)
+		}
+		if len(ids) != 1 {
+			return "", fmt.Errorf("multiple running containers found for %s/%s", project, service)
+		}
+		return ids[0], nil
+	}
+
+	idOut, err := exec.CommandContext(ctx, runtime, "ps", "-q").Output()
+	if err != nil {
+		return "", fmt.Errorf("list running Podman containers: %w", err)
+	}
+	var matches []string
+	for _, id := range strings.Fields(string(idOut)) {
+		raw, inspectErr := exec.CommandContext(ctx, runtime, "inspect", id).Output()
+		if inspectErr != nil {
+			continue
+		}
+		var records []inspectRecord
+		if json.Unmarshal(raw, &records) != nil || len(records) != 1 {
+			continue
+		}
+		labels := records[0].Config.Labels
+		projectLabel := labels["com.docker.compose.project"]
+		if projectLabel == "" {
+			projectLabel = labels["io.podman.compose.project"]
+		}
+		serviceLabel := labels["com.docker.compose.service"]
+		if serviceLabel == "" {
+			serviceLabel = labels["io.podman.compose.service"]
+		}
+		if projectLabel == project && serviceLabel == service {
+			matches = append(matches, id)
+		}
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("running container for %s/%s not found", project, service)
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("multiple running containers found for %s/%s", project, service)
+	}
+	return matches[0], nil
 }
 
 func isRootUser(user string) bool {
@@ -108,4 +163,28 @@ func containsSecurityOpt(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func rootlessPodman() bool {
+	if containerRuntime() != "podman" {
+		return false
+	}
+	out, err := exec.Command("podman", "info", "--format", "{{.Host.Security.Rootless}}").Output()
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(string(out)), "true")
+}
+
+func containerRuntime() string {
+	if runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")); runtime == "docker" || runtime == "podman" {
+		return runtime
+	}
+	if err := exec.Command("docker", "info").Run(); err == nil {
+		return "docker"
+	}
+	if err := exec.Command("podman", "info").Run(); err == nil {
+		return "podman"
+	}
+	return "docker"
 }

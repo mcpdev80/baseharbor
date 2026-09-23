@@ -80,7 +80,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	workdir := t.TempDir()
 	composeFile := filepath.Join(workdir, "compose.yaml")
 	envFile := filepath.Join(workdir, "runtime.env")
-	project := "baseharbor-logs-acceptance-workload"
+	project := application.WorkloadProjectName(m)
 	yaml := `services:
   api:
     image: busybox:1.37
@@ -92,7 +92,17 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
         syslog-format: rfc5424
         tag: "api"
 `
-	yaml = strings.ReplaceAll(yaml, "PORT", fmt.Sprint(registration.SyslogPort))
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
+		yaml = `services:
+  api:
+    image: busybox:1.37
+    command: ["sh", "-c", "while true; do echo baseharbor-loki-acceptance; sleep 1; done"]
+    logging:
+      driver: journald
+`
+	} else {
+		yaml = strings.ReplaceAll(yaml, "PORT", fmt.Sprint(registration.SyslogPort))
+	}
 	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}

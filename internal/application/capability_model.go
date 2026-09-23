@@ -73,6 +73,7 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 						Direction: "provide",
 						Format:    "openmetrics",
 						Service:   source.Service,
+						Scheme:    "http",
 						Port:      source.Port,
 						Path:      source.Path,
 					}

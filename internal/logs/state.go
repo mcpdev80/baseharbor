@@ -104,6 +104,10 @@ func providerFiles(p Placement) ProviderFiles {
 }
 
 func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
+	return EnsureProviderFilesForRuntime(m, "docker")
+}
+
+func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (ProviderFiles, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -135,13 +139,13 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(p, registrations)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -182,6 +186,10 @@ func ApplicationRegistration(m application.Manifest) (Registration, error) {
 }
 
 func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeFiles, services []string) (string, error) {
+	return EnsureWorkloadOverrideForRuntime(m, runtime, services, "docker")
+}
+
+func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
 	registration, err := ApplicationRegistration(m)
 	if err != nil {
 		return "", err
@@ -195,6 +203,10 @@ func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeF
 	for _, service := range services {
 		fmt.Fprintf(&b, "  %s:\n", service)
 		b.WriteString("    logging:\n")
+		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+			b.WriteString("      driver: journald\n")
+			continue
+		}
 		b.WriteString("      driver: syslog\n")
 		b.WriteString("      options:\n")
 		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.SyslogPort)))
@@ -246,13 +258,13 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, m application.M
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
 		return DestroyProvider(ctx, runtime, m)
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfig(registrations)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind(runtime))), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML(p, registrations)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind(runtime))), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {

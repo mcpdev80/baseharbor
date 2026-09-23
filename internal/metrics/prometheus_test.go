@@ -51,7 +51,8 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	configText := string(config)
 	if !strings.Contains(configText, "file_sd_configs:") ||
 		!strings.Contains(configText, "/etc/prometheus/targets/*--*--*.json") ||
-		!strings.Contains(configText, "target_label: __metrics_path__") {
+		!strings.Contains(configText, "target_label: __metrics_path__") ||
+		!strings.Contains(configText, "target_label: __scheme__") {
 		t.Fatalf("Prometheus config does not use dynamic file discovery/path relabeling:\n%s", configText)
 	}
 }
@@ -87,6 +88,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 				Direction: "provide",
 				Format:    "openmetrics",
 				Service:   "api",
+				Scheme:    "https",
 				Port:      8080,
 				Path:      "/metrics",
 			},
@@ -123,7 +125,8 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 		labels["baseharbor_environment"] != "dev" ||
 		labels["baseharbor_service"] != "api" ||
 		labels["baseharbor_source"] != "application" ||
-		labels["baseharbor_metrics_path"] != "/metrics" {
+		labels["baseharbor_metrics_path"] != "/metrics" ||
+		labels["baseharbor_metrics_scheme"] != "https" {
 		t.Fatalf("labels = %#v", labels)
 	}
 
@@ -292,7 +295,7 @@ func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 		{Application: "alpha", Environment: "dev", RuntimeVolume: "runtime-alpha"},
 		{Application: "beta", Environment: "dev"},
 		{Application: "gamma", Environment: "dev", RuntimeVolume: "runtime-gamma"},
-	})
+	}, false)
 	for _, want := range []string{
 		"/etc/prometheus/targets/*--*--*.json",
 		"/etc/prometheus/runtime-targets/0/*.json",
@@ -307,5 +310,54 @@ func TestPrometheusConfigUsesExplicitRuntimeTargetDirectories(t *testing.T) {
 	}
 	if strings.Contains(config, "/etc/prometheus/runtime-targets/1/*.json") {
 		t.Fatalf("Prometheus config rendered runtime target path for registration without runtime volume:\n%s", config)
+	}
+}
+
+func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+
+	caSource := filepath.Join(t.TempDir(), "ca.pem")
+	const caData = "test-runtime-ca"
+	if err := os.WriteFile(caSource, []byte(caData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	files, err := EnsureProviderFilesWithRuntimeCA(m, caSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := os.ReadFile(files.RuntimeCA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(copied) != caData {
+		t.Fatalf("runtime CA = %q, want %q", copied, caData)
+	}
+
+	config, err := os.ReadFile(files.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := string(config)
+	for _, want := range []string{
+		"tls_config:",
+		"ca_file: /etc/prometheus/baseharbor-runtime-ca.pem",
+		"target_label: __scheme__",
+	} {
+		if !strings.Contains(configText, want) {
+			t.Fatalf("Prometheus config missing %q:\n%s", want, configText)
+		}
+	}
+
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compose), "./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro") {
+		t.Fatalf("Prometheus compose does not mount runtime CA:\n%s", compose)
 	}
 }

@@ -150,6 +150,16 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			ready, detail := probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
 			cancel()
+			if !ready && scheme == "http" {
+				probeCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+				tlsReady, tlsDetail := probeHTTPExposureTarget(probeCtx, "https", host, logicalHost, publisher.PublishedPort)
+				cancel()
+				if tlsReady {
+					scheme = "https"
+					ready = true
+					detail = tlsDetail
+				}
+			}
 			result = append(result, workloadExposureStatus{Service: state.Service, Scheme: scheme, Host: logicalHost, Port: publisher.PublishedPort, Ready: ready, Detail: detail})
 		}
 	}
