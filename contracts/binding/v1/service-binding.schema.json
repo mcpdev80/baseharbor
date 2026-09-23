@@ -1,71 +1,108 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:baseharbor:contracts:binding:v1:service-binding",
-  "title": "BaseHarbor Service Binding 1.1 aligned output",
+  "$id": "https://schemas.baseharbor.dev/binding/v1/service-binding.schema.json",
+  "title": "BaseHarbor Service Binding 1.1-aligned representation",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "properties": {
     "type": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "provider": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "host": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "port": {
-      "type": [
-        "string",
-        "integer"
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
       ]
     },
     "uri": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "username": {
       "type": "string"
     },
     "password": {
-      "$ref": "#/$defs/valueOrReference"
+      "type": "string"
     },
     "certificates": {
-      "$ref": "#/$defs/valueOrReference"
+      "type": "string"
     },
     "private-key": {
-      "$ref": "#/$defs/valueOrReference"
+      "type": "string"
     },
-    "extensions": {
+    "baha": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "baha": {
-          "type": "object",
-          "description": "Versioned BaseHarbor extensions such as identity/credential references, authorization and lifecycle metadata."
-        }
-      },
-      "additionalProperties": false
-    }
-  },
-  "$defs": {
-    "valueOrReference": {
-      "oneOf": [
-        {
-          "type": "string"
+        "identityRef": {
+          "type": "string",
+          "minLength": 1
         },
-        {
+        "credentialRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "secretRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "authorization": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "reference"
-          ],
           "properties": {
-            "reference": {
-              "type": "string",
-              "pattern": "^baseharbor://"
+            "audience": {
+              "type": "string"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "renewable": {
+              "type": "boolean"
+            },
+            "rotatable": {
+              "type": "boolean"
+            },
+            "revocable": {
+              "type": "boolean"
             }
           }
         }
-      ]
+      }
     }
   }
 }
