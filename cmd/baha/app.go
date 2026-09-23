@@ -267,7 +267,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "-e", "--sql-instance", "--postgres-instance", "--cache-instance", "--redis-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--sql-instance", "--sql-instance", "--cache-instance", "--cache-instance", "--s3-bucket", "--require-secret":
 			skipNext = true
 			continue
 		}
@@ -279,35 +279,35 @@ func hasCreateName(args []string) bool {
 }
 
 func manifestFromCreateArgs(args []string) (application.Manifest, error) {
-	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs(args)
+	name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, err := parseCreateArgs(args)
 	if err != nil {
 		return application.Manifest{}, err
 	}
-	if !postgres && len(postgresInstances) == 0 && !redis && len(redisInstances) == 0 && !objectStorage && len(objectStorageBuckets) == 0 && !secrets {
-		postgres = true
+	if !sql && len(sqlInstances) == 0 && !cache && len(cacheInstances) == 0 && !objectStorage && len(objectStorageBuckets) == 0 && !secrets {
+		sql = true
 	}
 	m := application.Manifest{
 		Version:     application.CurrentVersion,
 		Name:        name,
 		Environment: environment,
 		Services: application.Services{
-			Postgres:      postgres || len(postgresInstances) > 0,
-			Redis:         redis || len(redisInstances) > 0,
+			SQL:           sql || len(sqlInstances) > 0,
+			Cache:         cache || len(cacheInstances) > 0,
 			ObjectStorage: objectStorage || len(objectStorageBuckets) > 0,
 			Secrets:       secrets,
 		},
 	}
-	if len(postgresInstances) > 0 {
-		if postgres {
-			postgresInstances = append(postgresInstances, "default")
+	if len(sqlInstances) > 0 {
+		if sql {
+			sqlInstances = append(sqlInstances, "default")
 		}
-		m = application.WithPostgresInstances(m, postgresInstances...)
+		m = application.WithSQLInstances(m, sqlInstances...)
 	}
-	if len(redisInstances) > 0 {
-		if redis {
-			redisInstances = append(redisInstances, "default")
+	if len(cacheInstances) > 0 {
+		if cache {
+			cacheInstances = append(cacheInstances, "default")
 		}
-		m = application.WithRedisInstances(m, redisInstances...)
+		m = application.WithCacheInstances(m, cacheInstances...)
 	}
 	if len(objectStorageBuckets) > 0 {
 		if objectStorage {
@@ -322,35 +322,35 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	return m, nil
 }
 
-func parseCreateArgs(args []string) (name, environment string, postgres, redis, objectStorage, secrets bool, postgresInstances, redisInstances, objectStorageBuckets, required []string, err error) {
+func parseCreateArgs(args []string) (name, environment string, sql, cache, objectStorage, secrets bool, sqlInstances, cacheInstances, objectStorageBuckets, required []string, err error) {
 	environment = "dev"
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "--sql", arg == "--postgres":
-			postgres = true
-		case arg == "--sql-instance", arg == "--postgres-instance":
+		case arg == "--sql":
+			sql = true
+		case arg == "--sql-instance":
 			if i+1 >= len(args) {
 				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--sql-instance requires a name", "Example: --sql-instance analytics")
 			}
 			i++
-			postgresInstances = append(postgresInstances, args[i])
+			sqlInstances = append(sqlInstances, args[i])
 		case strings.HasPrefix(arg, "--sql-instance="):
-			postgresInstances = append(postgresInstances, strings.TrimPrefix(arg, "--sql-instance="))
-		case strings.HasPrefix(arg, "--postgres-instance="):
-			postgresInstances = append(postgresInstances, strings.TrimPrefix(arg, "--postgres-instance="))
-		case arg == "--cache", arg == "--redis":
-			redis = true
-		case arg == "--cache-instance", arg == "--redis-instance":
+			sqlInstances = append(sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
+		case strings.HasPrefix(arg, "--sql-instance="):
+			sqlInstances = append(sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
+		case arg == "--cache":
+			cache = true
+		case arg == "--cache-instance":
 			if i+1 >= len(args) {
 				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--cache-instance requires a name", "Example: --cache-instance sessions")
 			}
 			i++
-			redisInstances = append(redisInstances, args[i])
+			cacheInstances = append(cacheInstances, args[i])
 		case strings.HasPrefix(arg, "--cache-instance="):
-			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--cache-instance="))
-		case strings.HasPrefix(arg, "--redis-instance="):
-			redisInstances = append(redisInstances, strings.TrimPrefix(arg, "--redis-instance="))
+			cacheInstances = append(cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
+		case strings.HasPrefix(arg, "--cache-instance="):
+			cacheInstances = append(cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
 		case arg == "--s3":
 			objectStorage = true
 		case arg == "--s3-bucket":
@@ -385,7 +385,7 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 			return "", "", false, false, false, false, nil, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
 		default:
 			if name != "" {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --postgres")
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --sql")
 			}
 			name = arg
 		}
@@ -393,19 +393,19 @@ func parseCreateArgs(args []string) (name, environment string, postgres, redis, 
 	if name == "" {
 		return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
 	}
-	return name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, nil
+	return name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, nil
 }
 
 func serviceNames(m application.Manifest) string {
 	var names []string
-	if count := len(application.PostgresInstanceNames(m)); count > 0 {
+	if count := len(application.SQLInstanceNames(m)); count > 0 {
 		if count == 1 {
 			names = append(names, "sql")
 		} else {
 			names = append(names, fmt.Sprintf("sql(%d)", count))
 		}
 	}
-	if count := len(application.RedisInstanceNames(m)); count > 0 {
+	if count := len(application.CacheInstanceNames(m)); count > 0 {
 		if count == 1 {
 			names = append(names, "cache")
 		} else {
