@@ -95,9 +95,9 @@ func TestQuadletProjectBuildUnitsSelectsOnlyChangedServices(t *testing.T) {
 	project := QuadletProject{
 		Project: "baseharbor-demo",
 		Files: map[string]string{
-			"baseharbor-demo-api.build":       "",
-			"baseharbor-demo-api.container":   "",
-			"baseharbor-demo-worker.build":    "",
+			"baseharbor-demo-api.build":        "",
+			"baseharbor-demo-api.container":    "",
+			"baseharbor-demo-worker.build":     "",
 			"baseharbor-demo-worker.container": "",
 		},
 	}
