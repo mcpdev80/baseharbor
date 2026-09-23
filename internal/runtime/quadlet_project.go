@@ -26,21 +26,21 @@ type quadletComposeProject struct {
 }
 
 type quadletComposeService struct {
-	Image       string                   `yaml:"image"`
-	Build       composeBuild             `yaml:"build"`
-	Ports       []string                 `yaml:"ports"`
-	Environment composeEnv               `yaml:"environment"`
-	Restart     string                   `yaml:"restart"`
-	Command     quadletStringList        `yaml:"command"`
-	Volumes     []string                 `yaml:"volumes"`
-	Networks    quadletStringSet         `yaml:"networks"`
-	DependsOn   quadletStringSet         `yaml:"depends_on"`
-	Profiles    []string                 `yaml:"profiles"`
-	User        string                   `yaml:"user"`
-	ReadOnly    bool                     `yaml:"read_only"`
-	CapDrop     []string                 `yaml:"cap_drop"`
-	SecurityOpt []string                 `yaml:"security_opt"`
-	Tmpfs       []string                 `yaml:"tmpfs"`
+	Image       string                    `yaml:"image"`
+	Build       composeBuild              `yaml:"build"`
+	Ports       []string                  `yaml:"ports"`
+	Environment composeEnv                `yaml:"environment"`
+	Restart     string                    `yaml:"restart"`
+	Command     quadletStringList         `yaml:"command"`
+	Volumes     []string                  `yaml:"volumes"`
+	Networks    quadletStringSet          `yaml:"networks"`
+	DependsOn   quadletStringSet          `yaml:"depends_on"`
+	Profiles    []string                  `yaml:"profiles"`
+	User        string                    `yaml:"user"`
+	ReadOnly    bool                      `yaml:"read_only"`
+	CapDrop     []string                  `yaml:"cap_drop"`
+	SecurityOpt []string                  `yaml:"security_opt"`
+	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
 	Logging     quadletComposeLogging     `yaml:"logging"`
 }
