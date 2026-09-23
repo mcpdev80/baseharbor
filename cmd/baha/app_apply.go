@@ -327,6 +327,7 @@ func promptAndStoreMissingRequiredSecrets(
 	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
 		return &machine.Error{
 			Code:        machine.ErrorRequiredSecretMissing,
+			CauseCode:   "required_secret_missing",
 			Message:     "Required application secret " + missing[0].Name + " is missing.",
 			Resource:    missing[0].Name,
 			Remediation: "requires developer input",
@@ -346,6 +347,7 @@ func promptAndStoreMissingRequiredSecrets(
 	if !confirmed {
 		return &machine.Error{
 			Code:        machine.ErrorRequiredSecretMissing,
+			CauseCode:   "required_secret_missing",
 			Message:     "Required application secret " + missing[0].Name + " remains unresolved.",
 			Resource:    missing[0].Name,
 			Remediation: "requires developer input",
