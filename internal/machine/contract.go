@@ -29,8 +29,13 @@ type ErrorCode string
 
 const (
 	ErrorValidationFailed    ErrorCode = "validation_failed"
-	ErrorPortConflict        ErrorCode = "port_conflict"
+	ErrorPortConflict          ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
+	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
+	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
+	ErrorAuthenticationFailed  ErrorCode = "authentication_failed"
+	ErrorInvalidWorkload       ErrorCode = "invalid_workload"
+	ErrorCapabilityMissing     ErrorCode = "capability_missing"
 	ErrorPolicyDenied        ErrorCode = "policy_denied"
 	ErrorConflict            ErrorCode = "conflict"
 	ErrorOwnershipAmbiguous  ErrorCode = "ownership_ambiguous"
