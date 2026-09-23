@@ -67,8 +67,18 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		return nil, fmt.Errorf("external Prometheus placement is selected but no external metrics collection adapter is configured")
 	}
 
-	runtimeFiles := application.RuntimeFilesFor(resolved.Store, m)
-	runtimeCA := filepath.Join(application.RuntimeMTLSHostDir(runtimeFiles), "ca.pem")
+	runtimeTLS := make(map[string]struct{})
+	for _, service := range application.RuntimeAuthorizedServices(m) {
+		runtimeTLS[service] = struct{}{}
+	}
+	runtimeCA := ""
+	for _, source := range m.Metrics.Sources {
+		if _, ok := runtimeTLS[source.Service]; ok {
+			runtimeFiles := application.RuntimeFilesFor(resolved.Store, m)
+			runtimeCA = filepath.Join(application.RuntimeMTLSHostDir(runtimeFiles), "ca.pem")
+			break
+		}
+	}
 	prepared := &managedMetricsExecution{
 		driver:              metricsprovider.NewDriver(compose, m, runtimeCA),
 		runtime:             compose,
@@ -83,11 +93,6 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
 	if len(m.Metrics.Sources) == 0 && runtimeMetrics {
 		return prepared, nil
-	}
-
-	runtimeTLS := make(map[string]struct{})
-	for _, service := range application.RuntimeAuthorizedServices(m) {
-		runtimeTLS[service] = struct{}{}
 	}
 	requests := make([]capability.Request, 0, len(m.Metrics.Sources))
 	for _, source := range m.Metrics.Sources {
