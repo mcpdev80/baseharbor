@@ -19,10 +19,10 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	TLS             *applicationTLSObservation              `json:"tls,omitempty"`
+	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
-	RuntimeArtifact *runtimeArtifactObservation             `json:"runtime_artifact,omitempty"`
-	RuntimeDocsURL  string                                  `json:"runtime_docs_url,omitempty"`
+	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
