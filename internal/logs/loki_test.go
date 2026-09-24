@@ -264,3 +264,23 @@ func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) 
 		}
 	}
 }
+
+
+func TestUnregisterApplicationWithoutRegistrationDoesNotRequireIssuer(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	runtime := &fakeRuntime{}
+	defer runtime.Close()
+
+	registered := application.New("registered", "dev", false, false, false)
+	if _, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), registered); err != nil {
+		t.Fatal(err)
+	}
+
+	unregistered := application.New("unregistered", "dev", false, false, false)
+	if err := logs.UnregisterApplication(context.Background(), runtime, nil, unregistered); err != nil {
+		t.Fatalf("unregister absent application: %v", err)
+	}
+	if runtime.server != nil {
+		t.Fatal("absent registration unexpectedly mutated Loki runtime")
+	}
+}
