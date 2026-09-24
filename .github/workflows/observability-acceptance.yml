@@ -1,0 +1,73 @@
+name: "Acceptance · Observability Full Stack"
+
+run-name: "Acceptance · Observability Full Stack · ${{ inputs.ref || github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/observability/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 15
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Run focused full-stack observability acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -p 1 ./cmd/baha -run '^TestObservabilityFullStackAcceptanceInCI$' -count=1 -v
+
+      - name: Show observability diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker ps -a || true
+          for project in baseharbor-telemetry baseharbor-traces baseharbor-logs baseharbor-metrics; do
+            echo "::group::$project"
+            docker ps -a --filter "label=com.docker.compose.project=$project" || true
+            for id in $(docker ps -aq --filter "label=com.docker.compose.project=$project"); do
+              docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id" || true
+              docker logs "$id" || true
+            done
+            echo "::endgroup::"
+          done
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
