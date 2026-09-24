@@ -423,7 +423,6 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 	return nil
 }
 
-
 func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
@@ -849,14 +848,14 @@ func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
 
 func providerFilesAt(dir string) (ProviderFiles, error) {
 	files := ProviderFiles{
-		Dir:           dir,
-		Compose:       filepath.Join(dir, "compose.yaml"),
-		Env:           filepath.Join(dir, "runtime.env"),
-		Config:        filepath.Join(dir, "prometheus.yml"),
+		Dir:                 dir,
+		Compose:             filepath.Join(dir, "compose.yaml"),
+		Env:                 filepath.Join(dir, "runtime.env"),
+		Config:              filepath.Join(dir, "prometheus.yml"),
 		TargetsDir:          filepath.Join(dir, "targets"),
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations:       filepath.Join(dir, "registrations.json"),
-		RuntimeCA:     filepath.Join(dir, "baseharbor-runtime-ca.pem"),
+		RuntimeCA:           filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
 		if _, err := os.Stat(path); err != nil {
