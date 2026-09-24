@@ -22,9 +22,13 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 	}
 	identity := ApplicationIdentity{Name: "demo", Environment: "dev"}
 	broker, client, workload := issueTestRuntimeIdentity(t, ctx, issuer, identity, []string{"bhm-test"})
+	ca, err := parseTrustCertificate(trust.PEM)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	files := writeTestRuntimeIdentity(t, trust.PEM, broker, client, workload)
-	valid, err := runtimeMTLSIdentityValid(files, trust.PEM, identity, []string{"bhm-test"})
+	valid, err := runtimeMTLSIdentityValid(files, ca, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +36,7 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 		t.Fatal("matching runtime identity should be reusable")
 	}
 
-	valid, err = runtimeMTLSIdentityValid(files, trust.PEM, identity, []string{"bhm-other"})
+	valid, err = runtimeMTLSIdentityValid(files, ca, identity, []string{"bhm-other"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +68,11 @@ func TestRuntimeMTLSIdentityValidRejectsDifferentCA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := runtimeMTLSIdentityValid(files, otherTrust.PEM, identity, []string{"bhm-test"})
+	otherCA, err := parseTrustCertificate(otherTrust.PEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err := runtimeMTLSIdentityValid(files, otherCA, identity, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
