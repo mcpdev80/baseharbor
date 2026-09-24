@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/artifact"
+	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 )
 
 func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
@@ -73,7 +74,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 	plan := Plan{
 		Application: manifest.Name,
 		Environment: manifest.Environment,
-		Namespace:   namespace,
+		Target:      runtimemodel.Target{Scope: namespace},
 		Workload:    model,
 		Images: map[string]string{
 			"demo-app": image,
