@@ -405,10 +405,8 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 func quadletServiceStartError(ctx context.Context, units []string, startErr error) error {
 	var diagnostics []string
 	for _, unit := range units {
-		status, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
-		status = strings.TrimSpace(status)
-		if status != "" {
-			diagnostics = append(diagnostics, unit+": "+status)
+		if diagnostic := quadletServiceDiagnostic(ctx, unit); diagnostic != "" {
+			diagnostics = append(diagnostics, unit+": "+diagnostic)
 		}
 	}
 	if len(diagnostics) == 0 {
@@ -422,11 +420,8 @@ func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error 
 		if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
 			continue
 		}
-		status, statusErr := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
-		if statusErr != nil && strings.TrimSpace(status) == "" {
-			status = statusErr.Error()
-		}
-		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, strings.TrimSpace(status))
+		diagnostic := quadletServiceDiagnostic(ctx, unit)
+		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
 	}
 	return nil
 }
@@ -454,8 +449,7 @@ func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletPro
 			continue
 		}
 		unit := project.ServiceUnits[service]
-		status, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
-		return fmt.Errorf("Quadlet service %s did not materialize expected container %s: %s", unit, container, strings.TrimSpace(status))
+		return fmt.Errorf("Quadlet service %s did not materialize expected container %s: %s", unit, container, quadletServiceDiagnostic(ctx, unit))
 	}
 	return nil
 }
@@ -471,6 +465,40 @@ func quadletSystemctlCombined(ctx context.Context, args ...string) (string, erro
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(output), fmt.Errorf("systemctl --user %s: %w", strings.Join(args, " "), err)
+	}
+	return string(output), nil
+}
+
+func quadletServiceDiagnostic(ctx context.Context, unit string) string {
+	status, statusErr := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+	status = strings.TrimSpace(status)
+	if status == "" && statusErr != nil {
+		status = statusErr.Error()
+	}
+
+	journal, _ := quadletJournalctlCombined(ctx, "--user", "--unit", unit, "--no-pager", "--lines", "80", "--output", "cat")
+	journal = strings.TrimSpace(journal)
+
+	switch {
+	case status != "" && journal != "":
+		return status + "\nJournal:\n" + journal
+	case status != "":
+		return status
+	default:
+		return journal
+	}
+}
+
+func quadletJournalctlCombined(ctx context.Context, args ...string) (string, error) {
+	path, err := exec.LookPath("journalctl")
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = quadletUserRuntimeEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("journalctl %s: %w", strings.Join(args, " "), err)
 	}
 	return string(output), nil
 }
