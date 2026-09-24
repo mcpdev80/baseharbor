@@ -35,16 +35,6 @@ func TestRuntimeUpYesDoesNotImplicitlyTrustHostCA(t *testing.T) {
 	}
 }
 
-func TestParseRuntimeUpOptionsYesDoesNotImplyHostTrust(t *testing.T) {
-	opts, err := parseRuntimeUpOptions([]string{"--yes"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opts.TrustHostCA {
-		t.Fatal("--yes must never imply host trust installation")
-	}
-}
-
 func TestParseRuntimeUpOptionsAcceptsRecoveryFileEqualsForm(t *testing.T) {
 	opts, err := parseRuntimeUpOptions([]string{"--recovery-file=/secure/recovery.json"})
 	if err != nil {
