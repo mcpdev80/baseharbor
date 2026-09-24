@@ -14,6 +14,7 @@ import (
 
 type managedLogsExecution struct {
 	execution *capability.Execution
+	issuer    serviceaccess.Issuer
 	driver    *logsprovider.Driver
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
@@ -37,6 +38,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	}
 	prepared := &managedLogsExecution{
 		runtime:  compose,
+		issuer:   issuer,
 		manifest: resolved.Manifest,
 		services: services,
 		enabled:  policy.Enabled && policy.Collect[application.LogsSourceApplication],
@@ -92,7 +94,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 			return err
 		}
-		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.manifest); err != nil {
+		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[SKIPPED] logs             application log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
