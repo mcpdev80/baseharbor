@@ -121,9 +121,12 @@ func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, erro
 		RootCAs: roots,
 		ServerName: strings.TrimSpace(material.ServerName),
 	}
-	if requireClient {
+	if requireClient && (material.ClientCertificate == "" || material.ClientKey == "") {
+		return nil, errors.New("service access client certificate/key are required")
+	}
+	if material.ClientCertificate != "" || material.ClientKey != "" {
 		if material.ClientCertificate == "" || material.ClientKey == "" {
-			return nil, errors.New("service access client certificate/key are required")
+			return nil, errors.New("service access client certificate/key must be provided together")
 		}
 		cert, err := tls.LoadX509KeyPair(material.ClientCertificate, material.ClientKey)
 		if err != nil {
