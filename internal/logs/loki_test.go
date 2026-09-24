@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/providerconformance"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 type fakeRuntime struct {
@@ -87,7 +88,7 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	defer runtime.Close()
 	m := application.New("demo", "dev", false, false, false)
 	m.Logs = application.LogsRequirements{Collect: []string{"application"}}
-	driver := logs.NewDriver(runtime, m)
+	driver := logs.NewDriver(runtime, m, serviceissuer.New(t))
 	target := providerconformance.Target{
 		Descriptor:       capability.LokiIntegration,
 		Application:      m.Name,
@@ -108,7 +109,7 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +150,7 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +180,7 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 	m := application.New("demo", "dev", false, false, false)
-	if _, err := logs.EnsureProviderFiles(m); err != nil {
+	if _, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m); err != nil {
 		t.Fatal(err)
 	}
 	runtime := application.RuntimeFiles{Dir: t.TempDir()}
@@ -202,7 +203,7 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +225,7 @@ func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFilesForRuntime(m, "podman")
+	files, err := logs.EnsureProviderFilesForRuntime(context.Background(), serviceissuer.New(t), m, "podman")
 	if err != nil {
 		t.Fatal(err)
 	}
