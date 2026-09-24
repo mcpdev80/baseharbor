@@ -78,3 +78,94 @@ jobs:
           test "$root_before" = "$root_after"
           test "$companion_before" = "$companion_after"
           test -z "$(git -C "$demo" status --short)"
+
+      - name: Prove planned reference-demo Kubernetes resource shape
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ns="${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}"
+          app="baseharbor-demo-shape"
+
+          cleanup() {
+            kubectl delete deployment "$app" -n "$ns" --ignore-not-found --wait=true
+            kubectl delete service "$app" -n "$ns" --ignore-not-found
+            kubectl delete secret "$app-bindings" -n "$ns" --ignore-not-found
+            kubectl delete configmap "$app-config" -n "$ns" --ignore-not-found
+          }
+          trap cleanup EXIT
+          cleanup
+
+          kubectl create secret generic "$app-bindings" -n "$ns" \
+            --from-literal=DATABASE_URL='postgresql://demo:demo@postgres:5432/demo' \
+            --from-literal=REDIS_URL='redis://valkey:6379/0' \
+            --from-literal=S3_ENDPOINT='http://object-storage:9000' \
+            --from-literal=S3_BUCKET='uploads' \
+            --from-literal=APP_SECRET='ci-only'
+
+          kubectl create configmap "$app-config" -n "$ns" \
+            --from-literal=PORT='8080'
+
+          cat <<'YAML' | sed "s/__APP__/$app/g; s/__NS__/$ns/g" | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: __APP__
+            namespace: __NS__
+            labels:
+              app.kubernetes.io/name: __APP__
+              app.kubernetes.io/managed-by: baseharbor
+              baseharbor.io/application: baseharbor-demo
+              baseharbor.io/environment: dev
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: __APP__
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: __APP__
+                  app.kubernetes.io/managed-by: baseharbor
+                  baseharbor.io/application: baseharbor-demo
+                  baseharbor.io/environment: dev
+              spec:
+                containers:
+                  - name: demo-app
+                    image: registry.k8s.io/pause:3.10
+                    envFrom:
+                      - configMapRef:
+                          name: __APP__-config
+                      - secretRef:
+                          name: __APP__-bindings
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: __APP__
+            namespace: __NS__
+            labels:
+              app.kubernetes.io/managed-by: baseharbor
+              baseharbor.io/application: baseharbor-demo
+              baseharbor.io/environment: dev
+          spec:
+            selector:
+              app.kubernetes.io/name: __APP__
+            ports:
+              - name: http
+                port: 8080
+                targetPort: 8080
+          YAML
+
+          kubectl rollout status deployment/"$app" -n "$ns" --timeout=120s
+
+          test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')" = "baseharbor"
+          test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.baseharbor\.io/application}')" = "baseharbor-demo"
+          test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.baseharbor\.io/environment}')" = "dev"
+
+          test "$(kubectl get service "$app" -n "$ns" -o jsonpath='{.spec.ports[0].port}')" = "8080"
+          test "$(kubectl get secret "$app-bindings" -n "$ns" -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" = "postgresql://demo:demo@postgres:5432/demo"
+          test "$(kubectl get configmap "$app-config" -n "$ns" -o jsonpath='{.data.PORT}')" = "8080"
+
+          # The target realization must stay within the pre-existing namespace.
+          test "$(kubectl auth can-i create namespaces 2>/dev/null || true)" = "no"
