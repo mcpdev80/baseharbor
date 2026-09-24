@@ -103,6 +103,7 @@ func NewFromEnvironment(config Config) (*Observer, error) {
 
 	endpoint := strings.TrimSpace(os.Getenv(otelEndpointEnv))
 	if endpoint == "" {
+		observer.writeLifecycleLog("started")
 		return observer, nil
 	}
 	protocol := strings.TrimSpace(os.Getenv(otelProtocolEnv))
@@ -126,6 +127,7 @@ func NewFromEnvironment(config Config) (*Observer, error) {
 	observer.traceClient = client
 	observer.traceQueue = make(chan traceEvent, 256)
 	go observer.runTraceExporter()
+	observer.writeLifecycleLog("started")
 	return observer, nil
 }
 
@@ -193,6 +195,28 @@ func (o *Observer) MetricsHandler() http.Handler {
 		_, _ = fmt.Fprintf(w, "# TYPE baseharbor_runtime_http_request_duration_seconds counter\nbaseharbor_runtime_http_request_duration_seconds{component=%s} %.9f\n", component, float64(o.durationNanos.Load())/float64(time.Second))
 		_, _ = fmt.Fprintf(w, "# TYPE baseharbor_runtime_otlp_dropped_spans_total counter\nbaseharbor_runtime_otlp_dropped_spans_total{component=%s} %d\n# EOF\n", component, o.traceDropped.Load())
 	})
+}
+
+func (o *Observer) writeLifecycleLog(event string) {
+	record := map[string]any{
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"level":     "info",
+		"component": o.component,
+		"event":     event,
+	}
+	if o.application != "" {
+		record["application"] = o.application
+	}
+	if o.environment != "" {
+		record["environment"] = o.environment
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+	o.logMu.Lock()
+	defer o.logMu.Unlock()
+	_, _ = o.logWriter.Write(append(data, '\n'))
 }
 
 func (o *Observer) writeRequestLog(event traceEvent) {
