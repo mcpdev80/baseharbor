@@ -164,7 +164,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			},
 			"template": map[string]any{
 				"metadata": map[string]any{"labels": cloneMap(labels)},
-				"spec": map[string]any{"containers": []any{container}},
+				"spec":     map[string]any{"containers": []any{container}},
 			},
 		},
 	}
