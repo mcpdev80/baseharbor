@@ -38,11 +38,14 @@ func TestComposeProviderMetadata(t *testing.T) {
 }
 
 func TestProviderKindIsDeploymentMetadata(t *testing.T) {
-	if ProviderCompose == "" {
-		t.Fatal("Compose provider kind must be stable and non-empty")
+	if ProviderCompose == "" || ProviderKubernetes == "" {
+		t.Fatal("runtime provider kinds must be stable and non-empty")
 	}
 	if got, want := string(ProviderCompose), "compose"; got != want {
 		t.Fatalf("ProviderCompose = %q, want %q", got, want)
+	}
+	if got, want := string(ProviderKubernetes), "kubernetes"; got != want {
+		t.Fatalf("ProviderKubernetes = %q, want %q", got, want)
 	}
 }
 
@@ -58,8 +61,20 @@ func TestParseProviderKindDefaultsToCompose(t *testing.T) {
 	}
 }
 
+func TestParseProviderKindAcceptsKubernetes(t *testing.T) {
+	for _, input := range []string{"kubernetes", " KUBERNETES "} {
+		got, err := ParseProviderKind(input)
+		if err != nil {
+			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
+		}
+		if got != ProviderKubernetes {
+			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, ProviderKubernetes)
+		}
+	}
+}
+
 func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
-	for _, input := range []string{"kubernetes", "openshift", "docker"} {
+	for _, input := range []string{"openshift", "docker", "nomad"} {
 		if _, err := ParseProviderKind(input); err == nil {
 			t.Fatalf("ParseProviderKind(%q) unexpectedly succeeded", input)
 		}
@@ -67,7 +82,7 @@ func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
 }
 
 func TestDetectProviderForKindRejectsUnavailableProvider(t *testing.T) {
-	if _, err := DetectProviderForKind(context.Background(), ProviderKind("kubernetes")); err == nil {
+	if _, err := DetectProviderForKind(context.Background(), ProviderKind("openshift")); err == nil {
 		t.Fatal("unavailable runtime provider unexpectedly resolved")
 	}
 }
