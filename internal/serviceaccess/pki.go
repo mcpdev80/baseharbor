@@ -30,6 +30,8 @@ type TLSMaterial struct {
 type managedPKIState struct {
 	Version         int       `json:"version"`
 	IssuerReference string    `json:"issuer_reference"`
+	LifecycleOwner  string    `json:"lifecycle_owner"`
+	RenewalMode     string    `json:"renewal_mode"`
 	ServerSerial    string    `json:"server_serial"`
 	ServerExpiresAt time.Time `json:"server_expires_at"`
 	ClientSerial    string    `json:"client_serial,omitempty"`
@@ -131,19 +133,23 @@ func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir s
 		}
 		serverRequest.DNSNames = append(serverRequest.DNSNames, name)
 	}
-	server, err := issuer.Issue(ctx, serverRequest)
+	previousState, _ := readManagedPKIState(filepath.Join(dir, "state.json"))
+	serverCurrent := currentIssuedCertificate(material.ServerCertificate, previousState.ServerSerial, previousState.ServerExpiresAt, previousState.IssuerReference)
+	server, err := issueOrRenew(ctx, issuer, serverCurrent, serverRequest)
 	if err != nil {
-		return TLSMaterial{}, fmt.Errorf("issue managed service server certificate: %w", err)
+		return TLSMaterial{}, fmt.Errorf("issue or renew managed service server certificate: %w", err)
 	}
 
 	var client IssuedCertificate
 	if requireClient {
-		client, err = issuer.Issue(ctx, CertificateRequest{
+		clientRequest := CertificateRequest{
 			CommonName: "baseharbor-service-client",
 			TTL:        30 * 24 * time.Hour,
-		})
+		}
+		clientCurrent := currentIssuedCertificate(material.ClientCertificate, previousState.ClientSerial, previousState.ClientExpiresAt, previousState.IssuerReference)
+		client, err = issueOrRenew(ctx, issuer, clientCurrent, clientRequest)
 		if err != nil {
-			return TLSMaterial{}, fmt.Errorf("issue managed service client certificate: %w", err)
+			return TLSMaterial{}, fmt.Errorf("issue or renew managed service client certificate: %w", err)
 		}
 	}
 
@@ -181,8 +187,10 @@ func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir s
 	}
 
 	state := managedPKIState{
-		Version:         1,
+		Version:         2,
 		IssuerReference: firstNonEmpty(server.IssuerReference, trust.IssuerReference),
+		LifecycleOwner:  "issuer",
+		RenewalMode:     "automatic-reconcile",
 		ServerSerial:    server.Serial,
 		ServerExpiresAt: server.ExpiresAt,
 	}
@@ -202,6 +210,52 @@ func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir s
 		return TLSMaterial{}, fmt.Errorf("validate issued managed service TLS material: %w", err)
 	}
 	return material, nil
+}
+
+func readManagedPKIState(path string) (managedPKIState, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return managedPKIState{}, err
+	}
+	var state managedPKIState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return managedPKIState{}, err
+	}
+	if state.Version != 2 {
+		return managedPKIState{}, fmt.Errorf("unsupported managed PKI state version %d", state.Version)
+	}
+	return state, nil
+}
+
+func currentIssuedCertificate(certPath, serial string, expiresAt time.Time, issuerReference string) IssuedCertificate {
+	if strings.TrimSpace(serial) == "" || strings.TrimSpace(issuerReference) == "" {
+		return IssuedCertificate{}
+	}
+	cert, err := readCertificate(certPath)
+	if err != nil || !time.Now().Before(cert.NotAfter) {
+		return IssuedCertificate{}
+	}
+	return IssuedCertificate{
+		IssuerReference: issuerReference,
+		Serial:          serial,
+		ExpiresAt:       firstNonZeroTime(expiresAt, cert.NotAfter),
+	}
+}
+
+func issueOrRenew(ctx context.Context, issuer Issuer, current IssuedCertificate, request CertificateRequest) (IssuedCertificate, error) {
+	if strings.TrimSpace(current.Serial) != "" {
+		return issuer.Renew(ctx, current, request)
+	}
+	return issuer.Issue(ctx, request)
+}
+
+func firstNonZeroTime(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value
+		}
+	}
+	return time.Time{}
 }
 
 func managedTLSMaterial(policy Policy, dir string) TLSMaterial {
