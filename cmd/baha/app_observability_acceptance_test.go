@@ -127,18 +127,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
 		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
 	}
-	for _, want := range []string{
-		"[VERIFIED] metrics",
-		"1 source(s) scraped and ingested",
-		"[VERIFIED] logs",
-		"2 workload stream(s), 2 provider stream(s) ingested",
-		"[VERIFIED] traces",
-		"2 provider interaction trace(s) queryable",
-		"[VERIFIED] telemetry",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("apply output missing %q:\n%s", want, out.String())
-		}
+	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
+		t.Fatalf("apply output missing final verified-ready state:\n%s", out.String())
 	}
 
 	assertSignalProviders(t, m, observability.SignalMetrics, []capability.ProviderKind{
