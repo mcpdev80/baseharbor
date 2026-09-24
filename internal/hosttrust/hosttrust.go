@@ -325,7 +325,7 @@ func systemTrusted(cert *x509.Certificate) (bool, error) {
 		return false, nil
 	}
 	_, err = cert.Verify(x509.VerifyOptions{
-		Roots: roots,
+		Roots:     roots,
 		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	})
 	if err == nil {
