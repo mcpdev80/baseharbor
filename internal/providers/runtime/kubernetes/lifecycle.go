@@ -48,8 +48,9 @@ func (p Provider) WaitReady(ctx context.Context, plan Plan, timeout time.Duratio
 type deploymentList struct {
 	Items []struct {
 		Metadata struct {
-			Name   string            `json:"name"`
-			Labels map[string]string `json:"labels"`
+			Name        string            `json:"name"`
+			Labels      map[string]string `json:"labels"`
+			Annotations map[string]string `json:"annotations"`
 		} `json:"metadata"`
 		Status struct {
 			Replicas          int `json:"replicas"`
@@ -84,7 +85,10 @@ func (p Provider) Observe(ctx context.Context, application, environment, namespa
 		Services: make([]runtimemodel.WorkloadStatus, 0, len(list.Items)),
 	}
 	for _, item := range list.Items {
-		service := item.Metadata.Labels["baseharbor.io/workload-service"]
+		service := item.Metadata.Annotations["baseharbor.io/workload-service-name"]
+		if service == "" {
+			service = item.Metadata.Labels["baseharbor.io/workload-service"]
+		}
 		if service == "" {
 			service = item.Metadata.Name
 		}
@@ -114,7 +118,7 @@ func (p Provider) Logs(ctx context.Context, application, environment, namespace,
 	}
 	selector := ownershipSelector(application, environment)
 	if strings.TrimSpace(service) != "" {
-		selector += ",baseharbor.io/workload-service=" + dnsLabel(service)
+		selector += ",baseharbor.io/workload-service=" + workloadServiceLabel(service)
 	}
 	args := []string{
 		"logs",
@@ -138,7 +142,7 @@ func (p Provider) Exec(ctx context.Context, application, environment, namespace,
 		return "", fmt.Errorf("Kubernetes exec command is required")
 	}
 	selector := ownershipSelector(application, environment) +
-		",baseharbor.io/workload-service=" + dnsLabel(service)
+		",baseharbor.io/workload-service=" + workloadServiceLabel(service)
 
 	podCmd := exec.CommandContext(
 		ctx,
