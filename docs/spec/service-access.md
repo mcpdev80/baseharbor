@@ -50,29 +50,13 @@ Rules:
 - `--yes` never implies host-trust consent;
 - automation opts in explicitly with `baha up --trust-host-ca` or `baha trust install --yes`;
 - `baha trust export --output PATH` exports only the public CA certificate/bundle; CA private keys remain inside the issuer provider;
-- BaseHarbor records only trust anchors that it installed itself, keyed by CA fingerprint;
+- BaseHarbor records only trust anchors that it installed itself, keyed by CA fingerprint together with issuer reference, backend and anchor path;
 - ordinary `baha down` preserves host trust because the environment still exists;
 - global `baha destroy --yes` removes only BaseHarbor-owned host trust anchors and verifies the installed certificate fingerprint before deletion;
+- trust roots already installed by an operator or another tool are detected as trusted but are never claimed as BaseHarbor-owned;
 - external-pki and BYOC trust roots remain operator-owned and are never installed, exported as BaseHarbor-owned material, or removed by BaseHarbor.
 
 Fingerprint-specific anchor names allow old and new roots to overlap during CA rotation instead of forcing destructive in-place replacement.
-
-## Host trust lifecycle
-
-For `managed-local` on the local Compose runtime, the issuer's public CA may be trusted by the developer host.
-
-- `baha up` detects whether the managed-local CA is already trusted when the application path reaches a ready managed issuer.
-- Interactive host trust installation is offered only after explicit consent.
-- `--yes` never implies host trust installation.
-- Non-interactive automation opts in explicitly with `baha up --trust-host-ca` or `baha trust install --yes`.
-- `baha trust export --output PATH` exports only the public CA certificate/bundle and never issuer private keys.
-- BaseHarbor records ownership by CA fingerprint, issuer reference, backend and installed anchor path.
-- `baha down` preserves host trust because the environment still exists.
-- Global `baha destroy --yes` removes only BaseHarbor-owned anchors whose installed certificate still matches the recorded fingerprint.
-- Trust roots already installed by an operator or another tool are detected as trusted but are never claimed as BaseHarbor-owned.
-- `external-pki` and `byoc` trust anchors remain operator-owned and are never installed or removed by this managed-local host-trust path.
-
-Fingerprint-specific anchor names allow old and new managed CA roots to overlap during a future root rotation without replacing unrelated trust anchors.
 
 ## External PKI
 
