@@ -445,13 +445,14 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 
 	var formatted string
 	var ok bool
+	readinessDeadline := time.Now().Add(30 * time.Second)
 	for {
 		formatted, ok = health.Format(health.RuntimeChecks())
 		if ok {
 			fmt.Fprint(out, formatted)
 			return nil
 		}
-		if time.Now().After(deadline) {
+		if time.Now().After(readinessDeadline) {
 			fmt.Fprint(out, formatted)
 			return errors.New("control-plane runtime started but did not become ready")
 		}
