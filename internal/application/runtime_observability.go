@@ -13,12 +13,17 @@ func reconcileManagedRuntimeObservability(m Manifest) error {
 		return err
 	}
 	logsEnabled := logsPolicy.Enabled && logsPolicy.Collect[LogsSourceApplicationProvider]
-	project := RuntimeProjectName(m)
-
-	if err := reconcileRuntimeProviderObservability(m, project, "postgresql", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled); err != nil {
+	tracesPolicy, err := TracesPolicy(m)
+	if err != nil {
 		return err
 	}
-	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, CacheInstanceNames(m), logsEnabled)
+	tracesEnabled := tracesPolicy.Enabled && tracesPolicy.Collect[TracesSourceApplicationProvider]
+	project := RuntimeProjectName(m)
+
+	if err := reconcileRuntimeProviderObservability(m, project, "postgresql", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled, tracesEnabled); err != nil {
+		return err
+	}
+	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, CacheInstanceNames(m), logsEnabled, tracesEnabled)
 }
 
 func reconcileRuntimeProviderObservability(
@@ -29,6 +34,7 @@ func reconcileRuntimeProviderObservability(
 	descriptor capability.IntegrationDescriptor,
 	instances []string,
 	logsEnabled bool,
+	tracesEnabled bool,
 ) error {
 	keep := make(map[string]struct{}, len(instances))
 	for _, instance := range instances {
@@ -36,12 +42,17 @@ func reconcileRuntimeProviderObservability(
 		id := fmt.Sprintf("%s:%s:%s", provider, project, service)
 		keep[id] = struct{}{}
 
-		enabled := map[observability.SignalKind]bool{observability.SignalLogs: logsEnabled}
+		enabled := map[observability.SignalKind]bool{
+			observability.SignalLogs:   logsEnabled,
+			observability.SignalTraces: tracesEnabled,
+		}
 		signals := map[string]observability.ProviderSignalRuntime{}
+		target := observability.RuntimeTarget(project, service)
 		if logsEnabled {
-			signals["logs"] = observability.ProviderSignalRuntime{
-				Target: observability.RuntimeTarget(project, service),
-			}
+			signals["logs"] = observability.ProviderSignalRuntime{Target: target}
+		}
+		if tracesEnabled {
+			signals["traces"] = observability.ProviderSignalRuntime{Target: target}
 		}
 		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 			ID:               id,
