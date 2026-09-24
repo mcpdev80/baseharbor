@@ -28,6 +28,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	for _, want := range []string{
 		"image: " + ProviderImage,
 		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:8443",
+		"publish: {}",
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",
