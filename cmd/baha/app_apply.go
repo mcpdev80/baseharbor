@@ -79,25 +79,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
-				{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
-					var err error
-					platformFiles, err = bhruntime.ExistingFiles("")
-					if err != nil {
-						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
-					}
-					return nil
-				}},
-				{Name: "managed service PKI", Run: func(ctx context.Context) error {
-					issuer = openbao.NewServiceIssuer(compose, platformFiles)
-					status, err := issuer.Status(ctx)
-					if err != nil {
-						return fmt.Errorf("managed service PKI is not ready: %w", err)
-					}
-					if !status.Ready {
-						return errors.New("managed service PKI is not ready")
-					}
-					return nil
-				}},
 				{Name: "workload security", Run: func(ctx context.Context) error {
 					var err error
 					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
@@ -110,6 +91,30 @@ func appApplyCommand(store application.Store) *cli.Command {
 				{Name: "provider registry", Run: func(context.Context) error {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
+			}
+			needsServiceIssuer := requiresManagedServiceIssuer(m)
+			if needsServiceIssuer || application.RequiresRuntimeBroker(m) {
+				checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
+					var err error
+					platformFiles, err = bhruntime.ExistingFiles("")
+					if err != nil {
+						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+					}
+					return nil
+				}})
+			}
+			if needsServiceIssuer {
+				checks = append(checks, preflight.Check{Name: "managed service PKI", Run: func(ctx context.Context) error {
+					issuer = openbao.NewServiceIssuer(compose, platformFiles)
+					status, err := issuer.Status(ctx)
+					if err != nil {
+						return fmt.Errorf("managed service PKI is not ready: %w", err)
+					}
+					if !status.Ready {
+						return errors.New("managed service PKI is not ready")
+					}
+					return nil
+				}})
 			}
 			if application.RequiresRuntimeBroker(m) {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
