@@ -226,6 +226,49 @@ func quadletInstallProject(ctx context.Context, project QuadletProject) error {
 	return err
 }
 
+func quadletChangedServiceUnits(project QuadletProject) ([]string, error) {
+	dir, err := quadletUserUnitDir()
+	if err != nil {
+		return nil, err
+	}
+	var units []string
+	seen := map[string]struct{}{}
+	for name, desired := range project.Files {
+		ext := filepath.Ext(name)
+		if ext != ".container" && ext != ".env" {
+			continue
+		}
+		actual, err := os.ReadFile(filepath.Join(dir, name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if string(actual) == desired {
+			continue
+		}
+		containerFile := name
+		if ext == ".env" {
+			containerFile = strings.TrimSuffix(name, ".env") + ".container"
+			if _, ok := project.Files[containerFile]; !ok {
+				continue
+			}
+		}
+		unit := quadletUnitForFile(containerFile)
+		if unit == "" {
+			continue
+		}
+		if _, ok := seen[unit]; ok {
+			continue
+		}
+		seen[unit] = struct{}{}
+		units = append(units, unit)
+	}
+	sort.Strings(units)
+	return units, nil
+}
+
 func quadletProjectInstalledUnchanged(dir string, project QuadletProject) (bool, error) {
 	existing, err := quadletInstalledProjectFiles(dir, project.Project)
 	if err != nil {
@@ -303,6 +346,10 @@ func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, sel
 }
 
 func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {
+	changedUnits, err := quadletChangedServiceUnits(project)
+	if err != nil {
+		return err
+	}
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
@@ -327,8 +374,133 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if len(units) == 0 {
 		return nil
 	}
-	_, err = quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...)
-	return err
+	changed := make(map[string]struct{}, len(changedUnits))
+	for _, unit := range changedUnits {
+		changed[unit] = struct{}{}
+	}
+	var restartUnits, startUnits []string
+	for _, unit := range units {
+		if _, ok := changed[unit]; ok {
+			restartUnits = append(restartUnits, unit)
+			continue
+		}
+		startUnits = append(startUnits, unit)
+	}
+	if len(restartUnits) > 0 {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
+			return quadletServiceStartError(ctx, restartUnits, err)
+		}
+	}
+	if len(startUnits) > 0 {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
+			return quadletServiceStartError(ctx, startUnits, err)
+		}
+	}
+	if err := quadletEnsureServiceUnitsActive(ctx, units); err != nil {
+		return err
+	}
+	return quadletEnsureServiceContainersExist(ctx, project, selected)
+}
+
+func quadletServiceStartError(ctx context.Context, units []string, startErr error) error {
+	var diagnostics []string
+	for _, unit := range units {
+		if diagnostic := quadletServiceDiagnostic(ctx, unit); diagnostic != "" {
+			diagnostics = append(diagnostics, unit+": "+diagnostic)
+		}
+	}
+	if len(diagnostics) == 0 {
+		return startErr
+	}
+	return fmt.Errorf("%w; Quadlet unit diagnostics: %s", startErr, strings.Join(diagnostics, "\n"))
+}
+
+func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error {
+	for _, unit := range units {
+		if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
+			continue
+		}
+		diagnostic := quadletServiceDiagnostic(ctx, unit)
+		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
+	}
+	return nil
+}
+
+func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletProject, selected []string) error {
+	services := selected
+	if len(services) == 0 {
+		services = make([]string, 0, len(project.Containers))
+		for service := range project.Containers {
+			services = append(services, service)
+		}
+	}
+	sort.Strings(services)
+
+	podman, err := exec.LookPath("podman")
+	if err != nil {
+		return err
+	}
+	for _, service := range services {
+		container, ok := project.Containers[service]
+		if !ok {
+			return fmt.Errorf("Quadlet service %q has no expected container name", service)
+		}
+		if err := exec.CommandContext(ctx, podman, "container", "exists", container).Run(); err == nil {
+			continue
+		}
+		unit := project.ServiceUnits[service]
+		return fmt.Errorf("Quadlet service %s did not materialize expected container %s: %s", unit, container, quadletServiceDiagnostic(ctx, unit))
+	}
+	return nil
+}
+
+func quadletSystemctlCombined(ctx context.Context, args ...string) (string, error) {
+	path, err := exec.LookPath("systemctl")
+	if err != nil {
+		return "", err
+	}
+	full := append([]string{"--user"}, args...)
+	cmd := exec.CommandContext(ctx, path, full...)
+	cmd.Env = quadletUserRuntimeEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("systemctl --user %s: %w", strings.Join(args, " "), err)
+	}
+	return string(output), nil
+}
+
+func quadletServiceDiagnostic(ctx context.Context, unit string) string {
+	status, statusErr := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+	status = strings.TrimSpace(status)
+	if status == "" && statusErr != nil {
+		status = statusErr.Error()
+	}
+
+	journal, _ := quadletJournalctlCombined(ctx, "--user", "--unit", unit, "--no-pager", "--lines", "80", "--output", "cat")
+	journal = strings.TrimSpace(journal)
+
+	switch {
+	case status != "" && journal != "":
+		return status + "\nJournal:\n" + journal
+	case status != "":
+		return status
+	default:
+		return journal
+	}
+}
+
+func quadletJournalctlCombined(ctx context.Context, args ...string) (string, error) {
+	path, err := exec.LookPath("journalctl")
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = quadletUserRuntimeEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("journalctl %s: %w", strings.Join(args, " "), err)
+	}
+	return string(output), nil
 }
 
 func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, units []string, kind, directive string) error {

@@ -50,7 +50,8 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			workloadDNSNames = append(workloadDNSNames, application.MetricsTargetAlias(m, source.Service))
 		}
 	}
-	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files, workloadDNSNames)
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, issuer, identity, files, workloadDNSNames)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
 	}
@@ -100,20 +101,32 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if platformFiles.Compose == "" || platformFiles.Env == "" {
 		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
 	}
-	_, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose)
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	providerFiles, _, adminCredentialsPath, err := objectstorage.ExistingReadySharedProvider(ctx)
 	if err != nil {
-		return fmt.Errorf("converge runtime object-storage provider: %w", err)
+		providerFiles, _, adminCredentialsPath, err = objectstorage.EnsureSharedProvider(ctx, compose, issuer)
+		if err != nil {
+			return fmt.Errorf("converge runtime object-storage provider: %w", err)
+		}
+	}
+	s3Endpoint, err := objectstorage.ServiceContainerEndpoint(providerFiles)
+	if err != nil {
+		return fmt.Errorf("resolve runtime object-storage HTTPS endpoint: %w", err)
+	}
+	s3Trust, err := objectstorage.ServiceTrustBundle(providerFiles)
+	if err != nil {
+		return fmt.Errorf("resolve runtime object-storage trust bundle: %w", err)
 	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return fmt.Errorf("resolve BaseHarbor data directory for runtime executor: %w", err)
 	}
 	identityDir := filepath.Join(dataDir, "runtime-executor", "identity")
-	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, compose, platformFiles, identityDir)
+	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, issuer, identityDir)
 	if err != nil {
 		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
 	}
-	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath)
+	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust)
 	if err != nil {
 		return fmt.Errorf("materialize runtime provider executor: %w", err)
 	}
@@ -166,13 +179,6 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	project := runtimebroker.ProjectName(m)
-	services, err := compose.RunningServicesProject(ctx, project, brokerFiles.Compose, files.Env)
-	if err != nil {
-		return fmt.Errorf("inspect application runtime broker: %w", err)
-	}
-	if len(services) != 1 || services[0] != runtimebroker.ServiceName {
-		return errors.New("application runtime broker is not running")
-	}
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--fail", "--silent", "--show-error",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",

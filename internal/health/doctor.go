@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	goruntime "runtime"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type Check struct {
@@ -49,8 +51,8 @@ func RuntimeChecks() []Check {
 		return []Check{{Name: "runtime-config", OK: false, Message: "runtime configuration is invalid"}}
 	}
 	return []Check{
-		checkPostgres(cfg),
-		checkOpenBao(cfg.OpenBaoPort),
+		checkPostgres(cfg, files),
+		checkOpenBao(cfg.OpenBaoPort, files),
 	}
 }
 
@@ -90,28 +92,54 @@ func checkRuntimeOrchestration(runtimeName string) Check {
 	return Check{Name: "compose", OK: true, Message: runtimeName + " compose available"}
 }
 
-func checkPostgres(cfg bhruntime.Config) Check {
+func checkPostgres(cfg bhruntime.Config, files bhruntime.Files) Check {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	connString := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable", cfg.PostgresUser, cfg.PostgresPassword, cfg.PostgresPort, cfg.PostgresDB)
+	policy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return Check{Name: "postgres", OK: false, Message: "TLS policy is invalid"}
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(filepath.Dir(files.Compose), "providers", "postgresql", "service-access", "pki"))
+	if err != nil {
+		return Check{Name: "postgres", OK: false, Message: "TLS material is unavailable"}
+	}
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@127.0.0.1:%d/%s?sslmode=verify-full&sslrootcert=%s",
+		url.QueryEscape(cfg.PostgresUser),
+		url.QueryEscape(cfg.PostgresPassword),
+		cfg.PostgresPort,
+		url.PathEscape(cfg.PostgresDB),
+		url.QueryEscape(material.CA),
+	)
 	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
-		return Check{Name: "postgres", OK: false, Message: fmt.Sprintf("connection failed on 127.0.0.1:%d", cfg.PostgresPort)}
+		return Check{Name: "postgres", OK: false, Message: fmt.Sprintf("TLS connection failed on 127.0.0.1:%d", cfg.PostgresPort)}
 	}
 	defer conn.Close(ctx)
 	var one int
 	if err := conn.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
-		return Check{Name: "postgres", OK: false, Message: "connected but readiness query failed"}
+		return Check{Name: "postgres", OK: false, Message: "TLS connected but readiness query failed"}
 	}
-	return Check{Name: "postgres", OK: true, Message: fmt.Sprintf("query succeeded on 127.0.0.1:%d", cfg.PostgresPort)}
+	return Check{Name: "postgres", OK: true, Message: fmt.Sprintf("verified TLS query succeeded on 127.0.0.1:%d", cfg.PostgresPort)}
 }
 
-func checkOpenBao(port int) Check {
-	client := http.Client{Timeout: 3 * time.Second}
-	address := fmt.Sprintf("127.0.0.1:%d", port)
-	resp, err := client.Get("http://" + address + "/v1/sys/health")
+func checkOpenBao(port int, files bhruntime.Files) Check {
+	policy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
 	if err != nil {
-		return Check{Name: "openbao", OK: false, Message: "not reachable at " + address}
+		return Check{Name: "openbao", OK: false, Message: "TLS policy is invalid"}
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(filepath.Dir(files.Compose), "providers", "openbao", "service-access", "pki"))
+	if err != nil {
+		return Check{Name: "openbao", OK: false, Message: "TLS material is unavailable"}
+	}
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return Check{Name: "openbao", OK: false, Message: "TLS client configuration is invalid"}
+	}
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	resp, err := client.Get("https://" + address + "/v1/sys/health")
+	if err != nil {
+		return Check{Name: "openbao", OK: false, Message: "not reachable via verified HTTPS at " + address}
 	}
 	defer resp.Body.Close()
 
@@ -123,12 +151,12 @@ func checkOpenBao(port int) Check {
 		return Check{Name: "openbao", OK: false, Message: "health response is invalid"}
 	}
 	if !state.Initialized {
-		return Check{Name: "openbao", OK: false, Message: "reachable but not initialized; run 'baha openbao bootstrap --recovery-file PATH'"}
+		return Check{Name: "openbao", OK: false, Message: "not initialized"}
 	}
 	if state.Sealed {
-		return Check{Name: "openbao", OK: false, Message: "initialized but sealed; run 'baha openbao unseal --recovery-file PATH'"}
+		return Check{Name: "openbao", OK: false, Message: "sealed"}
 	}
-	return Check{Name: "openbao", OK: true, Message: "initialized and unsealed"}
+	return Check{Name: "openbao", OK: true, Message: "initialized, unsealed and reachable via verified HTTPS"}
 }
 
 func Format(checks []Check) (string, bool) {

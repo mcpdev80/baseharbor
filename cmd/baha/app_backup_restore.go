@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const maxBackupPasswordFileBytes = 64 << 10
@@ -220,11 +221,24 @@ func appRestoreCommand(store application.Store) *cli.Command {
 				return err
 			}
 			var platformFiles bhruntime.Files
-			if m.Services.Secrets {
+			var issuer serviceaccess.Issuer
+			if requiresManagedServiceIssuer(m) || m.Services.Secrets {
 				platformFiles, err = bhruntime.ExistingFiles("")
 				if err != nil {
 					return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
 				}
+			}
+			if requiresManagedServiceIssuer(m) {
+				issuer = openbao.NewServiceIssuer(compose, platformFiles)
+				status, err := issuer.Status(ctx)
+				if err != nil || !status.Ready {
+					if err != nil {
+						return fmt.Errorf("restore preflight managed service PKI: %w", err)
+					}
+					return errors.New("restore preflight managed service PKI is not ready")
+				}
+			}
+			if m.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				if err := openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity); err != nil {
 					return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
@@ -248,7 +262,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			if !resolved.FromRepository {
 				resolved.ManifestPath = manifestPath
 			}
-			files, err := application.EnsureRuntime(resolved.Store, m)
+			files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, m)
 			if err != nil {
 				return err
 			}

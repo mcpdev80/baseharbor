@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -35,6 +36,7 @@ type runtimeUpOptions struct {
 	OpenBaoPort      int
 	RecoveryFile     string
 	Environment      string
+	TrustHostCA      bool
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -48,7 +50,7 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return nil
+		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 	}
 	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
 }
@@ -61,6 +63,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			opts.Yes = true
 		case "--control-plane-only":
 			opts.ControlPlaneOnly = true
+		case "--trust-host-ca":
+			opts.TrustHostCA = true
 		case "--environment", "-e":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
@@ -108,7 +112,7 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
 		}
 	}
 	return opts, nil
@@ -274,6 +278,13 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
 		return fmt.Errorf("wait for OpenBao control-plane readiness: %w", err)
 	}
+	if state, inspectErr := platformopenbao.Inspect(ctx, compose, files); inspectErr == nil && state.Initialized && !state.Sealed {
+		if managerErr := platformopenbao.CheckManager(ctx, compose, files); managerErr == nil {
+			if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+				return fmt.Errorf("reconcile control-plane service access: %w", err)
+			}
+		}
+	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
 	}
@@ -321,16 +332,15 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	cfg, err := bhruntime.LoadConfig(files.Env)
-	if err != nil {
-		return err
-	}
-	compose, files, err := startControlPlaneRuntime(ctx, out, bhruntime.Ports{Postgres: cfg.PostgresPort, OpenBao: cfg.OpenBaoPort})
+	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
 	}
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, strings.TrimSpace(recoveryFile), out); err != nil {
 		return err
+	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+		return fmt.Errorf("reconcile control-plane service access: %w", err)
 	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("resume shared platform runtime after verified control plane: %w", err)
@@ -338,6 +348,34 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
+}
+
+func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return err
+	}
+	if !state.Initialized || state.Sealed {
+		return nil
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return err
+	}
+	issuer := platformopenbao.NewServiceIssuer(compose, files)
+	status, err := issuer.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.Ready {
+		return errors.New("managed service issuer is not ready")
+	}
+	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
+		return err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	return compose.Up(ctx, files.Compose, files.Env)
 }
 
 func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
@@ -356,6 +394,20 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
 	return compose, files, nil
+}
+
+func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	return compose, nil
 }
 
 func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files, recoveryFile string, out io.Writer) error {
@@ -397,18 +449,26 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		return fmt.Errorf("verify OpenBao manager authentication after control-plane start: %w", err)
 	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+		return fmt.Errorf("reconcile control-plane service access after start: %w", err)
+	}
 
 	var formatted string
 	var ok bool
+	readinessDeadline := time.Now().Add(30 * time.Second)
 	for {
 		formatted, ok = health.Format(health.RuntimeChecks())
 		if ok {
 			fmt.Fprint(out, formatted)
 			return nil
 		}
-		if time.Now().After(deadline) {
+		if time.Now().After(readinessDeadline) {
 			fmt.Fprint(out, formatted)
-			return errors.New("control-plane runtime started but did not become ready")
+			detail := strings.TrimSpace(formatted)
+			if detail == "" {
+				return errors.New("control-plane runtime started but did not become ready")
+			}
+			return fmt.Errorf("control-plane runtime started but did not become ready: %s", detail)
 		}
 		select {
 		case <-ctx.Done():
@@ -631,6 +691,11 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
+	if records, trustErr := hosttrust.StateRecords(dataDir); trustErr != nil {
+		return fmt.Errorf("inspect BaseHarbor-owned host trust: %w", trustErr)
+	} else if len(records) > 0 {
+		fmt.Fprintf(out, "  host trust:    %d BaseHarbor-owned CA anchor(s)\n", len(records))
+	}
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
 	if !confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the global BaseHarbor control plane.")
@@ -642,6 +707,11 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
 		return err
+	}
+	if removed, err := hosttrust.RemoveOwned(ctx, dataDir); err != nil {
+		return fmt.Errorf("remove BaseHarbor-owned host trust before destroy: %w", err)
+	} else if removed > 0 {
+		fmt.Fprintf(out, "[OK] host trust         removed %d BaseHarbor-owned CA anchor(s)\n", removed)
 	}
 	if relays, err := connectivityrelay.ExistingInstances(); err != nil {
 		return fmt.Errorf("inspect connectivity relay state: %w", err)

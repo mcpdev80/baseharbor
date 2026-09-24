@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestWorkloadManifestRoundTrip(t *testing.T) {
@@ -96,7 +98,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
 	m := New("demo", "dev", true, true, false)
 	m = WithWorkload(m, "docker-compose.yml", "api")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +118,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 		t.Fatal(err)
 	}
 	text := string(override)
-	for _, want := range []string{"@postgres:5432/", "@valkey:6379/0", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
+	for _, want := range []string{"@postgres:5432/", "@valkey-access:6379/0", "DATABASE_CA_FILE", "REDIS_CA_FILE", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("override missing %q:\n%s", want, text)
 		}

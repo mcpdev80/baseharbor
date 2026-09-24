@@ -323,3 +323,45 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 		t.Fatalf("broker healthcheck is not DNS-independent while preserving TLS hostname:\n%s", got)
 	}
 }
+
+func TestProjectOwnerOnlyFilePreservesCanonicalPrivateKeyProtection(t *testing.T) {
+	root := t.TempDir()
+	files := application.RuntimeFiles{
+		Dir:      filepath.Join(root, "runtime"),
+		Bindings: filepath.Join(root, "runtime", "bindings"),
+	}
+	if err := os.MkdirAll(files.Bindings, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "canonical-key.pem")
+	if err := os.WriteFile(source, []byte("private-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	projected, err := projectOwnerOnlyFile(files, source, "broker-key.pem", "runtime broker private key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sourceInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("canonical key mode = %o, want 600", got)
+	}
+	projectedInfo, err := os.Stat(projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("projected key mode = %o, want 644", got)
+	}
+	parentInfo, err := os.Stat(filepath.Dir(projected))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parentInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("projection directory mode = %o, want 700", got)
+	}
+}

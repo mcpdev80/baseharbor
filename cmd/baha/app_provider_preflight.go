@@ -7,9 +7,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type managedProviderPreflightState struct {
+	issuer        serviceaccess.Issuer
 	exposure      *managedExposureExecution
 	objectStorage *managedObjectStorageExecution
 	traces        *managedTracesExecution
@@ -18,46 +20,57 @@ type managedProviderPreflightState struct {
 	logs          *managedLogsExecution
 }
 
+func requiresManagedServiceIssuer(m application.Manifest) bool {
+	if application.HasManagedRuntimeServices(m) || requiresObjectStorageProviderAdmin(m) {
+		return true
+	}
+	if application.HasTraceSignal(m) || application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) || application.HasLogsCollection(m) {
+		return true
+	}
+	return application.HasOTLPTelemetry(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector
+}
+
 func appendManagedProviderPreflights(
 	checks []preflight.Check,
 	compose *bhruntime.Compose,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
+	issuer *serviceaccess.Issuer,
 ) []preflight.Check {
 	m := resolved.Manifest
 
 	if application.HasObjectStorage(m) || requiresRuntimeObjectStorageExecutor(m) {
 		checks = append(checks, preflight.Check{Name: "managed object storage provider", Run: func(ctx context.Context) error {
 			var err error
-			state.objectStorage, err = prepareManagedObjectStorage(ctx, *compose, resolved)
+			state.objectStorage, err = prepareManagedObjectStorage(ctx, *compose, resolved, *issuer)
 			return err
 		}})
 	}
 	if application.HasTraceSignal(m) {
 		checks = append(checks, preflight.Check{Name: "managed traces provider", Run: func(ctx context.Context) error {
 			var err error
-			state.traces, err = prepareManagedTraces(ctx, *compose, resolved)
+			state.traces, err = prepareManagedTraces(ctx, *compose, resolved, *issuer)
 			return err
 		}})
 	}
 	if application.HasOTLPTelemetry(m) {
 		checks = append(checks, preflight.Check{Name: "managed telemetry provider", Run: func(ctx context.Context) error {
 			var err error
-			state.telemetry, err = prepareManagedTelemetry(ctx, *compose, resolved, state.traces)
+			state.telemetry, err = prepareManagedTelemetry(ctx, *compose, resolved, state.traces, *issuer)
 			return err
 		}})
 	}
 	if application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) {
 		checks = append(checks, preflight.Check{Name: "managed metrics provider", Run: func(ctx context.Context) error {
 			var err error
-			state.metrics, err = prepareManagedMetrics(ctx, *compose, resolved)
+			state.metrics, err = prepareManagedMetrics(ctx, *compose, resolved, *issuer)
 			return err
 		}})
 	}
 	if application.HasLogsCollection(m) {
 		checks = append(checks, preflight.Check{Name: "managed logs provider", Run: func(ctx context.Context) error {
 			var err error
-			state.logs, err = prepareManagedLogs(ctx, *compose, resolved)
+			state.logs, err = prepareManagedLogs(ctx, *compose, resolved, *issuer)
 			return err
 		}})
 	}
@@ -79,17 +92,18 @@ func prepareUndeclaredProviderCleanup(
 	compose bhruntime.Compose,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
+	issuer serviceaccess.Issuer,
 ) error {
 	m := resolved.Manifest
 	if !application.HasMetricsSources(m) && !application.HasRuntimeMetricsPermissions(m) {
-		prepared, err := prepareManagedMetrics(ctx, compose, resolved)
+		prepared, err := prepareManagedMetrics(ctx, compose, resolved, issuer)
 		if err != nil {
 			return err
 		}
 		state.metrics = prepared
 	}
 	if !application.HasLogsCollection(m) {
-		prepared, err := prepareManagedLogs(ctx, compose, resolved)
+		prepared, err := prepareManagedLogs(ctx, compose, resolved, issuer)
 		if err != nil {
 			return err
 		}

@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"path/filepath"
 )
 
 const (
@@ -33,6 +34,7 @@ type Driver struct {
 	runtime Runtime
 	engine  string
 	app     application.Manifest
+	issuer  serviceaccess.Issuer
 	client  *http.Client
 }
 
@@ -52,8 +54,20 @@ func runtimeKind(runtime Runtime) string {
 	return "docker"
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, client: &http.Client{Timeout: 10 * time.Second}}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer}
+}
+
+func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(m.Environment, "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load Loki service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Loki }
@@ -86,7 +100,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	files, err := EnsureProviderFilesForRuntime(d.app, d.engine)
+	files, err := EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
 	if err != nil {
 		return err
 	}
@@ -101,6 +115,10 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 		return fmt.Errorf("start Loki provider: %w", err)
 	}
 	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		return err
+	}
+	d.client, err = lokiHTTPClient(d.app, files)
 	if err != nil {
 		return err
 	}
@@ -143,6 +161,12 @@ func (d *Driver) Verify(ctx context.Context, _ capability.Resource, binding capa
 	endpoint, err := ProviderEndpoint(files)
 	if err != nil {
 		return err
+	}
+	if d.client == nil {
+		d.client, err = lokiHTTPClient(d.app, files)
+		if err != nil {
+			return err
+		}
 	}
 	return waitForStream(ctx, d.client, endpoint, d.app, binding.Logs.Service)
 }

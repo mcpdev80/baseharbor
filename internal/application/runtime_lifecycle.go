@@ -30,6 +30,7 @@ func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + valkeyAccessService(instance) + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}

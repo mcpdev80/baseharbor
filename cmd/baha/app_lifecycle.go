@@ -19,6 +19,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
@@ -332,7 +333,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 			}
 			if application.HasObjectStorage(m) {
-				driver := objectstorage.NewDriver(compose, m, files)
+				driver := objectstorage.NewDriver(compose, m, files, nil)
 				for _, bucket := range application.ObjectStorageBucketNames(m) {
 					if err := driver.DestroyBucket(ctx, bucket); err != nil {
 						return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
@@ -346,7 +347,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				}
 			}
 			if resolved.FromRepository {
-				if err := logsprovider.UnregisterApplication(ctx, compose, m); err != nil {
+				if platformFiles.Compose == "" {
+					var platformErr error
+					platformFiles, platformErr = bhruntime.ExistingFiles("")
+					if platformErr != nil {
+						return fmt.Errorf("load managed trust plane for log collector cleanup: %w", platformErr)
+					}
+				}
+				var cleanupIssuer serviceaccess.Issuer = openbao.NewServiceIssuer(compose, platformFiles)
+				if err := logsprovider.UnregisterApplication(ctx, compose, cleanupIssuer, m); err != nil {
 					return fmt.Errorf("remove application log collector registration: %w", err)
 				}
 				if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
@@ -372,7 +381,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					if err := metricsprovider.PruneRegisteredApplicationTargets(m, nil); err != nil {
 						return fmt.Errorf("remove application metrics targets: %w", err)
 					}
-					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
+					if platformFiles.Compose == "" {
+						var platformErr error
+						platformFiles, platformErr = bhruntime.ExistingFiles("")
+						if platformErr != nil {
+							return fmt.Errorf("load managed trust plane for metrics cleanup: %w", platformErr)
+						}
+					}
+					cleanupIssuer := openbao.NewServiceIssuer(compose, platformFiles)
+					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, cleanupIssuer, m); err != nil {
 						return fmt.Errorf("remove application metrics trust edges: %w", err)
 					}
 				case capability.ScopeApplication:

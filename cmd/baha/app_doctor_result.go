@@ -30,15 +30,16 @@ type applicationDoctorSecretResult struct {
 }
 
 type applicationDoctorResult struct {
-	ContractVersion string                            `json:"contract_version"`
-	Application     string                            `json:"application"`
-	Environment     string                            `json:"environment"`
-	State           string                            `json:"state"`
-	Healthy         bool                              `json:"healthy"`
-	Checks          []preflight.Result                `json:"checks"`
-	Workload        []applicationDoctorWorkloadResult `json:"workload,omitempty"`
-	RequiredSecrets []applicationDoctorSecretResult   `json:"required_secrets,omitempty"`
-	TLS             *applicationTLSObservation        `json:"tls,omitempty"`
+	ContractVersion string                                       `json:"contract_version"`
+	Application     string                                       `json:"application"`
+	Environment     string                                       `json:"environment"`
+	State           string                                       `json:"state"`
+	Healthy         bool                                         `json:"healthy"`
+	Checks          []preflight.Result                           `json:"checks"`
+	Workload        []applicationDoctorWorkloadResult            `json:"workload,omitempty"`
+	RequiredSecrets []applicationDoctorSecretResult              `json:"required_secrets,omitempty"`
+	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
+	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 
 	manifest               application.Manifest
 	workloadStatus         repositoryWorkloadStatus
@@ -46,6 +47,7 @@ type applicationDoctorResult struct {
 	workloadSecurity       application.WorkloadSecurityReport
 	tlsStatus              *applicationTLSStatus
 	tlsErr                 error
+	serviceTLSErr          error
 }
 
 func collectApplicationDoctor(ctx context.Context, store application.Store, args []string) (applicationDoctorResult, error) {
@@ -69,6 +71,11 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 		result.State = "not_applied"
 		result.Healthy = false
 		return result, nil
+	}
+	var serviceTLS []application.BackendTLSLifecycleObservation
+	var serviceTLSErr error
+	if runtimeErr == nil {
+		serviceTLS, serviceTLSErr = application.InspectBackendTLSLifecycle(files, m)
 	}
 
 	var compose bhruntime.Compose
@@ -95,6 +102,18 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 				return runtimeErr
 			}
 			return application.CheckRuntimePermissions(files)
+		}},
+		{Name: "service TLS lifecycle", Run: func(context.Context) error {
+			if runtimeErr != nil {
+				return runtimeErr
+			}
+			if serviceTLSErr != nil {
+				return serviceTLSErr
+			}
+			if !serviceTLSLifecycleHealthy(serviceTLS) {
+				return errors.New("one or more service certificates require immediate rotation")
+			}
+			return nil
 		}},
 		{Name: "managed runtime definition", Run: func(context.Context) error {
 			if runtimeErr != nil {
@@ -310,10 +329,12 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 	result.Workload = workloads
 	result.RequiredSecrets = secrets
 	result.TLS = tlsObservation
+	result.ServiceTLS = serviceTLS
 	result.workloadStatus = workloadStatus
 	result.requiredSecretStatuses = requiredStatuses
 	result.workloadSecurity = workloadSecurity
 	result.tlsStatus = tlsStatus
 	result.tlsErr = tlsErr
+	result.serviceTLSErr = serviceTLSErr
 	return result, nil
 }

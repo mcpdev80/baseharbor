@@ -15,6 +15,7 @@ func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
 		"baseharbor-mailflow-prod-postgres-1",
 		"baseharbor-mailflow-prod_postgres-data",
 		"baseharbor-mailflow-prod-valkey-1",
+		"baseharbor-mailflow-prod-valkey-access-1",
 		"baseharbor-mailflow-prod_valkey-data",
 	}
 	if len(resources) != len(wantNames) {

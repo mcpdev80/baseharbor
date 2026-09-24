@@ -11,11 +11,12 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	files, err := EnsureProviderFiles(application.Manifest{Name: "demo", Environment: "dev"})
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), application.Manifest{Name: "demo", Environment: "dev"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,9 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	text := string(compose)
 	for _, want := range []string{
 		"image: " + ProviderImage,
-		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
+		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:8443",
+		"access:\n    internal: true",
+		"publish: {}",
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",
@@ -60,7 +63,7 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
-	if _, err := EnsureProviderFiles(application.Manifest{Name: "demo", Environment: "dev"}); err != nil {
+	if _, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), application.Manifest{Name: "demo", Environment: "dev"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +77,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 
 	bind := func(m application.Manifest) {
 		t.Helper()
-		driver := NewDriver(nil, m)
+		driver := NewDriver(nil, m, serviceissuer.New(t))
 		resource := capability.Resource{
 			Application: m.Name,
 			Kind:        capability.Metrics,
@@ -155,10 +158,10 @@ func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 	beta := alpha
 	beta.Name = "beta"
 
-	if _, err := EnsureProviderFiles(alpha); err != nil {
+	if _, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), alpha); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsureProviderFiles(beta)
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), beta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +261,7 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 	m := application.New("alpha", "dev", false, false, false)
 	for _, boundary := range []string{"", "team-a", "team-b"} {
 		t.Setenv(application.ProviderSharingBoundaryEnv(capability.ProviderPrometheus), boundary)
-		if _, err := EnsureProviderFiles(m); err != nil {
+		if _, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t), m); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -325,7 +328,7 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 
 	m := application.New("demo", "dev", false, false, false)
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
-	files, err := EnsureProviderFilesWithRuntimeCA(m, caSource)
+	files, err := EnsureProviderFilesWithRuntimeCA(context.Background(), serviceissuer.New(t), m, caSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,5 +362,103 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 	}
 	if !strings.Contains(string(compose), "./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro") {
 		t.Fatalf("Prometheus compose does not mount runtime CA:\n%s", compose)
+	}
+}
+
+func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) {
+	rendered := providerComposeYAMLWithProviderNetworks(
+		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
+		nil,
+		nil,
+		false,
+	)
+	for _, want := range []string{
+		"./service-access/runtime/ca.pem:/certs/ca.pem:ro",
+		"./service-access/runtime/server.pem:/certs/server.pem:ro",
+		"./service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("Prometheus gateway compose missing runtime-projected TLS material %q:\n%s", want, rendered)
+		}
+	}
+	for _, forbidden := range []string{
+		"./service-access/pki/ca.pem:/certs/ca.pem:ro",
+		"./service-access/pki/server-cert.pem:/certs/server.pem:ro",
+		"./service-access/pki/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("Prometheus gateway compose mounted protected PKI source material %q:\n%s", forbidden, rendered)
+		}
+	}
+}
+
+func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
+
+	alpha := application.New("alpha", "dev", false, false, false)
+	alpha.Services.SQL = false
+	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
+
+	beta := alpha
+	beta.Name = "beta"
+
+	issuer := serviceissuer.New(t)
+	if _, err := EnsureProviderFiles(context.Background(), issuer, alpha); err != nil {
+		t.Fatal(err)
+	}
+	files, err := EnsureProviderFiles(context.Background(), issuer, beta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileReferenceProviderRegistry(alpha); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileReferenceProviderRegistry(beta); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeDir := filepath.Join(files.Dir, "service-access", "runtime")
+	if err := os.RemoveAll(runtimeDir); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &recordingRuntime{}
+	if err := UnregisterSharedApplication(context.Background(), runtime, issuer, alpha); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"ca.pem", "server.pem", "server-key.pem"} {
+		if _, err := os.Stat(filepath.Join(runtimeDir, name)); err != nil {
+			t.Fatalf("service access runtime projection %s was not reconciled: %v", name, err)
+		}
+	}
+
+	registrations, err := readRegistrations(files.Registrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registrations) != 1 || registrations[0].Application != "beta" {
+		t.Fatalf("registrations after unregister = %#v, want only beta", registrations)
+	}
+
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, want := range []string{
+		"/service-access/runtime/ca.pem:/certs/ca.pem:ro",
+		"/service-access/runtime/server.pem:/certs/server.pem:ro",
+		"/service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("reconciled shared Prometheus compose missing runtime-projected TLS mount %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "/service-access/pki/") {
+		t.Fatalf("reconciled shared Prometheus compose must not mount protected PKI source material:\n%s", text)
 	}
 }

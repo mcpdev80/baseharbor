@@ -10,12 +10,14 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type managedMetricsExecution struct {
 	execution           *capability.Execution
 	driver              *metricsprovider.Driver
 	runtime             bhruntime.Compose
+	issuer              serviceaccess.Issuer
 	manifest            application.Manifest
 	enabled             bool
 	desiredPlacement    capability.ProviderPlacement
@@ -24,7 +26,7 @@ type managedMetricsExecution struct {
 	placementChanged    bool
 }
 
-func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedMetricsExecution, error) {
+func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedMetricsExecution, error) {
 	m := resolved.Manifest
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)
 
@@ -38,6 +40,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		}
 		return &managedMetricsExecution{
 			runtime:             compose,
+			issuer:              issuer,
 			manifest:            m,
 			registeredPlacement: registeredPlacement,
 			registered:          true,
@@ -52,6 +55,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	if !enabled {
 		return &managedMetricsExecution{
 			runtime:             compose,
+			issuer:              issuer,
 			manifest:            m,
 			enabled:             false,
 			registeredPlacement: registeredPlacement,
@@ -80,8 +84,9 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		}
 	}
 	prepared := &managedMetricsExecution{
-		driver:              metricsprovider.NewDriver(compose, m, runtimeCA),
+		driver:              metricsprovider.NewDriver(compose, m, issuer, runtimeCA),
 		runtime:             compose,
+		issuer:              issuer,
 		manifest:            m,
 		enabled:             true,
 		desiredPlacement:    desiredPlacement,
@@ -187,7 +192,7 @@ func cleanupRegisteredMetricsPlacement(ctx context.Context, prepared *managedMet
 		if err := metricsprovider.PruneRegisteredApplicationTargets(prepared.manifest, nil); err != nil {
 			return err
 		}
-		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.manifest)
+		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest)
 	case capability.ScopeApplication:
 		return metricsprovider.DestroyProvider(ctx, prepared.runtime, prepared.manifest)
 	case capability.ScopeExternal:

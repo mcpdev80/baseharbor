@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
@@ -18,13 +19,13 @@ type managedTelemetryExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution) (*managedTelemetryExecution, error) {
+func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution, issuer serviceaccess.Issuer) (*managedTelemetryExecution, error) {
 	m := resolved.Manifest
 	if !application.HasOTLPTelemetry(m) {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
-	driver := telemetry.NewDriver(compose, m, files)
+	driver := telemetry.NewDriver(compose, m, files, issuer)
 	if traces != nil && traces.enabled {
 		driver.SetTraceBackend("http://tempo:4318", traces.placement.Network)
 	} else if enabled, policyErr := application.TracesCollectionEnabled(m); policyErr != nil {

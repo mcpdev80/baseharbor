@@ -11,6 +11,7 @@ import (
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
@@ -29,7 +30,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	sort.Strings(running)
-	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-sessions"}
+	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-cache-access", "valkey-sessions", "valkey-sessions-access"}
 	if len(running) != len(want) {
 		t.Fatalf("unexpected running services: got %#v want %#v", running, want)
 	}

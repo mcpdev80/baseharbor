@@ -1,10 +1,13 @@
 package application
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
@@ -14,7 +17,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +34,18 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 	if strings.Contains(string(compose), "postgres-data:/var/lib/postgresql/data") {
 		t.Fatal("PostgreSQL 18 runtime must not use the pre-18 data volume mount")
 	}
+	hba, err := os.ReadFile(filepath.Join(files.Dir, "providers", "postgresql", defaultServiceInstance, "runtime", "pg_hba.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wanted := range []string{
+		"hostssl all all 0.0.0.0/0 scram-sha-256",
+		"hostnossl all all 0.0.0.0/0 reject",
+	} {
+		if !strings.Contains(string(hba), wanted) {
+			t.Fatalf("PostgreSQL TLS policy missing %q", wanted)
+		}
+	}
 
 	firstEnv, err := os.ReadFile(files.Env)
 	if err != nil {
@@ -42,7 +57,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 	if !strings.Contains(string(firstEnv), "POSTGRES_HOST_PORT=") {
 		t.Fatal("runtime must allocate a local PostgreSQL port")
 	}
-	if _, err := EnsureRuntime(store, m); err != nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 	secondEnv, err := os.ReadFile(files.Env)
@@ -67,7 +82,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +94,12 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	for _, wanted := range []string{
 		"docker.io/library/postgres:18-alpine",
 		"docker.io/valkey/valkey:9.1.2-alpine",
+		"./providers/postgresql/default/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
+		"./providers/postgresql/default/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro",
+		"./providers/postgresql/default/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro",
+		"exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"./providers/valkey/default/service-access/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
 		"postgres-data:/var/lib/postgresql",
 		"valkey-data:/data",
 		"appendonly yes",
@@ -111,7 +132,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "runtime.env"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +151,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +165,8 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 		"BASEHARBOR_ENVIRONMENT=dev",
 		"BASEHARBOR_BINDINGS=",
 		"DATABASE_URL=postgresql://",
-		"REDIS_URL=redis://",
-		"VALKEY_URL=redis://",
+		"REDIS_URL=rediss://",
+		"VALKEY_URL=rediss://",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("application contract missing %q", wanted)
@@ -198,7 +219,7 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,10 +269,10 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 		"DATABASE_URL=postgresql://",
 		"DATABASE_PRIMARY_URL=postgresql://",
 		"DATABASE_ANALYTICS_URL=postgresql://",
-		"REDIS_CACHE_URL=redis://",
-		"REDIS_SESSIONS_URL=redis://",
-		"VALKEY_CACHE_URL=redis://",
-		"VALKEY_SESSIONS_URL=redis://",
+		"REDIS_CACHE_URL=rediss://",
+		"REDIS_SESSIONS_URL=rediss://",
+		"VALKEY_CACHE_URL=rediss://",
+		"VALKEY_SESSIONS_URL=rediss://",
 	} {
 		if !strings.Contains(appText, wanted) {
 			t.Fatalf("multi-instance application contract missing %q:\n%s", wanted, appText)
@@ -277,7 +298,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +310,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	port := before["POSTGRES_PRIMARY_HOST_PORT"]
 
 	m = WithSQLInstances(m, "analytics")
-	if _, err := EnsureRuntime(store, m); err != nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 	after, err := readRuntimeEnv(files.Env)
@@ -307,7 +328,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("cache", "dev", false, true, false)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +347,7 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +363,7 @@ func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 func TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("secret-only", "dev", false, false, true)
-	if _, err := EnsureRuntime(store, m); err == nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err == nil {
 		t.Fatal("expected secrets-only runtime to fail closed")
 	}
 }

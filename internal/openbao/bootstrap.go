@@ -342,8 +342,10 @@ func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files
 
 func configureManager(ctx context.Context, executor Executor, files bhruntime.Files, rootToken string) error {
 	commands := []string{
-		`exec bao secrets enable -path=baseharbor -version=2 kv`,
-		`exec bao auth enable approle`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor/"'; then bao secrets enable -path=baseharbor -version=2 kv >/dev/null; fi`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor-pki/"'; then bao secrets enable -path=baseharbor-pki pki >/dev/null; fi`,
+		`bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null`,
+		`if ! bao auth list -format=json | grep -q '"approle/"'; then bao auth enable approle >/dev/null; fi`,
 	}
 	for _, command := range commands {
 		if _, err := execWithToken(ctx, executor, files, rootToken, command); err != nil {
@@ -357,6 +359,10 @@ cat >"$tmp"
 bao policy write baseharbor-manager "$tmp" >/dev/null`
 	if _, err := execWithTokenPayload(ctx, executor, files, rootToken, policyScript, managerPolicy); err != nil {
 		return fmt.Errorf("configure OpenBao manager policy: %w", err)
+	}
+
+	if err := configureServicePKI(ctx, executor, files, rootToken); err != nil {
+		return err
 	}
 
 	const roleCommand = `exec bao write auth/approle/role/baseharbor-manager token_policies=baseharbor-manager token_no_default_policy=true secret_id_ttl=0 secret_id_num_uses=0 token_ttl=15m token_max_ttl=1h`
@@ -494,5 +500,21 @@ path "sys/policies/acl/baseharbor-app-*" {
 
 path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
+}
+
+path "baseharbor-pki/issue/baseharbor-services" {
+  capabilities = ["create", "update"]
+}
+
+path "baseharbor-pki/cert/ca" {
+  capabilities = ["read"]
+}
+
+path "baseharbor-pki/cert/*" {
+  capabilities = ["read"]
+}
+
+path "baseharbor-pki/revoke" {
+  capabilities = ["create", "update"]
 }
 `

@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
@@ -52,10 +53,11 @@ type ProviderFiles struct {
 type Driver struct {
 	runtime Runtime
 	app     application.Manifest
+	issuer  serviceaccess.Issuer
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, app: app}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, app: app, issuer: issuer}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
@@ -88,7 +90,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ ca
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	_, err := Provision(ctx, d.runtime, d.app)
+	_, err := Provision(ctx, d.runtime, d.issuer, d.app)
 	return err
 }
 
@@ -131,7 +133,7 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	}
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, Placement, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
@@ -165,7 +167,15 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, erro
 	if err := os.WriteFile(files.Config, []byte(configYAML()), 0o644); err != nil {
 		return ProviderFiles{}, p, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(composeYAML(p)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, p, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, tempoAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, p, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(composeYAMLWithAccess(p, accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, p, err
 	}
 	return files, p, nil
@@ -188,8 +198,8 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, er
 	return files, p, nil
 }
 
-func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Placement, error) {
-	files, p, err := EnsureProviderFiles(m)
+func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) (Placement, error) {
+	files, p, err := EnsureProviderFiles(ctx, issuer, m)
 	if err != nil {
 		return Placement{}, err
 	}
@@ -203,7 +213,11 @@ func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Pl
 	if err != nil {
 		return Placement{}, err
 	}
-	if err := waitReady(ctx, endpoint); err != nil {
+	client, err := tempoHTTPClient(m, files)
+	if err != nil {
+		return Placement{}, err
+	}
+	if err := waitReady(ctx, client, endpoint); err != nil {
 		return Placement{}, err
 	}
 	class := observability.SourcePlatformProvider
@@ -301,14 +315,37 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 			if err != nil || port < 1 || port > 65535 {
 				return "", errors.New("invalid Tempo port")
 			}
-			return fmt.Sprintf("http://127.0.0.1:%d", port), nil
+			return fmt.Sprintf("https://127.0.0.1:%d", port), nil
 		}
 	}
 	return "", errors.New("Tempo port is missing")
 }
 
+func tempoAccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName:      "tempo-access",
+		Upstream:         "http://tempo:3200",
+		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
+		ContainerPort:    8443,
+		Networks:         []string{"traces"},
+		RequireClient:    true,
+	}
+}
+
+func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load Tempo service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+}
+
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {
-	files, _, err := EnsureProviderFiles(m)
+	files, _, err := ExistingProviderFiles(m)
 	if err != nil {
 		return err
 	}
@@ -316,7 +353,10 @@ func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) er
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client, err := tempoHTTPClient(m, files)
+	if err != nil {
+		return err
+	}
 	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
@@ -339,8 +379,7 @@ func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) er
 	}
 }
 
-func waitReady(ctx context.Context, endpoint string) error {
-	client := &http.Client{Timeout: 5 * time.Second}
+func waitReady(ctx context.Context, client *http.Client, endpoint string) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -383,7 +422,13 @@ usage_report:
 }
 
 func composeYAML(p Placement) string {
-	return fmt.Sprintf(`services:
+	access := serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile", Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"}}
+	return composeYAMLWithAccess(p, access)
+}
+
+func composeYAMLWithAccess(p Placement, access serviceaccess.HTTPGatewayFiles) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`services:
   tempo:
     image: %s
     restart: unless-stopped
@@ -408,5 +453,10 @@ networks:
 volumes:
   tempo-data:
     name: %q
-`, ProviderImage, p.Network, p.Volume)
+`, ProviderImage, p.Network, p.Volume))
+	text := b.String()
+	text = strings.Replace(text, "    ports:\n      - \"127.0.0.1:$"+"{BASEHARBOR_TEMPO_PORT}:3200\"\n", "", 1)
+	insert := serviceaccess.HTTPGatewayComposeService(access, tempoAccessSpec())
+	text = strings.Replace(text, "networks:\n  traces:\n", insert+"networks:\n  traces:\n", 1)
+	return text
 }

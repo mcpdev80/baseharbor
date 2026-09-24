@@ -321,7 +321,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return nil
+		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -337,7 +337,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if !initialized {
-			return nil
+			return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 		}
 	}
 	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {

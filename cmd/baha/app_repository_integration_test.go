@@ -21,6 +21,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if _, err := bhruntime.DetectCompose(ctx); err != nil {
 		t.Skipf("compose runtime unavailable: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()

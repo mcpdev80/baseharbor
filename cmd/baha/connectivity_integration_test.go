@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
@@ -33,7 +34,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 
 	targetStore := application.Store{Root: filepath.Join(t.TempDir(), "apps")}
 	target := application.New("connect-target-ci", "dev", true, false, false)
-	targetFiles, err := application.EnsureRuntime(targetStore, target)
+	targetFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), targetStore, target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +66,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceStore := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps")}
-	sourceFiles, err := application.EnsureRuntime(sourceStore, source)
+	sourceFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), sourceStore, source)
 	if err != nil {
 		t.Fatal(err)
 	}

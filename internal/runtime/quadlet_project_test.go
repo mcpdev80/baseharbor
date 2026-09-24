@@ -21,6 +21,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     user: "postgres"
     read_only: true
     cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
     security_opt: ["no-new-privileges:true"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
@@ -41,6 +42,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
       start_period: 1s
   worker:
     image: docker.io/library/alpine:3.22
+    entrypoint: ["/bin/sh", "-ec"]
     command: ["sh", "-c", "sleep 60"]
     depends_on:
       - db
@@ -82,6 +84,7 @@ networks:
 		"User=postgres",
 		"ReadOnly=true",
 		"DropCapability=all",
+		"AddCapability=NET_BIND_SERVICE",
 		"NoNewPrivileges=true",
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
@@ -120,6 +123,7 @@ networks:
 	for _, want := range []string{
 		"Requires=baseharbor-demo-db.service",
 		"After=baseharbor-demo-db.service",
+		"Entrypoint=[\"/bin/sh\",\"-ec\"]",
 		"Exec=sh -c \"sleep 60\"",
 	} {
 		if !strings.Contains(worker, want) {

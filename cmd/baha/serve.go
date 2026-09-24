@@ -49,6 +49,7 @@ func runtimeExecutorConfigFromEnv() runtimeexecutor.Config {
 		TLSKeyFile:       os.Getenv("BASEHARBOR_EXECUTOR_TLS_KEY_FILE"),
 		TLSClientCAFile:  os.Getenv("BASEHARBOR_EXECUTOR_TLS_CLIENT_CA_FILE"),
 		S3Endpoint:       os.Getenv("BASEHARBOR_EXECUTOR_S3_ENDPOINT"),
+		S3CAFile:         os.Getenv("BASEHARBOR_EXECUTOR_S3_CA_FILE"),
 		AdminCredentials: os.Getenv("BASEHARBOR_EXECUTOR_S3_ADMIN_CREDENTIALS_FILE"),
 		StateDir:         os.Getenv("BASEHARBOR_EXECUTOR_STATE_DIR"),
 	}

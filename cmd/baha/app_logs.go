@@ -9,10 +9,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type managedLogsExecution struct {
 	execution *capability.Execution
+	issuer    serviceaccess.Issuer
 	driver    *logsprovider.Driver
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
@@ -21,7 +23,7 @@ type managedLogsExecution struct {
 	enabled   bool
 }
 
-func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedLogsExecution, error) {
+func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
 	if !resolved.FromRepository {
 		return nil, nil
 	}
@@ -36,6 +38,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	}
 	prepared := &managedLogsExecution{
 		runtime:  compose,
+		issuer:   issuer,
 		manifest: resolved.Manifest,
 		services: services,
 		enabled:  policy.Enabled && policy.Collect[application.LogsSourceApplication],
@@ -50,7 +53,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	if placement.Scope == capability.ScopeExternal {
 		return nil, fmt.Errorf("external Loki placement is selected but no external Compose log collector adapter is configured")
 	}
-	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest)
+	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest, issuer)
 	requests := make([]capability.Request, 0, len(services))
 	resources := make([]capability.Resource, 0, len(services))
 	for _, service := range services {
@@ -91,7 +94,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 			return err
 		}
-		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.manifest); err != nil {
+		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[SKIPPED] logs             application log collection disabled by deployment policy for %s\n", prepared.manifest.Name)

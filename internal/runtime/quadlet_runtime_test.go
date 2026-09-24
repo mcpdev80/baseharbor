@@ -113,3 +113,42 @@ func TestQuadletProjectBuildUnitsSelectsOnlyChangedServices(t *testing.T) {
 		t.Fatalf("all build units = %#v", all)
 	}
 }
+
+func TestQuadletChangedServiceUnitsDetectsDefinitionAndEnvironmentChanges(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(filepath.Dir(dir)))
+	unitDir, err := quadletUserUnitDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(unitDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	project := QuadletProject{
+		Project: "baseharbor-demo",
+		Files: map[string]string{
+			"baseharbor-demo-api.container":    "[Container]\nImage=example:new\nEnvironmentFile=baseharbor-demo-api.env\n",
+			"baseharbor-demo-api.env":          "MODE=new\n",
+			"baseharbor-demo-worker.container": "[Container]\nImage=worker\n",
+		},
+	}
+	installed := map[string]string{
+		"baseharbor-demo-api.container":    "[Container]\nImage=example:old\nEnvironmentFile=baseharbor-demo-api.env\n",
+		"baseharbor-demo-api.env":          "MODE=old\n",
+		"baseharbor-demo-worker.container": "[Container]\nImage=worker\n",
+	}
+	for name, content := range installed {
+		if err := os.WriteFile(filepath.Join(unitDir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	units, err := quadletChangedServiceUnits(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(units) != 1 || units[0] != "baseharbor-demo-api.service" {
+		t.Fatalf("changed units = %#v, want api service only", units)
+	}
+}

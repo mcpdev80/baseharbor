@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
@@ -21,7 +22,7 @@ type managedTracesExecution struct {
 	resources []capability.Resource
 }
 
-func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedTracesExecution, error) {
+func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
 	m := resolved.Manifest
 	if !application.HasTraceSignal(m) {
 		return nil, nil
@@ -39,7 +40,7 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		return nil, err
 	}
 	prepared.placement = placement
-	driver := tracesprovider.NewDriver(compose, m)
+	driver := tracesprovider.NewDriver(compose, m, issuer)
 	resource := capability.Resource{
 		Application: m.Name,
 		Kind:        capability.Traces,

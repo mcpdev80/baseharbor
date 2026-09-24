@@ -73,6 +73,16 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if err != nil {
 		return Files{}, err
 	}
+	brokerKeyProjection, err := projectOwnerOnlyFile(appFiles, mtls.BrokerKey, "broker-key.pem", "runtime broker private key")
+	if err != nil {
+		return Files{}, err
+	}
+	clientKeyProjection, err := projectOwnerOnlyFile(appFiles, mtls.ClientKey, "probe-client-key.pem", "runtime probe client private key")
+	if err != nil {
+		return Files{}, err
+	}
+	mtls.BrokerKey = brokerKeyProjection
+	mtls.ClientKey = clientKeyProjection
 	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort)
 	if err != nil {
 		return Files{}, err

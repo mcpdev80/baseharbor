@@ -214,13 +214,30 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
 	if c.quadlet {
+		q, renderErr := quadletRenderProject(composeFile, envFile, project)
 		status, statusErr := c.StatusProject(ctx, project, composeFile, envFile)
 		logs, logsErr := c.LogsProject(ctx, project, composeFile, envFile)
 		var b strings.Builder
+		if renderErr != nil {
+			fmt.Fprintf(&b, "Quadlet render failed: %v\n", renderErr)
+		}
 		if statusErr != nil {
 			fmt.Fprintf(&b, "Quadlet status failed: %v\n", statusErr)
 		} else {
 			fmt.Fprintf(&b, "Quadlet status:\n%s\n", status)
+		}
+		if renderErr == nil {
+			units := make([]string, 0, len(q.ServiceUnits))
+			for _, unit := range q.ServiceUnits {
+				units = append(units, unit)
+			}
+			sort.Strings(units)
+			for _, unit := range units {
+				unitStatus, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+				if strings.TrimSpace(unitStatus) != "" {
+					fmt.Fprintf(&b, "Quadlet unit %s:\n%s\n", unit, strings.TrimSpace(unitStatus))
+				}
+			}
 		}
 		if logsErr != nil {
 			fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)

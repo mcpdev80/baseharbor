@@ -262,6 +262,12 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 					term.Section("Runtime")
 					term.Info("Swagger/OpenAPI", result.RuntimeDocsURL)
 				}
+				if result.serviceTLSErr != nil {
+					term.Section("Service TLS")
+					term.Result("FAILED", "lifecycle", result.serviceTLSErr.Error())
+				} else {
+					renderServiceTLSLifecycle(term, result.ServiceTLS)
+				}
 				if term.Verbose() && result.RuntimeArtifact != nil {
 					term.Section("Runtime artifact")
 					term.Info("reference", result.RuntimeArtifact.Reference)

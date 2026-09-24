@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
@@ -74,7 +75,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.EnsureRuntime(store, m); err != nil {
+	if _, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 
