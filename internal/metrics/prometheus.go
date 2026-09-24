@@ -22,6 +22,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -136,7 +137,7 @@ func NewDriver(runtime Runtime, app application.Manifest, runtimeCA ...string) *
 		runtime:   runtime,
 		app:       app,
 		runtimeCA: caPath,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		client:    nil,
 	}
 }
 
@@ -195,6 +196,11 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
+	client, err := providerHTTPClient(d.app, files)
+	if err != nil {
+		return err
+	}
+	d.client = client
 	return waitReady(ctx, d.client, endpoint)
 }
 
@@ -244,6 +250,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	files, err := ExistingProviderFiles(d.app)
 	if err != nil {
 		return err
+	}
+	if d.client == nil {
+		d.client, err = providerHTTPClient(d.app, files)
+		if err != nil {
+			return err
+		}
 	}
 	endpoint, err := ProviderEndpoint(files)
 	if err != nil {
@@ -497,7 +509,15 @@ func EnsureProviderFilesWithRuntimeCA(m application.Manifest, runtimeCASource st
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, providerNetworks, hasRuntimeCA)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(prometheusAccessEnvironment(m, registrations), "prometheus", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, prometheusAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -838,7 +858,7 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 			if err != nil || port < 1 || port > 65535 {
 				return "", errors.New("invalid Prometheus port")
 			}
-			return "http://127.0.0.1:" + strconv.Itoa(port), nil
+			return "https://127.0.0.1:" + strconv.Itoa(port), nil
 		}
 	}
 	return "", errors.New("Prometheus port is not materialized")
@@ -862,6 +882,18 @@ func providerComposeYAML(placement Placement, registrations []sourceRegistration
 }
 
 func providerComposeYAMLWithProviderNetworks(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA bool) string {
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: "./service-access/Caddyfile",
+		Material: serviceaccess.TLSMaterial{
+			CA: "./service-access/pki/ca.pem",
+			ServerCertificate: "./service-access/pki/server-cert.pem",
+			ServerKey: "./service-access/pki/server-key.pem",
+		},
+	}
+	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, access)
+}
+
+func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA bool, access serviceaccess.HTTPGatewayFiles) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -879,8 +911,6 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	b.WriteString("    command:\n")
 	b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
 	b.WriteString("      - --storage.tsdb.path=/prometheus\n")
-	b.WriteString("    ports:\n")
-	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090\"\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
 	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
@@ -896,15 +926,20 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	b.WriteString("    tmpfs:\n      - /tmp\n")
 	b.WriteString("    cap_drop:\n      - ALL\n")
 	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
+	b.WriteString("    networks:\n")
+	b.WriteString("      - access\n")
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
-		b.WriteString("    networks:\n")
 		for i := range registrations {
 			fmt.Fprintf(&b, "      - metrics-%d\n", i)
 		}
 		for i := range providerNetworks {
 			fmt.Fprintf(&b, "      - provider-%d\n", i)
 		}
-		b.WriteString("\nnetworks:\n")
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, prometheusAccessSpec()))
+	b.WriteString("\nnetworks:\n")
+	b.WriteString("  access:\n    internal: true\n")
+	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i, registration := range registrations {
 			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
 		}
@@ -1075,7 +1110,10 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client, err := providerHTTPClient(m, files)
+	if err != nil {
+		return err
+	}
 	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	for _, source := range sources {
@@ -1105,6 +1143,52 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 		}
 	}
 	return nil
+}
+
+func prometheusAccessEnvironment(m application.Manifest, registrations []sourceRegistration) string {
+	managed := !isDevelopmentEnvironment(m.Environment)
+	for _, registration := range registrations {
+		if !isDevelopmentEnvironment(registration.Environment) {
+			managed = true
+			break
+		}
+	}
+	if managed {
+		return "prod"
+	}
+	return "dev"
+}
+
+func isDevelopmentEnvironment(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "dev", "development":
+		return true
+	default:
+		return false
+	}
+}
+
+func prometheusAccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName: "prometheus-access",
+		Upstream: "http://prometheus:9090",
+		PublishedPortEnv: "BASEHARBOR_PROMETHEUS_PORT",
+		ContainerPort: 8443,
+		Networks: []string{"access"},
+		RequireClient: true,
+	}
+}
+
+func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(m.Environment, "prometheus", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load Prometheus service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {
