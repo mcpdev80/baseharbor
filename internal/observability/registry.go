@@ -157,6 +157,7 @@ type ProviderSignalRegistration struct {
 	Scope            capability.ProviderScope
 	SharingBoundary  string
 	OwnerApplication string
+	Enabled          map[SignalKind]bool
 	Signals          map[string]ProviderSignalRuntime
 }
 
@@ -176,21 +177,30 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		if !ok {
 			return fmt.Errorf("provider %q runtime signal %q is not declared", registration.Descriptor.Provider.Kind, name)
 		}
-		if !signal.Collectable() {
-			return fmt.Errorf("provider %q runtime signal %q is not collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
+		kind, err := signalKind(signal.Kind)
+		if err != nil {
+			return err
+		}
+		if !signal.Collectable() || !registration.Enabled[kind] {
+			return fmt.Errorf("provider %q runtime signal %q is not enabled and collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
 		}
 	}
+
+	desired := make([]SignalSource, 0, len(registration.Descriptor.Observability.Signals))
 	for _, signal := range registration.Descriptor.Observability.Signals {
 		if !signal.Collectable() {
 			continue
 		}
-		runtimeSignal, ok := registration.Signals[signal.Name]
-		if !ok {
-			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
-		}
 		kind, err := signalKind(signal.Kind)
 		if err != nil {
 			return err
+		}
+		if !registration.Enabled[kind] {
+			continue
+		}
+		runtimeSignal, ok := registration.Signals[signal.Name]
+		if !ok {
+			return fmt.Errorf("provider %q enabled signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
 		}
 		source := SignalSource{
 			ID:               registration.ID,
@@ -206,11 +216,26 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 			Path:             signal.Path,
 			Security:         runtimeSignal.Security,
 		}
-		if err := UpdateSignal(source); err != nil {
-			return fmt.Errorf("register provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
+		if err := source.Validate(); err != nil {
+			return fmt.Errorf("provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
 		}
+		desired = append(desired, source)
 	}
-	return nil
+
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, existing := range sources {
+			if existing.ID != registration.ID {
+				out = append(out, existing)
+			}
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
 }
 
 func signalKind(kind capability.ObservabilitySignalKind) (SignalKind, error) {
