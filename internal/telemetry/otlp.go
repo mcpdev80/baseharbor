@@ -130,17 +130,26 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return err
 	}
 	if resource.Provider == capability.ProviderOTelCollector {
+		metricsPolicy, err := application.MetricsPolicy(d.app)
+		if err != nil {
+			return err
+		}
+		metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) &&
+			metricsPolicy.Enabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+		signals := map[string]observability.ProviderSignalRuntime{}
+		if metricsEnabled {
+			signals["collector-metrics"] = observability.ProviderSignalRuntime{
+				Network: ProviderNetwork,
+				Target:  ProviderService + ":8888",
+			}
+		}
 		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 			ID:         "opentelemetry-collector:" + ProviderProject,
 			Descriptor: capability.OTelCollectorIntegration,
 			Class:      observability.SourcePlatformProvider,
 			Scope:      capability.ScopeShared,
-			Signals: map[string]observability.ProviderSignalRuntime{
-				"collector-metrics": {
-					Network: ProviderNetwork,
-					Target:  ProviderService + ":8888",
-				},
-			},
+			Enabled:    map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+			Signals:    signals,
 		}); err != nil {
 			return err
 		}
