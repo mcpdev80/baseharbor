@@ -239,6 +239,7 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 		write("service-tokens.json"),
 		"baseharbor-runtime:test",
 		"",
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
