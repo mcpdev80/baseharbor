@@ -106,29 +106,12 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 	if err := refreshProviderTraceSources(prepared); err != nil {
 		return err
 	}
-	verifiedPostgreSQL := false
-	verifiedValkey := false
+	if err := application.VerifyManagedProviderInteractions(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.providerSources); err != nil {
+		return err
+	}
 	for _, source := range prepared.providerSources {
-		if source.Protocol != "interaction" {
-			return fmt.Errorf("provider trace source %s uses unsupported verification protocol %q", source.ID, source.Protocol)
-		}
-		switch source.Provider {
-		case capability.ProviderPostgreSQL:
-			if !verifiedPostgreSQL {
-				if err := application.VerifyPostgresRuntime(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles); err != nil {
-					return fmt.Errorf("verify PostgreSQL interaction before trace export: %w", err)
-				}
-				verifiedPostgreSQL = true
-			}
-		case capability.ProviderValkey:
-			if !verifiedValkey {
-				if err := application.VerifyValkeyRuntime(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles); err != nil {
-					return fmt.Errorf("verify Valkey interaction before trace export: %w", err)
-				}
-				verifiedValkey = true
-			}
-		default:
-			return fmt.Errorf("provider trace source %s has no interaction verification adapter", source.ID)
+		if source.Mode != capability.ObservabilityInteraction || source.Verification != capability.ObservabilityVerifySpan {
+			return fmt.Errorf("provider trace source %s has unsupported realization %q/%q", source.ID, source.Mode, source.Verification)
 		}
 		traceID, err := telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
 		if err != nil {
