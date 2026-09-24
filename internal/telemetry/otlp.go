@@ -20,6 +20,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -60,7 +61,7 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 		app:              app,
 		files:            files,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
-		client:           &http.Client{Timeout: 10 * time.Second},
+		client:           nil,
 	}
 }
 
@@ -91,8 +92,8 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 			return errors.New("external OTLP provider requires BASEHARBOR_OTLP_ENDPOINT")
 		}
 		u, err := url.Parse(d.externalEndpoint)
-		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-			return errors.New("external OTLP endpoint must be an absolute http or https URL")
+		if err != nil || u.Host == "" || u.Scheme != "https" {
+			return errors.New("external OTLP endpoint must be an absolute https URL")
 		}
 		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return errors.New("external OTLP endpoint must not contain credentials, query parameters or fragments; use BASEHARBOR_OTLP_HEADERS for authorization")
@@ -105,7 +106,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
 	}
-	files, err := EnsureProviderFilesWithTraceBackend(d.traceEndpoint, d.traceNetwork)
+	files, err := EnsureProviderFilesWithTraceBackendForEnvironment(d.traceEndpoint, d.traceNetwork, d.app.Environment)
 	if err != nil {
 		return err
 	}
@@ -116,6 +117,10 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return fmt.Errorf("start OpenTelemetry Collector: %w", err)
 	}
 	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return err
+	}
+	d.client, err = managedOTLPHTTPClient(d.app.Environment, files)
 	if err != nil {
 		return err
 	}
@@ -150,7 +155,18 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
-	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "http://otel-collector:4318")
+	policy, err := serviceaccess.Resolve(d.app.Environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return fmt.Errorf("load managed OTLP TLS material: %w", err)
+	}
+	if err := application.MaterializeOTLPTLSBinding(d.app, d.files, material.CA, material.ClientCertificate, material.ClientKey); err != nil {
+		return err
+	}
+	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://otel-collector-access:8443")
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
@@ -175,7 +191,6 @@ func VerifyApplication(ctx context.Context, m application.Manifest, files applic
 		app:              m,
 		files:            files,
 		externalEndpoint: values["OTLP_HOST_ENDPOINT"],
-		client:           &http.Client{Timeout: 10 * time.Second},
 	}
 	resource := capability.Resource{
 		Application: m.Name,
@@ -197,6 +212,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 		if err != nil {
 			return err
 		}
+		d.client, err = managedOTLPHTTPClient(d.app.Environment, files)
+		if err != nil {
+			return err
+		}
+	} else if d.client == nil {
+		d.client = &http.Client{Timeout: 10 * time.Second}
 	}
 	payload := probeTracePayload(d.app)
 	target := strings.TrimRight(endpoint, "/") + "/v1/traces"
@@ -223,10 +244,14 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func EnsureProviderFiles() (ProviderFiles, error) {
-	return EnsureProviderFilesWithTraceBackend("", "")
+	return EnsureProviderFilesWithTraceBackendForEnvironment("", "", "dev")
 }
 
 func EnsureProviderFilesWithTraceBackend(traceEndpoint, traceNetwork string) (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackendForEnvironment(traceEndpoint, traceNetwork, "dev")
+}
+
+func EnsureProviderFilesWithTraceBackendForEnvironment(traceEndpoint, traceNetwork, environment string) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
@@ -270,7 +295,15 @@ func EnsureProviderFilesWithTraceBackend(traceEndpoint, traceNetwork string) (Pr
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetwork(traceNetwork)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, otlpAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork, accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -311,13 +344,19 @@ func providerComposeYAML() string {
 }
 
 func providerComposeYAMLWithTraceNetwork(traceNetwork string) string {
+	access := serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile", Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"}}
+	return providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork, access)
+}
+
+func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access serviceaccess.HTTPGatewayFiles) string {
 	var networks = "      - telemetry\n"
 	var networkDecl = ""
 	if strings.TrimSpace(traceNetwork) != "" {
 		networks += "      - traces\n"
 		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
 	}
-	return fmt.Sprintf(`services:
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
     restart: unless-stopped
@@ -328,16 +367,16 @@ func providerComposeYAMLWithTraceNetwork(traceNetwork string) string {
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
-    ports:
-      - "127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318"
     volumes:
       - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
-%s
-networks:
+%s`, networks))
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, otlpAccessSpec()))
+	b.WriteString(fmt.Sprintf(`networks:
   telemetry:
     name: baseharbor-telemetry
-%s`, networks, networkDecl)
+%s`, networkDecl))
+	return b.String()
 }
 
 func collectorConfig() string {
@@ -397,10 +436,33 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 			if err != nil || port < 1 || port > 65535 {
 				return "", errors.New("invalid OpenTelemetry Collector port")
 			}
-			return "http://127.0.0.1:" + strconv.Itoa(port), nil
+			return "https://127.0.0.1:" + strconv.Itoa(port), nil
 		}
 	}
 	return "", errors.New("OpenTelemetry Collector port is not materialized")
+}
+
+func otlpAccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName: "otel-collector-access",
+		Upstream: "http://otel-collector:4318",
+		PublishedPortEnv: "BASEHARBOR_OTLP_PORT",
+		ContainerPort: 8443,
+		Networks: []string{"telemetry"},
+		RequireClient: true,
+	}
+}
+
+func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
 }
 
 func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
