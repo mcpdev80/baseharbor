@@ -103,7 +103,7 @@ networks:
 	if strings.TrimSpace(pg) != "1" {
 		t.Fatalf("unexpected postgres probe result %q", pg)
 	}
-	pong, err := compose.ExecProjectFiles(ctx, workload.Project, root, "valkey-probe", composeFiles, "sh", "-ec", `valkey-cli -u ${REDIS_URL} ping`)
+	pong, err := compose.ExecProjectFiles(ctx, workload.Project, root, "valkey-probe", composeFiles, "sh", "-ec", `valkey-cli -u "$REDIS_URL" --cacert "$REDIS_CA_FILE" ping`)
 	if err != nil {
 		t.Fatalf("valkey from workload container: %v", err)
 	}
