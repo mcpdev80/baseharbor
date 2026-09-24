@@ -190,12 +190,8 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		if !ok {
 			return fmt.Errorf("provider %q runtime signal %q is not declared", registration.Descriptor.Provider.Kind, name)
 		}
-		kind, err := signalKind(signal.Kind)
-		if err != nil {
-			return err
-		}
-		if !signal.Collectable() || !registration.Enabled[kind] {
-			return fmt.Errorf("provider %q runtime signal %q is not enabled and collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
+		if !signal.Collectable() {
+			return fmt.Errorf("provider %q runtime signal %q is not collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
 		}
 	}
 
@@ -204,16 +200,13 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		if !signal.Collectable() {
 			continue
 		}
+		runtimeSignal, ok := registration.Signals[signal.Name]
+		if !ok {
+			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
+		}
 		kind, err := signalKind(signal.Kind)
 		if err != nil {
 			return err
-		}
-		if !registration.Enabled[kind] {
-			continue
-		}
-		runtimeSignal, ok := registration.Signals[signal.Name]
-		if !ok {
-			return fmt.Errorf("provider %q enabled signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
 		}
 		source := SignalSource{
 			ID:               registration.ID,
@@ -230,7 +223,7 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 			Security:         runtimeSignal.Security,
 		}
 		if err := source.Validate(); err != nil {
-			return fmt.Errorf("provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
+			return fmt.Errorf("register provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
 		}
 		desired = append(desired, source)
 	}
@@ -242,9 +235,10 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
 		out := sources[:0]
 		for _, existing := range sources {
-			if existing.ID != registration.ID {
-				out = append(out, existing)
+			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind {
+				continue
 			}
+			out = append(out, existing)
 		}
 		out = append(out, desired...)
 		return out, nil
