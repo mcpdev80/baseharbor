@@ -111,13 +111,14 @@ type runtimeDiagnostics interface {
 }
 
 type ProviderFiles struct {
-	Dir           string
-	Compose       string
-	Env           string
-	Config        string
-	TargetsDir    string
-	Registrations string
-	RuntimeCA     string
+	Dir                 string
+	Compose             string
+	Env                 string
+	Config              string
+	TargetsDir          string
+	ProviderSecurityDir string
+	Registrations       string
+	RuntimeCA           string
 }
 
 type sourceRegistration struct {
@@ -369,9 +370,17 @@ func DesiredTargetFiles(m application.Manifest) map[string]struct{} {
 	return result
 }
 
-func providerTargetFileName(id string) string {
+func providerSourceToken(id string) string {
 	sum := sha256.Sum256([]byte(id))
-	return fmt.Sprintf("provider--%x.json", sum[:10])
+	return fmt.Sprintf("%x", sum[:10])
+}
+
+func providerTargetFileName(source observability.MetricsSource) string {
+	prefix := "provider--"
+	if source.Security.TLSRequired {
+		prefix = "provider-secure--"
+	}
+	return prefix + providerSourceToken(source.ID) + ".json"
 }
 
 func syncProviderTargets(dir string, sources []observability.MetricsSource) error {
@@ -402,11 +411,81 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 			return err
 		}
 		data = append(data, '\n')
-		if err := os.WriteFile(filepath.Join(dir, providerTargetFileName(source.ID)), data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, providerTargetFileName(source)), data, 0o644); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+
+func syncProviderSecurity(dir string, sources []observability.MetricsSource) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	secure := false
+	for _, source := range sources {
+		if source.Security.TLSRequired {
+			secure = true
+			break
+		}
+	}
+	if !secure {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create provider metrics security directory: %w", err)
+	}
+	for _, source := range sources {
+		if !source.Security.TLSRequired {
+			continue
+		}
+		token := providerSourceToken(source.ID)
+		files := []struct {
+			label  string
+			source string
+			target string
+		}{
+			{label: "CA", source: source.Security.TrustFile, target: token + "-ca.pem"},
+		}
+		if source.Security.ClientCertificate != "" {
+			files = append(files,
+				struct {
+					label  string
+					source string
+					target string
+				}{label: "client certificate", source: source.Security.ClientCertificate, target: token + "-client.pem"},
+				struct {
+					label  string
+					source string
+					target string
+				}{label: "client key", source: source.Security.ClientKey, target: token + "-client-key.pem"},
+			)
+		}
+		for _, file := range files {
+			data, err := os.ReadFile(file.source)
+			if err != nil {
+				return fmt.Errorf("read provider metrics %s for %s: %w", file.label, source.ID, err)
+			}
+			if len(data) == 0 {
+				return fmt.Errorf("provider metrics %s for %s is empty", file.label, source.ID)
+			}
+			path := filepath.Join(dir, file.target)
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				return fmt.Errorf("project provider metrics %s for %s: %w", file.label, source.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+func hasSecureProviderMetrics(sources []observability.MetricsSource) bool {
+	for _, source := range sources {
+		if source.Security.TLSRequired {
+			return true
+		}
+	}
+	return false
 }
 
 func providerMetricNetworks(sources []observability.MetricsSource) []string {
@@ -447,6 +526,7 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
+		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations: filepath.Join(dir, "registrations.json"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
@@ -483,6 +563,9 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 		return ProviderFiles{}, err
 	}
 	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := syncProviderSecurity(files.ProviderSecurityDir, providerSources); err != nil {
 		return ProviderFiles{}, err
 	}
 	providerNetworks := providerMetricNetworks(providerSources)
@@ -525,7 +608,7 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_PROMETHEUS_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA)), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA, providerSources)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.Config, 0o644); err != nil {
@@ -539,7 +622,7 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -616,6 +699,9 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
 		return err
 	}
+	if err := syncProviderSecurity(files.ProviderSecurityDir, providerSources); err != nil {
+		return err
+	}
 	providerNetworks := providerMetricNetworks(providerSources)
 
 	_, caErr := os.Stat(files.RuntimeCA)
@@ -623,7 +709,7 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
 		return caErr
 	}
-	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA)), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA, providerSources)), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.Config, 0o644); err != nil {
@@ -638,7 +724,7 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
@@ -762,8 +848,9 @@ func providerFilesAt(dir string) (ProviderFiles, error) {
 		Compose:       filepath.Join(dir, "compose.yaml"),
 		Env:           filepath.Join(dir, "runtime.env"),
 		Config:        filepath.Join(dir, "prometheus.yml"),
-		TargetsDir:    filepath.Join(dir, "targets"),
-		Registrations: filepath.Join(dir, "registrations.json"),
+		TargetsDir:          filepath.Join(dir, "targets"),
+		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
+		Registrations:       filepath.Join(dir, "registrations.json"),
 		RuntimeCA:     filepath.Join(dir, "baseharbor-runtime-ca.pem"),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
@@ -807,6 +894,7 @@ func ExistingSharedProviderFiles() (ProviderFiles, error) {
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
+		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
 	for _, path := range []string{files.Compose, files.Env, files.Config, files.TargetsDir} {
@@ -948,10 +1036,10 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 			ServerKey:         "./service-access/runtime/server-key.pem",
 		},
 	}
-	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, access)
+	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, false, access)
 }
 
-func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA bool, access serviceaccess.HTTPGatewayFiles) string {
+func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, access serviceaccess.HTTPGatewayFiles) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -969,11 +1057,15 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("    command:\n")
 	b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
 	b.WriteString("      - --storage.tsdb.path=/prometheus\n")
+	b.WriteString("      - --web.enable-lifecycle\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
 	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
 	if hasRuntimeCA {
 		b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
+	}
+	if hasProviderSecurity {
+		b.WriteString("      - ./provider-security:/etc/prometheus/provider-security:ro\n")
 	}
 	b.WriteString("      - prometheus-data:/prometheus\n")
 	for i, registration := range registrations {
@@ -1019,7 +1111,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	return b.String()
 }
 
-func prometheusConfig(registrations []sourceRegistration, hasRuntimeCA bool) string {
+func prometheusConfig(registrations []sourceRegistration, hasRuntimeCA bool, providerSources ...[]observability.MetricsSource) string {
 	var b strings.Builder
 	b.WriteString(`global:
   scrape_interval: 5s
