@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 var appApplySecretInput io.Reader = os.Stdin
@@ -57,6 +58,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			var compose bhruntime.Compose
 			var platformFiles bhruntime.Files
+			var issuer serviceaccess.Issuer
 			providers := &managedProviderPreflightState{}
 			var workloadSecurity application.WorkloadSecurityReport
 			checks := []preflight.Check{
@@ -77,6 +79,25 @@ func appApplyCommand(store application.Store) *cli.Command {
 					compose, err = detectComposeForApplication(ctx, resolved, required...)
 					return err
 				}},
+				{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
+					var err error
+					platformFiles, err = bhruntime.ExistingFiles("")
+					if err != nil {
+						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+					}
+					return nil
+				}},
+				{Name: "managed service PKI", Run: func(ctx context.Context) error {
+					issuer = openbao.NewServiceIssuer(compose, platformFiles)
+					status, err := issuer.Status(ctx)
+					if err != nil {
+						return fmt.Errorf("managed service PKI is not ready: %w", err)
+					}
+					if !status.Ready {
+						return errors.New("managed service PKI is not ready")
+					}
+					return nil
+				}},
 				{Name: "workload security", Run: func(ctx context.Context) error {
 					var err error
 					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
@@ -90,23 +111,15 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return application.CheckReferenceProviderRegistry(m)
 				}},
 			}
-			checks = appendManagedProviderPreflights(checks, &compose, resolved, providers)
 			if application.RequiresRuntimeBroker(m) {
 				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 				checks = append(checks,
-					preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
-						var err error
-						platformFiles, err = bhruntime.ExistingFiles("")
-						return err
-					}},
 					preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
-						if platformFiles.Compose == "" {
-							return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
-						}
 						return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
 					}},
 				)
 			}
+			checks = appendManagedProviderPreflights(checks, &compose, resolved, providers, &issuer)
 			var results []preflight.Result
 			var ok bool
 			if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
@@ -122,11 +135,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 			if !ok {
 				return errors.New("application preflight failed")
 			}
-			if err := prepareUndeclaredProviderCleanup(ctx, compose, resolved, providers); err != nil {
+			if err := prepareUndeclaredProviderCleanup(ctx, compose, resolved, providers, issuer); err != nil {
 				return fmt.Errorf("prepare obsolete provider cleanup: %w", err)
 			}
 
-			files, err := application.EnsureRuntime(resolved.Store, m)
+			files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, m)
 			if err != nil {
 				return err
 			}
