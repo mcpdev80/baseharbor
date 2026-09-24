@@ -70,7 +70,7 @@ func appBackupCommandWithMetadata(store application.Store) *cli.Command {
 			Environment:       resolved.Manifest.Environment,
 			CreatedAt:         payload.Manifest.CreatedAt,
 			ArchivePath:       absolutePath,
-			PostgresResources: application.PostgresInstanceNames(resolved.Manifest),
+			PostgresResources: application.SQLInstanceNames(resolved.Manifest),
 			IncludesSecrets:   includesSecrets,
 		}
 		if err := resolved.Store.RecordLastBackup(metadata); err != nil {

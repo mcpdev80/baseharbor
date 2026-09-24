@@ -124,7 +124,7 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 
 func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
 	m := New("demo", "production", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
@@ -154,7 +154,7 @@ func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T)
 func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("runtime-metrics", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithRuntimePermission(m, string(capability.MetricsV1.ID), []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
@@ -183,7 +183,7 @@ func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) 
 	t.Setenv(MetricsEnabledEnv, "true")
 
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 

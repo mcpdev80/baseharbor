@@ -19,7 +19,7 @@ type PostgresBackup struct {
 }
 
 func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles) ([]PostgresBackup, error) {
-	instances := PostgresInstanceNames(m)
+	instances := SQLInstanceNames(m)
 	backups := make([]PostgresBackup, 0, len(instances))
 	for _, instance := range instances {
 		service := runtimeServiceName("postgres", instance)
@@ -58,7 +58,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 	for _, backup := range backups {
 		byInstance[backup.Instance] = backup.SQL
 	}
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		database := postgresDatabaseName(m, instance)
 		if _, err := runtime.ExecProjectInput(
@@ -97,7 +97,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 }
 
 func ValidatePostgresBackupSet(m Manifest, backups []PostgresBackup) error {
-	expected := PostgresInstanceNames(m)
+	expected := SQLInstanceNames(m)
 	if len(backups) != len(expected) {
 		return fmt.Errorf("postgres backup instance count mismatch: got %d, want %d", len(backups), len(expected))
 	}

@@ -52,7 +52,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	apps := []string{"metrics-alpha", "metrics-beta"}
 	for _, name := range apps {
 		m := application.New(name, "dev", false, false, false)
-		m.Services.Postgres = false
+		m.Services.SQL = false
 		m = application.WithWorkload(m, "compose.yaml", "api")
 		m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 

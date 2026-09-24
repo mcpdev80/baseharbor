@@ -12,8 +12,8 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
 		"mailflow",
 		"--environment", "production",
-		"--postgres",
-		"--redis",
+		"--sql",
+		"--cache",
 		"--require-secret", "OPENAI_API_KEY",
 		"--require-secret=SMTP_PASSWORD",
 	})
@@ -34,10 +34,10 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
 	_, _, postgres, redis, objectStorage, _, postgresInstances, redisInstances, objectStorageBuckets, _, err := parseCreateArgs([]string{
 		"mailflow",
-		"--postgres-instance", "primary",
-		"--postgres-instance=analytics",
-		"--redis-instance", "cache",
-		"--redis-instance=sessions",
+		"--sql-instance", "primary",
+		"--sql-instance=analytics",
+		"--cache-instance", "cache",
+		"--cache-instance=sessions",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestManifestFromCreateArgsAllowsS3OnlyWithoutImplicitPostgres(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(application.PostgresInstanceNames(m)) != 0 {
+	if len(application.SQLInstanceNames(m)) != 0 {
 		t.Fatalf("S3-only manifest unexpectedly includes PostgreSQL: %#v", m)
 	}
 	if !reflect.DeepEqual(application.ObjectStorageBucketNames(m), []string{"uploads"}) {

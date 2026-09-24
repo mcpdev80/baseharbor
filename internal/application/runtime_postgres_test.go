@@ -196,8 +196,8 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
-	m = WithPostgresInstances(m, "primary", "analytics")
-	m = WithRedisInstances(m, "cache", "sessions")
+	m = WithSQLInstances(m, "primary", "analytics")
+	m = WithCacheInstances(m, "cache", "sessions")
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +276,7 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
-	m = WithPostgresInstances(m, "primary")
+	m = WithSQLInstances(m, "primary")
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	password := before["POSTGRES_PRIMARY_PASSWORD"]
 	port := before["POSTGRES_PRIMARY_HOST_PORT"]
 
-	m = WithPostgresInstances(m, "analytics")
+	m = WithSQLInstances(m, "analytics")
 	if _, err := EnsureRuntime(store, m); err != nil {
 		t.Fatal(err)
 	}

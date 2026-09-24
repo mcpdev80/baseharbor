@@ -13,9 +13,9 @@ func TestResolveCapabilityResourcesUsesReferenceProviders(t *testing.T) {
 		Name:        "mailflow",
 		Environment: "dev",
 		Services: Services{
-			Postgres: true,
-			Redis:    true,
-			Secrets:  true,
+			SQL:     true,
+			Cache:   true,
+			Secrets: true,
 		},
 	}
 	contract, err := PortableContractFromManifest(m)
@@ -41,7 +41,7 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "mailflow",
 		Environment: "production",
-		Services:    Services{Postgres: true},
+		Services:    Services{SQL: true},
 	}
 	bindings, err := CapabilityBindings(m)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 
 func TestCapabilityBindingsUseLogicalServiceForHTTPExposure(t *testing.T) {
 	m := New("frontend", "production", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 
@@ -157,7 +157,7 @@ func TestCapabilityBindingsAttachSecureMetadataToManagedSecrets(t *testing.T) {
 func TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "false")
 	m := New("demo", "production", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 

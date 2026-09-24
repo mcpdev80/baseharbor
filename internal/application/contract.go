@@ -59,10 +59,10 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		Metrics:   append([]MetricsSourceRequirement(nil), m.Metrics.Sources...),
 		Logs:      append([]string(nil), m.Logs.Collect...),
 	}
-	for _, name := range PostgresInstanceNames(m) {
+	for _, name := range SQLInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
 	}
-	for _, name := range RedisInstanceNames(m) {
+	for _, name := range CacheInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityKeyValue, Name: name})
 	}
 	for _, name := range ObjectStorageBucketNames(m) {

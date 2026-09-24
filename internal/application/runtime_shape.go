@@ -4,7 +4,7 @@ package application
 // PostgreSQL or Valkey runtime for the application. Shared object storage uses
 // its own lazy provider runtime and is intentionally not part of this project.
 func HasManagedRuntimeServices(m Manifest) bool {
-	return len(PostgresInstanceNames(m)) > 0 || len(RedisInstanceNames(m)) > 0
+	return len(SQLInstanceNames(m)) > 0 || len(CacheInstanceNames(m)) > 0
 }
 
 // HasObjectStorage reports whether the application explicitly requests at least

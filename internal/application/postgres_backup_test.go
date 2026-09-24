@@ -48,7 +48,7 @@ func (f *fakePostgresBackupRuntime) ExecProjectInput(_ context.Context, _, _, _ 
 }
 
 func TestDumpPostgresInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
-	m := WithPostgresInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
+	m := WithSQLInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
 	runtime := &fakePostgresBackupRuntime{dumps: map[string]string{
 		"postgres-analytics": "-- analytics dump\nCREATE TABLE analytics_probe(id integer);\n",
 		"postgres-primary":   "-- primary dump\nCREATE TABLE primary_probe(id integer);\n",
@@ -83,7 +83,7 @@ func TestDumpPostgresInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
 }
 
 func TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) {
-	m := WithPostgresInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
+	m := WithSQLInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
 	runtime := &fakePostgresBackupRuntime{verifyResult: map[string]string{
 		"postgres-analytics": "1\n",
 		"postgres-primary":   "1\n",
@@ -120,7 +120,7 @@ func TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) 
 }
 
 func TestValidatePostgresBackupSetFailsClosed(t *testing.T) {
-	m := WithPostgresInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
+	m := WithSQLInstances(New("mailflow", "dev", true, false, false), "analytics", "primary")
 	tests := []struct {
 		name    string
 		backups []PostgresBackup

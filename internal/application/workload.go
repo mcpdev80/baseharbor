@@ -200,10 +200,10 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 	}
 
 	shadowed := map[string]struct{}{}
-	if len(PostgresInstanceNames(m)) > 0 {
+	if len(SQLInstanceNames(m)) > 0 {
 		shadowed["postgres"] = struct{}{}
 	}
-	if len(RedisInstanceNames(m)) > 0 {
+	if len(CacheInstanceNames(m)) > 0 {
 		shadowed["redis"] = struct{}{}
 		shadowed["valkey"] = struct{}{}
 	}
@@ -372,7 +372,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 
 func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[string]string, error) {
 	env := map[string]string{}
-	postgres := PostgresInstanceNames(m)
+	postgres := SQLInstanceNames(m)
 	preferredPostgres := preferredServiceInstance(postgres)
 	for _, instance := range postgres {
 		uri, err := postgresContainerConnectionURL(values, instance)
@@ -439,7 +439,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 	}
 
-	redis := RedisInstanceNames(m)
+	redis := CacheInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redis)
 	for _, instance := range redis {
 		uri, err := valkeyContainerConnectionURL(values, instance)

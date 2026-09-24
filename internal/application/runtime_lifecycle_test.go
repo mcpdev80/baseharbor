@@ -45,8 +45,8 @@ func TestApplicationBackendNetworkNameIsStableAndIsolated(t *testing.T) {
 
 func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
 	m := New("mailflow", "prod", false, false, false)
-	m = WithPostgresInstances(m, "primary", "analytics")
-	m = WithRedisInstances(m, "cache", "sessions")
+	m = WithSQLInstances(m, "primary", "analytics")
+	m = WithCacheInstances(m, "cache", "sessions")
 	resources := ExpectedRuntimeResources(m)
 	want := map[string]bool{
 		"baseharbor-mailflow-prod-postgres-primary-1":      false,

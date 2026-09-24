@@ -90,7 +90,7 @@ func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 }
 
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", postgresDatabaseName(m, instance), "-tAc", "SELECT 1")
 		if err != nil {
@@ -104,7 +104,7 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 }
 
 func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping`)
 		if err != nil {
@@ -126,17 +126,17 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		writePostgresComposeService(&b, instance)
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		writeValkeyComposeService(&b, instance)
 	}
 	b.WriteString("\nvolumes:\n")
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("postgres", instance))
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
 	}
 	return b.String(), nil
@@ -253,7 +253,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 		excluded[port] = struct{}{}
 	}
 
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		dbKey := postgresRuntimeKey(instance, "DB")
 		userKey := postgresRuntimeKey(instance, "USER")
 		passwordKey := postgresRuntimeKey(instance, "PASSWORD")
@@ -280,7 +280,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if values[passwordKey] == "" {
@@ -329,13 +329,13 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
 			key := postgresRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
@@ -372,7 +372,7 @@ func validateRuntimeEnv(path string, m Manifest) error {
 }
 
 func validateRuntimeValues(values map[string]string, m Manifest) error {
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
 			key := postgresRuntimeKey(instance, suffix)
 			if values[key] == "" {
@@ -384,7 +384,7 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			if values[key] == "" {

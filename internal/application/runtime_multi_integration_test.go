@@ -27,8 +27,8 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
-	m = WithPostgresInstances(m, "primary", "analytics")
-	m = WithRedisInstances(m, "cache", "sessions")
+	m = WithSQLInstances(m, "primary", "analytics")
+	m = WithCacheInstances(m, "cache", "sessions")
 	files, err := EnsureRuntime(store, m)
 	if err != nil {
 		t.Fatal(err)

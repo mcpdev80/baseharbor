@@ -33,7 +33,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {

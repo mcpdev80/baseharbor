@@ -60,7 +60,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
 	manifest := filepath.Join(dir, ".baseharbor", "apps", "demo", "baseharbor.yaml")
@@ -72,7 +72,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "postgres,redis") {
+	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "cache,sql") {
 		t.Fatalf("unexpected list: %s", out.String())
 	}
 

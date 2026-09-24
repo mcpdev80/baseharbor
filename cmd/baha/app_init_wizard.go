@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
@@ -27,12 +28,12 @@ type appProjectDetection struct {
 	WorkloadServices       []string
 	InfrastructureServices []string
 	AmbiguousServices      []string
-	Postgres               bool
-	PostgresSource         string
-	PostgresInstances      []string
-	Redis                  bool
-	RedisSource            string
-	RedisInstances         []string
+	SQL                    bool
+	SQLSource              string
+	SQLInstances           []string
+	Cache                  bool
+	CacheSource            string
+	CacheInstances         []string
 	ObjectStorage          bool
 	ObjectStorageSuggested bool
 	ObjectStorageSource    string
@@ -72,7 +73,7 @@ func appGuidedInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Detect the current project and create baseharbor.yaml",
-		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--postgres] [--postgres-instance NAME]... [--redis] [--redis-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
 		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			quick := false
@@ -157,23 +158,23 @@ func detectAppProject(root string) (appProjectDetection, error) {
 			if !detected {
 				continue
 			}
-			d.Postgres = true
+			d.SQL = true
 			if finding.Name != "" {
-				d.PostgresInstances = append(d.PostgresInstances, finding.Name)
+				d.SQLInstances = append(d.SQLInstances, finding.Name)
 			}
-			if d.PostgresSource == "" {
-				d.PostgresSource = source
+			if d.SQLSource == "" {
+				d.SQLSource = source
 			}
 		case "cache.key-value":
 			if !detected {
 				continue
 			}
-			d.Redis = true
+			d.Cache = true
 			if finding.Name != "" {
-				d.RedisInstances = append(d.RedisInstances, finding.Name)
+				d.CacheInstances = append(d.CacheInstances, finding.Name)
 			}
-			if d.RedisSource == "" {
-				d.RedisSource = source
+			if d.CacheSource == "" {
+				d.CacheSource = source
 			}
 		case "object-storage.s3":
 			staticObjectStorageEvidence := false
@@ -218,8 +219,8 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 	}
 	d.EnvFiles = uniqueSorted(d.EnvFiles)
-	d.PostgresInstances = uniqueSorted(d.PostgresInstances)
-	d.RedisInstances = uniqueSorted(d.RedisInstances)
+	d.SQLInstances = uniqueSorted(d.SQLInstances)
+	d.CacheInstances = uniqueSorted(d.CacheInstances)
 	d.OTLPSignals = uniqueSorted(d.OTLPSignals)
 	for capabilityID, operations := range d.RuntimePermissions {
 		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
@@ -434,8 +435,8 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 
 	defaults := []bool{
-		d.Postgres,
-		d.Redis,
+		d.SQL,
+		d.Cache,
 		d.ObjectStorage,
 		len(d.SecretCandidates) > 0,
 		d.Metrics,
@@ -448,15 +449,15 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 		return err
 	}
 
-	var postgresInstances, redisInstances, objectStorageBuckets []string
+	var sqlInstances, cacheInstances, objectStorageBuckets []string
 	if selected[0] {
-		postgresInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.PostgresInstances)
+		sqlInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
 		if err != nil {
 			return err
 		}
 	}
 	if selected[1] {
-		redisInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.RedisInstances)
+		cacheInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
 		if err != nil {
 			return err
 		}
@@ -491,11 +492,11 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 
 	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
-	if len(postgresInstances) > 0 {
-		m = application.WithPostgresInstances(m, postgresInstances...)
+	if len(sqlInstances) > 0 {
+		m = application.WithSQLInstances(m, sqlInstances...)
 	}
-	if len(redisInstances) > 0 {
-		m = application.WithRedisInstances(m, redisInstances...)
+	if len(cacheInstances) > 0 {
+		m = application.WithCacheInstances(m, cacheInstances...)
 	}
 	if len(objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
@@ -563,7 +564,7 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	return writeRepositoryManifest(m, out)
 }
 
-func detectedApplicationManifest(name, environment string, postgres, redis, objectStorage, secrets, hasWorkload bool) application.Manifest {
+func detectedApplicationManifest(name, environment string, sql, cache, objectStorage, secrets, hasWorkload bool) application.Manifest {
 	if environment == "" {
 		environment = "dev"
 	}
@@ -572,8 +573,8 @@ func detectedApplicationManifest(name, environment string, postgres, redis, obje
 		Name:        name,
 		Environment: environment,
 		Services: application.Services{
-			Postgres:      postgres,
-			Redis:         redis,
+			SQL:           sql,
+			Cache:         cache,
 			ObjectStorage: objectStorage,
 			Secrets:       secrets,
 		},
@@ -587,24 +588,24 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if quick && len(d.AmbiguousServices) > 0 {
 		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
 	}
-	postgres, redis, objectStorage := d.Postgres, d.Redis, d.ObjectStorage
+	sql, cache, objectStorage := d.SQL, d.Cache, d.ObjectStorage
 	// Secret names discovered from env/example files are heuristic evidence only.
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
 	secrets := false
 	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
-	if quick && !postgres && !redis && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
+	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
 			"no unambiguous application requirements were detected",
 			"Run 'baha app init' interactively or use explicit capability flags.",
 		)
 	}
-	m := detectedApplicationManifest(d.Name, "dev", postgres, redis, objectStorage, secrets, hasWorkload)
-	if postgresNamed := quickNamedInstances(d.PostgresInstances); len(postgresNamed) > 0 {
-		m = application.WithPostgresInstances(m, postgresNamed...)
+	m := detectedApplicationManifest(d.Name, "dev", sql, cache, objectStorage, secrets, hasWorkload)
+	if sqlNamed := quickNamedInstances(d.SQLInstances); len(sqlNamed) > 0 {
+		m = application.WithSQLInstances(m, sqlNamed...)
 	}
-	if redisNamed := quickNamedInstances(d.RedisInstances); len(redisNamed) > 0 {
-		m = application.WithRedisInstances(m, redisNamed...)
+	if cacheNamed := quickNamedInstances(d.CacheInstances); len(cacheNamed) > 0 {
+		m = application.WithCacheInstances(m, cacheNamed...)
 	}
 	if !quick {
 		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
@@ -657,18 +658,18 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 	if len(d.AmbiguousServices) > 0 {
 		fmt.Fprintf(out, "? Compose services need classification: %s\n", strings.Join(d.AmbiguousServices, ", "))
 	}
-	if d.Postgres {
-		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.PostgresSource)
-		if len(d.PostgresInstances) > 1 {
-			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.PostgresInstances, ", "))
+	if d.SQL {
+		fmt.Fprintf(out, "✓ SQL Database detected (PostgreSQL-compatible evidence: %s)\n", d.SQLSource)
+		if len(d.SQLInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.SQLInstances, ", "))
 		}
 	} else {
 		fmt.Fprintln(out, "- SQL Database not detected")
 	}
-	if d.Redis {
-		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.RedisSource)
-		if len(d.RedisInstances) > 1 {
-			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.RedisInstances, ", "))
+	if d.Cache {
+		fmt.Fprintf(out, "✓ Cache detected (Redis/Valkey-compatible evidence: %s)\n", d.CacheSource)
+		if len(d.CacheInstances) > 1 {
+			fmt.Fprintf(out, "  logical instances proposed: %s\n", strings.Join(d.CacheInstances, ", "))
 		}
 	} else {
 		fmt.Fprintln(out, "- Cache not detected")
@@ -724,7 +725,11 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		"OTLP telemetry",
 		"Application logs",
 	}
-	fmt.Fprintln(out, "\nSelect application capabilities (Enter keeps detected defaults; suggested capabilities remain opt-in):")
+	if input, ok := appInitInput.(interface{ Fd() uintptr }); ok && term.IsTerminal(input.Fd()) {
+		return promptCapabilityTTY(reader, out, input.Fd(), labels, defaults, allowNone)
+	}
+
+	fmt.Fprintln(out, "\nSelect application capabilities (Enter keeps detected defaults; comma-separated numbers override):")
 	for i, label := range labels {
 		mark := " "
 		if defaults[i] {
@@ -755,6 +760,88 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		return nil, errors.New("select at least one backend capability or configure an application workload")
 	}
 	return selected, nil
+}
+
+func promptCapabilityTTY(reader *bufio.Reader, out io.Writer, fd uintptr, labels []string, defaults []bool, allowNone bool) ([]bool, error) {
+	selected := append([]bool(nil), defaults...)
+	cursor := 0
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return nil, fmt.Errorf("enable interactive capability selection: %w", err)
+	}
+	defer term.Restore(fd, oldState)
+
+	fmt.Fprintln(out, "\nSelect application capabilities")
+	fmt.Fprintln(out, "Use ↑/↓ to move, Space to toggle, Enter to confirm.")
+	fmt.Fprint(out, "\x1b[?25l")
+	defer fmt.Fprint(out, "\x1b[?25h")
+
+	renderCapabilityChoices(out, labels, selected, cursor, false)
+
+	for {
+		key, err := reader.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		switch key {
+		case 3:
+			return nil, errors.New("capability selection cancelled")
+		case '\r', '\n':
+			if !anySelected(selected) && !allowNone {
+				fmt.Fprint(out, "\a")
+				continue
+			}
+			fmt.Fprint(out, "\r\n")
+			return selected, nil
+		case ' ':
+			selected[cursor] = !selected[cursor]
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 'j':
+			cursor = (cursor + 1) % len(labels)
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 'k':
+			cursor = (cursor - 1 + len(labels)) % len(labels)
+			renderCapabilityChoices(out, labels, selected, cursor, true)
+		case 0x1b:
+			next, err := reader.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			if next != '[' {
+				continue
+			}
+			direction, err := reader.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			switch direction {
+			case 'A':
+				cursor = (cursor - 1 + len(labels)) % len(labels)
+				renderCapabilityChoices(out, labels, selected, cursor, true)
+			case 'B':
+				cursor = (cursor + 1) % len(labels)
+				renderCapabilityChoices(out, labels, selected, cursor, true)
+			}
+		}
+	}
+}
+
+func renderCapabilityChoices(out io.Writer, labels []string, selected []bool, cursor int, redraw bool) {
+	if redraw {
+		fmt.Fprintf(out, "\x1b[%dA\r\x1b[J", len(labels))
+	}
+	for i, label := range labels {
+		pointer := " "
+		if i == cursor {
+			pointer = ">"
+		}
+		mark := " "
+		if selected[i] {
+			mark = "x"
+		}
+		fmt.Fprintf(out, "%s [%s] %d. %s\r\n", pointer, mark, i+1, label)
+	}
 }
 
 func anySelected(values []bool) bool {
@@ -1045,13 +1132,13 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
-	if m.Services.Postgres || m.Services.Redis || m.Services.ObjectStorage {
+	if m.Services.SQL || m.Services.Cache || m.Services.ObjectStorage {
 		fmt.Fprintln(out, "\nManaged services")
-		if m.Services.Postgres {
-			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.Postgres))
+		if m.Services.SQL {
+			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.SQL))
 		}
-		if m.Services.Redis {
-			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Redis))
+		if m.Services.Cache {
+			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Cache))
 		}
 		if m.Services.ObjectStorage {
 			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))

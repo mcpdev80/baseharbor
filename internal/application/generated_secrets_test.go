@@ -12,9 +12,9 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: true

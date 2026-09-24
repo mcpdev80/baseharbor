@@ -19,14 +19,14 @@ func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 	}
 	project := RuntimeProjectName(m)
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkName(m)}}
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},

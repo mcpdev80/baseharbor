@@ -47,12 +47,13 @@ Jeder Release wird auf `develop` vorbereitet und erst nach erfolgreicher Release
 3. Der Changelog erhaelt einen datierten Versionsabschnitt.
 4. Unter `docs/releases/vX.Y.Z.md` werden menschenfreundliche Release Notes erstellt: Was hat sich geaendert, warum ist es wichtig, welche Kompatibilitaets-/Upgrade-Auswirkungen und Security-Aspekte gibt es und was bleibt bewusst spaeter. Eine rohe Commit-Liste oder ein generiertes Git-Log ist kein Release-Text.
 5. Wo sinnvoll wird zuerst lokal/Hugging Face validiert.
-6. Der verpflichtende GitHub-Pre-Release-Workflow wird gegen den exakten Release-Candidate-SHA auf `develop` ausgefuehrt. Fehler werden auf `develop` korrigiert und der Gate-Lauf wiederholt, bis alles gruen ist.
-7. Danach wird genau ein Release-PR `develop -> main` erstellt. Dieser PR darf keine sachfremden Aenderungen enthalten.
-8. Erst nach gruenem Pre-Release-Gate wird nach `main` gemerged.
-9. Der Tag `vX.Y.Z` wird auf dem daraus resultierenden `main`-Release-Commit erstellt und unveraenderlich gepusht.
-10. Der Release-Workflow muss erfolgreich pruefen, dass der Tag in `main` enthalten ist, den getaggten Code erneut testen und GitHub Release, Artefakte und Provenance veroeffentlichen.
-11. Erst nach Verifikation von GitHub Release, Binaries, Checksums, Provenance und passendem Runtime-Image gilt der Release als abgeschlossen. Ein gepushter Tag allein reicht nicht.
+6. Der verpflichtende GitHub-Pre-Release-Workflow wird gegen den exakten Release-Candidate-SHA auf `develop` ausgefuehrt. Dabei wird auch ein exakter `baseharbor-demo`-SHA gepinnt und die komplette externe Demo-Acceptance-Suite auf Docker und Podman validiert, inklusive des pristine Guided-Human-Flows `baha app init -> baha up -> READY`. Fehler werden auf `develop` korrigiert und der Gate-Lauf wiederholt, bis alles gruen ist.
+7. Der erfolgreiche Pre-Release erzeugt unveraenderliche Approval-/Evidence-Daten mit dem getesteten BaseHarbor-SHA und Demo-SHA.
+8. Danach wird genau ein Release-PR `develop -> main` erstellt. Dieser PR darf keine sachfremden Aenderungen enthalten.
+9. Erst nach gruenem Pre-Release-Gate wird nach `main` gemerged.
+10. Der Tag `vX.Y.Z` wird auf dem daraus resultierenden `main`-Release-Commit erstellt und unveraenderlich gepusht.
+11. Der Release-Workflow uebernimmt die erfolgreiche Pre-Release-Evidence und fuehrt die teure Source-/Runtime-/Demo-Acceptance-Suite nicht erneut aus. Er prueft nur noch release-spezifische Punkte und veroeffentlicht Runtime-Image, GitHub Release, Artefakte und Provenance.
+12. Erst nach Verifikation von GitHub Release, Binaries, Checksums, Provenance, passendem Runtime-Image und referenzierter Pre-Release-Evidence gilt der Release als abgeschlossen. Ein gepushter Tag allein reicht nicht.
 
 Veroeffentlichte Tags werden niemals verschoben. Fehlerhafte Releases werden durch einen neuen Patch-Release korrigiert.
 

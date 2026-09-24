@@ -275,9 +275,9 @@ app:
   name: mailflow
   environment: production
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: true
   secrets:
     enabled: true
@@ -330,7 +330,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 	writeTestFile(t, root, ".env.example", "REDIS_URL=\nOTEL_EXPORTER_OTLP_ENDPOINT=\n")
@@ -375,7 +375,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 
@@ -389,7 +389,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "postgres:") {
+	if !strings.Contains(string(data), "sql:") {
 		t.Fatalf("inspection removed declared capability: %s", data)
 	}
 }
@@ -453,6 +453,47 @@ const resources = "/runtime/v1/resources"
 	}
 	assertFindingConfidence(t, result, "runtime-api", ConfidenceDetected)
 	assertFindingConfidence(t, result, "logs", ConfidenceSuggested)
+}
+
+func TestInspectDetectsRuntimeObjectStorageCreateThroughRuntimeAPI(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "client.go", `package client
+
+import (
+    "bytes"
+    "net/http"
+)
+
+func createRuntimeResource() {
+    payload := []byte("{\"capability\":\"object-storage.s3/v1\",\"name\":\"uploads\"}")
+    req, _ := http.NewRequest(http.MethodPost, "https://runtime.local/runtime/v1/resources", bytes.NewReader(payload))
+    _ = req
+}
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertFindingConfidence(t, result, "runtime-api", ConfidenceDetected)
+	for _, finding := range result.Findings {
+		if finding.Capability != "object-storage.s3" {
+			continue
+		}
+		if finding.Confidence != ConfidenceDetected {
+			t.Fatalf("S3 confidence = %q", finding.Confidence)
+		}
+		if len(finding.Operations) != 1 || finding.Operations[0] != RuntimeCreate {
+			t.Fatalf("S3 runtime operations = %#v", finding.Operations)
+		}
+		return
+	}
+	t.Fatal("runtime S3 capability finding missing")
 }
 
 func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {

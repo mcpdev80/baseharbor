@@ -219,6 +219,14 @@ func (n *quadletNetworkAttachments) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
+func quadletComposeServiceEnabled(name string, service quadletComposeService, selected map[string]struct{}) bool {
+	if len(selected) > 0 {
+		_, ok := selected[name]
+		return ok
+	}
+	return len(service.Profiles) == 0
+}
+
 func RenderComposeProjectQuadlets(composePath, envFile, project string, selectedServices ...string) (QuadletProject, error) {
 	return RenderComposeProjectFilesQuadlets([]string{composePath}, envFile, project, selectedServices...)
 }
@@ -300,10 +308,8 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 
 	defaultNetworkNeeded := false
 	for name, service := range model.Services {
-		if len(selected) > 0 {
-			if _, ok := selected[name]; !ok {
-				continue
-			}
+		if !quadletComposeServiceEnabled(name, service, selected) {
+			continue
 		}
 		if len(service.Networks.Names) == 0 {
 			defaultNetworkNeeded = true
@@ -349,11 +355,9 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 	}
 
 	names := make([]string, 0, len(model.Services))
-	for name := range model.Services {
-		if len(selected) > 0 {
-			if _, ok := selected[name]; !ok {
-				continue
-			}
+	for name, service := range model.Services {
+		if !quadletComposeServiceEnabled(name, service, selected) {
+			continue
 		}
 		names = append(names, name)
 	}

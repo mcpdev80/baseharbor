@@ -65,7 +65,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 	}
 
 	alpha := application.New("alpha", "dev", false, false, false)
-	alpha.Services.Postgres = false
+	alpha.Services.SQL = false
 	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
 	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
 
@@ -148,7 +148,7 @@ func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 	t.Setenv(application.MetricsEnabledEnv, "true")
 
 	alpha := application.New("alpha", "dev", false, false, false)
-	alpha.Services.Postgres = false
+	alpha.Services.SQL = false
 	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
 	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
 

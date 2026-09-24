@@ -51,7 +51,7 @@ jobs:
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
 
-          /tmp/baha app create broker-demo --postgres --require-secret BOOTSTRAP_SECRET
+          /tmp/baha app create broker-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply broker-demo >/tmp/broker-demo-required.out 2>&1
           code=$?
@@ -74,7 +74,7 @@ jobs:
           grep -q "image id" /tmp/broker-demo-status-verbose.out
           /tmp/baha app doctor broker-demo | grep -q "^READY$"
 
-          /tmp/baha app create other-demo --postgres --require-secret BOOTSTRAP_SECRET
+          /tmp/baha app create other-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply other-demo >/tmp/other-demo-required.out 2>&1
           code=$?

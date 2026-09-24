@@ -48,7 +48,7 @@ func TestStoreSyncPreservesRuntimeState(t *testing.T) {
 	if err := os.WriteFile(marker, []byte("yes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	m = WithRedisInstances(m, "cache")
+	m = WithCacheInstances(m, "cache")
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestStoreSyncPreservesRuntimeState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(RedisInstanceNames(loaded)) != 1 {
+	if len(CacheInstanceNames(loaded)) != 1 {
 		t.Fatalf("synchronized manifest did not update: %#v", loaded)
 	}
 	info, err := os.Stat(path)

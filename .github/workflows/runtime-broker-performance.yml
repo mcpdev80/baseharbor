@@ -44,7 +44,7 @@ jobs:
           chmod 600 .baseharbor/runtime/runtime.env
           /tmp/baha up
           /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
-          /tmp/baha app create perf-demo --postgres --require-secret BOOTSTRAP_SECRET
+          /tmp/baha app create perf-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1
           code=$?

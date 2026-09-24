@@ -109,7 +109,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 			}
 
 			captureErr := func() error {
-				entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.PostgresInstanceNames(m)))
+				entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.SQLInstanceNames(m)))
 				metadata, err := applicationbackup.ApplicationManifestPayloadEntry(m)
 				if err != nil {
 					return err

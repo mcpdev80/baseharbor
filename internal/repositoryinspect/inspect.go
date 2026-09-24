@@ -80,13 +80,13 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		result.Application = loaded.Name
 		result.RequiredSecrets = append([]string(nil), application.RequiredSecretNames(loaded)...)
 		manifestEvidence := []Evidence{{Kind: EvidenceManifest, Path: application.RepositoryManifestName, Detail: "declared by BaseHarbor application contract"}}
-		if loaded.Services.Postgres {
-			for _, name := range application.PostgresInstanceNames(loaded) {
+		if loaded.Services.SQL {
+			for _, name := range application.SQLInstanceNames(loaded) {
 				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.sql", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 			}
 		}
-		if loaded.Services.Redis {
-			for _, name := range application.RedisInstanceNames(loaded) {
+		if loaded.Services.Cache {
+			for _, name := range application.CacheInstanceNames(loaded) {
 				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 			}
 		}
@@ -881,10 +881,10 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	analysis := ComposeAnalysis{}
 	for _, service := range detectComposeServices(data) {
 		if service.Postgres {
-			analysis.PostgresInstances = append(analysis.PostgresInstances, detectedLogicalInstanceName(service.Name, "postgres"))
+			analysis.SQLInstances = append(analysis.SQLInstances, detectedLogicalInstanceName(service.Name, "postgres"))
 		}
 		if service.Redis {
-			analysis.RedisInstances = append(analysis.RedisInstances, detectedLogicalInstanceName(service.Name, "redis"))
+			analysis.CacheInstances = append(analysis.CacheInstances, detectedLogicalInstanceName(service.Name, "redis"))
 		}
 		if service.ObjectStorage {
 			analysis.ObjectStorageServices = append(analysis.ObjectStorageServices, service.Name)
@@ -908,8 +908,8 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 			})
 		}
 	}
-	analysis.PostgresInstances = uniqueSorted(analysis.PostgresInstances)
-	analysis.RedisInstances = uniqueSorted(analysis.RedisInstances)
+	analysis.SQLInstances = uniqueSorted(analysis.SQLInstances)
+	analysis.CacheInstances = uniqueSorted(analysis.CacheInstances)
 	analysis.ObjectStorageServices = uniqueSorted(analysis.ObjectStorageServices)
 	analysis.InfrastructureServices = uniqueSorted(analysis.InfrastructureServices)
 	analysis.AmbiguousServices = uniqueSorted(analysis.AmbiguousServices)

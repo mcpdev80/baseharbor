@@ -57,7 +57,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	fmt.Fprintf(&env, "BASEHARBOR_ENVIRONMENT=%s\n", m.Environment)
 	fmt.Fprintf(&env, "BASEHARBOR_BINDINGS=%s\n", bindingsAbs)
 
-	postgresInstances := PostgresInstanceNames(m)
+	postgresInstances := SQLInstanceNames(m)
 	preferredPostgres := preferredServiceInstance(postgresInstances)
 	for _, instance := range postgresInstances {
 		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "postgres", instance, len(postgresInstances))
@@ -88,7 +88,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("postgres", instance, len(postgresInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
-	redisInstances := RedisInstanceNames(m)
+	redisInstances := CacheInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redisInstances)
 	for _, instance := range redisInstances {
 		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "valkey", instance, len(redisInstances))

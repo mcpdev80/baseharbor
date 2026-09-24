@@ -1,8 +1,6 @@
 package repositoryinspect
 
-import (
-	"context"
-)
+import "context"
 
 type Confidence string
 
@@ -138,8 +136,8 @@ type ComposeAnalysis struct {
 	WorkloadServices       []string       `json:"workload_services,omitempty"`
 	InfrastructureServices []string       `json:"infrastructure_services,omitempty"`
 	AmbiguousServices      []string       `json:"ambiguous_services,omitempty"`
-	PostgresInstances      []string       `json:"postgres_instances,omitempty"`
-	RedisInstances         []string       `json:"redis_instances,omitempty"`
+	SQLInstances           []string       `json:"sql_instances,omitempty"`
+	CacheInstances         []string       `json:"cache_instances,omitempty"`
 	ObjectStorageServices  []string       `json:"object_storage_services,omitempty"`
 	Ports                  []PortEvidence `json:"ports,omitempty"`
 	HealthChecks           []Evidence     `json:"health_checks,omitempty"`

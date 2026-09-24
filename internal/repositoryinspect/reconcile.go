@@ -91,10 +91,10 @@ func declaredCapabilityIntents(manifest *application.Manifest) []CapabilityInten
 		return nil
 	}
 	var intents []CapabilityIntent
-	for _, name := range application.PostgresInstanceNames(*manifest) {
+	for _, name := range application.SQLInstanceNames(*manifest) {
 		intents = append(intents, CapabilityIntent{Capability: "database.sql", Name: name, Direction: DirectionConsume})
 	}
-	for _, name := range application.RedisInstanceNames(*manifest) {
+	for _, name := range application.CacheInstanceNames(*manifest) {
 		intents = append(intents, CapabilityIntent{Capability: "cache.key-value", Name: name, Direction: DirectionConsume})
 	}
 	for _, name := range application.ObjectStorageBucketNames(*manifest) {
