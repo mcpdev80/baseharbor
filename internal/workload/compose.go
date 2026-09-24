@@ -162,7 +162,7 @@ func FromCompose(path string, selected []string) (Model, error) {
 		service := Service{
 			Name:        name,
 			Image:       strings.TrimSpace(src.Image),
-			Command:     append([]string(nil), src.Command...),
+			Args:        append([]string(nil), src.Command...),
 			Environment: cloneStringMap(src.Environment),
 		}
 		if src.Build.Set {
