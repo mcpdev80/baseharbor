@@ -170,7 +170,7 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatalf("provider runtime must grant exactly one explicit capability set to the TLS gateway, got %d:\n%s", count, compose)
 	}
 
-	for path, want := range map[string]os.FileMode{
+	if got := strings.Count(compose, "cap_add:"); got != 1 {\n\t\tt.Fatalf("provider runtime cap_add count = %d, want exactly the minimal Caddy capability:\\n%s", got, compose)\n\t}\n\n	for path, want := range map[string]os.FileMode{
 		files.Dir:           0o700,
 		files.Env:           0o600,
 		files.Compose:       0o600,
