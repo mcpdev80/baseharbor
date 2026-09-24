@@ -33,6 +33,7 @@ const (
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
 	sharedProviderReconcileTimeout = 60 * time.Second
+	providerReadinessTimeout       = 15 * time.Second
 	existingProviderProbeTimeout   = 3 * time.Second
 )
 
@@ -44,8 +45,7 @@ type Runtime interface {
 	DestroyProject(context.Context, string, string, string) error
 }
 
-type runtimeInspector interface {
-	RunningServicesProject(context.Context, string, string, string) ([]string, error)
+type runtimeDiagnostics interface {
 	DiagnosticsProject(context.Context, string, string, string) string
 }
 
@@ -81,32 +81,6 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	if err := runtime.UpProject(reconcileCtx, ProviderProject, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
-	if inspector, ok := runtime.(runtimeInspector); ok {
-		startupCtx, startupCancel := context.WithTimeout(reconcileCtx, existingProviderProbeTimeout)
-		defer startupCancel()
-		var lastServices []string
-		for {
-			services, inspectErr := inspector.RunningServicesProject(startupCtx, ProviderProject, files.Compose, files.Env)
-			if inspectErr != nil {
-				return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("inspect SeaweedFS provider startup: %w", inspectErr)
-			}
-			lastServices = services
-			if containsService(services, ProviderService) && containsService(services, "seaweedfs-access") {
-				break
-			}
-			select {
-			case <-startupCtx.Done():
-				diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				diagnostics := inspector.DiagnosticsProject(diagnosticCtx, ProviderProject, files.Compose, files.Env)
-				diagnosticCancel()
-				if strings.TrimSpace(diagnostics) != "" {
-					return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("SeaweedFS provider services are not running (running=%v): %s", lastServices, diagnostics)
-				}
-				return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("SeaweedFS provider services are not running (running=%v)", lastServices)
-			case <-time.After(250 * time.Millisecond):
-			}
-		}
-	}
 	endpoint, err := providerEndpoint(files)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
@@ -115,7 +89,17 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
-	if err := waitS3(reconcileCtx, client, endpoint); err != nil {
+	readinessCtx, readinessCancel := context.WithTimeout(reconcileCtx, providerReadinessTimeout)
+	defer readinessCancel()
+	if err := waitS3(readinessCtx, client, endpoint); err != nil {
+		if diagnostics, ok := runtime.(runtimeDiagnostics); ok {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail := diagnostics.DiagnosticsProject(diagnosticCtx, ProviderProject, files.Compose, files.Env)
+			diagnosticCancel()
+			if strings.TrimSpace(detail) != "" {
+				return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w\n%s", err, detail)
+			}
+		}
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
 	credentials, credentialPath, err := EnsureAdminCredentials(files)
@@ -370,15 +354,6 @@ func (d *Driver) bucketExists(ctx context.Context, files ProviderFiles, bucket s
 		}
 	}
 	return false, nil
-}
-
-func containsService(services []string, want string) bool {
-	for _, service := range services {
-		if strings.TrimSpace(service) == want {
-			return true
-		}
-	}
-	return false
 }
 
 func PhysicalBucketName(m application.Manifest, logical string) string {
