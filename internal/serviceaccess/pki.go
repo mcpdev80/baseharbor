@@ -66,6 +66,10 @@ func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
 	if err := validateMaterial(material, requireClient); err != nil {
 		return TLSMaterial{}, err
 	}
+	if !requireClient {
+		material.ClientCertificate = ""
+		material.ClientKey = ""
+	}
 	return material, nil
 }
 
