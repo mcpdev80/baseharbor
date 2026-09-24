@@ -516,7 +516,7 @@ baha app tls update
 
 `baha app status` reports TLS mode, expiry, source/update information when deployment TLS state exists. `baha app doctor` adds certificate/key/FQDN/expiry diagnostics.
 
-ACME automation, OpenBao PKI issuance and provider-neutral certificate lifecycle contracts are future work; v0.4 does not claim them.
+Public-ingress ACME automation remains future work. Managed service-access certificate lifecycle is implemented behind the provider-neutral issuer boundary: OpenBao PKI is the managed-local reference issuer, BYOC/static external material remains operator-owned, and issuer-backed external PKI can renew through the same service-access contract.
 
 ## Dynamic runtime identity
 
