@@ -49,11 +49,8 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
-	if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
-		return err
-	}
 	if opts.ControlPlaneOnly {
-		return nil
+		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 	}
 	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
 }
