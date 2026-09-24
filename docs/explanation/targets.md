@@ -11,14 +11,15 @@ target + application + environment
 Examples:
 
 ```text
-local    / demo     / dev
-k3s      / demo     / dev
-k8s-prod / mailflow / prod
+docker-dev / demo     / dev
+podman-dev / demo     / dev
+laptop-k3s / demo     / dev
+prod-ocp   / mailflow / prod
 ```
 
-## Target model
+## The target model
 
-A BaseHarbor target is deployment/operator state:
+A BaseHarbor Target is a named deployment destination.
 
 ```text
 Target
@@ -27,28 +28,40 @@ Target
 └── Target Scope
 ```
 
-Representative targets:
+The concepts stay separate:
 
 ```text
-local
-  runtime: docker
-  access: local
-  scope: default
+Target
+  where BaseHarbor operates
 
-k3s
-  runtime: kubernetes
-  access: homelab-k3s
-  scope: default
+Runtime Provider
+  which runtime implementation realizes workloads
 
-k8s-prod
-  runtime: kubernetes
-  access: corp-prod
-  scope: team-a-prod
+Access
+  how BaseHarbor reaches/authenticates to that runtime
+
+Scope
+  which logical area inside that runtime is selected
 ```
 
-K3s is represented as a Kubernetes target rather than a new portable runtime type. Kubernetes/OpenShift-specific access and scope interpretation remain behind their Runtime Provider boundaries.
+Target names carry no runtime semantics. A Target is not synonymous with local, remote, Docker, Podman, Kubernetes or OpenShift.
 
-Target, application and environment are independent axes. A target does not imply `dev`, `test` or `prod`, and an environment does not select a runtime.
+K3s, k3d, kind, minikube, MicroK8s and similar distributions are Kubernetes Targets rather than separate BaseHarbor Runtime Providers.
+
+Representative examples:
+
+```text
+Target              Provider      Access          Scope
+------------------------------------------------------------
+docker-dev          docker        local-docker    default
+podman-dev          podman        local-podman    default
+laptop-k3s          kubernetes    laptop-k3s      dev
+homelab-k3s         kubernetes    homelab         dev
+homelab-k3s-test    kubernetes    homelab         test
+customer-prod       openshift     customer-a      project-x
+```
+
+Multiple Targets may share one Access definition and select different Scopes.
 
 ## Repository versus installed BaseHarbor state
 
@@ -59,28 +72,57 @@ baseharbor.yaml
 envs/<environment>/baseharbor.yaml
 ```
 
-The current working directory may help BaseHarbor determine the current application and environment. It must never determine which deployments the installed BaseHarbor instance knows.
-
-In short:
+The current working directory may help identify the current application and environment, but it never defines which deployments the installed BaseHarbor instance knows.
 
 ```text
 cwd may answer "which application do I mean?"
 cwd must not answer "which applications does BaseHarbor know?"
 ```
 
-Target definitions are user configuration. Deployment/runtime state is user-global BaseHarbor state.
+## Config versus Target state
+
+User configuration is global:
 
 ```text
 $XDG_CONFIG_HOME/baseharbor/config.yaml
 ~/.config/baseharbor/config.yaml
-
-$XDG_DATA_HOME/baseharbor/
-~/.local/share/baseharbor/
 ```
+
+It contains Target definitions, Access definitions, defaults and prompt preferences.
+
+Mutable runtime/deployment state is Target-scoped:
+
+```text
+$XDG_DATA_HOME/baseharbor/targets/<target>/
+~/.local/share/baseharbor/targets/<target>/
+```
+
+Conceptually:
+
+```text
+~/.local/share/baseharbor/
+└── targets/
+    ├── docker-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    ├── podman-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    └── laptop-k3s/
+        ├── runtime/
+        ├── provider-registry.json
+        └── deployments/
+```
+
+This makes independent parallel Targets possible without sharing mutable BaseHarbor runtime state accidentally.
+
+A local Kubernetes/K3s Target is not special: it is simply a Kubernetes Target whose Access definition reaches a local cluster.
 
 ## Target selection
 
-The effective target resolves in this order:
+The effective Target resolves in this order:
 
 ```text
 explicit --target
@@ -89,72 +131,50 @@ activated BASEHARBOR_TARGET
         ↓
 configured default target
         ↓
-local
+first-run/local target selection
 ```
 
-Application and environment resolution remain separate.
+Application and environment resolution stay independent.
 
-## Shell-local activation
+## Shell-local activation and prompt visibility
 
-BaseHarbor targets are designed for shell-local activation, similar to a Python virtual environment.
+Targets are designed for shell-local activation, similar to Python virtual environments. Different terminals can therefore safely target different destinations at the same time.
 
-That means separate terminals can safely work against different targets at the same time:
+The optional prompt segment keeps the selected Target visible before a BaseHarbor command is entered:
 
 ```text
-Terminal A -> local
-Terminal B -> k3s
-Terminal C -> k8s-prod
+[homelab] ~/projects/demo $
+[prod-ocp PROD] ~/projects/mailflow $
 ```
 
-The active target is represented locally in the shell and wins over the configured default.
+Prompt style is configurable: compact or detailed, text-only or color-assisted, before/after the path, or right-prompt where supported.
 
-## Prompt visibility
-
-BaseHarbor should make the active target visible **before a command is entered**.
-
-Prompt integration is optional and configurable. The default presentation should remain compact, for example:
-
-```text
-[k3s] ~/projects/demo $
-~/projects/demo [k3s] $
-```
-
-Environment-aware color may provide an additional signal:
+Environment-aware colors may provide an additional signal:
 
 - dev: soft green;
 - test/stage: soft amber;
 - prod: muted red.
 
-Color is never the only production indicator. Accessible configurations can add explicit text such as `TEST` or `PROD`.
+Production must never rely on color alone.
 
-The prompt setup supports compact presets, live preview, text-only/accessibility modes and placement before the path, after the path, or as a right prompt where the shell supports it reliably.
+## Target lifecycle and safety
+
+Changing the active/default Target never moves or relabels existing deployments.
+
+A Target with registered deployments or owned runtime resources cannot be deleted implicitly.
+
+Mutation and destructive operations identify the full effective deployment:
+
+```text
+target + application + environment
+```
 
 ## Listing deployments
 
-Application discovery is target/global-state driven rather than repository-local.
+`baha app list` reads the deployment registry for the effective Target rather than repository-local state.
 
-A selected-target view can show:
+`baha app list --all-targets` presents the installation-wide view.
 
-```text
-APPLICATION  ENVIRONMENT  STATE
-demo         dev          READY
-demo         test         STOPPED
-mailflow     dev          READY
-```
+CLI, JSON and MCP expose the same Target/deployment identity.
 
-An all-target view can show:
-
-```text
-CONTEXT   APPLICATION  ENVIRONMENT  RUNTIME     STATE
-local     demo         dev          docker      READY
-k3s       demo         dev          kubernetes  READY
-k8s-prod  mailflow     prod         kubernetes  READY
-```
-
-The same result must be available regardless of the current directory.
-
-## Machine parity
-
-Target/deployment identity is part of the shared semantic core. CLI, JSON and MCP expose the same effective target metadata. No interface may bypass target selection, ownership, policy or lifecycle verification.
-
-This v0.4.15 foundation is tracked in issue #408 and is intentionally designed so the later Runtime Provider work in #396 and Kubernetes/OpenShift implementations can consume it without changing portable application intent.
+This v0.4.15 foundation is tracked in issue #408 and is intentionally designed so later Runtime Provider work in #396 and Kubernetes/OpenShift implementations can consume it without changing portable application intent.
