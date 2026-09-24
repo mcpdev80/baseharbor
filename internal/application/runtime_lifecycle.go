@@ -23,7 +23,6 @@ func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + postgresAccessService(instance) + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
