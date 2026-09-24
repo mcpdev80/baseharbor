@@ -199,6 +199,36 @@ func currentManagedTrustBundle(ctx context.Context) (serviceaccess.TrustBundle, 
 	return bundle, true, nil
 }
 
+func maybeOfferManagedHostTrustWhenReady(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	policy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	if policy.PKISource != serviceaccess.PKIManagedLocal {
+		return nil
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	compose, files, err := openBaoRuntime(checkCtx)
+	if err != nil {
+		return nil
+	}
+	state, err := platformopenbao.Inspect(checkCtx, compose, files)
+	if err != nil || !state.Initialized || state.Sealed {
+		if opts.TrustHostCA {
+			fmt.Fprintln(out, "[INFO] host trust       deferred until OpenBao is initialized and unsealed")
+		}
+		return nil
+	}
+	if err := platformopenbao.CheckManager(checkCtx, compose, files); err != nil {
+		if opts.TrustHostCA {
+			fmt.Fprintln(out, "[INFO] host trust       deferred until OpenBao manager authentication is ready")
+		}
+		return nil
+	}
+	return maybeOfferManagedHostTrust(ctx, in, out, opts)
+}
+
 func maybeOfferManagedHostTrust(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	bundle, managed, err := currentManagedTrustBundle(ctx)
 	if err != nil {
