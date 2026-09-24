@@ -9,6 +9,7 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestPostgresBackupDisasterRecovery(t *testing.T) {
@@ -29,7 +30,7 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	if _, err := store.Create(m); err != nil {
 		t.Fatalf("Store.Create() error = %v", err)
 	}
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatalf("EnsureRuntime() error = %v", err)
 	}
