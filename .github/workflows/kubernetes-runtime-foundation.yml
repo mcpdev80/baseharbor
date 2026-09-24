@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: kubernetes-runtime-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   foundation:
     runs-on: [self-hosted, Linux, X64, baseharbor, kubernetes, k3s]
