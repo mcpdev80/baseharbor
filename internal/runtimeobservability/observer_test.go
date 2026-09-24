@@ -35,12 +35,17 @@ func TestObserverEmitsMetricsAndStructuredRequestLog(t *testing.T) {
 		t.Fatalf("traceparent = %q", traceparent)
 	}
 
-	var record map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record); err != nil {
-		t.Fatal(err)
+	records := decodeLogRecords(t, logs.Bytes())
+	if len(records) != 2 {
+		t.Fatalf("log records = %#v", records)
 	}
+	startup := records[0]
+	if startup["component"] != "runtime-broker" || startup["application"] != "demo" || startup["environment"] != "dev" || startup["event"] != "started" {
+		t.Fatalf("startup log attribution = %#v", startup)
+	}
+	record := records[1]
 	if record["component"] != "runtime-broker" || record["application"] != "demo" || record["environment"] != "dev" {
-		t.Fatalf("log attribution = %#v", record)
+		t.Fatalf("request log attribution = %#v", record)
 	}
 	if record["path"] != "/runtime/v1/query" {
 		t.Fatalf("logged path = %#v", record["path"])
@@ -125,4 +130,22 @@ func TestObserverExportsOTLPHTTPProtobuf(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("OTLP trace was not exported")
 	}
+}
+
+
+func decodeLogRecords(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+	lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
+	records := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("decode log record %q: %v", line, err)
+		}
+		records = append(records, record)
+	}
+	return records
 }
