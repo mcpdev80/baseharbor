@@ -144,8 +144,21 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 		return p, nil
 	}
 
+	if p.PKISource == PKIExternal && p.IssuerReference != "" {
+		if p.ServerCertificate != "" || p.ServerKey != "" || p.TrustBundle != "" || p.ClientCertificate != "" || p.ClientKey != "" {
+			return Policy{}, errors.New("issuer-backed external-pki cannot be combined with static certificate/trust files")
+		}
+		if strings.ContainsAny(p.IssuerReference, "\r\n") {
+			return Policy{}, errors.New("external PKI issuer reference contains invalid control characters")
+		}
+		return p, nil
+	}
+	if p.PKISource == PKIBYOC && p.IssuerReference != "" {
+		return Policy{}, errors.New("BYOC certificate material is operator-owned and cannot declare an issuer adapter")
+	}
+
 	if p.ServerCertificate == "" || p.ServerKey == "" || p.TrustBundle == "" {
-		return Policy{}, errors.New("external PKI/BYOC requires server certificate, server key, and trust bundle")
+		return Policy{}, errors.New("static external PKI/BYOC requires server certificate, server key, and trust bundle")
 	}
 	for label, path := range map[string]string{
 		"server certificate": p.ServerCertificate,
