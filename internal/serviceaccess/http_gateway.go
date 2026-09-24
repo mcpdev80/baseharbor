@@ -226,14 +226,15 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
+	b.WriteString("      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n")
 	b.WriteString("      - /config:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n")
 	if files.AuthToken != "" {
-		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	} else {
-		b.WriteString("      - exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	}
 	if strings.TrimSpace(spec.PublishedPortEnv) != "" {
 		b.WriteString("    ports:\n")
