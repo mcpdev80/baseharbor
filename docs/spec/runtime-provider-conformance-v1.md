@@ -82,3 +82,13 @@ The bundled Kubernetes implementation is the first reference implementation for 
 Docker and Podman must later pass equivalent semantic conformance before the runtime contract can be considered frozen.
 
 OpenShift must pass the same portable semantics while remaining free to use OpenShift-native realization behind the provider boundary.
+
+
+## Merge gate
+
+The Kubernetes foundation is not a merge candidate until both checks pass on the same branch state:
+
+- Runtime Foundation compatibility and real k3s lifecycle.
+- Pinned reference-demo OCI end-to-end lifecycle including cleanup.
+
+A green provider unit/renderer test alone is insufficient evidence.
