@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	S3TLSHostCAEnv      = "S3_TLS_CA_FILE"
+	S3TLSContainerCA    = "/run/baseharbor/bindings/object-storage/ca.pem"
+)
+
 type ObjectStorageCredentials struct {
 	AccessKeyID     string
 	SecretAccessKey string
@@ -29,15 +34,35 @@ func LoadObjectStorageCredentials(files RuntimeFiles, bucket string) (ObjectStor
 // MaterializeObjectStorageBinding updates the standard application-facing
 // environment/file binding after the selected provider has materialized its
 // concrete endpoint and bucket identity.
-func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBucket, physicalBucket, endpoint string) error {
+func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBucket, physicalBucket, endpoint, containerEndpoint, caFile string) error {
 	credentials, err := LoadObjectStorageCredentials(files, logicalBucket)
 	if err != nil {
 		return err
 	}
 	endpoint = strings.TrimSpace(endpoint)
+	containerEndpoint = strings.TrimSpace(containerEndpoint)
+	caFile = strings.TrimSpace(caFile)
 	physicalBucket = strings.TrimSpace(physicalBucket)
-	if endpoint == "" || physicalBucket == "" {
+	if endpoint == "" || containerEndpoint == "" || caFile == "" || physicalBucket == "" {
 		return fmt.Errorf("object-storage binding for %s is incomplete", logicalBucket)
+	}
+	caData, err := os.ReadFile(caFile)
+	if err != nil {
+		return fmt.Errorf("read object-storage trust bundle: %w", err)
+	}
+	if len(caData) == 0 {
+		return fmt.Errorf("object-storage trust bundle is empty")
+	}
+	tlsDir := filepath.Join(files.Bindings, "object-storage")
+	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
+		return err
+	}
+	projectedCA := filepath.Join(tlsDir, "ca.pem")
+	if err := writeOwnerOnlyFile(projectedCA, caData); err != nil {
+		return err
+	}
+	if err := os.Chmod(projectedCA, 0o644); err != nil {
+		return err
 	}
 	bindingsAbs, err := filepath.Abs(files.Bindings)
 	if err != nil {
@@ -53,6 +78,7 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 		"region":            "us-east-1",
 		"access_key_id":     credentials.AccessKeyID,
 		"secret_access_key": credentials.SecretAccessKey,
+		"certificates":      strings.TrimSpace(string(caData)),
 	}); err != nil {
 		return err
 	}
@@ -63,7 +89,8 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 	}
 	runtimeValues[s3RuntimeKey(logicalBucket, "BUCKET")] = physicalBucket
 	runtimeValues[s3RuntimeKey(logicalBucket, "HOST_ENDPOINT")] = endpoint
-	runtimeValues[s3RuntimeKey(logicalBucket, "CONTAINER_ENDPOINT")] = "http://seaweedfs:8333"
+	runtimeValues[s3RuntimeKey(logicalBucket, "CONTAINER_ENDPOINT")] = containerEndpoint
+	runtimeValues[S3TLSHostCAEnv] = projectedCA
 	if err := writeRuntimeEnv(files.Env, m, runtimeValues); err != nil {
 		return err
 	}
@@ -80,6 +107,7 @@ func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBuck
 		values["S3_BUCKET"] = physicalBucket
 		values["S3_REGION"] = "us-east-1"
 		values["AWS_ENDPOINT_URL"] = endpoint
+		values["AWS_CA_BUNDLE"] = projectedCA
 		values["AWS_REGION"] = "us-east-1"
 		values["AWS_ACCESS_KEY_ID"] = credentials.AccessKeyID
 		values["AWS_SECRET_ACCESS_KEY"] = credentials.SecretAccessKey
