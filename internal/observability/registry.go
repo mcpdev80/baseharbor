@@ -66,7 +66,7 @@ type SignalSource struct {
 	Target             string                                   `json:"target"`
 	Protocol           string                                   `json:"protocol"`
 	Path               string                                   `json:"path,omitempty"`
-	Mode               capability.ObservabilityRealizationMode `json:"mode,omitempty"`
+	Mode               capability.ObservabilityRealizationMode  `json:"mode,omitempty"`
 	SemanticConvention string                                   `json:"semantic_convention,omitempty"`
 	Verification       capability.ObservabilityVerificationMode `json:"verification,omitempty"`
 	Security           Security                                 `json:"security"`
