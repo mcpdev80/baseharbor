@@ -113,6 +113,9 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.RemoveProviderSourceOverride(files); err != nil {
 			return err
 		}
+		if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, "", false); err != nil {
+			return err
+		}
 		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
 			return err
 		}
@@ -153,6 +156,9 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.RemoveProviderSourceOverride(files); err != nil {
 			return err
 		}
+		if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, "", false); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -163,13 +169,39 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	} else if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 		return err
 	}
-	if _, _, err := logsprovider.EnsureProviderSourceOverrideForRuntime(prepared.manifest, files, prepared.runtime.Engine()); err != nil {
+	providerOverride, providerOverrideFound, err := logsprovider.EnsureProviderSourceOverrideForRuntime(prepared.manifest, files, prepared.runtime.Engine())
+	if err != nil {
+		return err
+	}
+	if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, providerOverride, providerOverrideFound); err != nil {
 		return err
 	}
 	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(providerSources))
+	return nil
+}
+
+func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, override string, found bool) error {
+	if !application.HasManagedRuntimeServices(m) {
+		return nil
+	}
+	environment, err := application.RuntimeEnvironment(files)
+	if err != nil {
+		return err
+	}
+	project := application.RuntimeProjectName(m)
+	composeFiles := []string{files.Compose}
+	if found {
+		composeFiles = append(composeFiles, override)
+	}
+	if err := runtime.ConfigProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); err != nil {
+		return fmt.Errorf("validate application-provider log collection: %w", err)
+	}
+	if err := runtime.UpProjectFilesSelectedNoBuildProgress(ctx, project, files.Dir, environment, nil, nil, composeFiles...); err != nil {
+		return fmt.Errorf("reconcile application-provider log collection: %w", err)
+	}
 	return nil
 }
 
