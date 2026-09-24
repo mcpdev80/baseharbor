@@ -66,16 +66,17 @@ func TestGatewayComposeRunsCaddyWithLeastPrivilege(t *testing.T) {
 	for _, want := range []string{
 		"cap_drop: [\"ALL\"]",
 		"entrypoint: [\"/bin/sh\", \"-ec\"]",
-		"exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
+		"cat /usr/bin/caddy > /run/baseharbor/caddy",
+		"chmod 0755 /run/baseharbor/caddy",
+		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway compose missing %q:\n%s", want, got)
 		}
 	}
-	for _, forbidden := range []string{"cap_add:", "/run/baseharbor", "cat /usr/bin/caddy"} {
-		if strings.Contains(got, forbidden) {
-			t.Fatalf("gateway compose contains unnecessary runtime privilege/staging %q:\n%s", forbidden, got)
-		}
+	if strings.Contains(got, "cap_add:") {
+		t.Fatalf("gateway on unprivileged port must not add capabilities:\n%s", got)
 	}
 
 	privilegedPort := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "https-access", ContainerPort: 443})
