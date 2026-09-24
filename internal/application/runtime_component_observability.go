@@ -126,18 +126,18 @@ func ReconcileRuntimeComponentObservability(m Manifest, component RuntimeCompone
 		}
 		if allowed {
 			desired = append(desired, observability.SignalSource{
-				ID:               component.ID,
-				Kind:             observability.SignalLogs,
-				Provider:         component.Provider,
-				Class:            component.Class,
-				Scope:            scope,
-				SharingBoundary:  boundary,
-				OwnerApplication: component.OwnerApplication,
-				Target:           strings.TrimSpace(component.LogsTarget),
-				Protocol:         "stdout-stderr",
-				Mode:             capability.ObservabilityRuntime,
+				ID:                 component.ID,
+				Kind:               observability.SignalLogs,
+				Provider:           component.Provider,
+				Class:              component.Class,
+				Scope:              scope,
+				SharingBoundary:    boundary,
+				OwnerApplication:   component.OwnerApplication,
+				Target:             strings.TrimSpace(component.LogsTarget),
+				Protocol:           "stdout-stderr",
+				Mode:               capability.ObservabilityRuntime,
 				SemanticConvention: "baseharbor.runtime.logs",
-				Verification:     capability.ObservabilityVerifyBackend,
+				Verification:       capability.ObservabilityVerifyBackend,
 			})
 		}
 	}
