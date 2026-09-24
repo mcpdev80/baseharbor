@@ -1,11 +1,14 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestEnsureFilesCreatesProtectedRuntimeState(t *testing.T) {
@@ -76,6 +79,50 @@ func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
 	}
 	if !strings.Contains(text, "BASEHARBOR_OPENBAO_PORT=18200\n") {
 		t.Fatal("selected OpenBao port was not persisted")
+	}
+}
+
+func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, forbidden := range []string{"openbao-access:", "postgres-access:"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("bootstrap runtime unexpectedly contains %s before issuer readiness", forbidden)
+		}
+	}
+}
+
+func TestEnsureServiceAccessMaterializesTLSGatewaysFromIssuer(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureServiceAccess(context.Background(), serviceissuer.New(t), files); err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, wanted := range []string{
+		"openbao-access:",
+		"postgres-access:",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8443",
+		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("reconciled runtime is missing %q", wanted)
+		}
 	}
 }
 
