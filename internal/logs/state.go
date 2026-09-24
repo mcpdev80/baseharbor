@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	providerProject          = "baseharbor-logs"
-	workloadOverrideName     = "workload.logging.override.yaml"
-	providerOverrideName     = "provider.logging.override.yaml"
+	providerProject      = "baseharbor-logs"
+	workloadOverrideName = "workload.logging.override.yaml"
+	providerOverrideName = "provider.logging.override.yaml"
 )
 
 type Placement struct {
