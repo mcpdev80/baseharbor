@@ -52,3 +52,22 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 		t.Fatalf("token gateway unexpectedly requires mTLS:\n%s", got)
 	}
 }
+
+
+func TestGatewayComposeRunsCaddyDirectlyWithoutExecTmpfs(t *testing.T) {
+	files := HTTPGatewayFiles{
+		Caddyfile: "/tmp/access/Caddyfile",
+		Material: TLSMaterial{
+			CA:                "/tmp/access/ca.pem",
+			ServerCertificate: "/tmp/access/server.pem",
+			ServerKey:         "/tmp/access/server-key.pem",
+		},
+	}
+	got := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "openbao-access", ContainerPort: 8443})
+	if !strings.Contains(got, "exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile") {
+		t.Fatalf("gateway does not execute Caddy directly:\n%s", got)
+	}
+	if strings.Contains(got, "/run/baseharbor/caddy") || strings.Contains(got, "/run/baseharbor:rw,exec") {
+		t.Fatalf("gateway still relies on exec tmpfs staging:\n%s", got)
+	}
+}
