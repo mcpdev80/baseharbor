@@ -19,11 +19,11 @@ const (
 )
 
 type ServiceCertificateRequest struct {
-	CommonName string
-	DNSNames   []string
+	CommonName  string
+	DNSNames    []string
 	IPAddresses []net.IP
-	URIs       []*url.URL
-	TTL        time.Duration
+	URIs        []*url.URL
+	TTL         time.Duration
 }
 
 type ServiceCertificate struct {
