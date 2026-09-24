@@ -14,11 +14,11 @@ import (
 )
 
 type managedLogsExecution struct {
-	execution *capability.Execution
-	issuer    serviceaccess.Issuer
-	driver    *logsprovider.Driver
-	runtime   bhruntime.Compose
-	manifest  application.Manifest
+	execution       *capability.Execution
+	issuer          serviceaccess.Issuer
+	driver          *logsprovider.Driver
+	runtime         bhruntime.Compose
+	manifest        application.Manifest
 	services        []string
 	resources       []capability.Resource
 	providerSources []observability.SignalSource
