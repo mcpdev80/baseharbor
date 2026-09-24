@@ -455,6 +455,47 @@ const resources = "/runtime/v1/resources"
 	assertFindingConfidence(t, result, "logs", ConfidenceSuggested)
 }
 
+func TestInspectDetectsRuntimeObjectStorageCreateThroughRuntimeAPI(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "client.go", `package client
+
+import (
+    "bytes"
+    "net/http"
+)
+
+func createRuntimeResource() {
+    payload := []byte("{\"capability\":\"object-storage.s3/v1\",\"name\":\"uploads\"}")
+    req, _ := http.NewRequest(http.MethodPost, "https://runtime.local/runtime/v1/resources", bytes.NewReader(payload))
+    _ = req
+}
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertFindingConfidence(t, result, "runtime-api", ConfidenceDetected)
+	for _, finding := range result.Findings {
+		if finding.Capability != "object-storage.s3" {
+			continue
+		}
+		if finding.Confidence != ConfidenceDetected {
+			t.Fatalf("S3 confidence = %q", finding.Confidence)
+		}
+		if len(finding.Operations) != 1 || finding.Operations[0] != RuntimeCreate {
+			t.Fatalf("S3 runtime operations = %#v", finding.Operations)
+		}
+		return
+	}
+	t.Fatal("runtime S3 capability finding missing")
+}
+
 func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, ".env.example", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\n")
