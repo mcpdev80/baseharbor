@@ -7,10 +7,19 @@ import (
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 )
 
-// WorkloadProvider is the minimal semantic workload lifecycle not already
-// covered by OCI, Compose or Kubernetes standards. Implementations translate
-// the provider-neutral plan into their native runtime API.
-type WorkloadProvider interface {
+// InternalWorkloadProvider is BaseHarbor Core's in-process runtime lifecycle
+// seam. It is deliberately internal and MUST NOT be treated as the public,
+// versioned Runtime Provider protocol.
+//
+// External runtime providers require a separate language-neutral, versioned
+// contract (gRPC/Protocol Buffers at a process boundary) and an adapter into
+// this seam. Runtime, capability and delivery provider protocols remain
+// independent concerns.
+//
+// This interface contains only the minimal workload lifecycle semantics not
+// already defined by OCI, Compose or a concrete runtime API. Implementations
+// translate the provider-neutral WorkloadPlan into their native runtime API.
+type InternalWorkloadProvider interface {
 	Provider
 
 	TargetScope() string
