@@ -67,11 +67,13 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		traceTarget = otlpBinding.ContainerEndpoint
 		traceSecurity = observability.Security{
 			TLSRequired:       strings.HasPrefix(strings.ToLower(otlpBinding.ContainerEndpoint), "https://"),
-			Authentication:    "mtls",
 			TrustFile:         otlpBinding.CAFile,
 			ClientCertificate: otlpBinding.ClientCertFile,
 			ClientKey:         otlpBinding.ClientKeyFile,
 			ServerName:        "otel-collector-access",
+		}
+		if otlpBinding.ClientCertFile != "" && otlpBinding.ClientKeyFile != "" {
+			traceSecurity.Authentication = "mtls"
 		}
 	}
 	if err := application.ReconcileRuntimeComponentObservability(m, application.RuntimeComponentObservability{
