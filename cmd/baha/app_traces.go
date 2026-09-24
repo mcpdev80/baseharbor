@@ -18,7 +18,7 @@ type managedTracesExecution struct {
 	driver    *tracesprovider.Driver
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
-	enabled   bool
+	enabled         bool
 	placement       tracesprovider.Placement
 	resources       []capability.Resource
 	providerSources []observability.SignalSource
@@ -47,8 +47,7 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		capability.ProviderPlacement{
 			Scope:            placement.Scope,
 			SharingBoundary:  placement.SharingBoundary,
-			Ownership:        capability.OwnershipBaseHarbor,
-			ExternalReference: "",
+			Ownership:       capability.OwnershipBaseHarbor,
 		},
 		[]string{m.Name},
 		policy.Collect[application.TracesSourceApplicationProvider],
