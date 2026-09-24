@@ -224,6 +224,9 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 		}
 		return fmt.Errorf("wait for Prometheus readiness: %w", err)
 	}
+	if err := reloadConfig(reconcileCtx, d.client, endpoint); err != nil {
+		return fmt.Errorf("reload Prometheus configuration: %w", err)
+	}
 	return nil
 }
 
@@ -389,7 +392,9 @@ func syncProviderTargets(dir string, sources []observability.MetricsSource) erro
 		return err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "provider--") && strings.HasSuffix(entry.Name(), ".json") {
+		if !entry.IsDir() &&
+			(strings.HasPrefix(entry.Name(), "provider--") || strings.HasPrefix(entry.Name(), "provider-secure--")) &&
+			strings.HasSuffix(entry.Name(), ".json") {
 			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
@@ -1156,6 +1161,23 @@ scrape_configs:
         regex: baseharbor_metrics_path
 `)
 	return b.String()
+}
+
+func reloadConfig(ctx context.Context, client *http.Client, endpoint string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/-/reload", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Prometheus reload returned HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func waitReady(ctx context.Context, client *http.Client, endpoint string) error {
