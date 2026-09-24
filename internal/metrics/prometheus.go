@@ -1159,6 +1159,30 @@ scrape_configs:
       - action: labeldrop
         regex: baseharbor_metrics_path
 `)
+	if len(providerSources) > 0 {
+		for _, source := range providerSources[0] {
+			if !source.Security.TLSRequired {
+				continue
+			}
+			token := providerSourceToken(source.ID)
+			fmt.Fprintf(&b, "\n  - job_name: baseharbor-provider-secure-%s\n", token)
+			b.WriteString("    scheme: https\n")
+			fmt.Fprintf(&b, "    metrics_path: %s\n", strconv.Quote(source.Path))
+			b.WriteString("    file_sd_configs:\n")
+			b.WriteString("      - files:\n")
+			fmt.Fprintf(&b, "          - /etc/prometheus/targets/%s\n", providerTargetFileName(source))
+			b.WriteString("        refresh_interval: 2s\n")
+			b.WriteString("    tls_config:\n")
+			fmt.Fprintf(&b, "      ca_file: /etc/prometheus/provider-security/%s-ca.pem\n", token)
+			if source.Security.ClientCertificate != "" {
+				fmt.Fprintf(&b, "      cert_file: /etc/prometheus/provider-security/%s-client.pem\n", token)
+				fmt.Fprintf(&b, "      key_file: /etc/prometheus/provider-security/%s-client-key.pem\n", token)
+			}
+			if strings.TrimSpace(source.Security.ServerName) != "" {
+				fmt.Fprintf(&b, "      server_name: %s\n", strconv.Quote(source.Security.ServerName))
+			}
+		}
+	}
 	return b.String()
 }
 
