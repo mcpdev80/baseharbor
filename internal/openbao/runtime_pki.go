@@ -30,9 +30,9 @@ type RuntimeMTLSFiles struct {
 	WorkloadKey  string
 }
 
-// EnsureRuntimeMTLSIdentity issues all runtime identities through the managed
-// OpenBao PKI issuer. BaseHarbor never creates or stores a CA private key in
-// CLI/application state.
+// EnsureRuntimeMTLSIdentity preserves the application-scoped runtime identity
+// contract while delegating all certificate issuance to the managed service
+// issuer. BaseHarbor no longer stores or uses a CA private key in Go code.
 func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles, workloadDNSNames []string) (RuntimeMTLSFiles, bool, error) {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return RuntimeMTLSFiles{}, false, err
@@ -40,12 +40,19 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	issuer := NewServiceIssuer(executor, platformFiles)
 	trust, err := issuer.TrustBundle(ctx)
 	if err != nil {
-		return RuntimeMTLSFiles{}, false, fmt.Errorf("resolve OpenBao runtime trust bundle: %w", err)
+		return RuntimeMTLSFiles{}, false, fmt.Errorf("resolve runtime identity trust bundle: %w", err)
+	}
+	ca, err := parseTrustCertificate(trust.PEM)
+	if err != nil {
+		return RuntimeMTLSFiles{}, false, err
 	}
 
 	bindingDir := filepath.Join(appFiles.Bindings, "runtime-identity")
 	if err := os.MkdirAll(bindingDir, 0o700); err != nil {
 		return RuntimeMTLSFiles{}, false, fmt.Errorf("create runtime mTLS binding directory: %w", err)
+	}
+	if err := os.Chmod(bindingDir, 0o700); err != nil {
+		return RuntimeMTLSFiles{}, false, fmt.Errorf("protect runtime mTLS binding directory: %w", err)
 	}
 	files := RuntimeMTLSFiles{
 		CA:           filepath.Join(bindingDir, "ca.pem"),
@@ -56,7 +63,7 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 		WorkloadCert: filepath.Join(bindingDir, "workload-cert.pem"),
 		WorkloadKey:  filepath.Join(bindingDir, "workload-key.pem"),
 	}
-	valid, err := runtimeMTLSIdentityValid(files, trust.PEM, identity, workloadDNSNames)
+	valid, err := runtimeMTLSIdentityValid(files, ca, identity, workloadDNSNames)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
@@ -73,24 +80,37 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, fmt.Errorf("issue runtime broker identity: %w", err)
 	}
-
-	identityURI, err := url.Parse("spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment)
+	spiffeURI, err := url.Parse("spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, errors.New("construct runtime client identity URI")
 	}
 	client, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{
 		CommonName: "baseharbor-" + identity.Name + "-" + identity.Environment + "-client",
-		URIs:       []*url.URL{identityURI},
+		URIs:       []*url.URL{spiffeURI},
 		TTL:        30 * 24 * time.Hour,
 	})
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, fmt.Errorf("issue runtime client identity: %w", err)
 	}
 
-	workloadCommonName := identity.Name + "." + identity.Environment + ".baseharbor"
-	workloadNames := uniqueRuntimeDNSNames(append([]string{"localhost", identity.Name, workloadCommonName}, workloadDNSNames...))
+	workloadNames := []string{"localhost", identity.Name, identity.Name + "." + identity.Environment + ".baseharbor"}
+	seen := map[string]struct{}{}
+	for _, name := range workloadNames {
+		seen[name] = struct{}{}
+	}
+	for _, name := range workloadDNSNames {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		workloadNames = append(workloadNames, name)
+	}
 	workload, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{
-		CommonName: workloadCommonName,
+		CommonName: identity.Name + "." + identity.Environment + ".baseharbor",
 		DNSNames:   workloadNames,
 		TTL:        30 * 24 * time.Hour,
 	})
@@ -112,10 +132,15 @@ func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformF
 			return RuntimeMTLSFiles{}, false, err
 		}
 	}
+	if valid, err := runtimeMTLSIdentityValid(files, ca, identity, workloadDNSNames); err != nil {
+		return RuntimeMTLSFiles{}, false, err
+	} else if !valid {
+		return RuntimeMTLSFiles{}, false, errors.New("issued runtime mTLS identity failed verification")
+	}
 	return files, true, nil
 }
 
-func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, trustPEM []byte, identity ApplicationIdentity, workloadDNSNames []string) (bool, error) {
+func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, ca *x509.Certificate, identity ApplicationIdentity, workloadDNSNames []string) (bool, error) {
 	caPEM, err := os.ReadFile(files.CA)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -123,28 +148,25 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, trustPEM []byte, identity 
 	if err != nil {
 		return false, fmt.Errorf("read runtime mTLS CA: %w", err)
 	}
-	if !bytes.Equal(bytes.TrimSpace(caPEM), bytes.TrimSpace(trustPEM)) {
+	storedCA, err := parseTrustCertificate(caPEM)
+	if err != nil || !bytes.Equal(storedCA.Raw, ca.Raw) {
 		return false, nil
 	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(trustPEM) {
-		return false, errors.New("OpenBao runtime trust bundle contains no certificates")
-	}
 
-	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, roots, x509.ExtKeyUsageServerAuth, "baseharbor-runtime", "")
+	brokerOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "baseharbor-runtime", "")
 	if err != nil || !brokerOK {
 		return false, err
 	}
-	loopbackOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, roots, x509.ExtKeyUsageServerAuth, "127.0.0.1", "")
+	loopbackOK, err := runtimeIdentityPairValid(files.BrokerCert, files.BrokerKey, ca, x509.ExtKeyUsageServerAuth, "127.0.0.1", "")
 	if err != nil || !loopbackOK {
 		return false, err
 	}
 	expectedURI := "spiffe://baseharbor/apps/" + identity.Name + "/" + identity.Environment
-	clientOK, err := runtimeIdentityPairValid(files.ClientCert, files.ClientKey, roots, x509.ExtKeyUsageClientAuth, "", expectedURI)
+	clientOK, err := runtimeIdentityPairValid(files.ClientCert, files.ClientKey, ca, x509.ExtKeyUsageClientAuth, "", expectedURI)
 	if err != nil || !clientOK {
 		return false, err
 	}
-	workloadOK, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, roots, x509.ExtKeyUsageServerAuth, "localhost", "")
+	workloadOK, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, ca, x509.ExtKeyUsageServerAuth, "localhost", "")
 	if err != nil || !workloadOK {
 		return false, err
 	}
@@ -153,7 +175,7 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, trustPEM []byte, identity 
 		if dnsName == "" {
 			continue
 		}
-		ok, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, roots, x509.ExtKeyUsageServerAuth, dnsName, "")
+		ok, err := runtimeIdentityPairValid(files.WorkloadCert, files.WorkloadKey, ca, x509.ExtKeyUsageServerAuth, dnsName, "")
 		if err != nil || !ok {
 			return false, err
 		}
@@ -161,7 +183,7 @@ func runtimeMTLSIdentityValid(files RuntimeMTLSFiles, trustPEM []byte, identity 
 	return true, nil
 }
 
-func runtimeIdentityPairValid(certPath, keyPath string, roots *x509.CertPool, usage x509.ExtKeyUsage, dnsName, uri string) (bool, error) {
+func runtimeIdentityPairValid(certPath, keyPath string, ca *x509.Certificate, usage x509.ExtKeyUsage, dnsName, uri string) (bool, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -176,17 +198,16 @@ func runtimeIdentityPairValid(certPath, keyPath string, roots *x509.CertPool, us
 	if err != nil {
 		return false, fmt.Errorf("read runtime identity key: %w", err)
 	}
-	if _, err := tls.X509KeyPair(certPEM, keyPEM); err != nil {
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil || len(pair.Certificate) == 0 {
 		return false, nil
 	}
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		return false, nil
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
+	cert, err := x509.ParseCertificate(pair.Certificate[0])
 	if err != nil || time.Now().Add(24*time.Hour).After(cert.NotAfter) {
 		return false, nil
 	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
 	opts := x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{usage}}
 	if dnsName != "" {
 		opts.DNSName = dnsName
@@ -195,46 +216,41 @@ func runtimeIdentityPairValid(certPath, keyPath string, roots *x509.CertPool, us
 		return false, nil
 	}
 	if uri != "" {
-		found := false
 		for _, candidate := range cert.URIs {
 			if candidate.String() == uri {
-				found = true
-				break
+				return true, nil
 			}
 		}
-		if !found {
-			return false, nil
-		}
+		return false, nil
 	}
 	return true, nil
 }
 
-func uniqueRuntimeDNSNames(values []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
+func parseTrustCertificate(value []byte) (*x509.Certificate, error) {
+	block, _ := pem.Decode(value)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, errors.New("runtime identity trust bundle is invalid")
 	}
-	return out
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || !cert.IsCA || time.Now().After(cert.NotAfter) {
+		return nil, errors.New("runtime identity trust certificate is invalid or expired")
+	}
+	return cert, nil
 }
 
 func writeRuntimeIdentityFile(path string, value []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create runtime identity directory: %w", err)
 	}
+	mode := os.FileMode(0o644)
+	if strings.HasSuffix(path, "-key.pem") {
+		mode = 0o600
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, value, 0o600); err != nil {
 		return fmt.Errorf("write runtime identity file: %w", err)
 	}
-	if err := os.Chmod(tmp, 0o644); err != nil {
+	if err := os.Chmod(tmp, mode); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("prepare runtime identity file: %w", err)
 	}
