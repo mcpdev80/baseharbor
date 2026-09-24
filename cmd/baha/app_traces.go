@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
@@ -18,8 +19,9 @@ type managedTracesExecution struct {
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
 	enabled   bool
-	placement tracesprovider.Placement
-	resources []capability.Resource
+	placement       tracesprovider.Placement
+	resources       []capability.Resource
+	providerSources []observability.SignalSource
 }
 
 func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
@@ -27,10 +29,11 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 	if !application.HasTraceSignal(m) {
 		return nil, nil
 	}
-	enabled, err := application.TracesCollectionEnabled(m)
+	policy, err := application.TracesPolicy(m)
 	if err != nil {
 		return nil, err
 	}
+	enabled := policy.Enabled && (policy.Collect[application.TracesSourceApplication] || policy.Collect[application.TracesSourceApplicationProvider] || policy.Collect[application.TracesSourcePlatformProvider])
 	prepared := &managedTracesExecution{runtime: compose, manifest: m, enabled: enabled}
 	if !enabled {
 		return prepared, nil
@@ -40,6 +43,21 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		return nil, err
 	}
 	prepared.placement = placement
+	providerSources, err := observability.ListTraces(
+		capability.ProviderPlacement{
+			Scope:            placement.Scope,
+			SharingBoundary:  placement.SharingBoundary,
+			Ownership:        capability.OwnershipBaseHarbor,
+			ExternalReference: "",
+		},
+		[]string{m.Name},
+		policy.Collect[application.TracesSourceApplicationProvider],
+		policy.Collect[application.TracesSourcePlatformProvider],
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve provider trace sources: %w", err)
+	}
+	prepared.providerSources = providerSources
 	driver := tracesprovider.NewDriver(compose, m, issuer)
 	resource := capability.Resource{
 		Application: m.Name,
@@ -79,7 +97,7 @@ func convergeManagedTracesBeforeTelemetry(ctx context.Context, out io.Writer, pr
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[READY] traces-provider  Tempo state converged for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[READY] traces-provider  Tempo state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(prepared.providerSources))
 	return nil
 }
 
