@@ -54,7 +54,7 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 }
 
 
-func TestGatewayComposeRunsCaddyDirectlyWithoutExecTmpfs(t *testing.T) {
+func TestGatewayComposeRunsCapabilityFreeCaddyCopyFromExecTmpfs(t *testing.T) {
 	files := HTTPGatewayFiles{
 		Caddyfile: "/tmp/access/Caddyfile",
 		Material: TLSMaterial{
@@ -64,10 +64,17 @@ func TestGatewayComposeRunsCaddyDirectlyWithoutExecTmpfs(t *testing.T) {
 		},
 	}
 	got := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "openbao-access", ContainerPort: 8443})
-	if !strings.Contains(got, "exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile") {
-		t.Fatalf("gateway does not execute Caddy directly:\n%s", got)
+	for _, want := range []string{
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
+		"cat /usr/bin/caddy > /run/baseharbor/caddy",
+		"chmod 0755 /run/baseharbor/caddy",
+		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("gateway compose missing %q:\n%s", want, got)
+		}
 	}
-	if strings.Contains(got, "/run/baseharbor/caddy") || strings.Contains(got, "/run/baseharbor:rw,exec") {
-		t.Fatalf("gateway still relies on exec tmpfs staging:\n%s", got)
+	if strings.Contains(got, "uid=65532") || strings.Contains(got, "gid=65532") {
+		t.Fatalf("gateway exec tmpfs uses runtime-specific uid/gid mount options:\n%s", got)
 	}
 }
