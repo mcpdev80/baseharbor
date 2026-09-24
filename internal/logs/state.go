@@ -257,6 +257,23 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 		return err
 	}
 	files := providerFiles(p)
+	existing, err := readRegistrations(files.Registrations)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	registered := false
+	for _, registration := range existing {
+		if registration.Application == m.Name && registration.Environment == m.Environment {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		return nil
+	}
 	registrations, err := reconcileRegistration(files.Registrations, m, false)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
