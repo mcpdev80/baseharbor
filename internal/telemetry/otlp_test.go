@@ -165,7 +165,6 @@ func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 	}
 }
 
-
 func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
 	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
 	source := observability.SignalSource{
