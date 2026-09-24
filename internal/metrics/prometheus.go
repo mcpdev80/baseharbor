@@ -728,7 +728,7 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
