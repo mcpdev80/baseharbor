@@ -44,3 +44,83 @@ func TestMetricsSourceRequiresExplicitReachability(t *testing.T) {
 		t.Fatal("metrics source without an explicit provider network was accepted")
 	}
 }
+
+
+func TestRegisterProviderSignalsUsesDescriptorAndRuntimeRealization(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	err := RegisterProviderSignals(ProviderSignalRegistration{
+		ID:         "tempo:shared",
+		Descriptor: capability.TempoIntegration,
+		Class:      SourcePlatformProvider,
+		Scope:      capability.ScopeShared,
+		Signals: map[string]ProviderSignalRuntime{
+			"tempo-metrics": {
+				Network: "baseharbor-traces",
+				Target:  "tempo:3200",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("signals = %#v", got)
+	}
+	if got[0].ID != "tempo:shared" || got[0].Provider != capability.ProviderTempo || got[0].Protocol != "openmetrics" || got[0].Path != "/metrics" {
+		t.Fatalf("registered signal = %#v", got[0])
+	}
+}
+
+func TestRegisterProviderSignalsRequiresEverySupportedRuntimeRealization(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	err := RegisterProviderSignals(ProviderSignalRegistration{
+		ID:         "tempo:shared",
+		Descriptor: capability.TempoIntegration,
+		Class:      SourcePlatformProvider,
+		Scope:      capability.ScopeShared,
+	})
+	if err == nil {
+		t.Fatal("supported provider signal without runtime realization accepted")
+	}
+}
+
+func TestRegisterProviderSignalsRejectsUndeclaredOrUnsupportedRuntimeSignal(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	err := RegisterProviderSignals(ProviderSignalRegistration{
+		ID:         "postgres:app",
+		Descriptor: capability.PostgreSQLIntegration,
+		Class:      SourceApplicationProvider,
+		Scope:      capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Signals: map[string]ProviderSignalRuntime{
+			"metrics": {Network: "app", Target: "postgres:9187"},
+		},
+	})
+	if err == nil {
+		t.Fatal("adapter-required provider signal was registered as collectable")
+	}
+}
+
+func TestSignalSourceAcceptsApplicationClass(t *testing.T) {
+	source := SignalSource{
+		ID: "application:demo",
+		Kind: SignalLogs,
+		Provider: capability.ProviderLoki,
+		Class: SourceApplication,
+		Scope: capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Target: "service/api",
+		Protocol: "stdout-stderr",
+	}
+	if err := source.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
