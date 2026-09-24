@@ -80,7 +80,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 
 	composeYAML := `services:
   api:
-    image: python:3.13-alpine
+    image: docker.io/library/python:3.13-alpine
     command:
       - python
       - -u
@@ -108,7 +108,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
         print("baseharbor-observability-acceptance-api", flush=True)
         HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
   trace-probe:
-    image: curlimages/curl:8.16.0
+    image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
     command: ["echo baseharbor-observability-acceptance-trace-probe; sleep 3600"]
     volumes:
