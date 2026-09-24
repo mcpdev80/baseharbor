@@ -155,11 +155,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
-			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
-				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
-			}); err != nil {
-				return err
-			}
 			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
 				return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
 			}); err != nil {
@@ -237,12 +232,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
-				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
-			}); err != nil {
-				return err
-			}
-
 			if application.RequiresRuntimeBroker(m) {
 				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
 					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
@@ -250,6 +239,16 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}
 				printRuntimeBrokerDocs(out, files)
+			}
+			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
+				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
+			}); err != nil {
+				return err
+			}
+			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
+			}); err != nil {
+				return err
 			}
 			if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
 				return convergeManagedMetricsBeforeWorkload(ctx, progress, providers.metrics)
