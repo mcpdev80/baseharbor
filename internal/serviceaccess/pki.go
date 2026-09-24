@@ -126,18 +126,24 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 
 	material := issuerTLSMaterial(policy, dir, source)
 	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
-	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
-		return TLSMaterial{}, err
-	} else if valid {
-		return material, nil
-	}
 
 	trust, err := issuer.TrustBundle(ctx)
 	if err != nil {
-		return TLSMaterial{}, fmt.Errorf("resolve managed service trust bundle: %w", err)
+		return TLSMaterial{}, fmt.Errorf("resolve service issuer trust bundle: %w", err)
 	}
 	if len(trust.PEM) == 0 {
-		return TLSMaterial{}, errors.New("managed service issuer returned an empty trust bundle")
+		return TLSMaterial{}, errors.New("service issuer returned an empty trust bundle")
+	}
+	currentIssuerReference := firstNonEmpty(trust.IssuerReference, policy.IssuerReference)
+	if currentIssuerReference == "" {
+		return TLSMaterial{}, errors.New("issuer-backed PKI requires an issuer reference")
+	}
+	previousState, _ := readManagedPKIState(filepath.Join(dir, "state.json"))
+	trustMatches := trustBundleMatchesFile(material.CA, trust.PEM)
+	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
+		return TLSMaterial{}, err
+	} else if valid && trustMatches && previousState.IssuerReference == currentIssuerReference {
+		return material, nil
 	}
 
 	names := uniqueNames(append([]string{policy.ServerName, "localhost"}, dnsNames...))
@@ -152,8 +158,10 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 		}
 		serverRequest.DNSNames = append(serverRequest.DNSNames, name)
 	}
-	previousState, _ := readManagedPKIState(filepath.Join(dir, "state.json"))
-	serverCurrent := currentIssuedCertificate(material.ServerCertificate, previousState.ServerSerial, previousState.ServerExpiresAt, previousState.IssuerReference)
+	var serverCurrent IssuedCertificate
+	if trustMatches && previousState.IssuerReference == currentIssuerReference {
+		serverCurrent = currentIssuedCertificate(material.ServerCertificate, previousState.ServerSerial, previousState.ServerExpiresAt, previousState.IssuerReference)
+	}
 	server, err := issueOrRenew(ctx, issuer, serverCurrent, serverRequest)
 	if err != nil {
 		return TLSMaterial{}, fmt.Errorf("issue or renew managed service server certificate: %w", err)
@@ -165,7 +173,10 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 			CommonName: "baseharbor-service-client",
 			TTL:        30 * 24 * time.Hour,
 		}
-		clientCurrent := currentIssuedCertificate(material.ClientCertificate, previousState.ClientSerial, previousState.ClientExpiresAt, previousState.IssuerReference)
+		var clientCurrent IssuedCertificate
+		if trustMatches && previousState.IssuerReference == currentIssuerReference {
+			clientCurrent = currentIssuedCertificate(material.ClientCertificate, previousState.ClientSerial, previousState.ClientExpiresAt, previousState.IssuerReference)
+		}
 		client, err = issueOrRenew(ctx, issuer, clientCurrent, clientRequest)
 		if err != nil {
 			return TLSMaterial{}, fmt.Errorf("issue or renew managed service client certificate: %w", err)
@@ -207,7 +218,7 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 
 	state := managedPKIState{
 		Version:         2,
-		IssuerReference: firstNonEmpty(server.IssuerReference, trust.IssuerReference),
+		IssuerReference: firstNonEmpty(server.IssuerReference, currentIssuerReference),
 		LifecycleOwner:  "issuer",
 		RenewalMode:     "automatic-reconcile",
 		ServerSerial:    server.Serial,
@@ -244,6 +255,22 @@ func readManagedPKIState(path string) (managedPKIState, error) {
 		return managedPKIState{}, fmt.Errorf("unsupported managed PKI state version %d", state.Version)
 	}
 	return state, nil
+}
+
+func trustBundleMatchesFile(path string, trustPEM []byte) bool {
+	existing, err := readCertificate(path)
+	if err != nil {
+		return false
+	}
+	block, _ := pem.Decode(trustPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return false
+	}
+	current, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	return existing.Equal(current)
 }
 
 func currentIssuedCertificate(certPath, serial string, expiresAt time.Time, issuerReference string) IssuedCertificate {
