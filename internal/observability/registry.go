@@ -335,6 +335,35 @@ func UpdateSignal(source SignalSource) error {
 	})
 }
 
+func ReconcileSignals(id string, desired []SignalSource) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("observability signal reconciliation requires id")
+	}
+	for i := range desired {
+		if desired[i].ID != id {
+			return fmt.Errorf("observability signal reconciliation id %q does not match source id %q", id, desired[i].ID)
+		}
+		if err := desired[i].Validate(); err != nil {
+			return err
+		}
+	}
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.ID != id {
+				out = append(out, source)
+			}
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
+}
+
 func Remove(id string) error {
 	path, err := registryPath()
 	if err != nil {

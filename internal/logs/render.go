@@ -50,14 +50,18 @@ func alloyConfigForRuntime(registrations []Registration, runtimeKind string) str
 	return alloyConfigForRuntimeSources(registrations, nil, runtimeKind)
 }
 
-func alloyConfigForRuntimeSources(registrations []Registration, providerSources []observability.SignalSource, runtimeKind string) string {
+func alloyConfigForRuntimeSources(registrations []Registration, providerSources []observability.SignalSource, runtimeKind string, platformSyslogPort ...int) string {
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		return alloyJournalConfig(registrations, providerSources)
 	}
-	return alloySyslogConfig(registrations)
+	port := 0
+	if len(platformSyslogPort) > 0 {
+		port = platformSyslogPort[0]
+	}
+	return alloySyslogConfig(registrations, providerSources, port)
 }
 
-func alloySyslogConfig(registrations []Registration) string {
+func alloySyslogConfig(registrations []Registration, providerSources []observability.SignalSource, platformSyslogPort int) string {
 	var b strings.Builder
 	b.WriteString(`loki.relabel "syslog" {
   forward_to = [loki.write.local.receiver]
@@ -69,6 +73,24 @@ func alloySyslogConfig(registrations []Registration) string {
 }
 
 loki.relabel "provider_syslog" {
+  forward_to = [loki.write.local.receiver]
+
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex         = "([^/]+)/(.+)"
+    target_label  = "baseharbor_provider"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex         = "([^/]+)/(.+)"
+    target_label  = "baseharbor_service"
+    replacement   = "$2"
+  }
+}
+
+loki.relabel "platform_provider_syslog" {
   forward_to = [loki.write.local.receiver]
 
   rule {
@@ -112,6 +134,18 @@ loki.write "local" {
 		fmt.Fprintf(&b, "    labels = { baseharbor_application = %s, baseharbor_environment = %s, baseharbor_source_class = \"application-provider\" }\n", strconv.Quote(registration.Application), strconv.Quote(registration.Environment))
 		b.WriteString("  }\n")
 		b.WriteString("  relabel_rules = loki.relabel.provider_syslog.rules\n")
+		b.WriteString("  forward_to    = [loki.write.local.receiver]\n")
+		b.WriteString("}\n")
+	}
+	if platformSyslogPort > 0 && hasPlatformProviderLogs(providerSources) {
+		b.WriteString("\nloki.source.syslog \"platform_provider\" {\n")
+		b.WriteString("  listener {\n")
+		fmt.Fprintf(&b, "    address       = %s\n", strconv.Quote(fmt.Sprintf("0.0.0.0:%d", platformSyslogPort)))
+		b.WriteString("    protocol      = \"udp\"\n")
+		b.WriteString("    syslog_format = \"rfc5424\"\n")
+		b.WriteString("    labels = { baseharbor_source_class = \"platform-provider\" }\n")
+		b.WriteString("  }\n")
+		b.WriteString("  relabel_rules = loki.relabel.platform_provider_syslog.rules\n")
 		b.WriteString("  forward_to    = [loki.write.local.receiver]\n")
 		b.WriteString("}\n")
 	}
@@ -163,7 +197,7 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 	}
 
 	for i, source := range providerSources {
-		if source.Class != observability.SourceApplicationProvider {
+		if source.Class != observability.SourceApplicationProvider && source.Class != observability.SourcePlatformProvider {
 			continue
 		}
 		project, service, ok := observability.ParseRuntimeTarget(source.Target)
@@ -171,15 +205,16 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 			continue
 		}
 		var registration *Registration
-		for j := range registrations {
-			candidateProject := application.RuntimeProjectName(application.New(registrations[j].Application, registrations[j].Environment, false, false, false))
-			if candidateProject == project {
-				registration = &registrations[j]
-				break
+		if source.Class == observability.SourceApplicationProvider {
+			for j := range registrations {
+				if registrations[j].Application == source.OwnerApplication {
+					registration = &registrations[j]
+					break
+				}
 			}
-		}
-		if registration == nil {
-			continue
+			if registration == nil {
+				continue
+			}
 		}
 		pattern := "^(?:" + regexp.QuoteMeta(project+"_"+service+"_") + "[0-9]+|" + regexp.QuoteMeta(project+"-"+service) + ")$"
 		label := fmt.Sprintf("application_provider_%d", i)
@@ -198,21 +233,23 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 		b.WriteString("    target_label = \"baseharbor_service\"\n")
 		fmt.Fprintf(&b, "    replacement  = %s\n", strconv.Quote(service))
 		b.WriteString("  }\n\n")
-		b.WriteString("  rule {\n")
-		b.WriteString("    target_label = \"baseharbor_application\"\n")
-		fmt.Fprintf(&b, "    replacement  = %s\n", strconv.Quote(registration.Application))
-		b.WriteString("  }\n\n")
-		b.WriteString("  rule {\n")
-		b.WriteString("    target_label = \"baseharbor_environment\"\n")
-		fmt.Fprintf(&b, "    replacement  = %s\n", strconv.Quote(registration.Environment))
-		b.WriteString("  }\n")
+		if registration != nil {
+			b.WriteString("  rule {\n")
+			b.WriteString("    target_label = \"baseharbor_application\"\n")
+			fmt.Fprintf(&b, "    replacement  = %s\n", strconv.Quote(registration.Application))
+			b.WriteString("  }\n\n")
+			b.WriteString("  rule {\n")
+			b.WriteString("    target_label = \"baseharbor_environment\"\n")
+			fmt.Fprintf(&b, "    replacement  = %s\n", strconv.Quote(registration.Environment))
+			b.WriteString("  }\n")
+		}
 		b.WriteString("}\n")
 
 		fmt.Fprintf(&b, "\nloki.source.journal %s {\n", strconv.Quote(label))
 		b.WriteString("  path          = \"/var/log/journal\"\n")
 		b.WriteString("  max_age       = \"1h\"\n")
 		fmt.Fprintf(&b, "  relabel_rules = loki.relabel.%s.rules\n", label)
-		b.WriteString("  labels        = { baseharbor_source_class = \"application-provider\" }\n")
+		fmt.Fprintf(&b, "  labels        = { baseharbor_source_class = %s }\n", strconv.Quote(string(source.Class)))
 		b.WriteString("  forward_to    = [loki.write.local.receiver]\n")
 		b.WriteString("}\n")
 	}
@@ -231,7 +268,11 @@ func providerComposeYAMLForRuntime(placement Placement, registrations []Registra
 	return providerComposeYAMLForRuntimeAndAccess(placement, registrations, runtimeKind, access)
 }
 
-func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations []Registration, runtimeKind string, access serviceaccess.HTTPGatewayFiles) string {
+func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations []Registration, runtimeKind string, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
+	platformPort := 0
+	if len(platformSyslogPort) > 0 {
+		platformPort = platformSyslogPort[0]
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
 	b.WriteString("  loki:\n")
@@ -275,6 +316,9 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 		for _, registration := range registrations {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", registration.SyslogPort, registration.SyslogPort)))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", registration.ProviderSyslogPort, registration.ProviderSyslogPort)))
+		}
+		if platformPort > 0 {
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", platformPort, platformPort)))
 		}
 	}
 	b.WriteString("    depends_on: [loki]\n")

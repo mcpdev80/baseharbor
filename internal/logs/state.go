@@ -129,11 +129,27 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 	if err != nil {
 		return ProviderFiles{}, err
 	}
+	providerSources, err := providerLogSources(p, registrations)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
 	lokiPort, err := persistedOrAllocatedPort(files.Env, "BASEHARBOR_LOKI_PORT")
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_LOKI_PORT="+strconv.Itoa(lokiPort)+"\n"), 0o600); err != nil {
+	platformSyslogPort := 0
+	if strings.EqualFold(strings.TrimSpace(runtimeKind), "docker") && hasPlatformProviderLogs(providerSources) {
+		platformSyslogPort, err = persistedOrAllocatedUDPPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+	var env strings.Builder
+	fmt.Fprintf(&env, "BASEHARBOR_LOKI_PORT=%d\n", lokiPort)
+	if platformSyslogPort > 0 {
+		fmt.Fprintf(&env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT=%d\n", platformSyslogPort)
+	}
+	if err := os.WriteFile(files.Env, []byte(env.String()), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.WriteFile(files.LokiConfig, []byte(lokiConfig()), 0o644); err != nil {
@@ -142,11 +158,7 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	providerSources, err := providerLogSources(p, registrations)
-	if err != nil {
-		return ProviderFiles{}, err
-	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind, platformSyslogPort)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -160,7 +172,7 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind, accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind, accessFiles, platformSyslogPort)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -235,6 +247,24 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 }
 
 func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	return EnsureRuntimeProjectOverrideForRuntime(
+		m,
+		runtime.Dir,
+		providerOverrideName,
+		application.RuntimeProjectName(m),
+		runtimeKind,
+		observability.SourceApplicationProvider,
+	)
+}
+
+func EnsureRuntimeProjectOverrideForRuntime(
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	runtimeKind string,
+	class observability.SourceClass,
+) (string, bool, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return "", false, err
@@ -243,42 +273,69 @@ func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime appl
 	if err != nil {
 		return "", false, err
 	}
+	includeApplicationProviders := policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider]
+	includePlatformProviders := policy.Enabled && policy.Collect[application.LogsSourcePlatformProvider]
 	sources, err := observability.ListLogs(
 		capability.ProviderPlacement{Scope: p.Scope, SharingBoundary: p.SharingBoundary, Ownership: capability.OwnershipBaseHarbor},
 		[]string{m.Name},
-		policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider],
-		false,
+		includeApplicationProviders,
+		includePlatformProviders,
 	)
 	if err != nil {
 		return "", false, err
 	}
-	project := application.RuntimeProjectName(m)
+
 	type providerService struct {
 		Service  string
 		Provider capability.ProviderKind
+		Class    observability.SourceClass
 	}
 	seen := map[string]providerService{}
 	for _, source := range sources {
-		if source.Class != observability.SourceApplicationProvider || source.OwnerApplication != m.Name {
+		if source.Class != class {
 			continue
 		}
 		sourceProject, service, ok := observability.ParseRuntimeTarget(source.Target)
 		if !ok || sourceProject != project {
 			continue
 		}
-		seen[service] = providerService{Service: service, Provider: source.Provider}
+		seen[service] = providerService{Service: service, Provider: source.Provider, Class: source.Class}
 	}
-	path := filepath.Join(runtime.Dir, providerOverrideName)
+
+	path := filepath.Join(dir, filename)
 	if len(seen) == 0 {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return "", false, err
 		}
 		return "", false, nil
 	}
-	registration, err := ApplicationRegistration(m)
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", false, err
 	}
+
+	port := 0
+	if !strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		switch class {
+		case observability.SourceApplicationProvider:
+			registration, err := ApplicationRegistration(m)
+			if err != nil {
+				return "", false, err
+			}
+			port = registration.ProviderSyslogPort
+		case observability.SourcePlatformProvider:
+			files, err := ExistingProviderFiles(m)
+			if err != nil {
+				return "", false, err
+			}
+			port, err = persistedPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
+			if err != nil {
+				return "", false, err
+			}
+		default:
+			return "", false, fmt.Errorf("unsupported runtime log source class %q", class)
+		}
+	}
+
 	services := make([]providerService, 0, len(seen))
 	for _, service := range seen {
 		services = append(services, service)
@@ -296,7 +353,7 @@ func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime appl
 		}
 		b.WriteString("      driver: syslog\n")
 		b.WriteString("      options:\n")
-		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)))
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", port)))
 		b.WriteString("        syslog-format: rfc5424\n")
 		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(string(source.Provider)+"/"+source.Service))
 	}
@@ -389,7 +446,14 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind(runtime))), 0o644); err != nil {
+	platformSyslogPort := 0
+	if runtimeKind(runtime) == "docker" && hasPlatformProviderLogs(providerSources) {
+		platformSyslogPort, err = persistedOrAllocatedUDPPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind(runtime), platformSyslogPort)), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -403,7 +467,7 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind(runtime), accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind(runtime), accessFiles, platformSyslogPort)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {
@@ -591,6 +655,50 @@ func readRegistrations(path string) ([]Registration, error) {
 		}
 	}
 	return registrations, nil
+}
+
+func hasPlatformProviderLogs(sources []observability.SignalSource) bool {
+	for _, source := range sources {
+		if source.Kind == observability.SignalLogs && source.Class == observability.SourcePlatformProvider {
+			return true
+		}
+	}
+	return false
+}
+
+func persistedPort(path, key string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && k == key {
+			port, err := strconv.Atoi(strings.TrimSpace(v))
+			if err == nil && port > 0 && port <= 65535 {
+				return port, nil
+			}
+			return 0, fmt.Errorf("invalid %s port", key)
+		}
+	}
+	return 0, fmt.Errorf("%s is not materialized", key)
+}
+
+func persistedOrAllocatedUDPPort(path, key string) (int, error) {
+	if data, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+			if ok && k == key {
+				port, err := strconv.Atoi(strings.TrimSpace(v))
+				if err == nil && port > 0 && port <= 65535 {
+					return port, nil
+				}
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, err
+	}
+	return allocatePort("udp")
 }
 
 func persistedOrAllocatedPort(path, key string) (int, error) {

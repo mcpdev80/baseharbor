@@ -55,6 +55,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithLogsCollection(m, "application")
 	m = application.WithOTLPTelemetry(m, "traces")
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +83,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - -u
       - -c
       - |
+        import os
+        import ssl
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
         body = b"baseharbor_acceptance_metric 1\n# EOF\n"
@@ -102,7 +105,14 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
                 return
 
         print("baseharbor-observability-acceptance-api", flush=True)
-        HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+        server = HTTPServer(("0.0.0.0", 8080), Handler)
+        cert_file = os.environ.get("TLS_CERT_FILE", "").strip()
+        key_file = os.environ.get("TLS_KEY_FILE", "").strip()
+        if cert_file and key_file:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(certfile=cert_file, keyfile=key_file)
+            server.socket = context.wrap_socket(server.socket, server_side=True)
+        server.serve_forever()
   trace-probe:
     image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
@@ -129,14 +139,20 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderOTelCollector,
 		capability.ProviderLoki,
 		capability.ProviderTempo,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 	assertSignalProviders(t, m, observability.SignalLogs, []capability.ProviderKind{
 		capability.ProviderPostgreSQL,
 		capability.ProviderValkey,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 	assertSignalProviders(t, m, observability.SignalTraces, []capability.ProviderKind{
 		capability.ProviderPostgreSQL,
 		capability.ProviderValkey,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 
 	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}

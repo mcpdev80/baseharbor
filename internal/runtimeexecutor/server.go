@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
 type Config struct {
@@ -108,13 +110,21 @@ func Run(ctx context.Context, cfg Config) error {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	observer, err := runtimeobservability.NewFromEnvironment(runtimeobservability.Config{
+		Component: "runtime-executor",
+	})
+	if err != nil {
+		return fmt.Errorf("configure runtime executor observability: %w", err)
+	}
+	mux.Handle("GET /metrics", observer.MetricsHandler())
+
 	pool, err := loadCAPool(cfg.TLSClientCAFile)
 	if err != nil {
 		return err
 	}
 	server := &http.Server{
 		Addr:              cfg.listenAddr(),
-		Handler:           mux,
+		Handler:           observer.Wrap(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -158,8 +168,11 @@ func verifyRuntimeClientIdentity(state tls.ConnectionState) error {
 		if _, _, ok := parseWorkloadURI(identity); ok {
 			return nil
 		}
+		if identity != nil && identity.String() == openbao.RuntimeExecutorObserverSPIFFE {
+			return nil
+		}
 	}
-	return errors.New("runtime executor client certificate must carry a BaseHarbor workload SPIFFE identity")
+	return errors.New("runtime executor client certificate must carry a BaseHarbor workload or observer SPIFFE identity")
 }
 
 func loadCAPool(path string) (*x509.CertPool, error) {

@@ -32,16 +32,18 @@ type Requirement struct {
 type ProviderKind string
 
 const (
-	ProviderPostgreSQL    ProviderKind = "postgresql"
-	ProviderValkey        ProviderKind = "valkey"
-	ProviderOpenBao       ProviderKind = "openbao"
-	ProviderCaddy         ProviderKind = "caddy"
-	ProviderSeaweedFS     ProviderKind = "seaweedfs"
-	ProviderOTelCollector ProviderKind = "opentelemetry-collector"
-	ProviderExternalOTLP  ProviderKind = "external-otlp"
-	ProviderPrometheus    ProviderKind = "prometheus"
-	ProviderLoki          ProviderKind = "loki"
-	ProviderTempo         ProviderKind = "tempo"
+	ProviderPostgreSQL      ProviderKind = "postgresql"
+	ProviderValkey          ProviderKind = "valkey"
+	ProviderOpenBao         ProviderKind = "openbao"
+	ProviderCaddy           ProviderKind = "caddy"
+	ProviderSeaweedFS       ProviderKind = "seaweedfs"
+	ProviderOTelCollector   ProviderKind = "opentelemetry-collector"
+	ProviderExternalOTLP    ProviderKind = "external-otlp"
+	ProviderPrometheus      ProviderKind = "prometheus"
+	ProviderLoki            ProviderKind = "loki"
+	ProviderTempo           ProviderKind = "tempo"
+	ProviderRuntimeBroker   ProviderKind = "runtime-broker"
+	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
 )
 
 // Provider describes the capability surface of one provider implementation.

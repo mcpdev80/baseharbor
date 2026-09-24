@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
@@ -32,6 +33,10 @@ func IsMutableDevelopmentImage(image string) bool {
 
 func ProjectName(m application.Manifest) string {
 	return "baseharbor-broker-" + m.Name + "-" + m.Environment
+}
+
+func ObservabilityNetworkName(m application.Manifest) string {
+	return ProjectName(m) + "-observability"
 }
 
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
@@ -83,7 +88,15 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	}
 	mtls.BrokerKey = brokerKeyProjection
 	mtls.ClientKey = clientKeyProjection
-	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort)
+	otlpBinding, hasOTLPBinding, err := application.ExistingRuntimeOTLPBinding(m, appFiles)
+	if err != nil {
+		return Files{}, fmt.Errorf("resolve runtime broker OTLP binding: %w", err)
+	}
+	var otlp *application.RuntimeOTLPBinding
+	if hasOTLPBinding {
+		otlp = &otlpBinding
+	}
+	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort, otlp)
 	if err != nil {
 		return Files{}, err
 	}
@@ -329,8 +342,13 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 	return absolute, nil
 }
 
-func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string) (string, error) {
+func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
+	metricsPolicy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return "", err
+	}
+	metricsEnabled := metricsPolicy.Enabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
 	paths := map[string]string{
 		"runtime token":              tokenPath,
 		"runtime permissions":        permissionsPath,
@@ -343,6 +361,15 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	}
 	if m.Services.Secrets {
 		paths["OpenBao credentials"] = credPath
+	}
+	if otlp != nil {
+		if otlp.CAFile != "" {
+			paths["OTLP CA"] = otlp.CAFile
+		}
+		if otlp.ClientCertFile != "" {
+			paths["OTLP client certificate"] = otlp.ClientCertFile
+			paths["OTLP client private key"] = otlp.ClientKeyFile
+		}
 	}
 	for label, path := range paths {
 		absolute, err := filepath.Abs(path)
@@ -369,6 +396,15 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	mtls.BrokerKey = paths["broker private key"]
 	mtls.ClientCert = paths["probe client certificate"]
 	mtls.ClientKey = paths["probe client private key"]
+	if otlp != nil {
+		if otlp.CAFile != "" {
+			otlp.CAFile = paths["OTLP CA"]
+		}
+		if otlp.ClientCertFile != "" {
+			otlp.ClientCertFile = paths["OTLP client certificate"]
+			otlp.ClientKeyFile = paths["OTLP client private key"]
+		}
+	}
 
 	var b strings.Builder
 	b.WriteString("services:\n")
@@ -384,6 +420,22 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("      BASEHARBOR_API_TLS_CLIENT_CA_FILE: \"/run/baseharbor/identity/ca.pem\"\n")
 	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_APP_NAME: %s\n", strconv.Quote(m.Name))
 	fmt.Fprintf(&b, "      BASEHARBOR_RUNTIME_ENVIRONMENT: %s\n", strconv.Quote(m.Environment))
+	if otlp != nil {
+		fmt.Fprintf(&b, "      OTEL_EXPORTER_OTLP_ENDPOINT: %s\n", strconv.Quote(otlp.ContainerEndpoint))
+		b.WriteString("      OTEL_EXPORTER_OTLP_PROTOCOL: \"http/protobuf\"\n")
+		b.WriteString("      OTEL_SERVICE_NAME: \"runtime-broker\"\n")
+		fmt.Fprintf(&b, "      OTEL_RESOURCE_ATTRIBUTES: %s\n", strconv.Quote("service.namespace="+m.Name+",deployment.environment.name="+m.Environment+",baseharbor.application="+m.Name+",baseharbor.component=runtime-broker"))
+		if otlp.CAFile != "" {
+			b.WriteString("      OTEL_EXPORTER_OTLP_CERTIFICATE: \"/run/baseharbor/telemetry/ca.pem\"\n")
+		}
+		if otlp.ClientCertFile != "" {
+			b.WriteString("      OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE: \"/run/baseharbor/telemetry/client-cert.pem\"\n")
+			b.WriteString("      OTEL_EXPORTER_OTLP_CLIENT_KEY: \"/run/baseharbor/telemetry/client-key.pem\"\n")
+		}
+		if otlp.Headers != "" {
+			fmt.Fprintf(&b, "      OTEL_EXPORTER_OTLP_HEADERS: %s\n", strconv.Quote(otlp.Headers))
+		}
+	}
 	if docsPort != "" {
 		b.WriteString("      BASEHARBOR_RUNTIME_DOCS_LISTEN_ADDR: \"0.0.0.0:8081\"\n")
 	}
@@ -421,6 +473,15 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(mtls.BrokerCert+":/run/baseharbor/identity/broker-cert.pem:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(permissionsPath+":/run/baseharbor/runtime/permissions.json:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(serviceTokensPath+":/run/baseharbor/runtime/service-tokens.json:ro"))
+	if otlp != nil {
+		if otlp.CAFile != "" {
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(otlp.CAFile+":/run/baseharbor/telemetry/ca.pem:ro"))
+		}
+		if otlp.ClientCertFile != "" {
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(otlp.ClientCertFile+":/run/baseharbor/telemetry/client-cert.pem:ro"))
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(otlp.ClientKeyFile+":/run/baseharbor/telemetry/client-key.pem:ro"))
+		}
+	}
 	if len(m.Runtime.Permissions) > 0 {
 		b.WriteString("      - runtime-operations:/var/lib/baseharbor/runtime-operations\n")
 	}
@@ -446,11 +507,19 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("        aliases:\n")
 	b.WriteString("          - baseharbor-runtime\n")
 	b.WriteString("          - baseharbor-secrets\n")
+	if metricsEnabled {
+		b.WriteString("      observability:\n")
+		b.WriteString("        aliases:\n")
+		b.WriteString("          - baseharbor-runtime\n")
+	}
 	if m.Services.Secrets {
 		b.WriteString("      secrets: {}\n")
 	}
 	if len(m.Runtime.Permissions) > 0 {
 		b.WriteString("      runtime-control: {}\n")
+	}
+	if otlp != nil && otlp.Provider == capability.ProviderOTelCollector {
+		b.WriteString("      telemetry: {}\n")
 	}
 	b.WriteString("\nsecrets:\n")
 	b.WriteString("  broker-key:\n")
@@ -482,6 +551,11 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		b.WriteString("    external: true\n")
 	}
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
+	if metricsEnabled {
+		b.WriteString("  observability:\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(ObservabilityNetworkName(m)))
+		b.WriteString("    internal: true\n")
+	}
 	if m.Services.Secrets {
 		b.WriteString("  secrets:\n")
 		b.WriteString("    external: true\n")
@@ -491,6 +565,11 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		b.WriteString("  runtime-control:\n")
 		b.WriteString("    external: true\n")
 		b.WriteString("    name: baseharbor-runtime-control\n")
+	}
+	if otlp != nil && otlp.Provider == capability.ProviderOTelCollector {
+		b.WriteString("  telemetry:\n")
+		b.WriteString("    external: true\n")
+		b.WriteString("    name: baseharbor-telemetry\n")
 	}
 	return b.String(), nil
 }

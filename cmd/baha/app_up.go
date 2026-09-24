@@ -208,14 +208,6 @@ func appUpCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if application.RequiresRuntimeBroker(m) {
-				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
-					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
-				}); err != nil {
-					return err
-				}
-				printRuntimeBrokerDocs(out, files)
-			}
 			renderRuntimeReady(term, m)
 			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
 				return convergeManagedTracesBeforeTelemetry(ctx, progress, providers.traces)
@@ -226,6 +218,14 @@ func appUpCommand(store application.Store) *cli.Command {
 				return convergeManagedTelemetry(ctx, progress, providers.telemetry)
 			}); err != nil {
 				return err
+			}
+			if application.RequiresRuntimeBroker(m) {
+				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
+					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
+				}); err != nil {
+					return err
+				}
+				printRuntimeBrokerDocs(out, files)
 			}
 			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
 				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)

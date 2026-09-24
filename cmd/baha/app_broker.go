@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
@@ -35,7 +37,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, refreshMutableImage); err != nil {
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -54,6 +56,48 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, issuer, identity, files, workloadDNSNames)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
+	}
+	otlpBinding, hasOTLPBinding, err := application.ExistingRuntimeOTLPBinding(m, files)
+	if err != nil {
+		return fmt.Errorf("resolve runtime broker OTLP binding: %w", err)
+	}
+	traceTarget := ""
+	traceSecurity := observability.Security{}
+	if hasOTLPBinding {
+		traceTarget = otlpBinding.ContainerEndpoint
+		traceSecurity = observability.Security{
+			TLSRequired:       strings.HasPrefix(strings.ToLower(otlpBinding.ContainerEndpoint), "https://"),
+			TrustFile:         otlpBinding.CAFile,
+			ClientCertificate: otlpBinding.ClientCertFile,
+			ClientKey:         otlpBinding.ClientKeyFile,
+			ServerName:        "otel-collector-access",
+		}
+		if otlpBinding.ClientCertFile != "" && otlpBinding.ClientKeyFile != "" {
+			traceSecurity.Authentication = "mtls"
+		}
+	}
+	if err := application.ReconcileRuntimeComponentObservability(m, application.RuntimeComponentObservability{
+		ID:               "runtime-broker:" + runtimebroker.ProjectName(m),
+		Provider:         capability.ProviderRuntimeBroker,
+		Class:            observability.SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: m.Name,
+		MetricsNetwork:   runtimebroker.ObservabilityNetworkName(m),
+		MetricsTarget:    "baseharbor-runtime:8443",
+		MetricsPath:      "/metrics",
+		MetricsSecurity: observability.Security{
+			TLSRequired:       true,
+			Authentication:    "mtls",
+			TrustFile:         mtlsFiles.CA,
+			ClientCertificate: mtlsFiles.ClientCert,
+			ClientKey:         mtlsFiles.ClientKey,
+			ServerName:        "baseharbor-runtime",
+		},
+		LogsTarget:     observability.RuntimeTarget(runtimebroker.ProjectName(m), runtimebroker.ServiceName),
+		TracesTarget:   traceTarget,
+		TracesSecurity: traceSecurity,
+	}); err != nil {
+		return fmt.Errorf("register runtime broker observability: %w", err)
 	}
 	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles)
 	if err != nil {
@@ -94,7 +138,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, refreshMutableImage bool) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -126,7 +170,53 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err != nil {
 		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
 	}
-	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust)
+	var observabilityBinding []runtimeexecutor.ObservabilityBinding
+	if binding, found, bindErr := application.ExistingRuntimeOTLPBinding(m, files); bindErr != nil {
+		return fmt.Errorf("resolve runtime executor OTLP binding: %w", bindErr)
+	} else if found && binding.Provider == capability.ProviderOTelCollector {
+		observabilityBinding = append(observabilityBinding, runtimeexecutor.ObservabilityBinding{
+			Endpoint:   binding.ContainerEndpoint,
+			CA:         identity.CA,
+			ClientCert: identity.ClientCert,
+			ClientKey:  identity.ClientKey,
+		})
+	}
+	traceTarget := ""
+	traceSecurity := observability.Security{}
+	if len(observabilityBinding) > 0 {
+		traceTarget = observabilityBinding[0].Endpoint
+		traceSecurity = observability.Security{
+			TLSRequired:       true,
+			Authentication:    "mtls",
+			TrustFile:         observabilityBinding[0].CA,
+			ClientCertificate: observabilityBinding[0].ClientCert,
+			ClientKey:         observabilityBinding[0].ClientKey,
+			ServerName:        "otel-collector-access",
+		}
+	}
+	if err := application.ReconcileRuntimeComponentObservability(m, application.RuntimeComponentObservability{
+		ID:             "runtime-executor:" + runtimeexecutor.ProjectName,
+		Provider:       capability.ProviderRuntimeExecutor,
+		Class:          observability.SourcePlatformProvider,
+		Scope:          capability.ScopeShared,
+		MetricsNetwork: runtimeexecutor.ControlNetworkName,
+		MetricsTarget:  "baseharbor-runtime-executor:9443",
+		MetricsPath:    "/metrics",
+		MetricsSecurity: observability.Security{
+			TLSRequired:       true,
+			Authentication:    "mtls",
+			TrustFile:         identity.CA,
+			ClientCertificate: identity.ClientCert,
+			ClientKey:         identity.ClientKey,
+			ServerName:        openbao.RuntimeExecutorDNSName,
+		},
+		LogsTarget:     observability.RuntimeTarget(runtimeexecutor.ProjectName, runtimeexecutor.ServiceName),
+		TracesTarget:   traceTarget,
+		TracesSecurity: traceSecurity,
+	}); err != nil {
+		return fmt.Errorf("register runtime executor observability: %w", err)
+	}
+	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust, observabilityBinding...)
 	if err != nil {
 		return fmt.Errorf("materialize runtime provider executor: %w", err)
 	}

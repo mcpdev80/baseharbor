@@ -82,20 +82,29 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest, sources 
 		return err
 	}
 	for _, source := range sources {
-		if source.Class != observability.SourceApplicationProvider {
-			continue
-		}
 		_, service, ok := observability.ParseRuntimeTarget(source.Target)
 		if !ok {
 			return fmt.Errorf("provider log source %q has invalid runtime target %q", source.ID, source.Target)
 		}
-		query := fmt.Sprintf(
-			`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source_class="application-provider",baseharbor_provider=%q,baseharbor_service=%q}`,
-			m.Name,
-			m.Environment,
-			string(source.Provider),
-			service,
-		)
+		var query string
+		switch source.Class {
+		case observability.SourceApplicationProvider:
+			query = fmt.Sprintf(
+				`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source_class="application-provider",baseharbor_provider=%q,baseharbor_service=%q}`,
+				m.Name,
+				m.Environment,
+				string(source.Provider),
+				service,
+			)
+		case observability.SourcePlatformProvider:
+			query = fmt.Sprintf(
+				`{baseharbor_source_class="platform-provider",baseharbor_provider=%q,baseharbor_service=%q}`,
+				string(source.Provider),
+				service,
+			)
+		default:
+			continue
+		}
 		if err := waitForQuery(ctx, client, endpoint, query, "provider "+string(source.Provider)+"/"+service); err != nil {
 			return err
 		}
