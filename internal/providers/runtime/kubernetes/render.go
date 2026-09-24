@@ -173,7 +173,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 					"labels":      cloneMap(labels),
 					"annotations": cloneMap(annotations),
 				},
-				"spec":     map[string]any{"containers": []any{container}},
+				"spec": map[string]any{"containers": []any{container}},
 			},
 		},
 	}
