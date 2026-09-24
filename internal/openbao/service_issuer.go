@@ -3,7 +3,6 @@ package openbao
 import (
 	"context"
 	"errors"
-	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -61,17 +60,11 @@ func (i *ServiceIssuer) Issue(ctx context.Context, request serviceaccess.Certifi
 	}, nil
 }
 
-func (i *ServiceIssuer) Renew(ctx context.Context, current serviceaccess.IssuedCertificate, request serviceaccess.CertificateRequest) (serviceaccess.IssuedCertificate, error) {
-	replacement, err := i.Issue(ctx, request)
-	if err != nil {
-		return serviceaccess.IssuedCertificate{}, err
-	}
-	if strings.TrimSpace(current.Serial) != "" {
-		if err := i.Revoke(ctx, current.Serial); err != nil {
-			return serviceaccess.IssuedCertificate{}, err
-		}
-	}
-	return replacement, nil
+func (i *ServiceIssuer) Renew(ctx context.Context, _ serviceaccess.IssuedCertificate, request serviceaccess.CertificateRequest) (serviceaccess.IssuedCertificate, error) {
+	// Renewal issues replacement material first. Revocation is deliberately a
+	// separate operation so the caller can roll out and verify the replacement
+	// before invalidating the previous certificate.
+	return i.Issue(ctx, request)
 }
 
 func (i *ServiceIssuer) Revoke(ctx context.Context, serial string) error {
