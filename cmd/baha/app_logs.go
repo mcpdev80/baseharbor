@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -179,6 +180,9 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
 		return err
 	}
+	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(providerSources))
 	return nil
 }
@@ -273,6 +277,84 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			}
 		} else if err := runtime.UpProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("reconcile runtime executor log collection: %w", err)
+		}
+	}
+	return nil
+}
+
+func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	const wantStatus = "404"
+
+	if application.RequiresRuntimeBroker(m) {
+		brokerFiles, err := runtimebroker.Existing(files)
+		if err != nil {
+			return fmt.Errorf("resolve runtime broker observability probe state: %w", err)
+		}
+		out, err := runtime.ExecProject(
+			ctx,
+			runtimebroker.ProjectName(m),
+			brokerFiles.Compose,
+			files.Env,
+			runtimebroker.ServiceName,
+			"curl",
+			"--silent",
+			"--show-error",
+			"--output",
+			"/dev/null",
+			"--write-out",
+			"%{http_code}",
+			"--resolve",
+			"baseharbor-runtime:8443:127.0.0.1",
+			"--cacert",
+			"/run/baseharbor/identity/ca.pem",
+			"--cert",
+			"/run/secrets/probe-client-cert",
+			"--key",
+			"/run/secrets/probe-client-key",
+			runtimebroker.RuntimeURL+"/readyz/",
+		)
+		if err != nil {
+			return fmt.Errorf("emit runtime broker observability evidence: %w", err)
+		}
+		if strings.TrimSpace(out) != wantStatus {
+			return fmt.Errorf("runtime broker observability evidence returned HTTP %s, want %s", strings.TrimSpace(out), wantStatus)
+		}
+	}
+
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
+	if err == nil {
+		out, execErr := runtime.ExecProject(
+			ctx,
+			runtimeexecutor.ProjectName,
+			executorFiles.Compose,
+			executorFiles.Env,
+			runtimeexecutor.ServiceName,
+			"curl",
+			"--silent",
+			"--show-error",
+			"--output",
+			"/dev/null",
+			"--write-out",
+			"%{http_code}",
+			"--resolve",
+			"baseharbor-runtime-executor:9443:127.0.0.1",
+			"--cacert",
+			"/run/baseharbor/identity/ca.pem",
+			"--cert",
+			"/run/baseharbor/observability/client-cert.pem",
+			"--key",
+			"/run/secrets/observer-client-key",
+			runtimeexecutor.ExecutorURL+"/readyz/",
+		)
+		if execErr != nil {
+			return fmt.Errorf("emit runtime executor observability evidence: %w", execErr)
+		}
+		if strings.TrimSpace(out) != wantStatus {
+			return fmt.Errorf("runtime executor observability evidence returned HTTP %s, want %s", strings.TrimSpace(out), wantStatus)
 		}
 	}
 	return nil
