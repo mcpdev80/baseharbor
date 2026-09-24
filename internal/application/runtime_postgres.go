@@ -170,7 +170,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - |
         cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
         chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /var/run/postgresql:rw,noexec,nosuid,nodev
@@ -185,6 +185,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - ./bindings/postgres/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
       - "%s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro"
       - "%s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro"
+      - "%s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro"
     healthcheck:
       test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql \"host=127.0.0.1 port=5432 user=$${POSTGRES_USER} dbname=$${POSTGRES_DB} sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1' | grep -q '^1$'"]
       interval: 5s
@@ -192,7 +193,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 5s
 
-`, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot)
+`, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot, tlsRoot)
 }
 
 func writeValkeyComposeService(b *strings.Builder, instance string) {
