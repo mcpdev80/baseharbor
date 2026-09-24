@@ -533,7 +533,6 @@ func externalHeaders() map[string]string {
 	return result
 }
 
-
 func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {
 	if source.Kind != observability.SignalTraces || source.Protocol != "interaction" {
 		return "", fmt.Errorf("provider interaction trace source %q is not an interaction trace", source.ID)
@@ -569,12 +568,12 @@ func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest,
 }
 
 func providerInteractionTracePayload(m application.Manifest, source observability.SignalSource) ([]byte, string) {
-	identity := m.Name + "\x00" + m.Environment + "\x00" + string(source.Provider) + "\x00" + source.ID
+	now := uint64(time.Now().UnixNano())
+	identity := m.Name + "\x00" + m.Environment + "\x00" + string(source.Provider) + "\x00" + source.ID + "\x00" + strconv.FormatUint(now, 10)
 	traceHash := sha256.Sum256([]byte("trace\x00" + identity))
 	spanHash := sha256.Sum256([]byte("span\x00" + identity))
 	traceID := append([]byte(nil), traceHash[:16]...)
 	spanID := append([]byte(nil), spanHash[:8]...)
-	now := uint64(time.Now().UnixNano())
 
 	span := appendBytes(nil, 1, traceID)
 	span = appendBytes(span, 2, spanID)
@@ -584,6 +583,10 @@ func providerInteractionTracePayload(m application.Manifest, source observabilit
 	span = appendMessage(span, 9, keyValue("baseharbor.provider", string(source.Provider)))
 	span = appendMessage(span, 9, keyValue("baseharbor.source", source.ID))
 	span = appendMessage(span, 9, keyValue("baseharbor.source_class", string(source.Class)))
+	span = appendMessage(span, 9, keyValue("baseharbor.resource", source.Target))
+	if source.SemanticConvention != "" {
+		span = appendMessage(span, 9, keyValue("baseharbor.semantic_convention", source.SemanticConvention))
+	}
 
 	scopeSpans := appendMessage(nil, 2, span)
 	resource := []byte{}
