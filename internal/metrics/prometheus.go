@@ -907,9 +907,9 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	access := serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
 		Material: serviceaccess.TLSMaterial{
-			CA:                "./service-access/pki/ca.pem",
-			ServerCertificate: "./service-access/pki/server-cert.pem",
-			ServerKey:         "./service-access/pki/server-key.pem",
+			CA:                "./service-access/runtime/ca.pem",
+			ServerCertificate: "./service-access/runtime/server.pem",
+			ServerKey:         "./service-access/runtime/server-key.pem",
 		},
 	}
 	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, access)
