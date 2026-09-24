@@ -39,6 +39,12 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 		Usage:   "baha app doctor [NAME] [--fix]",
 		Long:    "Runs the existing application doctor, including required-secret presence/usability checks, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			return executeApplicationRepairLifecycle(ctx, store, args, out, errOut)
+		},
+	}
+}
+
+func executeApplicationRepairLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 			if requestsJSONOutput(args) {
 				for _, arg := range args {
 					if arg == "--fix" {
@@ -89,8 +95,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 
 			fmt.Fprintln(out, "After repair:")
 			return appDoctorCommand(store).Run(ctx, nameArgs, out, errOut)
-		},
-	}
+		
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
