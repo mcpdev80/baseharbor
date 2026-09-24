@@ -72,4 +72,4 @@ Follow [Documentation style](STYLE_GUIDE.md).
 
 Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. GitHub Issues plan future work. Releases preserve history.
 
-Every release runs the [pre-release documentation audit](pre-release-documentation-audit.md).
+Every release runs the complete [pre-release audit](pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
