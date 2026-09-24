@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 )
 
 func waitLokiReady(ctx context.Context, client *http.Client, endpoint string) error {
@@ -64,12 +65,54 @@ func VerifyApplication(ctx context.Context, m application.Manifest, services []s
 	return nil
 }
 
+func VerifyProviderSources(ctx context.Context, m application.Manifest, sources []observability.SignalSource) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	files, err := ExistingProviderFiles(m)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		return err
+	}
+	client, err := lokiHTTPClient(m, files)
+	if err != nil {
+		return err
+	}
+	for _, source := range sources {
+		if source.Class != observability.SourceApplicationProvider {
+			continue
+		}
+		_, service, ok := observability.ParseRuntimeTarget(source.Target)
+		if !ok {
+			return fmt.Errorf("provider log source %q has invalid runtime target %q", source.ID, source.Target)
+		}
+		query := fmt.Sprintf(
+			`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source_class="application-provider",baseharbor_provider=%q,baseharbor_service=%q}`,
+			m.Name,
+			m.Environment,
+			string(source.Provider),
+			service,
+		)
+		if err := waitForQuery(ctx, client, endpoint, query, "provider "+string(source.Provider)+"/"+service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func waitForStream(ctx context.Context, client *http.Client, endpoint string, m application.Manifest, service string) error {
+	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_service=%q}`, m.Name, m.Environment, service)
+	return waitForQuery(ctx, client, endpoint, query, m.Name+"/"+service)
+}
+
+func waitForQuery(ctx context.Context, client *http.Client, endpoint, query, description string) error {
 	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_service=%q}`, m.Name, m.Environment, service)
 	var last error
 	for {
 		ok, err := queryStream(deadline, client, endpoint, query)
@@ -79,11 +122,11 @@ func waitForStream(ctx context.Context, client *http.Client, endpoint string, m 
 		if err != nil {
 			last = err
 		} else {
-			last = errors.New("Loki has not ingested a matching workload log stream yet")
+			last = errors.New("Loki has not ingested a matching log stream yet")
 		}
 		select {
 		case <-deadline.Done():
-			return fmt.Errorf("verify Loki ingestion for %s/%s: %w", m.Name, service, last)
+			return fmt.Errorf("verify Loki ingestion for %s: %w", description, last)
 		case <-ticker.C:
 		}
 	}
