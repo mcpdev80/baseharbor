@@ -45,7 +45,6 @@ func TestMetricsSourceRequiresExplicitReachability(t *testing.T) {
 	}
 }
 
-
 func TestRegisterProviderSignalsUsesDescriptorAndRuntimeRealization(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
@@ -95,10 +94,10 @@ func TestRegisterProviderSignalsRejectsUndeclaredOrUnsupportedRuntimeSignal(t *t
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
 	err := RegisterProviderSignals(ProviderSignalRegistration{
-		ID:         "postgres:app",
-		Descriptor: capability.PostgreSQLIntegration,
-		Class:      SourceApplicationProvider,
-		Scope:      capability.ScopeApplication,
+		ID:               "postgres:app",
+		Descriptor:       capability.PostgreSQLIntegration,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
 		OwnerApplication: "demo",
 		Signals: map[string]ProviderSignalRuntime{
 			"metrics": {Network: "app", Target: "postgres:9187"},
@@ -111,14 +110,14 @@ func TestRegisterProviderSignalsRejectsUndeclaredOrUnsupportedRuntimeSignal(t *t
 
 func TestSignalSourceAcceptsApplicationClass(t *testing.T) {
 	source := SignalSource{
-		ID: "application:demo",
-		Kind: SignalLogs,
-		Provider: capability.ProviderLoki,
-		Class: SourceApplication,
-		Scope: capability.ScopeApplication,
+		ID:               "application:demo",
+		Kind:             SignalLogs,
+		Provider:         capability.ProviderLoki,
+		Class:            SourceApplication,
+		Scope:            capability.ScopeApplication,
 		OwnerApplication: "demo",
-		Target: "service/api",
-		Protocol: "stdout-stderr",
+		Target:           "service/api",
+		Protocol:         "stdout-stderr",
 	}
 	if err := source.Validate(); err != nil {
 		t.Fatal(err)
