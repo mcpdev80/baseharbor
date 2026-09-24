@@ -450,12 +450,15 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	}
 	text := string(compose)
 	for _, want := range []string{
-		"./service-access/runtime/ca.pem:/certs/ca.pem:ro",
-		"./service-access/runtime/server.pem:/certs/server.pem:ro",
-		"./service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+		"/service-access/runtime/ca.pem:/certs/ca.pem:ro",
+		"/service-access/runtime/server.pem:/certs/server.pem:ro",
+		"/service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("reconciled shared Prometheus compose missing %q:\n%s", want, text)
+			t.Fatalf("reconciled shared Prometheus compose missing runtime-projected TLS mount %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "/service-access/pki/") {
+		t.Fatalf("reconciled shared Prometheus compose must not mount protected PKI source material:\n%s", text)
 	}
 }
