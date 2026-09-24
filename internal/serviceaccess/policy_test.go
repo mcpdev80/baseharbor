@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestResolveDefaultsToManagedLocalTLS(t *testing.T) {
@@ -97,6 +98,37 @@ func TestManagedLocalMaterialIsUsable(t *testing.T) {
 	}
 	if err := validateMaterial(material, true); err != nil {
 		t.Fatalf("managed material invalid: %v", err)
+	}
+}
+
+func TestManagedLocalMaterialRenewsBeforeExpiry(t *testing.T) {
+	p, err := Resolve("prod", "prometheus", AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := newTestIssuer(t)
+	issuer.validity = 48 * time.Hour
+	dir := t.TempDir()
+
+	if _, err := EnsureTLSMaterial(context.Background(), issuer, p, dir, "prometheus"); err != nil {
+		t.Fatal(err)
+	}
+	if issuer.renewCalls != 0 {
+		t.Fatalf("initial issuance unexpectedly renewed: %d", issuer.renewCalls)
+	}
+	if _, err := EnsureTLSMaterial(context.Background(), issuer, p, dir, "prometheus"); err != nil {
+		t.Fatal(err)
+	}
+	if issuer.renewCalls == 0 {
+		t.Fatal("near-expiry managed certificate was not renewed through Issuer.Renew")
+	}
+
+	state, err := readManagedPKIState(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Version != 2 || state.LifecycleOwner != "issuer" || state.RenewalMode != "automatic-reconcile" {
+		t.Fatalf("unexpected managed PKI lifecycle state: %+v", state)
 	}
 }
 
