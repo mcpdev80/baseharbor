@@ -82,7 +82,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	sort.Strings(running)
-	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-sessions"}
+	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-cache-access", "valkey-sessions", "valkey-sessions-access"}
 	if len(running) != len(want) {
 		t.Fatalf("unexpected running services: got %#v want %#v", running, want)
 	}
