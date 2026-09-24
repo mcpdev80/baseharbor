@@ -330,7 +330,10 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
 		return quadletServiceStartError(ctx, units, err)
 	}
-	return quadletEnsureServiceUnitsActive(ctx, units)
+	if err := quadletEnsureServiceUnitsActive(ctx, units); err != nil {
+		return err
+	}
+	return quadletEnsureServiceContainersExist(ctx, project, selected)
 }
 
 func quadletServiceStartError(ctx context.Context, units []string, startErr error) error {
@@ -358,6 +361,35 @@ func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error 
 			status = statusErr.Error()
 		}
 		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, strings.TrimSpace(status))
+	}
+	return nil
+}
+
+func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletProject, selected []string) error {
+	services := selected
+	if len(services) == 0 {
+		services = make([]string, 0, len(project.Containers))
+		for service := range project.Containers {
+			services = append(services, service)
+		}
+	}
+	sort.Strings(services)
+
+	podman, err := exec.LookPath("podman")
+	if err != nil {
+		return err
+	}
+	for _, service := range services {
+		container, ok := project.Containers[service]
+		if !ok {
+			return fmt.Errorf("Quadlet service %q has no expected container name", service)
+		}
+		if err := exec.CommandContext(ctx, podman, "container", "exists", container).Run(); err == nil {
+			continue
+		}
+		unit := project.ServiceUnits[service]
+		status, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+		return fmt.Errorf("Quadlet service %s did not materialize expected container %s: %s", unit, container, strings.TrimSpace(status))
 	}
 	return nil
 }
