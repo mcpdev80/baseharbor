@@ -405,7 +405,11 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode) str
   respond @unauthorized 401
 `
 	}
-	return fmt.Sprintf(`:%d {
+	return fmt.Sprintf(`{
+  auto_https disable_redirects
+}
+
+:%d {
   tls /certs/server.pem /certs/server-key.pem%s
 %s  reverse_proxy %s
 }
