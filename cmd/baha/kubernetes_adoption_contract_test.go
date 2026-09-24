@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -145,4 +146,131 @@ func TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged
 			t.Fatalf("runtime-specific Kubernetes intent leaked into baseharbor.yaml via %q:\n%s", forbidden, string(manifestBytes))
 		}
 	}
+}
+
+
+type kubernetesReferenceAcceptance struct {
+	Version              int    `json:"version"`
+	ReferenceApplication string `json:"reference_application"`
+	Source struct {
+		Compose             string   `json:"compose"`
+		WorkloadServices    []string `json:"workload_services"`
+		RepositoryOwned     bool     `json:"repository_owned"`
+		MustRemainUnchanged bool     `json:"must_remain_unchanged"`
+	} `json:"source"`
+	KubernetesRealization struct {
+		NamespaceIsExternalInput bool     `json:"namespace_is_external_input"`
+		RequiredNamespacedKinds  []string `json:"required_namespaced_kinds"`
+		ForbiddenClusterKinds    []string `json:"forbidden_cluster_scoped_kinds"`
+		Workload struct {
+			Service       string `json:"service"`
+			ContainerPort int    `json:"container_port"`
+			BuildContext  string `json:"build_context"`
+		} `json:"workload"`
+		Bindings        []string `json:"bindings"`
+		OwnershipLabels []string `json:"ownership_labels"`
+	} `json:"kubernetes_realization"`
+}
+
+// TestKubernetesReferenceDemoTargetAcceptance freezes the expected shape of
+// the first Kubernetes realization without making that shape part of the
+// application contract. The file is test acceptance data only; provider
+// implementation may evolve internally as long as these semantics hold.
+func TestKubernetesReferenceDemoTargetAcceptance(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "kubernetes", "reference-demo-acceptance.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var spec kubernetesReferenceAcceptance
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	if spec.Version != 1 {
+		t.Fatalf("acceptance version = %d, want 1", spec.Version)
+	}
+	if spec.ReferenceApplication != "baseharbor-demo" {
+		t.Fatalf("reference application = %q", spec.ReferenceApplication)
+	}
+	if spec.Source.Compose != "compose.yaml" ||
+		!reflect.DeepEqual(spec.Source.WorkloadServices, []string{"demo-app"}) ||
+		!spec.Source.RepositoryOwned ||
+		!spec.Source.MustRemainUnchanged {
+		t.Fatalf("source contract = %#v", spec.Source)
+	}
+	if !spec.KubernetesRealization.NamespaceIsExternalInput {
+		t.Fatal("Kubernetes namespace must remain deployment/platform input")
+	}
+
+	requiredKinds := map[string]bool{
+		"Deployment": false,
+		"Service":    false,
+		"ConfigMap":  false,
+		"Secret":     false,
+	}
+	for _, kind := range spec.KubernetesRealization.RequiredNamespacedKinds {
+		if _, ok := requiredKinds[kind]; ok {
+			requiredKinds[kind] = true
+		}
+	}
+	for kind, found := range requiredKinds {
+		if !found {
+			t.Fatalf("required namespaced kind %s missing from acceptance", kind)
+		}
+	}
+
+	forbidden := map[string]bool{
+		"Namespace":                false,
+		"ClusterRole":              false,
+		"ClusterRoleBinding":       false,
+		"CustomResourceDefinition": false,
+		"StorageClass":             false,
+		"GatewayClass":             false,
+	}
+	for _, kind := range spec.KubernetesRealization.ForbiddenClusterKinds {
+		if _, ok := forbidden[kind]; ok {
+			forbidden[kind] = true
+		}
+	}
+	for kind, found := range forbidden {
+		if !found {
+			t.Fatalf("cluster-scoped kind %s is not explicitly forbidden", kind)
+		}
+	}
+
+	if spec.KubernetesRealization.Workload.Service != "demo-app" ||
+		spec.KubernetesRealization.Workload.ContainerPort != 8080 ||
+		spec.KubernetesRealization.Workload.BuildContext != "./demo-app" {
+		t.Fatalf("workload target = %#v", spec.KubernetesRealization.Workload)
+	}
+
+	for _, requiredBinding := range []string{
+		"DATABASE_URL",
+		"REDIS_URL",
+		"S3_ENDPOINT",
+		"S3_BUCKET",
+		"APP_SECRET",
+	} {
+		if !containsString(spec.KubernetesRealization.Bindings, requiredBinding) {
+			t.Fatalf("required application binding %s missing", requiredBinding)
+		}
+	}
+	for _, requiredLabel := range []string{
+		"app.kubernetes.io/managed-by",
+		"baseharbor.io/application",
+		"baseharbor.io/environment",
+	} {
+		if !containsString(spec.KubernetesRealization.OwnershipLabels, requiredLabel) {
+			t.Fatalf("required ownership label %s missing", requiredLabel)
+		}
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
