@@ -37,10 +37,10 @@ type Placement struct {
 }
 
 type Registration struct {
-	Application       string `json:"application"`
-	Environment       string `json:"environment"`
-	SyslogPort        int    `json:"syslog_port"`
-	ProviderSyslogPort int   `json:"provider_syslog_port"`
+	Application        string `json:"application"`
+	Environment        string `json:"environment"`
+	SyslogPort         int    `json:"syslog_port"`
+	ProviderSyslogPort int    `json:"provider_syslog_port"`
 }
 
 type ProviderFiles struct {
