@@ -27,6 +27,7 @@ const (
 	applicationBrokerStatusTimeout   = 10 * time.Second
 	applicationPostgresStatusTimeout = 15 * time.Second
 	applicationValkeyStatusTimeout   = 10 * time.Second
+	applicationLogsStatusTimeout     = 10 * time.Second
 )
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
@@ -212,7 +213,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			for _, service := range workloadStatus.Services {
 				logServices = append(logServices, service.Service)
 			}
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			checkCtx, cancel := context.WithTimeout(ctx, applicationLogsStatusTimeout)
 			err := logsprovider.VerifyApplication(checkCtx, m, logServices)
 			cancel()
 			if err != nil {
