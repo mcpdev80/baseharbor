@@ -284,6 +284,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
 		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
+		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -310,12 +311,17 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
-		if hasTelemetryTLS {
+		if hasTelemetryTLS || hasObjectStorageTLS {
 			b.WriteString("    volumes:\n")
-			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
-			if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
-				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientCertEnv]+":"+OTLPTLSContainerClientCert+":ro"))
-				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientKeyEnv]+":"+OTLPTLSContainerClientKey+":ro"))
+			if hasTelemetryTLS {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
+				if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+					fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientCertEnv]+":"+OTLPTLSContainerClientCert+":ro"))
+					fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientKeyEnv]+":"+OTLPTLSContainerClientKey+":ro"))
+				}
+			}
+			if hasObjectStorageTLS {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[S3TLSHostCAEnv]+":"+S3TLSContainerCA+":ro"))
 			}
 		}
 		if hasNetworks {
@@ -420,6 +426,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["S3_BUCKET"] = physical
 			env["S3_REGION"] = "us-east-1"
 			env["AWS_ENDPOINT_URL"] = endpoint
+			if strings.TrimSpace(values[S3TLSHostCAEnv]) != "" {
+				env["AWS_CA_BUNDLE"] = S3TLSContainerCA
+			}
 			env["AWS_REGION"] = "us-east-1"
 			env["AWS_ACCESS_KEY_ID"] = access
 			env["AWS_SECRET_ACCESS_KEY"] = secret
@@ -428,6 +437,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["S3_"+token+"_ENDPOINT"] = endpoint
 			env["S3_"+token+"_BUCKET"] = physical
 			env["S3_"+token+"_REGION"] = "us-east-1"
+			if strings.TrimSpace(values[S3TLSHostCAEnv]) != "" {
+				env["S3_"+token+"_CA_FILE"] = S3TLSContainerCA
+			}
 			env["S3_"+token+"_ACCESS_KEY_ID"] = access
 			env["S3_"+token+"_SECRET_ACCESS_KEY"] = secret
 		}
