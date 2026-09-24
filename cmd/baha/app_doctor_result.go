@@ -30,14 +30,14 @@ type applicationDoctorSecretResult struct {
 }
 
 type applicationDoctorResult struct {
-	ContractVersion string                            `json:"contract_version"`
-	Application     string                            `json:"application"`
-	Environment     string                            `json:"environment"`
-	State           string                            `json:"state"`
-	Healthy         bool                              `json:"healthy"`
-	Checks          []preflight.Result                `json:"checks"`
-	Workload        []applicationDoctorWorkloadResult `json:"workload,omitempty"`
-	RequiredSecrets []applicationDoctorSecretResult   `json:"required_secrets,omitempty"`
+	ContractVersion string                                       `json:"contract_version"`
+	Application     string                                       `json:"application"`
+	Environment     string                                       `json:"environment"`
+	State           string                                       `json:"state"`
+	Healthy         bool                                         `json:"healthy"`
+	Checks          []preflight.Result                           `json:"checks"`
+	Workload        []applicationDoctorWorkloadResult            `json:"workload,omitempty"`
+	RequiredSecrets []applicationDoctorSecretResult              `json:"required_secrets,omitempty"`
 	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 
