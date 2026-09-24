@@ -360,6 +360,14 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 	return out, nil
 }
 
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, includeApplicationProviders, includePlatformProviders)
+}
+
+func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(SignalTraces, placement, applications, includeApplicationProviders, includePlatformProviders)
+}
+
 func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {
 	signals, err := List(SignalMetrics, placement, applications, includeApplicationProviders, includePlatformProviders)
 	if err != nil {
