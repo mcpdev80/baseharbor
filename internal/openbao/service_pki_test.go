@@ -55,8 +55,8 @@ func TestIssueServiceCertificateUsesOpenBaoPKIWithoutSecretArguments(t *testing.
 	fake := &servicePKIFake{}
 	cert, err := IssueServiceCertificate(context.Background(), fake, files, ServiceCertificateRequest{
 		CommonName: "prometheus.baseharbor",
-		DNSNames: []string{"prometheus-access", "localhost"},
-		TTL: 24 * time.Hour,
+		DNSNames:   []string{"prometheus-access", "localhost"},
+		TTL:        24 * time.Hour,
 	})
 	if err != nil {
 		t.Fatal(err)
