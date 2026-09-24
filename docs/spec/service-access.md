@@ -39,6 +39,31 @@ These values are deployment/operator state, not fields in `baseharbor.yaml`.
 
 A provider with native credentials/ACLs may use them. A service without suitable native authentication may use an mTLS gateway. The authentication mechanism is provider/runtime realization state.
 
+## Managed network service inventory
+
+The following inventory describes the current Compose realization. It is evidence of the current provider/runtime mapping, not portable application intent.
+
+| Surface | Exposure | Transport | Authentication | Workload/client trust |
+| --- | --- | --- | --- | --- |
+| OpenBao UI/API | host loopback through `openbao-access`; provider-internal HTTP stays inside the Compose network | HTTPS gateway | OpenBao native token/AppRole semantics remain authoritative | managed/external CA through the service-access issuer boundary |
+| Control-plane PostgreSQL | host loopback only after issuer readiness | native PostgreSQL TLS; plaintext TCP rejected by `hostnossl` policy | PostgreSQL SCRAM/native credentials | managed/external CA; health checks verify the CA |
+| Application PostgreSQL | application backend network plus loopback developer port | native PostgreSQL TLS; plaintext TCP rejected by `hostnossl` policy | application-scoped PostgreSQL credentials | `DATABASE_URL` + read-only `DATABASE_CA_FILE` binding |
+| Application Valkey/Redis | application backend network plus loopback developer port through access gateway | TLS | Valkey password/native authentication | `rediss://` URL + read-only `REDIS_CA_FILE` / `VALKEY_CA_FILE` binding |
+| Prometheus | provider-internal network; loopback HTTPS access gateway | HTTPS | environment policy: dev may be auth-light; managed test/prod requires the selected auth mechanism, with mTLS as the reference realization | CA/client identity projected through service-access state |
+| Loki | provider-internal network; loopback HTTPS API gateway | HTTPS | same environment-aware policy boundary as other observability surfaces | CA/client identity projected through service-access state |
+| Tempo | provider-internal network; loopback HTTPS API gateway | HTTPS | same environment-aware policy boundary as other observability surfaces | CA/client identity projected through service-access state |
+| OpenTelemetry Collector | provider-internal network; HTTPS binding to workloads and loopback where enabled | HTTPS | managed test/prod can use mTLS; external endpoints must be HTTPS | `OTEL_EXPORTER_OTLP_CERTIFICATE` and optional client cert/key file bindings |
+| SeaweedFS/S3 | provider-internal network; loopback HTTPS gateway for developer/provider operations | HTTPS | S3/native credentials | `AWS_CA_BUNDLE` / S3 CA file binding |
+| Runtime broker / executor | internal runtime-control networks; no generic public provider-admin surface | mTLS plus existing broker token/identity semantics | existing runtime broker SPIFFE/token authorization remains authoritative | runtime CA/client certificate/key file bindings |
+
+### Network placement is not authentication
+
+Loopback binding, internal Compose networks, Kubernetes namespaces and equivalent runtime placement are defense-in-depth controls. They reduce reachability but MUST NOT be treated as authentication.
+
+For managed test/prod surfaces, the selected authentication mechanism remains mandatory even when the endpoint is reachable only through loopback or an internal network. Provider-native credentials, mTLS, token authentication, OIDC/OAuth2 or a future managed-identity adapter may satisfy that requirement according to policy.
+
+The same service-access policy is runtime-neutral. Docker/Compose and Podman realizations consume the same resolved TLS/authentication semantics; future Kubernetes/OpenShift realizations translate the same provider-neutral binding into native Secret/ConfigMap/CSI/service constructs rather than changing application intent.
+
 ## Developer host trust
 
 Managed-local PKI may expose its public CA to the developer host without transferring issuer ownership to the CLI.
