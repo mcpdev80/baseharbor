@@ -1,0 +1,44 @@
+name: "Test · Kubernetes Runtime Foundation"
+
+on:
+  push:
+    branches:
+      - 'feature/kubernetes-runtime-foundation'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: [self-hosted, Linux, X64, baseharbor, kubernetes, k3s]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff="$(gofmt -d internal/workload internal/providers/runtime/kubernetes)"
+          if [ -n "$diff" ]; then
+            printf '%s\n' "$diff"
+            exit 1
+          fi
+
+      - name: Run workload and Kubernetes unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/workload ./internal/providers/runtime/kubernetes -count=1 -v
+
+      - name: Run real k3s renderer acceptance
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes \
+            -run '^TestKubernetesRenderedWorkloadLifecycleOnCI$' \
+            -count=1 -v
