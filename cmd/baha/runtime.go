@@ -332,12 +332,43 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, strings.TrimSpace(recoveryFile), out); err != nil {
 		return err
 	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+		return fmt.Errorf("reconcile control-plane service access: %w", err)
+	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("resume shared platform runtime after verified control plane: %w", err)
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
 	return nil
+}
+
+func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return err
+	}
+	if !state.Initialized || state.Sealed {
+		return nil
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return err
+	}
+	issuer := platformopenbao.NewServiceIssuer(compose, files)
+	status, err := issuer.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.Ready {
+		return errors.New("managed service issuer is not ready")
+	}
+	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
+		return err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	return compose.Up(ctx, files.Compose, files.Env)
 }
 
 func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
