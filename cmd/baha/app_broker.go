@@ -179,13 +179,6 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	project := runtimebroker.ProjectName(m)
-	services, err := compose.RunningServicesProject(ctx, project, brokerFiles.Compose, files.Env)
-	if err != nil {
-		return fmt.Errorf("inspect application runtime broker: %w", err)
-	}
-	if len(services) != 1 || services[0] != runtimebroker.ServiceName {
-		return errors.New("application runtime broker is not running")
-	}
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--fail", "--silent", "--show-error",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
