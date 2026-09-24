@@ -142,3 +142,29 @@ target + application + environment
 CLI, JSON und MCP verwenden dieselbe Target-/Deployment-Identitaet.
 
 Diese v0.4.15-Foundation wird in Issue #408 umgesetzt und bildet die Grundlage fuer #396 sowie spaetere Kubernetes-/OpenShift-Runtimes.
+
+
+## Frei definierbares Prompt-Label
+
+Die Prompt-Anzeige ist reine Darstellung und darf vom eigentlichen Target-Namen abweichen.
+
+Beispiel:
+
+```text
+Target: laptop-docker-12
+Prompt-Label: ld12
+Farbe: weiches Gruen
+
+[ld12] ~/projects/demo $
+```
+
+Das Label ist nur ein visueller Alias. Es veraendert weder Target-Identitaet noch Deployment-Schluessel, Ownership oder Target-Aufloesung.
+
+Der Wizard erlaubt deshalb neben Presets auch:
+
+- freies Prompt-Label;
+- frei waehlbare Farbe;
+- Position vor/hinter dem Pfad bzw. Right Prompt, wenn unterstuetzt;
+- Live Preview der exakten Darstellung.
+
+Production bleibt standardmaessig auch ohne Farberkennung eindeutig sichtbar.
