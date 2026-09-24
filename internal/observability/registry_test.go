@@ -212,3 +212,43 @@ func TestListLogsAndTracesUseSharedOwnershipFiltering(t *testing.T) {
 		t.Fatalf("traces = %#v", traces)
 	}
 }
+
+
+func TestRegisterProviderSignalsRemovesStaleSignalsAtomically(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	if err := UpdateSignal(SignalSource{
+		ID: "provider:demo", Kind: SignalTraces, Provider: capability.ProviderTempo,
+		Class: SourcePlatformProvider, Scope: capability.ScopeShared,
+		Target: "tempo", Protocol: "otlp",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RegisterProviderSignals(ProviderSignalRegistration{
+		ID:         "provider:demo",
+		Descriptor: capability.TempoIntegration,
+		Class:      SourcePlatformProvider,
+		Scope:      capability.ScopeShared,
+		Signals: map[string]ProviderSignalRuntime{
+			"tempo-metrics": {Network: "traces", Target: "tempo:3200"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traces) != 0 {
+		t.Fatalf("stale traces = %#v", traces)
+	}
+	metrics, err := ListMetrics(capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics) != 1 || metrics[0].ID != "provider:demo" {
+		t.Fatalf("metrics = %#v", metrics)
+	}
+}
