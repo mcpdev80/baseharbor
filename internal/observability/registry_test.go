@@ -251,3 +251,40 @@ func TestRegisterProviderSignalsRemovesStaleSignalsAtomically(t *testing.T) {
 		t.Fatalf("metrics = %#v", metrics)
 	}
 }
+
+
+func TestRegisterProviderSignalsRetainsRealizationMetadata(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	if err := RegisterProviderSignals(ProviderSignalRegistration{
+		ID:               "postgresql:demo:postgres",
+		Descriptor:       capability.PostgreSQLIntegration,
+		Class:            SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Enabled:          map[SignalKind]bool{SignalTraces: true},
+		Signals: map[string]ProviderSignalRuntime{
+			"traces": {Target: RuntimeTarget("baseharbor-demo-dev", "postgres")},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ListTraces(
+		capability.ProviderPlacement{Scope: capability.ScopeApplication},
+		[]string{"demo"},
+		true,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("traces = %#v", got)
+	}
+	if got[0].Mode != capability.ObservabilityInteraction ||
+		got[0].Verification != capability.ObservabilityVerifySpan ||
+		got[0].SemanticConvention != "database" {
+		t.Fatalf("trace metadata = %#v", got[0])
+	}
+}
