@@ -381,7 +381,15 @@ func appDestroyCommand(store application.Store) *cli.Command {
 					if err := metricsprovider.PruneRegisteredApplicationTargets(m, nil); err != nil {
 						return fmt.Errorf("remove application metrics targets: %w", err)
 					}
-					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, m); err != nil {
+					if platformFiles.Compose == "" {
+						var platformErr error
+						platformFiles, platformErr = bhruntime.ExistingFiles("")
+						if platformErr != nil {
+							return fmt.Errorf("load managed trust plane for metrics cleanup: %w", platformErr)
+						}
+					}
+					cleanupIssuer := openbao.NewServiceIssuer(compose, platformFiles)
+					if err := metricsprovider.UnregisterSharedApplication(ctx, compose, cleanupIssuer, m); err != nil {
 						return fmt.Errorf("remove application metrics trust edges: %w", err)
 					}
 				case capability.ScopeApplication:
