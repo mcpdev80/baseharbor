@@ -4,6 +4,17 @@
 
 This specification defines the common rules for providers.
 
+The protobuf at `spec/provider/v1/provider.proto` is the capability/service-provider process protocol. It MUST NOT be reused as the Runtime Provider protocol merely because both are called providers.
+
+The external Runtime Provider process boundary is defined separately by:
+
+```text
+spec/runtime-provider/v1/runtime_provider.proto
+docs/spec/runtime-provider-contract-v1.md
+```
+
+The application-facing Runtime Broker API at `spec/runtime-api/v1/openapi.yaml` is a third, separate contract.
+
 ## Provider axes
 
 Runtime, Capability and Delivery Provider are independent axes.
