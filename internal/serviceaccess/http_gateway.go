@@ -175,9 +175,19 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.CA+":/certs/ca.pem:ro"))
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
-		for _, network := range spec.Networks {
-			if strings.TrimSpace(network) != "" {
-				fmt.Fprintf(&b, "      - %s\n", network)
+		alias := strings.TrimSpace(files.Material.ServerName)
+		aliasable := alias != "" && !strings.EqualFold(alias, "localhost") && net.ParseIP(alias) == nil && alias != spec.ServiceName
+		for i, network := range spec.Networks {
+			network = strings.TrimSpace(network)
+			if network == "" {
+				continue
+			}
+			if i == 0 && aliasable {
+				fmt.Fprintf(&b, "      %s:\n", network)
+				b.WriteString("        aliases:\n")
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(alias))
+			} else {
+				fmt.Fprintf(&b, "      %s: {}\n", network)
 			}
 		}
 	}
