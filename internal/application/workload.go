@@ -283,6 +283,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
 		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -307,6 +308,14 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			sort.Strings(keys)
 			for _, key := range keys {
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
+			}
+		}
+		if hasTelemetryTLS {
+			b.WriteString("    volumes:\n")
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
+			if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientCertEnv]+":"+OTLPTLSContainerClientCert+":ro"))
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientKeyEnv]+":"+OTLPTLSContainerClientKey+":ro"))
 			}
 		}
 		if hasNetworks {
@@ -432,6 +441,13 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
+		if strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" {
+			env["OTEL_EXPORTER_OTLP_CERTIFICATE"] = OTLPTLSContainerCA
+			if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+				env["OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"] = OTLPTLSContainerClientCert
+				env["OTEL_EXPORTER_OTLP_CLIENT_KEY"] = OTLPTLSContainerClientKey
+			}
+		}
 		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
 			if headers := strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS")); headers != "" {
 				env["OTEL_EXPORTER_OTLP_HEADERS"] = headers
