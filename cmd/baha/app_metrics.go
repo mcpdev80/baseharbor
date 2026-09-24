@@ -17,6 +17,7 @@ type managedMetricsExecution struct {
 	execution           *capability.Execution
 	driver              *metricsprovider.Driver
 	runtime             bhruntime.Compose
+	issuer              serviceaccess.Issuer
 	manifest            application.Manifest
 	enabled             bool
 	desiredPlacement    capability.ProviderPlacement
@@ -83,6 +84,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	prepared := &managedMetricsExecution{
 		driver:              metricsprovider.NewDriver(compose, m, issuer, runtimeCA),
 		runtime:             compose,
+		issuer:              issuer,
 		manifest:            m,
 		enabled:             true,
 		desiredPlacement:    desiredPlacement,
@@ -188,7 +190,7 @@ func cleanupRegisteredMetricsPlacement(ctx context.Context, prepared *managedMet
 		if err := metricsprovider.PruneRegisteredApplicationTargets(prepared.manifest, nil); err != nil {
 			return err
 		}
-		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.manifest)
+		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest)
 	case capability.ScopeApplication:
 		return metricsprovider.DestroyProvider(ctx, prepared.runtime, prepared.manifest)
 	case capability.ScopeExternal:
