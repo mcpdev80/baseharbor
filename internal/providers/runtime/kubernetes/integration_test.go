@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 	"github.com/mcpdev80/baseharbor/internal/workload"
 )
 
@@ -39,7 +40,7 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 	plan := Plan{
 		Application: app,
 		Environment: "dev",
-		Namespace:   namespace,
+		Target:      runtimemodel.Target{Scope: namespace},
 		Workload: workload.Model{Services: []workload.Service{{
 			Name:        "app",
 			Image:       "registry.k8s.io/pause:3.10",
