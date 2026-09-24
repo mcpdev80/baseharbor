@@ -29,6 +29,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
       - name: Checkout requested ref
@@ -46,6 +47,10 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh docker
 
+      - name: Build runtime image from tested checkout
+        shell: bash
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
       - name: Run focused full-stack observability acceptance
         shell: bash
         run: |
@@ -58,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           docker ps -a || true
-          for project in baseharbor-telemetry baseharbor-traces baseharbor-logs baseharbor-metrics; do
+          for project in baseharbor-telemetry baseharbor-traces baseharbor-logs baseharbor-metrics baseharbor-runtime-executor; do
             echo "::group::$project"
             docker ps -a --filter "label=com.docker.compose.project=$project" || true
             for id in $(docker ps -aq --filter "label=com.docker.compose.project=$project"); do
@@ -80,6 +85,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
       - name: Checkout requested ref
@@ -96,6 +102,10 @@ jobs:
       - name: Reset persistent runner state
         shell: bash
         run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Build runtime image from tested checkout
+        shell: bash
+        run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
 
       - name: Verify Quadlet-only runtime
         shell: bash
