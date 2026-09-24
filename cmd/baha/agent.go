@@ -75,15 +75,8 @@ func currentAgentDescription() agentDescription {
 		MCP: agentMCPDescription{
 			Transport:       "stdio",
 			ProtocolVersion: "2026-07-28",
-			Tools: []string{
-				"baseharbor.inspect",
-				"baseharbor.plan",
-				"baseharbor.status",
-				"baseharbor.doctor",
-				"baseharbor.policy.check",
-				"baseharbor.policy.explain",
-			},
-			Remote: false,
+			Tools:           machine.MCPTools(),
+			Remote:          false,
 		},
 	}
 }

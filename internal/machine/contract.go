@@ -23,6 +23,7 @@ type Operation struct {
 	ConfirmationRequired bool        `json:"confirmation_required"`
 	PolicyRequired       bool        `json:"policy_required"`
 	ContractVersion      string      `json:"contract_version"`
+	MCPTool              string      `json:"mcp_tool,omitempty"`
 }
 
 type ErrorCode string
@@ -31,6 +32,7 @@ const (
 	ErrorValidationFailed      ErrorCode = "validation_failed"
 	ErrorPortConflict          ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
+	ErrorApprovalRequired      ErrorCode = "approval_required"
 	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
 	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
 	ErrorAuthenticationFailed  ErrorCode = "authentication_failed"
@@ -115,13 +117,40 @@ func ResultError(err error) ErrorResult {
 
 func Operations() []Operation {
 	return []Operation{
-		{ID: "inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
-		{ID: "plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
-		{ID: "status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
-		{ID: "doctor", Description: "Run diagnostic verification without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
-		{ID: "policy.check", Description: "Evaluate effective environment policy without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
-		{ID: "policy.explain", Description: "Explain effective policy defaults and bounded overrides.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "status", MCPTool: "baseharbor.status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "doctor", MCPTool: "baseharbor.doctor", Description: "Run diagnostic verification without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "observe", MCPTool: "baseharbor.observe", Description: "Return secret-safe application diagnostics and observability state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "update", MCPTool: "baseharbor.update", Description: "Safely update repository source and reconverge the application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "repair", MCPTool: "baseharbor.repair", Description: "Repair safely reconcilable BaseHarbor-owned application drift and verify the result.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "backup", MCPTool: "baseharbor.backup", Description: "Create and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "restore", MCPTool: "baseharbor.restore", Description: "Restore and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "destroy", MCPTool: "baseharbor.destroy", Description: "Permanently remove BaseHarbor-owned application runtime resources and state.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "policy.check", MCPTool: "baseharbor.policy.check", Description: "Evaluate effective environment policy without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "policy.explain", MCPTool: "baseharbor.policy.explain", Description: "Explain effective policy defaults and bounded overrides.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 	}
+}
+
+func MCPTools() []string {
+	operations := Operations()
+	tools := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		if operation.MCPTool != "" {
+			tools = append(tools, operation.MCPTool)
+		}
+	}
+	return tools
+}
+
+func OperationByID(id string) (Operation, bool) {
+	for _, operation := range Operations() {
+		if operation.ID == id {
+			return operation, true
+		}
+	}
+	return Operation{}, false
 }
 
 func CapabilitySpecifications() []string {

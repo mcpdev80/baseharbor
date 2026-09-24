@@ -14,13 +14,44 @@ Discover machine-facing operations with:
 baha agent describe -o json
 ```
 
-Rules:
+## Semantic tools
 
-- MCP uses the same semantic core as CLI/JSON.
+The current surface is intentionally small:
+
+```text
+baseharbor.inspect
+baseharbor.plan
+baseharbor.apply
+baseharbor.status
+baseharbor.doctor
+baseharbor.observe
+baseharbor.update
+baseharbor.repair
+baseharbor.backup
+baseharbor.restore
+baseharbor.destroy
+baseharbor.policy.check
+baseharbor.policy.explain
+```
+
+These are BaseHarbor lifecycle operations, not wrappers around CLI commands.
+
+`baseharbor.apply` is the semantic converge operation rather than a 1:1 mirror of every human CLI alias.
+
+`baseharbor.destroy` is destructive and requires explicit approval.
+
+Backup and restore accept an owner-only local password-file reference. Plaintext backup passwords are not accepted as MCP arguments.
+
+## Rules
+
+- MCP uses the same semantic lifecycle as CLI/JSON.
+- MCP is local stdio in this release.
 - MCP does not expose a generic shell.
-- MCP does not grant unrestricted Docker/Compose access.
-- Operations carry safety semantics.
-- Policy, ownership, preflight, verification and evidence cannot be bypassed.
+- MCP does not grant unrestricted Docker, Compose, Podman or provider-native execution.
+- Operations carry read-only, mutating or destructive safety semantics.
+- Policy, ownership, preflight, reconciliation, verification and secure bindings cannot be bypassed.
+- Operations do not prompt interactively; unresolved choices return typed actionable results.
 - Outputs are secret-safe.
+- Runtime-specific realization details do not become MCP semantics.
 
-The authoritative operation schema is the versioned machine contract and implementation, not duplicated prose.
+The authoritative operation and safety schema is the versioned machine contract returned by `baha agent describe -o json` and implemented by the typed machine operation registry.
