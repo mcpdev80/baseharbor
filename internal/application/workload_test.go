@@ -118,7 +118,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 		t.Fatal(err)
 	}
 	text := string(override)
-	for _, want := range []string{"@postgres-access:5432/", "@valkey-access:6379/0", "DATABASE_CA_FILE", "REDIS_CA_FILE", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
+	for _, want := range []string{"@postgres:5432/", "@valkey-access:6379/0", "DATABASE_CA_FILE", "REDIS_CA_FILE", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("override missing %q:\n%s", want, text)
 		}
