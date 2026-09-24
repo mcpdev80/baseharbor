@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	providerProject      = "baseharbor-logs"
-	workloadOverrideName = "workload.logging.override.yaml"
+	providerProject          = "baseharbor-logs"
+	workloadOverrideName     = "workload.logging.override.yaml"
+	providerOverrideName     = "provider.logging.override.yaml"
 )
 
 type Placement struct {
@@ -36,9 +37,10 @@ type Placement struct {
 }
 
 type Registration struct {
-	Application string `json:"application"`
-	Environment string `json:"environment"`
-	SyslogPort  int    `json:"syslog_port"`
+	Application       string `json:"application"`
+	Environment       string `json:"environment"`
+	SyslogPort        int    `json:"syslog_port"`
+	ProviderSyslogPort int   `json:"provider_syslog_port"`
 }
 
 type ProviderFiles struct {
@@ -411,8 +413,16 @@ func reconcileRegistration(path string, m application.Manifest, present bool) ([
 		r := Registration{Application: m.Name, Environment: m.Environment}
 		if existing != nil {
 			r.SyslogPort = existing.SyslogPort
-		} else {
+			r.ProviderSyslogPort = existing.ProviderSyslogPort
+		}
+		if r.SyslogPort == 0 {
 			r.SyslogPort, err = allocatePort("udp")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if r.ProviderSyslogPort == 0 {
+			r.ProviderSyslogPort, err = allocatePort("udp")
 			if err != nil {
 				return nil, err
 			}
@@ -449,7 +459,9 @@ func readRegistrations(path string) ([]Registration, error) {
 		return nil, fmt.Errorf("decode Loki registrations: %w", err)
 	}
 	for _, r := range registrations {
-		if strings.TrimSpace(r.Application) == "" || strings.TrimSpace(r.Environment) == "" || r.SyslogPort < 1 || r.SyslogPort > 65535 {
+		if strings.TrimSpace(r.Application) == "" || strings.TrimSpace(r.Environment) == "" ||
+			r.SyslogPort < 1 || r.SyslogPort > 65535 ||
+			r.ProviderSyslogPort < 1 || r.ProviderSyslogPort > 65535 {
 			return nil, errors.New("invalid Loki registration state")
 		}
 	}
