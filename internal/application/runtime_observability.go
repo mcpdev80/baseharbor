@@ -1,10 +1,12 @@
 package application
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func reconcileManagedRuntimeObservability(m Manifest) error {
@@ -67,4 +69,39 @@ func reconcileRuntimeProviderObservability(
 		}
 	}
 	return observability.PruneOwnedProviderInstances(provider, observability.SourceApplicationProvider, capability.ScopeApplication, m.Name, keep)
+}
+
+
+func VerifyManagedProviderInteractions(ctx context.Context, runtime bhruntime.Compose, m Manifest, files RuntimeFiles, sources []observability.SignalSource) error {
+	needsPostgreSQL := false
+	needsValkey := false
+	project := RuntimeProjectName(m)
+	for _, source := range sources {
+		if source.Kind != observability.SignalTraces || source.Mode != capability.ObservabilityInteraction {
+			continue
+		}
+		sourceProject, _, ok := observability.ParseRuntimeTarget(source.Target)
+		if !ok || sourceProject != project {
+			return fmt.Errorf("provider interaction source %q has invalid runtime target %q", source.ID, source.Target)
+		}
+		switch source.Provider {
+		case capability.ProviderPostgreSQL:
+			needsPostgreSQL = true
+		case capability.ProviderValkey:
+			needsValkey = true
+		default:
+			return fmt.Errorf("provider interaction source %q has no runtime verification adapter", source.ID)
+		}
+	}
+	if needsPostgreSQL {
+		if err := VerifyPostgresRuntime(ctx, runtime, m, files); err != nil {
+			return fmt.Errorf("verify PostgreSQL provider interaction: %w", err)
+		}
+	}
+	if needsValkey {
+		if err := VerifyValkeyRuntime(ctx, runtime, m, files); err != nil {
+			return fmt.Errorf("verify Valkey provider interaction: %w", err)
+		}
+	}
+	return nil
 }
