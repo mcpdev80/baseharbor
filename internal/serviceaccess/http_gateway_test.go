@@ -18,16 +18,16 @@ func TestGatewayComposePublishesOnlyTLSPort(t *testing.T) {
 	files := HTTPGatewayFiles{
 		Caddyfile: "/tmp/access/Caddyfile",
 		Material: TLSMaterial{
-			CA: "/tmp/access/ca.pem",
+			CA:                "/tmp/access/ca.pem",
 			ServerCertificate: "/tmp/access/server.pem",
-			ServerKey: "/tmp/access/server-key.pem",
+			ServerKey:         "/tmp/access/server-key.pem",
 		},
 	}
 	got := HTTPGatewayComposeService(files, HTTPGatewaySpec{
-		ServiceName: "prometheus-access",
+		ServiceName:      "prometheus-access",
 		PublishedPortEnv: "BASEHARBOR_PROMETHEUS_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"provider"},
+		ContainerPort:    8443,
+		Networks:         []string{"provider"},
 	})
 	if !strings.Contains(got, "127.0.0.1:$"+"{BASEHARBOR_PROMETHEUS_PORT}:8443") {
 		t.Fatalf("gateway does not publish TLS loopback port:\n%s", got)

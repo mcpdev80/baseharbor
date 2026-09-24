@@ -67,12 +67,12 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 	}
 
 	p := Policy{
-		Environment: environment,
-		Provider: provider,
-		TLSRequired: true,
+		Environment:    environment,
+		Provider:       provider,
+		TLSRequired:    true,
 		Authentication: authentication,
-		PKISource: PKIManagedLocal,
-		ServerName: "localhost",
+		PKISource:      PKIManagedLocal,
+		ServerName:     "localhost",
 	}
 	switch environment {
 	case "dev", "development":
@@ -119,8 +119,8 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 	}
 	for label, path := range map[string]string{
 		"server certificate": p.ServerCertificate,
-		"server key": p.ServerKey,
-		"trust bundle": p.TrustBundle,
+		"server key":         p.ServerKey,
+		"trust bundle":       p.TrustBundle,
 	} {
 		if err := validateFile(label, path, strings.Contains(label, "key")); err != nil {
 			return Policy{}, err

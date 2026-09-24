@@ -54,11 +54,11 @@ func EnsureBackendServiceAccess(files RuntimeFiles, m Manifest) error {
 		}
 		root := backendAccessRoot(files, "postgresql", instance)
 		gateway, err := serviceaccess.EnsureTCPGateway(policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName: postgresAccessService(instance),
-			UpstreamHost: runtimeServiceName("postgres", instance),
-			UpstreamPort: 5432,
+			ServiceName:      postgresAccessService(instance),
+			UpstreamHost:     runtimeServiceName("postgres", instance),
+			UpstreamPort:     5432,
 			PublishedPortEnv: postgresRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort: 5432,
+			ContainerPort:    5432,
 		})
 		if err != nil {
 			return fmt.Errorf("prepare PostgreSQL TLS access for %s: %w", instance, err)
@@ -85,11 +85,11 @@ func EnsureBackendServiceAccess(files RuntimeFiles, m Manifest) error {
 		}
 		root := backendAccessRoot(files, "valkey", instance)
 		_, err = serviceaccess.EnsureTCPGateway(policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName: valkeyAccessService(instance),
-			UpstreamHost: runtimeServiceName("valkey", instance),
-			UpstreamPort: 6379,
+			ServiceName:      valkeyAccessService(instance),
+			UpstreamHost:     runtimeServiceName("valkey", instance),
+			UpstreamPort:     6379,
 			PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort: 6379,
+			ContainerPort:    6379,
 		})
 		if err != nil {
 			return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
@@ -132,8 +132,8 @@ func projectBackendCA(files RuntimeFiles, kind, instance, source string) (string
 func backendGatewayComposeFiles(kind, instance string) serviceaccess.TCPGatewayFiles {
 	root := filepath.Join(".", "providers", kind, instance, "service-access")
 	return serviceaccess.TCPGatewayFiles{
-		Config: filepath.Join(root, "haproxy.cfg"),
-		PEM: filepath.Join(root, "runtime", "server.pem"),
+		Config:   filepath.Join(root, "haproxy.cfg"),
+		PEM:      filepath.Join(root, "runtime", "server.pem"),
 		Material: serviceaccess.TLSMaterial{ServerName: ""},
 	}
 }
@@ -142,11 +142,11 @@ func postgresGatewayCompose(instance string) string {
 	return serviceaccess.TCPGatewayComposeService(
 		backendGatewayComposeFiles("postgresql", instance),
 		serviceaccess.TCPGatewaySpec{
-			ServiceName: postgresAccessService(instance),
-			UpstreamHost: runtimeServiceName("postgres", instance),
-			UpstreamPort: 5432,
+			ServiceName:      postgresAccessService(instance),
+			UpstreamHost:     runtimeServiceName("postgres", instance),
+			UpstreamPort:     5432,
 			PublishedPortEnv: postgresRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort: 5432,
+			ContainerPort:    5432,
 		},
 	)
 }
@@ -155,11 +155,11 @@ func valkeyGatewayCompose(instance string) string {
 	return serviceaccess.TCPGatewayComposeService(
 		backendGatewayComposeFiles("valkey", instance),
 		serviceaccess.TCPGatewaySpec{
-			ServiceName: valkeyAccessService(instance),
-			UpstreamHost: runtimeServiceName("valkey", instance),
-			UpstreamPort: 6379,
+			ServiceName:      valkeyAccessService(instance),
+			UpstreamHost:     runtimeServiceName("valkey", instance),
+			UpstreamPort:     6379,
 			PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort: 6379,
+			ContainerPort:    6379,
 		},
 	)
 }

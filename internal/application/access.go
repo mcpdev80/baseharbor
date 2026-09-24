@@ -11,12 +11,12 @@ import (
 // access actions. Callers should prefer these fields over runtime/container
 // names so a later provider can satisfy the same action model.
 type ServiceBinding struct {
-	Kind     string
-	Instance string
-	Host     string
-	Port     string
-	Database string
-	Username string
+	Kind             string
+	Instance         string
+	Host             string
+	Port             string
+	Database         string
+	Username         string
 	Password         string
 	URI              string
 	CertificatesPath string

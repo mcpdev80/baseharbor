@@ -449,12 +449,12 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 
 func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName: "seaweedfs-access",
-		Upstream: "http://seaweedfs:8333",
+		ServiceName:      "seaweedfs-access",
+		Upstream:         "http://seaweedfs:8333",
 		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"object-storage"},
-		RequireClient: false,
+		ContainerPort:    8443,
+		Networks:         []string{"object-storage"},
+		RequireClient:    false,
 	}
 }
 

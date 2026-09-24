@@ -885,9 +885,9 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	access := serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
 		Material: serviceaccess.TLSMaterial{
-			CA: "./service-access/pki/ca.pem",
+			CA:                "./service-access/pki/ca.pem",
 			ServerCertificate: "./service-access/pki/server-cert.pem",
-			ServerKey: "./service-access/pki/server-key.pem",
+			ServerKey:         "./service-access/pki/server-key.pem",
 		},
 	}
 	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, access)
@@ -1170,12 +1170,12 @@ func isDevelopmentEnvironment(environment string) bool {
 
 func prometheusAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName: "prometheus-access",
-		Upstream: "http://prometheus:9090",
+		ServiceName:      "prometheus-access",
+		Upstream:         "http://prometheus:9090",
 		PublishedPortEnv: "BASEHARBOR_PROMETHEUS_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"access"},
-		RequireClient: true,
+		ContainerPort:    8443,
+		Networks:         []string{"access"},
+		RequireClient:    true,
 	}
 }
 
