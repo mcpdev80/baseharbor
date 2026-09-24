@@ -128,6 +128,43 @@ networks:
 	}
 }
 
+
+func TestRenderComposeProjectQuadletsSkipsInactiveProfilesUnlessSelected(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  app:
+    image: docker.io/library/alpine:3.22
+  standalone:
+    image: docker.io/library/alpine:3.22
+    profiles: ["standalone"]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "profile-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.Files["profile-default-app.container"]; !ok {
+		t.Fatal("default service was not rendered")
+	}
+	if _, ok := got.Files["profile-default-standalone.container"]; ok {
+		t.Fatal("inactive profile service must not be rendered by default")
+	}
+
+	selected, err := RenderComposeProjectQuadlets(compose, "", "profile-selected", "standalone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := selected.Files["profile-selected-standalone.container"]; !ok {
+		t.Fatal("explicitly selected profile service was not rendered")
+	}
+	if _, ok := selected.Files["profile-selected-app.container"]; ok {
+		t.Fatal("unselected default service must not be rendered for explicit selection")
+	}
+}
+
 func TestExpandQuadletComposeStringSupportsComposeDefaultsAndDollarEscape(t *testing.T) {
 	env := map[string]string{"SET": "value"}
 	got := expandQuadletComposeString("a=${SET} b=${MISSING:-fallback} c=$$TOKEN", env)
