@@ -176,7 +176,7 @@ func createApplicationUpdateRecoveryPoint(ctx context.Context, store application
 	if environment != "" {
 		backupArgs = append(backupArgs, "--environment", environment)
 	}
-	if err := appBackupCommandWithMetadata(store).Run(ctx, backupArgs, out, errOut); err != nil {
+	if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, backupArgs, out, errOut); err != nil {
 		return application.BackupMetadata{}, err
 	}
 	metadata, err := resolved.Store.LastBackup(resolved.Manifest.Name)
