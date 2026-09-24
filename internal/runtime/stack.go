@@ -89,6 +89,7 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		return errors.New("control-plane service access requires an issuer")
 	}
 	stateDir := filepath.Dir(files.Compose)
+
 	openBaoPolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return err
@@ -104,32 +105,39 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
 	}
+
 	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return err
 	}
-	postgresAccess, err := serviceaccess.EnsureTCPGateway(ctx, issuer, postgresPolicy, filepath.Join(stateDir, "providers", "postgresql"), serviceaccess.TCPGatewaySpec{
-		ServiceName:      "postgres-access",
-		UpstreamHost:     "postgres",
-		UpstreamPort:     5432,
-		PublishedPortEnv: "BASEHARBOR_POSTGRES_PORT",
-		ContainerPort:    5432,
-	})
+	postgresRoot := filepath.Join(stateDir, "providers", "postgresql")
+	postgresMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		postgresPolicy,
+		filepath.Join(postgresRoot, "service-access", "pki"),
+		"postgres",
+		"127.0.0.1",
+	)
 	if err != nil {
-		return fmt.Errorf("prepare control-plane PostgreSQL TLS access: %w", err)
+		return fmt.Errorf("prepare control-plane PostgreSQL native TLS: %w", err)
+	}
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
 	}
 
 	rendered := string(composeYAML)
-	accessServices := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
+	rendered, err = renderSecureControlPlanePostgres(rendered)
+	if err != nil {
+		return err
+	}
+	accessService := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
 		ServiceName: "openbao-access", Upstream: "http://openbao:8200",
 		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT", ContainerPort: 8443,
 		Networks: []string{"default"}, RequireClient: false,
-	}) + serviceaccess.TCPGatewayComposeService(postgresAccess, serviceaccess.TCPGatewaySpec{
-		ServiceName: "postgres-access", UpstreamHost: "postgres", UpstreamPort: 5432,
-		PublishedPortEnv: "BASEHARBOR_POSTGRES_PORT", ContainerPort: 5432,
 	})
 	if marker := strings.Index(rendered, "\nvolumes:\n"); marker >= 0 {
-		rendered = rendered[:marker] + "\n" + accessServices + rendered[marker:]
+		rendered = rendered[:marker] + "\n" + accessService + rendered[marker:]
 	} else {
 		return errors.New("embedded runtime compose is missing volumes section")
 	}
@@ -137,6 +145,84 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		return fmt.Errorf("write control-plane service access compose: %w", err)
 	}
 	return nil
+}
+
+func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{
+		material.CA:                "ca.pem",
+		material.ServerCertificate: "server-cert.pem",
+		material.ServerKey:         "server-key.pem",
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("control-plane PostgreSQL TLS material %s is empty", name)
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	const hba = `local all all trust
+hostssl all all 0.0.0.0/0 scram-sha-256
+hostssl all all ::/0 scram-sha-256
+hostnossl all all 0.0.0.0/0 reject
+hostnossl all all ::/0 reject
+`
+	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
+}
+
+func renderSecureControlPlanePostgres(rendered string) (string, error) {
+	start := strings.Index(rendered, "  postgres:\n")
+	end := strings.Index(rendered, "\n  openbao:\n")
+	if start < 0 || end <= start {
+		return "", errors.New("embedded runtime compose is missing the PostgreSQL service")
+	}
+	const service = `  postgres:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    user: "postgres"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    environment:
+      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+`
+	return rendered[:start] + service + rendered[end:], nil
 }
 
 func ExistingFiles(stateDir string) (Files, error) {
