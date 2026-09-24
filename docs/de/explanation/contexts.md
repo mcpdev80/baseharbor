@@ -5,7 +5,7 @@ BaseHarbor trennt **wo** eine Anwendung betrieben wird von **was** die Anwendung
 Eine konkrete Deployment-Identitaet ist:
 
 ```text
-context + application + environment
+target + application + environment
 ```
 
 Beispiele:
@@ -16,12 +16,12 @@ k3s      / demo     / dev
 k8s-prod / mailflow / prod
 ```
 
-## Context-Modell
+## Target-Modell
 
-Ein BaseHarbor Context ist Deployment-/Operator-State:
+Ein BaseHarbor Target ist Deployment-/Operator-State:
 
 ```text
-Context
+Target
 ├── Runtime Provider
 ├── Runtime Access Reference
 └── Target Scope
@@ -48,7 +48,7 @@ k8s-prod
 
 K3s wird dabei als Kubernetes-Target behandelt und nicht als eigener portabler Runtime-Typ. Kubernetes-/OpenShift-spezifische Details bleiben hinter dem jeweiligen Runtime Provider.
 
-Context, Application und Environment sind unabhaengige Achsen. Ein Context bedeutet nicht automatisch `dev`, `test` oder `prod`, und ein Environment waehlt keine Runtime aus.
+Target, Application und Environment sind unabhaengige Achsen. Ein Target bedeutet nicht automatisch `dev`, `test` oder `prod`, und ein Environment waehlt keine Runtime aus.
 
 ## Repository und installierter BaseHarbor-State
 
@@ -66,18 +66,18 @@ cwd darf beantworten: "Welche Application meine ich?"
 cwd darf nicht beantworten: "Welche Applications kennt BaseHarbor?"
 ```
 
-Context-Definitionen sind Benutzerkonfiguration. Deployment-/Runtime-State ist user-globaler BaseHarbor-State.
+Target-Definitionen sind Benutzerkonfiguration. Deployment-/Runtime-State ist user-globaler BaseHarbor-State.
 
-## Context-Auswahl
+## Target-Auswahl
 
-Der effektive Context wird deterministisch aufgeloest:
+Der effektive Target wird deterministisch aufgeloest:
 
 ```text
-explizites --context
+explizites --target
         ↓
-aktiviertes BASEHARBOR_CONTEXT
+aktiviertes BASEHARBOR_TARGET
         ↓
-konfigurierter Default-Context
+konfigurierter Default-Target
         ↓
 local
 ```
@@ -86,7 +86,7 @@ Application und Environment werden davon getrennt aufgeloest.
 
 ## Shell-lokale Aktivierung
 
-Contexts sollen wie ein Python-vEnv shell-lokal aktiviert werden koennen.
+Targets sollen wie ein Python-vEnv shell-lokal aktiviert werden koennen.
 
 Damit koennen verschiedene Terminals gleichzeitig unterschiedliche Targets verwenden:
 
@@ -98,7 +98,7 @@ Terminal C -> k8s-prod
 
 ## Sichtbarer Prompt
 
-Der aktive Context soll sichtbar sein, **bevor ein baha-Befehl eingegeben wird**.
+Der aktive Target soll sichtbar sein, **bevor ein baha-Befehl eingegeben wird**.
 
 Die Prompt-Integration ist optional und konfigurierbar. Der Default bleibt kompakt:
 
@@ -119,10 +119,10 @@ Der Prompt-Wizard soll Presets, Live Preview, Text-only/Accessibility und die Po
 
 ## Deployment-Uebersicht
 
-`baha app list` wird Context-/Global-State-basiert und nicht CWD-basiert.
+`baha app list` wird Target-/Global-State-basiert und nicht CWD-basiert.
 
-Damit koennen mehrere Applications und Environments in einem Context sowie dieselbe Application in mehreren Contexts gleichzeitig existieren.
+Damit koennen mehrere Applications und Environments in einem Target sowie dieselbe Application in mehreren Targets gleichzeitig existieren.
 
-CLI, JSON und MCP muessen dieselbe effektive Context-/Deployment-Identitaet verwenden.
+CLI, JSON und MCP muessen dieselbe effektive Target-/Deployment-Identitaet verwenden.
 
 Die v0.4.15-Foundation wird in Issue #408 umgesetzt und ist die Grundlage fuer die spaetere Runtime-Provider-Arbeit in #396 sowie Kubernetes/OpenShift.
