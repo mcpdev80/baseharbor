@@ -99,7 +99,6 @@ func TestManagedLocalMaterialIsUsable(t *testing.T) {
 	}
 }
 
-
 func TestResolveManagedEnvironmentRejectsNoAuthentication(t *testing.T) {
 	if _, err := Resolve("prod", "prometheus", AuthenticationNone); err == nil {
 		t.Fatal("managed environment accepted no authentication")

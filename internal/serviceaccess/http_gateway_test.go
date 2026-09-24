@@ -37,7 +37,6 @@ func TestGatewayComposePublishesOnlyTLSPort(t *testing.T) {
 	}
 }
 
-
 func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 	got := caddyfile("http://prometheus:9090", 8443, AuthenticationToken)
 	for _, want := range []string{
