@@ -1148,14 +1148,18 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 	if application.HasMetricsSources(m) || application.HasOTLPTelemetry(m) || application.HasLogsCollection(m) {
 		fmt.Fprintln(out, "\nObservability")
 		if application.HasMetricsSources(m) {
-			fmt.Fprintln(out, "  Metrics       /metrics")
-		}
-		if application.HasOTLPTelemetry(m) {
-			fmt.Fprintf(out, "  OTLP          %s\n", strings.Join(m.Telemetry.OTLP.Signals, ", "))
+			fmt.Fprintln(out, "  Metrics       expose OpenMetrics HTTP (recommended /metrics)")
+			fmt.Fprintln(out, "                BaseHarbor collects workload + supported managed-provider metrics")
 		}
 		if application.HasLogsCollection(m) {
-			fmt.Fprintln(out, "  Logs          application")
+			fmt.Fprintln(out, "  Logs          write application logs to stdout/stderr")
+			fmt.Fprintln(out, "                BaseHarbor collects workload + supported managed-provider logs")
 		}
+		if application.HasOTLPTelemetry(m) {
+			fmt.Fprintf(out, "  Traces/OTLP   %s\n", strings.Join(m.Telemetry.OTLP.Signals, ", "))
+			fmt.Fprintln(out, "                BaseHarbor injects the OTLP endpoint/trust binding and collects supported managed-provider traces")
+		}
+		fmt.Fprintln(out, "  Backends      no Prometheus, Loki/Alloy, Tempo or Collector configuration in application code")
 	}
 
 	printGuidedSecretSummary(out, policies)
