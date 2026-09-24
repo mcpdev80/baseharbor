@@ -178,3 +178,29 @@ target + application + environment
 CLI, JSON and MCP expose the same Target/deployment identity.
 
 This v0.4.15 foundation is tracked in issue #408 and is intentionally designed so later Runtime Provider work in #396 and Kubernetes/OpenShift implementations can consume it without changing portable application intent.
+
+
+## Custom prompt label
+
+Prompt presentation is independent from the stable Target name.
+
+For example:
+
+```text
+Target: laptop-docker-12
+Prompt label: ld12
+Color: soft green
+
+[ld12] ~/projects/demo $
+```
+
+The label is only a visual alias. It never changes Target identity, deployment keys, ownership or Target resolution.
+
+The wizard therefore supports presets as well as:
+
+- a free-form prompt label;
+- an explicitly selected color;
+- before-path, after-path or right-prompt placement where supported;
+- live preview of the exact result.
+
+Production remains unambiguous without relying on color alone by default.
