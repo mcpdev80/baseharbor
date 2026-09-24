@@ -19,12 +19,14 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	TLS             *applicationTLSObservation  `json:"tls,omitempty"`
-	RuntimeArtifact *runtimeArtifactObservation `json:"runtime_artifact,omitempty"`
-	RuntimeDocsURL  string                      `json:"runtime_docs_url,omitempty"`
+	TLS             *applicationTLSObservation              `json:"tls,omitempty"`
+	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
+	RuntimeArtifact *runtimeArtifactObservation             `json:"runtime_artifact,omitempty"`
+	RuntimeDocsURL  string                                  `json:"runtime_docs_url,omitempty"`
 
-	tlsStatus *applicationTLSStatus
-	tlsErr    error
+	tlsStatus     *applicationTLSStatus
+	tlsErr        error
+	serviceTLSErr error
 }
 
 func collectApplicationStatusResult(ctx context.Context, store application.Store, args []string) (applicationStatusResult, error) {
@@ -39,6 +41,17 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
 		result.Ready = false
+	}
+
+	var serviceTLS []application.BackendTLSLifecycleObservation
+	var serviceTLSErr error
+	if result.State != "not_applied" {
+		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
+			serviceTLS, serviceTLSErr = application.InspectBackendTLSLifecycle(files, resolved.Manifest)
+			if serviceTLSErr != nil || !serviceTLSLifecycleHealthy(serviceTLS) {
+				result.Ready = false
+			}
+		}
 	}
 
 	var runtimeArtifact *runtimeArtifactObservation
@@ -69,9 +82,11 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	return applicationStatusResult{
 		StatusResult:    result,
 		TLS:             tlsObservation,
+		ServiceTLS:      serviceTLS,
 		RuntimeArtifact: runtimeArtifact,
 		RuntimeDocsURL:  runtimeDocsURL,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
+		serviceTLSErr:   serviceTLSErr,
 	}, nil
 }
