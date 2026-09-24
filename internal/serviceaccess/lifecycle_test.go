@@ -69,6 +69,33 @@ func TestInspectLifecycleStaticBYOCState(t *testing.T) {
 	}
 }
 
+func TestInspectLifecycleRecomputesStaticExpiryHealth(t *testing.T) {
+	dir := t.TempDir()
+	state := staticPKIState{
+		Version:         1,
+		Source:          PKIBYOC,
+		LifecycleOwner:  "operator",
+		RenewalMode:     "replace-and-reconcile",
+		ServerExpiresAt: time.Now().Add(5 * 24 * time.Hour).UTC(),
+		Health:          "ok",
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "static-state.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := InspectLifecycle(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Health != "critical" {
+		t.Fatalf("health = %q, want critical", got.Health)
+	}
+}
+
 func TestInspectLifecycleExternalIssuerState(t *testing.T) {
 	dir := t.TempDir()
 	state := managedPKIState{
