@@ -19,7 +19,7 @@ type managedLogsExecution struct {
 	driver    *logsprovider.Driver
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
-	services  []string
+	services        []string
 	resources       []capability.Resource
 	providerSources []observability.SignalSource
 	enabled         bool
@@ -54,10 +54,6 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	}
 	if placement.Scope == capability.ScopeExternal {
 		return nil, fmt.Errorf("external Loki placement is selected but no external Compose log collector adapter is configured")
-	}
-	placement, err := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderLoki)
-	if err != nil {
-		return nil, err
 	}
 	providerSources, err := observability.ListLogs(
 		placement,
