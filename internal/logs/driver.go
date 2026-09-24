@@ -129,6 +129,23 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if placement.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
+	metricsPolicy, err := application.MetricsPolicy(d.app)
+	if err != nil {
+		return err
+	}
+	metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["loki-metrics"] = observability.ProviderSignalRuntime{
+			Network: placement.Network,
+			Target:  "loki:3100",
+		}
+	}
 	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               "loki:" + placement.Project,
 		Descriptor:       capability.LokiIntegration,
@@ -136,12 +153,8 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 		Scope:            placement.Scope,
 		SharingBoundary:  placement.SharingBoundary,
 		OwnerApplication: placement.OwnerApplication,
-		Signals: map[string]observability.ProviderSignalRuntime{
-			"loki-metrics": {
-				Network: placement.Network,
-				Target:  "loki:3100",
-			},
-		},
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	})
 }
 
