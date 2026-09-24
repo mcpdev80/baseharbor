@@ -45,6 +45,8 @@ jobs:
           go test \
             ./internal/artifact/... \
             ./internal/runtime \
+            ./internal/runtime/contract \
+            ./internal/runtime/model \
             ./internal/workload \
             ./internal/providers/runtime/kubernetes \
             ./internal/application \
