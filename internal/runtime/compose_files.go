@@ -318,6 +318,26 @@ func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service
 	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, cmdArgs...)
 }
 
+func (c Compose) ExecProjectFilesInput(ctx context.Context, project, workdir, service string, composeFiles []string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return "", err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", nil, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, input, args...)
+	}
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, nil, composeFiles, input, cmdArgs...)
+}
+
 func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
 	return c.ServicesProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
@@ -449,10 +469,58 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 	return stdout.String(), nil
 }
 
-func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, input []byte, args ...string) (string, error) {
 	if c.quadlet {
 		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
 	}
+	if c.command == "" {
+		return "", ErrRuntimeNotFound
+	}
+	if strings.TrimSpace(project) == "" {
+		return "", errors.New("compose project name is required")
+	}
+	if len(composeFiles) == 0 {
+		return "", errors.New("at least one compose file is required")
+	}
+
+	fullArgs := append([]string{}, c.prefix...)
+	fullArgs = append(fullArgs, "--project-name", project)
+	for _, file := range composeFiles {
+		if strings.TrimSpace(file) == "" {
+			return "", errors.New("compose file path is empty")
+		}
+		fullArgs = append(fullArgs, "--file", file)
+	}
+	fullArgs = append(fullArgs, args...)
+
+	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
+	if strings.TrimSpace(workdir) != "" {
+		cmd.Dir = workdir
+	}
+	var err error
+	cmd.Env, err = mergeProcessEnvironment(environment)
+	if err != nil {
+		return "", err
+	}
+	cmd.Stdin = bytes.NewReader(input)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
+	}
+	return stdout.String(), nil
+}
+
+func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, environment, composeFiles, nil, args...)
+}
+
+/*
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -494,3 +562,4 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 	}
 	return stdout.String(), nil
 }
+*/
