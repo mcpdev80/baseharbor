@@ -32,6 +32,12 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Usage:   "baha app apply [NAME]",
 		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			return executeApplicationApplyLifecycle(ctx, store, args, out, errOut)
+		},
+	}
+}
+
+func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 			resolved, err := resolveApplication(store, args, "apply")
 			if err != nil {
 				return err
@@ -297,8 +303,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			term.Success("READY", "application and requested infrastructure verified")
 			return nil
-		},
-	}
+		
 }
 
 type applicationSecretSetter interface {
