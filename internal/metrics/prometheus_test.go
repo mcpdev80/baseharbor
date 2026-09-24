@@ -364,3 +364,31 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 		t.Fatalf("Prometheus compose does not mount runtime CA:\n%s", compose)
 	}
 }
+
+
+func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) {
+	rendered := providerComposeYAMLWithProviderNetworks(
+		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
+		nil,
+		nil,
+		false,
+	)
+	for _, want := range []string{
+		"./service-access/runtime/ca.pem:/certs/ca.pem:ro",
+		"./service-access/runtime/server.pem:/certs/server.pem:ro",
+		"./service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("Prometheus gateway compose missing runtime-projected TLS material %q:\n%s", want, rendered)
+		}
+	}
+	for _, forbidden := range []string{
+		"./service-access/pki/ca.pem:/certs/ca.pem:ro",
+		"./service-access/pki/server-cert.pem:/certs/server.pem:ro",
+		"./service-access/pki/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("Prometheus gateway compose mounted protected PKI source material %q:\n%s", forbidden, rendered)
+		}
+	}
+}
