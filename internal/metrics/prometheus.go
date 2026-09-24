@@ -29,6 +29,8 @@ const (
 	ProviderProject = "baseharbor-metrics"
 	ProviderService = "prometheus"
 	ProviderImage   = "docker.io/prom/prometheus:v3.14.0"
+
+	providerReconcileTimeout = 60 * time.Second
 )
 
 type Placement struct {
@@ -180,18 +182,21 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
+	reconcileCtx, cancel := context.WithTimeout(ctx, providerReconcileTimeout)
+	defer cancel()
+
 	placement, err := PlacementFor(d.app)
 	if err != nil {
 		return err
 	}
-	files, err := EnsureProviderFilesWithRuntimeCA(ctx, d.issuer, d.app, d.runtimeCA)
+	files, err := EnsureProviderFilesWithRuntimeCA(reconcileCtx, d.issuer, d.app, d.runtimeCA)
 	if err != nil {
 		return err
 	}
-	if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+	if err := d.runtime.ConfigProject(reconcileCtx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Prometheus provider configuration: %w", err)
 	}
-	if err := d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+	if err := d.runtime.UpProject(reconcileCtx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("start Prometheus provider: %w", err)
 	}
 	endpoint, err := ProviderEndpoint(files)
@@ -203,7 +208,10 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 		return err
 	}
 	d.client = client
-	return waitReady(ctx, d.client, endpoint)
+	if err := waitReady(reconcileCtx, d.client, endpoint); err != nil {
+		return fmt.Errorf("wait for Prometheus readiness: %w", err)
+	}
+	return nil
 }
 
 func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding capability.Binding) error {
