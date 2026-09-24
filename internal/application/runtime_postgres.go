@@ -387,6 +387,10 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	return b.String()
 }
 
+func RuntimeEnvironment(files RuntimeFiles) (map[string]string, error) {
+	return readRuntimeEnv(files.Env)
+}
+
 func validateRuntimeEnv(path string, m Manifest) error {
 	values, err := readRuntimeEnv(path)
 	if err != nil {
