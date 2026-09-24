@@ -67,6 +67,9 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := EnsureBackendServiceAccess(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 
 	compose, err := RuntimeComposeYAML(m)
 	if err != nil {
@@ -92,7 +95,8 @@ func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", postgresDatabaseName(m, instance), "-tAc", "SELECT 1")
+		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
+		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
 		}
@@ -106,7 +110,8 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping`)
+		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
+		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
 		}
@@ -128,9 +133,11 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	b.WriteString("services:\n")
 	for _, instance := range SQLInstanceNames(m) {
 		writePostgresComposeService(&b, instance)
+		b.WriteString(postgresGatewayCompose(instance))
 	}
 	for _, instance := range CacheInstanceNames(m) {
 		writeValkeyComposeService(&b, instance)
+		b.WriteString(valkeyGatewayCompose(instance))
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range SQLInstanceNames(m) {
@@ -162,10 +169,9 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       POSTGRES_DB: ${%s}
       POSTGRES_USER: ${%s}
       POSTGRES_PASSWORD: ${%s}
-    ports:
-      - "127.0.0.1:${%s}:5432"
     volumes:
       - %s-data:/var/lib/postgresql
+      - ./bindings/postgres/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${%s} -d ${%s}"]
       interval: 5s
@@ -173,7 +179,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 5s
 
-`, service, dbKey, userKey, passwordKey, portKey, service, userKey, dbKey)
+`, service, dbKey, userKey, passwordKey, service, instance, userKey, dbKey)
 }
 
 func writeValkeyComposeService(b *strings.Builder, instance string) {
@@ -197,10 +203,9 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       - |
         printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
         exec valkey-server /tmp/valkey.conf
-    ports:
-      - "127.0.0.1:${%s}:6379"
     volumes:
       - %s-data:/data
+      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
       interval: 5s
@@ -208,7 +213,7 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 5s
 
-`, service, passwordKey, portKey, service)
+`, service, passwordKey, service, instance)
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
@@ -330,13 +335,13 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
 	for _, instance := range SQLInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
 			key := postgresRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
 	for _, instance := range CacheInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
