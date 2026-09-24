@@ -132,6 +132,72 @@ func TestManagedLocalMaterialRenewsBeforeExpiry(t *testing.T) {
 	}
 }
 
+func TestManagedLocalRootRotationReissuesLeaf(t *testing.T) {
+	p, err := Resolve("prod", "prometheus", AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	first := newTestIssuer(t)
+	if _, err := EnsureTLSMaterial(context.Background(), first, p, dir, "prometheus"); err != nil {
+		t.Fatal(err)
+	}
+
+	rotated := newTestIssuer(t)
+	if _, err := EnsureTLSMaterial(context.Background(), rotated, p, dir, "prometheus"); err != nil {
+		t.Fatal(err)
+	}
+	if rotated.issueCalls == 0 {
+		t.Fatal("issuer root rotation did not force replacement issuance")
+	}
+	trust, err := rotated.TrustBundle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trustBundleMatchesFile(filepath.Join(dir, "ca.pem"), trust.PEM) {
+		t.Fatal("rotated issuer trust bundle was not projected")
+	}
+}
+
+func TestResolveIssuerBackedExternalPKI(t *testing.T) {
+	t.Setenv(EnvPKISource, string(PKIExternal))
+	t.Setenv(EnvIssuerRef, "test://issuer")
+	p, err := Resolve("prod", "prometheus", AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.PKISource != PKIExternal || p.IssuerReference != "test://issuer" {
+		t.Fatalf("unexpected external issuer policy: %+v", p)
+	}
+	material, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), p, t.TempDir(), "prometheus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if material.Source != PKIExternal {
+		t.Fatalf("material source = %q, want %q", material.Source, PKIExternal)
+	}
+}
+
+func TestIssuerBackedExternalPKIRejectsMismatchedAdapter(t *testing.T) {
+	t.Setenv(EnvPKISource, string(PKIExternal))
+	t.Setenv(EnvIssuerRef, "enterprise://issuer")
+	p, err := Resolve("prod", "prometheus", AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), p, t.TempDir(), "prometheus"); err == nil {
+		t.Fatal("mismatched external issuer adapter was accepted")
+	}
+}
+
+func TestBYOCRejectsIssuerAdapter(t *testing.T) {
+	t.Setenv(EnvPKISource, string(PKIBYOC))
+	t.Setenv(EnvIssuerRef, "test://issuer")
+	if _, err := Resolve("prod", "prometheus", AuthenticationMTLS); err == nil {
+		t.Fatal("BYOC unexpectedly accepted issuer ownership")
+	}
+}
+
 func TestResolveManagedEnvironmentRejectsNoAuthentication(t *testing.T) {
 	if _, err := Resolve("prod", "prometheus", AuthenticationNone); err == nil {
 		t.Fatal("managed environment accepted no authentication")
