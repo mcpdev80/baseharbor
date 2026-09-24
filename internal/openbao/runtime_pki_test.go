@@ -44,7 +44,7 @@ func TestRuntimeMTLSIdentityValidReusesMatchingIdentity(t *testing.T) {
 		t.Fatal("runtime identity missing a required workload DNS alias must rotate")
 	}
 
-	valid, err = runtimeMTLSIdentityValid(files, trust.PEM, ApplicationIdentity{Name: "other", Environment: "dev"}, []string{"bhm-test"})
+	valid, err = runtimeMTLSIdentityValid(files, ca, ApplicationIdentity{Name: "other", Environment: "dev"}, []string{"bhm-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
