@@ -1,6 +1,6 @@
-# Kontexte und Deployment-Ziele
+# Targets und Deployment-Ziele
 
-BaseHarbor trennt **wo** eine Anwendung betrieben wird von **was** die Anwendung benoetigt und **welches Environment** ausgewaehlt ist.
+BaseHarbor trennt **wo** eine Anwendung betrieben wird von **was** sie benoetigt und **welches Environment** ausgewaehlt ist.
 
 Eine konkrete Deployment-Identitaet ist:
 
@@ -11,14 +11,15 @@ target + application + environment
 Beispiele:
 
 ```text
-local    / demo     / dev
-k3s      / demo     / dev
-k8s-prod / mailflow / prod
+docker-dev / demo     / dev
+podman-dev / demo     / dev
+laptop-k3s / demo     / dev
+prod-ocp   / mailflow / prod
 ```
 
-## Target-Modell
+## Das Target-Modell
 
-Ein BaseHarbor Target ist Deployment-/Operator-State:
+Ein BaseHarbor Target ist ein benanntes Deployment-Ziel.
 
 ```text
 Target
@@ -27,50 +28,77 @@ Target
 └── Target Scope
 ```
 
+Die Begriffe bleiben getrennt:
+
+```text
+Target
+  wohin BaseHarbor arbeitet
+
+Runtime Provider
+  welche Runtime-Implementierung Workloads realisiert
+
+Access
+  wie BaseHarbor die Runtime erreicht/authentifiziert
+
+Scope
+  welcher logische Bereich innerhalb der Runtime ausgewaehlt ist
+```
+
+Ein Target-Name traegt keine Runtime-Semantik. Target bedeutet weder automatisch lokal/remote noch Docker/Podman/Kubernetes/OpenShift.
+
+K3s, k3d, kind, minikube, MicroK8s und aehnliche Distributionen sind Kubernetes-Targets und keine eigenen BaseHarbor Runtime Provider.
+
 Beispiele:
 
 ```text
-local
-  runtime: docker
-  access: local
-  scope: default
-
-k3s
-  runtime: kubernetes
-  access: homelab-k3s
-  scope: default
-
-k8s-prod
-  runtime: kubernetes
-  access: corp-prod
-  scope: team-a-prod
+Target              Provider      Access          Scope
+------------------------------------------------------------
+docker-dev          docker        local-docker    default
+podman-dev          podman        local-podman    default
+laptop-k3s          kubernetes    laptop-k3s      dev
+homelab-k3s         kubernetes    homelab         dev
+homelab-k3s-test    kubernetes    homelab         test
+customer-prod       openshift     customer-a      project-x
 ```
 
-K3s wird dabei als Kubernetes-Target behandelt und nicht als eigener portabler Runtime-Typ. Kubernetes-/OpenShift-spezifische Details bleiben hinter dem jeweiligen Runtime Provider.
-
-Target, Application und Environment sind unabhaengige Achsen. Ein Target bedeutet nicht automatisch `dev`, `test` oder `prod`, und ein Environment waehlt keine Runtime aus.
+Mehrere Targets duerfen dieselbe Access-Definition verwenden und unterschiedliche Scopes waehlen.
 
 ## Repository und installierter BaseHarbor-State
 
-Das Repository bleibt die Source of Truth fuer portablen Application Intent:
+Das Repository bleibt Source of Truth fuer portablen Application Intent:
 
 ```text
 baseharbor.yaml
 envs/<environment>/baseharbor.yaml
 ```
 
-Das aktuelle Verzeichnis darf dabei helfen, Application und Environment zu erkennen. Es darf aber niemals festlegen, welche Deployments die installierte BaseHarbor-Instanz kennt.
+Das aktuelle Verzeichnis darf Application und Environment erkennen helfen, aber niemals festlegen, welche Deployments die installierte BaseHarbor-Instanz kennt.
+
+## Config versus Target-State
+
+Benutzerkonfiguration ist global:
 
 ```text
-cwd darf beantworten: "Welche Application meine ich?"
-cwd darf nicht beantworten: "Welche Applications kennt BaseHarbor?"
+$XDG_CONFIG_HOME/baseharbor/config.yaml
+~/.config/baseharbor/config.yaml
 ```
 
-Target-Definitionen sind Benutzerkonfiguration. Deployment-/Runtime-State ist user-globaler BaseHarbor-State.
+Sie enthaelt Target-Definitionen, Access-Definitionen, Defaults und Prompt-Praeferenzen.
+
+Veraenderlicher Runtime-/Deployment-State ist Target-scoped:
+
+```text
+$XDG_DATA_HOME/baseharbor/targets/<target>/
+~/.local/share/baseharbor/targets/<target>/
+```
+
+Damit koennen Docker-, Podman- und lokale Kubernetes/K3s-Targets unabhaengig parallel existieren, ohne versehentlich denselben BaseHarbor-State zu teilen.
+
+Ein lokales K3s/Kubernetes-Target ist kein Sonderfall: es ist ein Kubernetes-Target, dessen Access-Definition einen lokalen Cluster erreicht.
 
 ## Target-Auswahl
 
-Der effektive Target wird deterministisch aufgeloest:
+Der effektive Target wird so aufgeloest:
 
 ```text
 explizites --target
@@ -79,50 +107,38 @@ aktiviertes BASEHARBOR_TARGET
         ↓
 konfigurierter Default-Target
         ↓
-local
+First-Run/Local-Target-Auswahl
 ```
 
-Application und Environment werden davon getrennt aufgeloest.
+Application und Environment bleiben unabhaengige Achsen.
 
-## Shell-lokale Aktivierung
+## Shell-Aktivierung und Prompt
 
-Targets sollen wie ein Python-vEnv shell-lokal aktiviert werden koennen.
+Targets koennen shell-lokal wie ein Python-vEnv aktiviert werden. Verschiedene Terminals koennen dadurch gleichzeitig unterschiedliche Targets verwenden.
 
-Damit koennen verschiedene Terminals gleichzeitig unterschiedliche Targets verwenden:
+Die optionale Prompt-Anzeige macht das Target sichtbar, bevor ein baha-Befehl eingegeben wird:
 
 ```text
-Terminal A -> local
-Terminal B -> k3s
-Terminal C -> k8s-prod
+[homelab] ~/projects/demo $
+[prod-ocp PROD] ~/projects/mailflow $
 ```
 
-## Sichtbarer Prompt
+Darstellung, Position, Farben und Accessibility sind konfigurierbar. Production darf niemals nur ueber Farbe erkennbar sein.
 
-Der aktive Target soll sichtbar sein, **bevor ein baha-Befehl eingegeben wird**.
+## Lifecycle und Sicherheit
 
-Die Prompt-Integration ist optional und konfigurierbar. Der Default bleibt kompakt:
+Ein Wechsel des aktiven/default Targets verschiebt oder benennt bestehende Deployments niemals um.
+
+Ein Target mit registrierten Deployments oder BaseHarbor-eigenen Runtime-Ressourcen darf nicht implizit geloescht werden.
+
+Mutierende/destruktive Operationen zeigen die volle effektive Identitaet:
 
 ```text
-[k3s] ~/projects/demo $
-~/projects/demo [k3s] $
+target + application + environment
 ```
 
-Environment-Farben koennen als zusaetzliches Signal dienen:
+`baha app list` liest Target-/Global-State statt repository-lokalen State. `baha app list --all-targets` liefert die installationsweite Sicht.
 
-- dev: weiches Gruen;
-- test/stage: warmes Amber/Orange;
-- prod: gedecktes Rot.
+CLI, JSON und MCP verwenden dieselbe Target-/Deployment-Identitaet.
 
-Farbe ist nie das einzige Production-Signal. Fuer Barrierefreiheit kann zusaetzlich `TEST` oder `PROD` angezeigt werden.
-
-Der Prompt-Wizard soll Presets, Live Preview, Text-only/Accessibility und die Position vor dem Pfad, hinter dem Pfad oder als Right Prompt unterstuetzen, wenn die Shell das verlaesslich kann.
-
-## Deployment-Uebersicht
-
-`baha app list` wird Target-/Global-State-basiert und nicht CWD-basiert.
-
-Damit koennen mehrere Applications und Environments in einem Target sowie dieselbe Application in mehreren Targets gleichzeitig existieren.
-
-CLI, JSON und MCP muessen dieselbe effektive Target-/Deployment-Identitaet verwenden.
-
-Die v0.4.15-Foundation wird in Issue #408 umgesetzt und ist die Grundlage fuer die spaetere Runtime-Provider-Arbeit in #396 sowie Kubernetes/OpenShift.
+Diese v0.4.15-Foundation wird in Issue #408 umgesetzt und bildet die Grundlage fuer #396 sowie spaetere Kubernetes-/OpenShift-Runtimes.
