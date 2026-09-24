@@ -531,7 +531,7 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
 		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
-		Registrations: filepath.Join(dir, "registrations.json"),
+		Registrations:       filepath.Join(dir, "registrations.json"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
 	registrations := []sourceRegistration{registrationFor(m)}
