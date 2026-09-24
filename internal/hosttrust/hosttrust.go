@@ -123,24 +123,46 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 	if err != nil {
 		return Status{}, err
 	}
-	for _, record := range state.Anchors {
-		if record.Fingerprint == fingerprint {
-			return Status{Fingerprint: fingerprint, Trusted: trusted, Owned: true, Backend: record.Backend, Path: record.Path}, nil
+
+	var owned *AnchorRecord
+	for index := range state.Anchors {
+		if state.Anchors[index].Fingerprint != fingerprint {
+			continue
 		}
+		owned = &state.Anchors[index]
+		if trusted {
+			return Status{Fingerprint: fingerprint, Trusted: true, Owned: true, Backend: owned.Backend, Path: owned.Path}, nil
+		}
+		if err := verifyRecordedAnchor(*owned); err != nil {
+			return Status{}, err
+		}
+		break
 	}
 	if trusted {
 		// Do not claim ownership of trust installed by an operator or another tool.
 		return Status{Fingerprint: fingerprint, Trusted: true}, nil
 	}
+
 	if backend == nil {
-		backend, err = DetectSystemBackend()
+		if owned != nil {
+			backend, err = resolveBackend(owned.Backend)
+		} else {
+			backend, err = DetectSystemBackend()
+		}
 		if err != nil {
 			return Status{}, err
 		}
 	}
+
 	path, err := backend.AnchorPath(fingerprint)
 	if err != nil {
 		return Status{}, err
+	}
+	if owned != nil {
+		if backend.Name() != owned.Backend {
+			return Status{}, fmt.Errorf("recorded host trust backend %q does not match selected backend %q", owned.Backend, backend.Name())
+		}
+		path = owned.Path
 	}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return Status{}, err
@@ -165,10 +187,17 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 	if err := backend.Install(ctx, tmpPath, path); err != nil {
 		return Status{}, err
 	}
-	state.Anchors = append(state.Anchors, AnchorRecord{
-		Fingerprint: fingerprint, IssuerReference: strings.TrimSpace(issuerReference),
-		Backend: backend.Name(), Path: path, InstalledAt: time.Now().UTC(),
-	})
+
+	now := time.Now().UTC()
+	if owned == nil {
+		state.Anchors = append(state.Anchors, AnchorRecord{
+			Fingerprint: fingerprint, IssuerReference: strings.TrimSpace(issuerReference),
+			Backend: backend.Name(), Path: path, InstalledAt: now,
+		})
+	} else {
+		owned.IssuerReference = strings.TrimSpace(issuerReference)
+		owned.InstalledAt = now
+	}
 	if err := saveState(stateDir, state); err != nil {
 		// Trust was installed but ownership persistence failed. Roll it back
 		// immediately so BaseHarbor never leaves untracked owned trust behind.
