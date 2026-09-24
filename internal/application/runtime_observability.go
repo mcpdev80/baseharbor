@@ -22,7 +22,7 @@ func reconcileManagedRuntimeObservability(m Manifest) error {
 	tracesEnabled := tracesPolicy.Enabled && tracesPolicy.Collect[TracesSourceApplicationProvider]
 	project := RuntimeProjectName(m)
 
-	if err := reconcileRuntimeProviderObservability(m, project, "postgresql", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled, tracesEnabled); err != nil {
+	if err := reconcileRuntimeProviderObservability(m, project, "postgres", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled, tracesEnabled); err != nil {
 		return err
 	}
 	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, CacheInstanceNames(m), logsEnabled, tracesEnabled)
