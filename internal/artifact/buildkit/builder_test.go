@@ -72,8 +72,7 @@ printf '%s
 		"--metadata-file",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("buildctl arguments missing %q:
-%s", want, text)
+			t.Fatalf("buildctl arguments missing %q:\n%s", want, text)
 		}
 	}
 }
