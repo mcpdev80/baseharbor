@@ -132,6 +132,15 @@ func projectPostgresServerMaterial(root string, material serviceaccess.TLSMateri
 			return err
 		}
 	}
+	const hba = `local all all trust
+hostssl all all 0.0.0.0/0 scram-sha-256
+hostssl all all ::/0 scram-sha-256
+hostnossl all all 0.0.0.0/0 reject
+hostnossl all all ::/0 reject
+`
+	if err := os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
+		return err
+	}
 	return nil
 }
 
