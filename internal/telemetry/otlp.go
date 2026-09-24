@@ -130,14 +130,17 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return err
 	}
 	if resource.Provider == capability.ProviderOTelCollector {
-		if err := observability.Update(observability.MetricsSource{
-			ID:       "opentelemetry-collector:" + ProviderProject,
-			Provider: capability.ProviderOTelCollector,
-			Class:    observability.SourcePlatformProvider,
-			Scope:    capability.ScopeShared,
-			Network:  ProviderNetwork,
-			Target:   ProviderService + ":8888",
-			Path:     "/metrics",
+		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+			ID:         "opentelemetry-collector:" + ProviderProject,
+			Descriptor: capability.OTelCollectorIntegration,
+			Class:      observability.SourcePlatformProvider,
+			Scope:      capability.ScopeShared,
+			Signals: map[string]observability.ProviderSignalRuntime{
+				"collector-metrics": {
+					Network: ProviderNetwork,
+					Target:  ProviderService + ":8888",
+				},
+			},
 		}); err != nil {
 			return err
 		}
