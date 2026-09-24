@@ -31,6 +31,9 @@ func TestObserverEmitsMetricsAndStructuredRequestLog(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", rec.Code)
 	}
+	if traceparent := rec.Header().Get("traceparent"); !strings.HasPrefix(traceparent, "00-") || len(traceparent) != 55 {
+		t.Fatalf("traceparent = %q", traceparent)
+	}
 
 	var record map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record); err != nil {
