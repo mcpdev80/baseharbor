@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -35,7 +36,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, refreshMutableImage); err != nil {
+	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -94,7 +95,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, refreshMutableImage bool) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -126,7 +127,18 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err != nil {
 		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
 	}
-	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust)
+	var observabilityBinding []runtimeexecutor.ObservabilityBinding
+	if binding, found, bindErr := application.ExistingRuntimeOTLPBinding(m, files); bindErr != nil {
+		return fmt.Errorf("resolve runtime executor OTLP binding: %w", bindErr)
+	} else if found && binding.Provider == capability.ProviderOTelCollector {
+		observabilityBinding = append(observabilityBinding, runtimeexecutor.ObservabilityBinding{
+			Endpoint:   binding.ContainerEndpoint,
+			CA:         identity.CA,
+			ClientCert: identity.ClientCert,
+			ClientKey:  identity.ClientKey,
+		})
+	}
+	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust, observabilityBinding...)
 	if err != nil {
 		return fmt.Errorf("materialize runtime provider executor: %w", err)
 	}
