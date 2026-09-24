@@ -42,23 +42,42 @@ func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir st
 	if !policy.TLSRequired {
 		return TLSMaterial{}, errors.New("BaseHarbor managed service access cannot disable TLS")
 	}
-	if policy.PKISource == PKIExternal || policy.PKISource == PKIBYOC {
+	switch policy.PKISource {
+	case PKIBYOC:
 		return externalTLSMaterial(policy)
-	}
-	if policy.PKISource != PKIManagedLocal {
+	case PKIExternal:
+		if strings.TrimSpace(policy.IssuerReference) == "" {
+			return externalTLSMaterial(policy)
+		}
+		if issuer == nil {
+			return TLSMaterial{}, errors.New("issuer-backed external-pki requires an issuer adapter")
+		}
+		status, err := issuer.Status(ctx)
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("inspect external PKI issuer: %w", err)
+		}
+		if !status.Ready {
+			return TLSMaterial{}, errors.New("external PKI issuer is not ready")
+		}
+		if strings.TrimSpace(status.IssuerReference) != strings.TrimSpace(policy.IssuerReference) {
+			return TLSMaterial{}, fmt.Errorf("external PKI issuer reference mismatch: policy=%q adapter=%q", policy.IssuerReference, status.IssuerReference)
+		}
+		return ensureIssuerMaterial(ctx, issuer, policy, dir, PKIExternal, dnsNames)
+	case PKIManagedLocal:
+		return ensureIssuerMaterial(ctx, issuer, policy, dir, PKIManagedLocal, dnsNames)
+	default:
 		return TLSMaterial{}, fmt.Errorf("unsupported PKI source %q", policy.PKISource)
 	}
-	return ensureManagedLocal(ctx, issuer, policy, dir, dnsNames)
 }
 
 func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
-	if policy.PKISource == PKIExternal || policy.PKISource == PKIBYOC {
+	if policy.PKISource == PKIBYOC || (policy.PKISource == PKIExternal && strings.TrimSpace(policy.IssuerReference) == "") {
 		return externalTLSMaterial(policy)
 	}
-	if policy.PKISource != PKIManagedLocal {
+	if policy.PKISource != PKIManagedLocal && policy.PKISource != PKIExternal {
 		return TLSMaterial{}, fmt.Errorf("unsupported PKI source %q", policy.PKISource)
 	}
-	material := managedTLSMaterial(policy, dir)
+	material := issuerTLSMaterial(policy, dir, policy.PKISource)
 	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
 	for _, path := range requiredMaterialPaths(material, requireClient) {
 		if _, err := os.Stat(path); err != nil {
@@ -94,9 +113,9 @@ func externalTLSMaterial(policy Policy) (TLSMaterial, error) {
 	return material, nil
 }
 
-func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir string, dnsNames []string) (TLSMaterial, error) {
+func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir string, source PKISource, dnsNames []string) (TLSMaterial, error) {
 	if issuer == nil {
-		return TLSMaterial{}, errors.New("managed-local PKI requires an issuer")
+		return TLSMaterial{}, errors.New("issuer-backed PKI requires an issuer")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return TLSMaterial{}, fmt.Errorf("create managed service PKI directory: %w", err)
@@ -105,7 +124,7 @@ func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir s
 		return TLSMaterial{}, err
 	}
 
-	material := managedTLSMaterial(policy, dir)
+	material := issuerTLSMaterial(policy, dir, source)
 	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
 	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
 		return TLSMaterial{}, err
@@ -258,9 +277,9 @@ func firstNonZeroTime(values ...time.Time) time.Time {
 	return time.Time{}
 }
 
-func managedTLSMaterial(policy Policy, dir string) TLSMaterial {
+func issuerTLSMaterial(policy Policy, dir string, source PKISource) TLSMaterial {
 	return TLSMaterial{
-		Source:            PKIManagedLocal,
+		Source:            source,
 		CA:                filepath.Join(dir, "ca.pem"),
 		ServerCertificate: filepath.Join(dir, "server-cert.pem"),
 		ServerKey:         filepath.Join(dir, "server-key.pem"),
@@ -324,8 +343,8 @@ func validateMaterial(material TLSMaterial, requireClient bool) error {
 	if err != nil {
 		return fmt.Errorf("read service TLS trust bundle: %w", err)
 	}
-	if !ca.IsCA && material.Source == PKIManagedLocal {
-		return errors.New("managed-local service trust certificate is not a CA")
+	if !ca.IsCA {
+		return errors.New("service trust certificate is not a CA")
 	}
 	server, err := readCertificate(material.ServerCertificate)
 	if err != nil {
