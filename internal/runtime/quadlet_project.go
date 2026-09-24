@@ -41,6 +41,7 @@ type quadletComposeService struct {
 	User        string                    `yaml:"user"`
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
+	CapAdd      []string                  `yaml:"cap_add"`
 	SecurityOpt []string                  `yaml:"security_opt"`
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
@@ -444,6 +445,11 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 		for _, capability := range service.CapDrop {
 			if strings.TrimSpace(capability) != "" {
 				fmt.Fprintf(&unit, "DropCapability=%s\n", strings.ToLower(strings.TrimSpace(capability)))
+			}
+		}
+		for _, capability := range service.CapAdd {
+			if strings.TrimSpace(capability) != "" {
+				fmt.Fprintf(&unit, "AddCapability=%s\n", strings.ToLower(strings.TrimSpace(capability)))
 			}
 		}
 		for _, option := range service.SecurityOpt {
