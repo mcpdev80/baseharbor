@@ -35,7 +35,7 @@ func (p Provider) WaitReady(ctx context.Context, plan Plan, timeout time.Duratio
 			ctx,
 			p.kubectl,
 			"rollout", "status", "deployment/"+name,
-			"-n", plan.Namespace,
+			"-n", plan.Target.Scope,
 			"--timeout="+timeout.String(),
 		)
 		if output, err := cmd.CombinedOutput(); err != nil {
