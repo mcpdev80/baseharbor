@@ -63,6 +63,11 @@ jobs:
         run: |
           set -euo pipefail
           docker ps -a || true
+          echo "::group::docker-log-config"
+          for id in $(docker ps -aq); do
+            docker inspect --format '{{.Name}} project={{index .Config.Labels "com.docker.compose.project"}} service={{index .Config.Labels "com.docker.compose.service"}} log={{json .HostConfig.LogConfig}}' "$id" || true
+          done
+          echo "::endgroup::"
           for project in baseharbor-telemetry baseharbor-traces baseharbor-logs baseharbor-metrics baseharbor-runtime-executor; do
             echo "::group::$project"
             docker ps -a --filter "label=com.docker.compose.project=$project" || true
