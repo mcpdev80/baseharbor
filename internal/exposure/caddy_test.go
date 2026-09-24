@@ -93,19 +93,20 @@ func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 		"user: \"65532:65532\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"NET_BIND_SERVICE\"]",
 		"no-new-privileges:true",
 		"/tmp:rw,noexec,nosuid,nodev",
-		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
 		"/config:rw,noexec,nosuid,nodev,mode=1777",
 		"/data:rw,noexec,nosuid,nodev,mode=1777",
-		"cat /usr/bin/caddy > /run/baseharbor/caddy",
-		"chmod 0755 /run/baseharbor/caddy",
-		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 		"127.0.0.1:18080:8080",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("Caddy compose missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "/run/baseharbor") || strings.Contains(got, "cat /usr/bin/caddy") {
+		t.Fatalf("Caddy compose still uses runtime-specific binary staging:\n%s", got)
 	}
 	if strings.Contains(got, ":80\"") || strings.Contains(got, ":443\"") {
 		t.Fatalf("Caddy must not require privileged container ports:\n%s", got)
