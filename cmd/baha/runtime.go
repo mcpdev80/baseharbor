@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -35,6 +36,7 @@ type runtimeUpOptions struct {
 	OpenBaoPort      int
 	RecoveryFile     string
 	Environment      string
+	TrustHostCA      bool
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -61,6 +63,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			opts.Yes = true
 		case "--control-plane-only":
 			opts.ControlPlaneOnly = true
+		case "--trust-host-ca":
+			opts.TrustHostCA = true
 		case "--environment", "-e":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
@@ -108,7 +112,7 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
 		}
 	}
 	return opts, nil
@@ -672,6 +676,11 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
+	if records, trustErr := hosttrust.StateRecords(dataDir); trustErr != nil {
+		return fmt.Errorf("inspect BaseHarbor-owned host trust: %w", trustErr)
+	} else if len(records) > 0 {
+		fmt.Fprintf(out, "  host trust:    %d BaseHarbor-owned CA anchor(s)\n", len(records))
+	}
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
 	if !confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the global BaseHarbor control plane.")
@@ -683,6 +692,11 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	compose, err := bhruntime.DetectCompose(ctx)
 	if err != nil {
 		return err
+	}
+	if removed, err := hosttrust.RemoveOwned(ctx, dataDir); err != nil {
+		return fmt.Errorf("remove BaseHarbor-owned host trust before destroy: %w", err)
+	} else if removed > 0 {
+		fmt.Fprintf(out, "[OK] host trust         removed %d BaseHarbor-owned CA anchor(s)\n", removed)
 	}
 	if relays, err := connectivityrelay.ExistingInstances(); err != nil {
 		return fmt.Errorf("inspect connectivity relay state: %w", err)
