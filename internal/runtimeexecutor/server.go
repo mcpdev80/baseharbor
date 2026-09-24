@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
@@ -167,8 +168,11 @@ func verifyRuntimeClientIdentity(state tls.ConnectionState) error {
 		if _, _, ok := parseWorkloadURI(identity); ok {
 			return nil
 		}
+		if identity != nil && identity.String() == openbao.RuntimeExecutorObserverSPIFFE {
+			return nil
+		}
 	}
-	return errors.New("runtime executor client certificate must carry a BaseHarbor workload SPIFFE identity")
+	return errors.New("runtime executor client certificate must carry a BaseHarbor workload or observer SPIFFE identity")
 }
 
 func loadCAPool(path string) (*x509.CertPool, error) {
