@@ -7,7 +7,7 @@ import (
 
 func TestCaddyfileRequiresClientCertificateWhenRequested(t *testing.T) {
 	got := caddyfile("http://prometheus:9090", 8443, AuthenticationMTLS)
-	for _, want := range []string{"tls /certs/server.pem /certs/server-key.pem", "mode require_and_verify", "reverse_proxy http://prometheus:9090"} {
+	for _, want := range []string{"auto_https disable_redirects", "tls /certs/server.pem /certs/server-key.pem", "mode require_and_verify", "reverse_proxy http://prometheus:9090"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway config missing %q:\n%s", want, got)
 		}
