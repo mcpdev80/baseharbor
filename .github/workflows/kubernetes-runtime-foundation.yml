@@ -21,34 +21,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          diff="$(gofmt -d internal/workload internal/providers/runtime/kubernetes)"
+          diff="$(gofmt -d \
+            internal/workload \
+            internal/providers/runtime/kubernetes \
+            internal/runtime/contract \
+            internal/runtime/model \
+            internal/application/workload_model.go \
+            internal/application/workload_model_test.go)"
           if [ -n "$diff" ]; then
             printf '%s\n' "$diff"
             exit 1
           fi
 
-      - name: Run workload and Kubernetes unit tests
+      - name: Run foundation compatibility tests
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/runtime ./internal/workload ./internal/providers/runtime/kubernetes ./internal/application ./internal/deployment -count=1 -v
+          go test \
+            ./internal/runtime \
+            ./internal/workload \
+            ./internal/providers/runtime/kubernetes \
+            ./internal/application \
+            ./internal/deployment \
+            -count=1 -v
 
           go test ./cmd/baha \
-            -run '^(TestParse|TestRuntime|TestProvider|Test.*Workload.*)
-
-      - name: Run real k3s renderer acceptance
-        shell: bash
-        env:
-          BASEHARBOR_KUBERNETES_INTEGRATION: "1"
-        run: |
-          set -euo pipefail
-          go test ./internal/providers/runtime/kubernetes \
-            -run '^TestKubernetesRenderedWorkloadLifecycleOnCI$' \
-            -count=1 -v
- \
+            -run '^(TestRuntime|TestProvider|Test.*Workload.*)' \
             -count=1
 
-      - name: Run real k3s renderer acceptance
+      - name: Run real k3s provider lifecycle acceptance
         shell: bash
         env:
           BASEHARBOR_KUBERNETES_INTEGRATION: "1"
