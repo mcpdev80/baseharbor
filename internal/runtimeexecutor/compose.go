@@ -66,6 +66,11 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err != nil {
 		return Files{}, err
 	}
+	executorKeyProjection, err := projectContainerReadableSecret(dir, identity.Key, "executor-key.pem", "runtime executor private key")
+	if err != nil {
+		return Files{}, err
+	}
+	identity.Key = executorKeyProjection
 	s3TrustProjection, err := projectContainerReadablePublicFile(dir, s3TrustPath, "s3-ca.pem", "S3 trust bundle")
 	if err != nil {
 		return Files{}, err
