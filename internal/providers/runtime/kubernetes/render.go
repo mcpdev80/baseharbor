@@ -78,7 +78,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 	name := dnsLabel(plan.Application + "-" + service.Name)
 	labels := ownershipLabels(plan.Application, plan.Environment)
 	labels["app.kubernetes.io/name"] = name
-	labels["baseharbor.io/workload-service"] = service.Name
+	labels["baseharbor.io/workload-service"] = workloadServiceLabel(service.Name)
+	annotations := map[string]string{
+		"baseharbor.io/workload-service-name": service.Name,
+	}
 
 	configData, secretData, err := resolvedEnvironment(service.Environment, plan.Bindings)
 	if err != nil {
@@ -94,9 +97,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
 			"metadata": map[string]any{
-				"name":      configName,
-				"namespace": plan.Namespace,
-				"labels":    cloneMap(labels),
+				"name":        configName,
+				"namespace":   plan.Namespace,
+				"labels":      cloneMap(labels),
+				"annotations": cloneMap(annotations),
 			},
 			"data": sortedMap(configData),
 		})
@@ -107,9 +111,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"kind":       "Secret",
 			"type":       "Opaque",
 			"metadata": map[string]any{
-				"name":      secretName,
-				"namespace": plan.Namespace,
-				"labels":    cloneMap(labels),
+				"name":        secretName,
+				"namespace":   plan.Namespace,
+				"labels":      cloneMap(labels),
+				"annotations": cloneMap(annotations),
 			},
 			"stringData": sortedMap(secretData),
 		})
@@ -153,9 +158,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
 		"metadata": map[string]any{
-			"name":      name,
-			"namespace": plan.Namespace,
-			"labels":    cloneMap(labels),
+			"name":        name,
+			"namespace":   plan.Namespace,
+			"labels":      cloneMap(labels),
+			"annotations": cloneMap(annotations),
 		},
 		"spec": map[string]any{
 			"replicas": 1,
@@ -163,7 +169,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 				"matchLabels": map[string]any{"app.kubernetes.io/name": name},
 			},
 			"template": map[string]any{
-				"metadata": map[string]any{"labels": cloneMap(labels)},
+				"metadata": map[string]any{
+					"labels":      cloneMap(labels),
+					"annotations": cloneMap(annotations),
+				},
 				"spec":     map[string]any{"containers": []any{container}},
 			},
 		},
@@ -188,9 +197,10 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"apiVersion": "v1",
 			"kind":       "Service",
 			"metadata": map[string]any{
-				"name":      name,
-				"namespace": plan.Namespace,
-				"labels":    cloneMap(labels),
+				"name":        name,
+				"namespace":   plan.Namespace,
+				"labels":      cloneMap(labels),
+				"annotations": cloneMap(annotations),
 			},
 			"spec": map[string]any{
 				"selector": map[string]any{"app.kubernetes.io/name": name},
@@ -291,6 +301,30 @@ func dnsLabel(value string) string {
 
 func portName(port int, protocol string) string {
 	return dnsLabel(strings.ToLower(protocol) + "-" + strconv.Itoa(port))
+}
+
+func workloadServiceLabel(value string) string {
+	value = strings.TrimSpace(value)
+	var b strings.Builder
+	for _, r := range value {
+		valid := (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.'
+		if valid {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	result := strings.Trim(b.String(), "-_.")
+	if len(result) > 63 {
+		result = strings.Trim(result[:63], "-_.")
+	}
+	if result == "" {
+		return "workload"
+	}
+	return result
 }
 
 func sortedMap(values map[string]string) map[string]string {
