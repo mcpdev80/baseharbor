@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
@@ -58,22 +57,20 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 		return err
 	}
 
-	var diagnostic bytes.Buffer
-	diagnosticErr := appDoctorCommand(store).Run(ctx, nameArgs, &diagnostic, errOut)
-	fmt.Fprint(out, diagnostic.String())
-	if diagnosticErr == nil {
+	doctor, err := collectApplicationDoctor(ctx, store, nameArgs)
+	if err != nil {
+		return err
+	}
+	renderCollectedApplicationDoctor(ctx, out, errOut, doctor)
+	if doctor.Healthy || doctor.State == "not_applied" {
 		return nil
 	}
 
 	if !fix {
-		return diagnosticErr
+		return cli.Presented(errors.New("application doctor found one or more failures"))
 	}
 
-	structured, structuredErr := collectStructuredAppDoctor(ctx, store, nameArgs)
-	if structuredErr != nil {
-		return fmt.Errorf("classify application doctor findings: %w", structuredErr)
-	}
-	findings := classifyStructuredAppDoctor(structured)
+	findings := classifyApplicationDoctor(doctor)
 	printAppDoctorFindings(out, findings)
 	if len(findings) == 0 {
 		return errors.New("application doctor reported failure but no structured findings were available for safe repair")
@@ -94,8 +91,22 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 	}
 
 	fmt.Fprintln(out, "After repair:")
-	return appDoctorCommand(store).Run(ctx, nameArgs, out, errOut)
-
+	after, err := collectApplicationDoctor(ctx, store, nameArgs)
+	if err != nil {
+		return err
+	}
+	renderCollectedApplicationDoctor(ctx, out, errOut, after)
+	if !after.Healthy {
+		return &machine.Error{
+			Code:        machine.ErrorVerificationFailed,
+			CauseCode:   "repair_verification_failed",
+			Message:     "Application repair completed but verification is still degraded.",
+			Resource:    after.Application,
+			Remediation: "manual/admin action required",
+			Next:        "Inspect baseharbor.doctor findings and resolve the remaining non-repairable condition.",
+		}
+	}
+	return nil
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
@@ -121,24 +132,7 @@ func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
 	return nameArgs, fix, nil
 }
 
-func collectStructuredAppDoctor(ctx context.Context, store application.Store, nameArgs []string) (appDoctorStructuredResult, error) {
-	args := append(append([]string{}, nameArgs...), "-o", "json")
-	var out bytes.Buffer
-	err := appDoctorCommand(store).Run(ctx, args, &out, io.Discard)
-	var result appDoctorStructuredResult
-	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
-		if err != nil {
-			return appDoctorStructuredResult{}, errors.Join(err, decodeErr)
-		}
-		return appDoctorStructuredResult{}, decodeErr
-	}
-	// A degraded doctor intentionally returns a presented error. The structured
-	// payload is authoritative for classification, so a successfully decoded
-	// payload is sufficient here.
-	return result, nil
-}
-
-func classifyStructuredAppDoctor(result appDoctorStructuredResult) []appDoctorFinding {
+func classifyApplicationDoctor(result applicationDoctorResult) []appDoctorFinding {
 	findings := make([]appDoctorFinding, 0)
 	requiredByName := make(map[string]struct {
 		present   bool
