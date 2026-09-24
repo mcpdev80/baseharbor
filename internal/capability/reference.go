@@ -28,7 +28,7 @@ var (
 		SupportedScopes: []ProviderScope{ScopeApplication},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
-			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
+			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 		}},
 	}
@@ -40,7 +40,7 @@ var (
 		SupportedScopes: []ProviderScope{ScopeApplication},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
-			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
+			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 		}},
 	}
