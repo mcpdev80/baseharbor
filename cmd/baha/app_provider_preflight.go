@@ -20,6 +20,16 @@ type managedProviderPreflightState struct {
 	logs          *managedLogsExecution
 }
 
+func requiresManagedServiceIssuer(m application.Manifest) bool {
+	if application.HasManagedRuntimeServices(m) || requiresObjectStorageProviderAdmin(m) {
+		return true
+	}
+	if application.HasTraceSignal(m) || application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) || application.HasLogsCollection(m) {
+		return true
+	}
+	return application.HasOTLPTelemetry(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector
+}
+
 func appendManagedProviderPreflights(
 	checks []preflight.Check,
 	compose *bhruntime.Compose,
