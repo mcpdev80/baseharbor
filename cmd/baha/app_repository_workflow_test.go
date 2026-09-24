@@ -126,7 +126,6 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 	}
 }
 
-
 func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
 	root := t.TempDir()
 	old, err := os.Getwd()
