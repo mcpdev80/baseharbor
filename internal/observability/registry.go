@@ -55,21 +55,21 @@ func (s Security) Validate() error {
 }
 
 type SignalSource struct {
-	ID               string                   `json:"id"`
-	Kind             SignalKind               `json:"kind"`
-	Provider         capability.ProviderKind  `json:"provider"`
-	Class            SourceClass              `json:"class"`
-	Scope            capability.ProviderScope `json:"scope"`
-	SharingBoundary  string                   `json:"sharing_boundary,omitempty"`
-	OwnerApplication string                   `json:"owner_application,omitempty"`
-	Network          string                   `json:"network,omitempty"`
-	Target           string                   `json:"target"`
-	Protocol           string                                  `json:"protocol"`
-	Path               string                                  `json:"path,omitempty"`
+	ID                 string                                   `json:"id"`
+	Kind               SignalKind                               `json:"kind"`
+	Provider           capability.ProviderKind                  `json:"provider"`
+	Class              SourceClass                              `json:"class"`
+	Scope              capability.ProviderScope                 `json:"scope"`
+	SharingBoundary    string                                   `json:"sharing_boundary,omitempty"`
+	OwnerApplication   string                                   `json:"owner_application,omitempty"`
+	Network            string                                   `json:"network,omitempty"`
+	Target             string                                   `json:"target"`
+	Protocol           string                                   `json:"protocol"`
+	Path               string                                   `json:"path,omitempty"`
 	Mode               capability.ObservabilityRealizationMode `json:"mode,omitempty"`
-	SemanticConvention string                                  `json:"semantic_convention,omitempty"`
+	SemanticConvention string                                   `json:"semantic_convention,omitempty"`
 	Verification       capability.ObservabilityVerificationMode `json:"verification,omitempty"`
-	Security           Security                                `json:"security"`
+	Security           Security                                 `json:"security"`
 }
 
 func (s SignalSource) Validate() error {
@@ -215,15 +215,15 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
 		}
 		source := SignalSource{
-			ID:               registration.ID,
-			Kind:             kind,
-			Provider:         registration.Descriptor.Provider.Kind,
-			Class:            registration.Class,
-			Scope:            registration.Scope,
-			SharingBoundary:  registration.SharingBoundary,
-			OwnerApplication: registration.OwnerApplication,
-			Network:          runtimeSignal.Network,
-			Target:           runtimeSignal.Target,
+			ID:                 registration.ID,
+			Kind:               kind,
+			Provider:           registration.Descriptor.Provider.Kind,
+			Class:              registration.Class,
+			Scope:              registration.Scope,
+			SharingBoundary:    registration.SharingBoundary,
+			OwnerApplication:   registration.OwnerApplication,
+			Network:            runtimeSignal.Network,
+			Target:             runtimeSignal.Target,
 			Protocol:           signal.Protocol,
 			Path:               signal.Path,
 			Mode:               signal.Mode,
