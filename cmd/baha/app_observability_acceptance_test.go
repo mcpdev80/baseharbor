@@ -74,10 +74,6 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	if !bytes.Contains(payload, traceIDBytes) {
 		t.Fatal("failed to create unique workload verification trace payload")
 	}
-	if err := os.WriteFile("trace.bin", payload, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	composeYAML := `services:
   api:
     image: docker.io/library/python:3.13-alpine
@@ -111,8 +107,6 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
     image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
     command: ["echo baseharbor-observability-acceptance-trace-probe; sleep 3600"]
-    volumes:
-      - ./trace.bin:/trace.bin:ro
 `
 	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -168,9 +162,9 @@ if [ -n "${OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE:-}" ]; then
   test -r "$OTEL_EXPORTER_OTLP_CLIENT_KEY"
   set -- "$@" --cert "$OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE" --key "$OTEL_EXPORTER_OTLP_CLIENT_KEY"
 fi
-curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @/trace.bin "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces"
+curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @- "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces"
 `
-	if _, err := compose.ExecProjectFiles(ctx, workload.Project, root, "trace-probe", composeFiles, "sh", "-ec", tracePost); err != nil {
+	if _, err := compose.ExecProjectFilesInput(ctx, workload.Project, root, "trace-probe", composeFiles, payload, "sh", "-ec", tracePost); err != nil {
 		t.Fatalf("workload OTLP export through injected binding failed: %v", err)
 	}
 	if err := tracesprovider.VerifyTrace(ctx, stored, traceID); err != nil {
