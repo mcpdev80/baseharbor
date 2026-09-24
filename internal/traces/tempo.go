@@ -53,10 +53,11 @@ type ProviderFiles struct {
 type Driver struct {
 	runtime Runtime
 	app     application.Manifest
+	issuer  serviceaccess.Issuer
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, app: app}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, app: app, issuer: issuer}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
@@ -89,7 +90,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ ca
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	_, err := Provision(ctx, d.runtime, d.app)
+	_, err := Provision(ctx, d.runtime, d.issuer, d.app)
 	return err
 }
 
@@ -132,7 +133,7 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	}
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, Placement, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
@@ -170,7 +171,7 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, erro
 	if err != nil {
 		return ProviderFiles{}, p, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, tempoAccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, tempoAccessSpec())
 	if err != nil {
 		return ProviderFiles{}, p, err
 	}
@@ -197,8 +198,8 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, er
 	return files, p, nil
 }
 
-func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Placement, error) {
-	files, p, err := EnsureProviderFiles(m)
+func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) (Placement, error) {
+	files, p, err := EnsureProviderFiles(ctx, issuer, m)
 	if err != nil {
 		return Placement{}, err
 	}
