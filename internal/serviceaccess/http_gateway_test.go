@@ -54,7 +54,7 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 }
 
 
-func TestGatewayComposeRunsCaddyWithOnlyBindServiceCapability(t *testing.T) {
+func TestGatewayComposeRunsCapabilityFreeCaddyCopy(t *testing.T) {
 	files := HTTPGatewayFiles{
 		Caddyfile: "/tmp/access/Caddyfile",
 		Material: TLSMaterial{
@@ -66,17 +66,16 @@ func TestGatewayComposeRunsCaddyWithOnlyBindServiceCapability(t *testing.T) {
 	got := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "openbao-access", ContainerPort: 8443})
 	for _, want := range []string{
 		"cap_drop: [\"ALL\"]",
-		"cap_add: [\"NET_BIND_SERVICE\"]",
 		"entrypoint: [\"/bin/sh\", \"-ec\"]",
-		"exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
+		"cat /usr/bin/caddy > /run/baseharbor/caddy",
+		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway compose missing %q:\n%s", want, got)
 		}
 	}
-	for _, forbidden := range []string{"/run/baseharbor", "cat /usr/bin/caddy"} {
-		if strings.Contains(got, forbidden) {
-			t.Fatalf("gateway compose still uses runtime-specific Caddy staging %q:\n%s", forbidden, got)
-		}
+	if strings.Contains(got, "cap_add:") {
+		t.Fatalf("gateway compose must not retain Linux capabilities:\n%s", got)
 	}
 }
