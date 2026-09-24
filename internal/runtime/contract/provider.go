@@ -23,8 +23,8 @@ const (
 
 type ProviderCapabilities struct {
 	WorkloadLifecycle bool
-	ServiceExec        bool
-	PublishedPorts     bool
+	ServiceExec       bool
+	PublishedPorts    bool
 	ResourceOwnership bool
 }
 
