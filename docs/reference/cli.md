@@ -121,7 +121,7 @@ baha openbao --help
 
 Human output uses a shared semantic layout. Mutations describe their resulting state (`CREATED`, `UPDATED`, `DELETED`, `STARTED`, `STOPPED`), readiness uses `READY`, protocol/data-path verification uses `VERIFIED`, and `OK` is reserved for checks that have no more precise state verb.
 
-Potentially slow lifecycle work emits delayed contextual activity so fast commands do not flash a spinner and slow commands never appear hung. Non-TTY output is stable and line-oriented.
+Potentially slow lifecycle work emits delayed targetual activity so fast commands do not flash a spinner and slow commands never appear hung. Non-TTY output is stable and line-oriented.
 
 Global controls:
 
@@ -170,26 +170,26 @@ baha completion fish
 
 Generated completion is read-only and includes commands, options and useful fixed values such as `dev|test|prod`.
 
-## Contexts and effective deployment target
+## Targets and effective deployment destination
 
-BaseHarbor v0.4.15 introduces a first-class Context/Deployment Target foundation. Context, application and environment are independent axes, and one concrete deployment is identified by `context + application + environment`.
+BaseHarbor v0.4.15 introduces a first-class Target/Deployment Target foundation. Target, application and environment are independent axes, and one concrete deployment is identified by `target + application + environment`.
 
-Context selection is designed to support local Docker/Podman targets and later Kubernetes/OpenShift targets without adding runtime-specific fields to portable application intent.
+Target selection is designed to support local Docker/Podman targets and later Kubernetes/OpenShift targets without adding runtime-specific fields to portable application intent.
 
-The effective context resolves in this order:
+The effective target resolves in this order:
 
 ```text
-explicit --context
-  > activated BASEHARBOR_CONTEXT
-  > configured default context
+explicit --target
+  > activated BASEHARBOR_TARGET
+  > configured default target
   > local
 ```
 
 Repository detection may select the current application/environment, but never defines the global deployment registry. `baha app list` is therefore CWD-independent.
 
-Shell-local activation is the preferred interactive model so separate terminals can safely target different contexts at the same time. Optional prompt integration can show a compact active-context segment before any BaseHarbor command is typed. Prompt style, environment labels/colors, accessibility mode, and placement before/after the path (or right prompt where supported) are user-configurable.
+Shell-local activation is the preferred interactive model so separate terminals can safely target different targets at the same time. Optional prompt integration can show a compact active-target segment before any BaseHarbor command is typed. Prompt style, environment labels/colors, accessibility mode, and placement before/after the path (or right prompt where supported) are user-configurable.
 
-See [Contexts and deployment targets](../explanation/contexts.md).
+See [Targets and deployment destinations](../explanation/targets.md).
 
 ## Repository-aware shortcuts and structured output
 
@@ -212,7 +212,7 @@ baha doctor -o json
 
 The compatibility alias `baha app inspect --json` remains supported. Structured output contains no ANSI rendering and no secret values. `doctor --fix` is intentionally human-only.
 
-Repository-aware lifecycle/read commands accept `-e ENV` / `--environment ENV` as deployment-context selection without rewriting portable intent. A repository may use one root `baseharbor.yaml` or complete `envs/<environment>/baseharbor.yaml` contracts. Multiple environment manifests require explicit selection.
+Repository-aware lifecycle/read commands accept `-e ENV` / `--environment ENV` as deployment-target selection without rewriting portable intent. A repository may use one root `baseharbor.yaml` or complete `envs/<environment>/baseharbor.yaml` contracts. Multiple environment manifests require explicit selection.
 
 Policy inspection:
 
