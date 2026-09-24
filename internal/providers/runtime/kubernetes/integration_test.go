@@ -32,6 +32,9 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 	if provider.Context() == "" {
 		t.Fatal("detected Kubernetes provider has no context")
 	}
+	if provider.Namespace() != namespace {
+		t.Fatalf("detected Kubernetes namespace = %q, want %q", provider.Namespace(), namespace)
+	}
 
 	plan := Plan{
 		Application: app,
