@@ -43,7 +43,7 @@ fi`
 		return fmt.Errorf("configure OpenBao service PKI root: %w", err)
 	}
 	if _, err := execWithToken(ctx, executor, files, rootToken,
-		`exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`); err != nil {
+		`exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`); err != nil {
 		return fmt.Errorf("configure OpenBao service PKI role: %w", err)
 	}
 	return nil
