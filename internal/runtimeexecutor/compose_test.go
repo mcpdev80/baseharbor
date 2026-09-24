@@ -76,3 +76,28 @@ func TestProjectContainerReadableSecretPreservesProtectedSource(t *testing.T) {
 		t.Fatalf("projection directory mode = %o, want 700", got)
 	}
 }
+
+
+func TestProjectContainerReadablePublicFileAcceptsReadableTrustBundle(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "executor")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "ca.pem")
+	if err := os.WriteFile(source, []byte("ca"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	projected, err := projectContainerReadablePublicFile(dir, source, "s3-ca.pem", "S3 trust bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectedInfo, err := os.Stat(projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("projection mode = %o, want 644", got)
+	}
+}
