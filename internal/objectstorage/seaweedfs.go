@@ -45,6 +45,7 @@ type Driver struct {
 	runtime        Runtime
 	app            application.Manifest
 	files          application.RuntimeFiles
+	issuer         serviceaccess.Issuer
 	client         *http.Client
 	createdBuckets map[string]struct{}
 }
@@ -55,11 +56,11 @@ type ProviderFiles struct {
 	Env     string
 }
 
-func EnsureSharedProvider(ctx context.Context, runtime Runtime) (ProviderFiles, AdminCredentials, string, error) {
+func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer) (ProviderFiles, AdminCredentials, string, error) {
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
 	}
-	files, err := EnsureProviderFiles()
+	files, err := EnsureProviderFiles(ctx, issuer)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
@@ -96,14 +97,14 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime) (ProviderFiles, 
 	return files, credentials, credentialPath, nil
 }
 
-func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
-	return &Driver{runtime: runtime, app: app, files: files, createdBuckets: map[string]struct{}{}}
+func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, app: app, files: files, issuer: issuer, createdBuckets: map[string]struct{}{}}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
 
 func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
-	return EnsureSharedProvider(ctx, d.runtime)
+	return EnsureSharedProvider(ctx, d.runtime, d.issuer)
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -123,7 +124,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, _, _, err := EnsureSharedProvider(ctx, d.runtime)
+	providerFiles, _, _, err := EnsureSharedProvider(ctx, d.runtime, d.issuer)
 	if err != nil {
 		return err
 	}
@@ -318,7 +319,7 @@ func PhysicalBucketName(m application.Manifest, logical string) string {
 	return strings.TrimRight(base[:63-len(suffix)], "-") + suffix
 }
 
-func EnsureProviderFiles() (ProviderFiles, error) {
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
@@ -351,7 +352,7 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, s3AccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, s3AccessSpec())
 	if err != nil {
 		return ProviderFiles{}, err
 	}
