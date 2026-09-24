@@ -74,3 +74,37 @@ func NormalizeArtifactRepositoryPrefix(value string) (string, error) {
 	}
 	return value, nil
 }
+
+
+func ArtifactDestination(repositoryPrefix, application, environment, service string) (string, error) {
+	prefix, err := NormalizeArtifactRepositoryPrefix(repositoryPrefix)
+	if err != nil {
+		return "", err
+	}
+	app := artifactSlug(application)
+	svc := artifactSlug(service)
+	tag := artifactSlug(environment)
+	if app == "" || svc == "" || tag == "" {
+		return "", fmt.Errorf("application, environment and service are required for artifact destination")
+	}
+	return prefix + "/" + app + "-" + svc + ":" + tag, nil
+}
+
+func artifactSlug(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		valid := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if valid {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if b.Len() > 0 && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
