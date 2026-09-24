@@ -1,7 +1,6 @@
 package kubernetes
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -26,7 +25,15 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 	}
 	const app = "baha-render-acceptance"
 
-	rendered, err := Render(Plan{
+	provider, err := Detect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.Context() == "" {
+		t.Fatal("detected Kubernetes provider has no context")
+	}
+
+	plan := Plan{
 		Application: app,
 		Environment: "dev",
 		Namespace:   namespace,
@@ -39,56 +46,48 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 		Bindings: map[string]Binding{
 			"APP_SECRET": {Value: "ci-only", Sensitive: true},
 		},
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	name := app + "-app"
-	cleanup := func() {
-		for _, args := range [][]string{
-			{"delete", "deployment", name, "-n", namespace, "--ignore-not-found", "--wait=true"},
-			{"delete", "service", name, "-n", namespace, "--ignore-not-found"},
-			{"delete", "secret", name + "-bindings", "-n", namespace, "--ignore-not-found"},
-			{"delete", "configmap", name + "-config", "-n", namespace, "--ignore-not-found"},
-		} {
-			_ = exec.CommandContext(context.Background(), "kubectl", args...).Run()
-		}
-	}
-	cleanup()
-	t.Cleanup(cleanup)
+	_ = provider.Destroy(context.Background(), app, "dev", namespace)
+	t.Cleanup(func() {
+		_ = provider.Destroy(context.Background(), app, "dev", namespace)
+	})
 
-	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
-	cmd.Stdin = bytes.NewReader(rendered)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("kubectl apply failed: %v\n%s\n%s", err, output, rendered)
+	if err := provider.Apply(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.WaitReady(ctx, plan, 90*time.Second); err != nil {
+		t.Fatal(err)
 	}
 
-	if output, err := exec.CommandContext(
-		ctx, "kubectl", "rollout", "status", "deployment/"+name,
-		"-n", namespace, "--timeout=90s",
-	).CombinedOutput(); err != nil {
-		t.Fatalf("rollout failed: %v\n%s", err, output)
-	}
-
-	output, err := exec.CommandContext(
-		ctx, "kubectl", "get", "deployment", name,
-		"-n", namespace,
-		"-o", "jsonpath={.metadata.labels.app\\.kubernetes\\.io/managed-by}",
-	).CombinedOutput()
+	observation, err := provider.Observe(ctx, app, "dev", namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(output)) != "baseharbor" {
-		t.Fatalf("managed-by label = %q", output)
+	if !observation.Found || !observation.Ready() {
+		t.Fatalf("workload observation not ready: %#v", observation)
+	}
+	if len(observation.Services) != 1 || observation.Services[0].Service != "app" {
+		t.Fatalf("unexpected workload observation: %#v", observation)
 	}
 
 	denied, err := exec.CommandContext(ctx, "kubectl", "auth", "can-i", "create", "namespaces").CombinedOutput()
 	fields := strings.Fields(string(denied))
 	if err == nil || len(fields) == 0 || fields[len(fields)-1] != "no" {
 		t.Fatalf("expected namespace creation to remain denied, output=%q err=%v", denied, err)
+	}
+
+	if err := provider.Destroy(ctx, app, "dev", namespace); err != nil {
+		t.Fatal(err)
+	}
+	after, err := provider.Observe(ctx, app, "dev", namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Found {
+		t.Fatalf("workload remains after destroy: %#v", after)
 	}
 }
