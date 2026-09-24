@@ -57,12 +57,20 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 					Detail: "source references S3-compatible object operations",
 				})
 			}
-			if containsAny(lower, []string{
+			directCreate := containsAny(lower, []string{
 				"createbucket(", ".createbucket(", "create_bucket(", ".create_bucket(",
-			}) {
+			})
+			runtimeAPICreate := strings.Contains(lower, "/runtime/v1/resources") &&
+				strings.Contains(lower, "object-storage.s3/v1") &&
+				containsAny(lower, []string{"http.methodpost", "\"post\"", "'post'"})
+			if directCreate || runtimeAPICreate {
+				detail := "source appears to create S3 buckets at application runtime"
+				if runtimeAPICreate {
+					detail = "source requests object-storage.s3/v1 creation through the BaseHarbor Runtime API"
+				}
 				runtimeCreate = append(runtimeCreate, Evidence{
 					Kind: EvidenceCall, Path: path,
-					Detail: "source appears to create S3 buckets at application runtime",
+					Detail: detail,
 				})
 			}
 		}
