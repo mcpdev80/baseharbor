@@ -42,6 +42,7 @@ type staticPKIState struct {
 
 type managedPKIState struct {
 	Version         int       `json:"version"`
+	Source          PKISource `json:"source"`
 	IssuerReference string    `json:"issuer_reference"`
 	LifecycleOwner  string    `json:"lifecycle_owner"`
 	RenewalMode     string    `json:"renewal_mode"`
@@ -284,6 +285,7 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 
 	state := managedPKIState{
 		Version:         2,
+		Source:          source,
 		IssuerReference: firstNonEmpty(server.IssuerReference, currentIssuerReference),
 		LifecycleOwner:  "issuer",
 		RenewalMode:     "automatic-reconcile",
