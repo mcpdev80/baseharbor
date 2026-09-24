@@ -45,6 +45,8 @@ Normal development branches must not target `main` directly. Hotfix branches sta
 
 Every release is prepared on `develop` and promoted to `main` only after the release candidate is proven.
 
+The mandatory end-to-end checklist is [`docs/pre-release-documentation-audit.md`](../pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
+
 1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
 3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
