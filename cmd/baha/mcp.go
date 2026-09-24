@@ -33,11 +33,11 @@ type machineBackupInput struct {
 	Name         string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment  string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	OutputPath   string `json:"output_path,omitempty" jsonschema:"optional local path for the encrypted BaseHarbor recovery archive"`
-	PasswordFile string `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+	PasswordFile string `json:"password_file,omitempty" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
 }
 
 type machineRestoreInput struct {
-	BackupPath   string `json:"backup_path" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
+	BackupPath   string `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
 	Name         string `json:"name,omitempty" jsonschema:"optional expected application identity"`
 	Environment  string `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
 	PasswordFile string `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
@@ -46,7 +46,7 @@ type machineRestoreInput struct {
 type machineDestroyInput struct {
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
-	Approval    bool   `json:"approval" jsonschema:"explicit operator approval required before destructive mutation"`
+	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
 	FullReset   bool   `json:"full_reset,omitempty" jsonschema:"also remove BaseHarbor-owned repository deployment and normalized TLS state"`
 }
 
