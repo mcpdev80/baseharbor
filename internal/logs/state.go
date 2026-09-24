@@ -251,7 +251,7 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 	return nil
 }
 
-func UnregisterApplication(ctx context.Context, runtime Runtime, m application.Manifest) error {
+func UnregisterApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
 	p, err := PlacementFor(m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
@@ -277,7 +277,7 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, m application.M
 	if err != nil {
 		return err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, lokiAccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, lokiAccessSpec())
 	if err != nil {
 		return err
 	}
