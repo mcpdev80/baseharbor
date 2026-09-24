@@ -91,9 +91,9 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			ClientKey:         mtlsFiles.ClientKey,
 			ServerName:        "baseharbor-runtime",
 		},
-		LogsTarget:      observability.RuntimeTarget(runtimebroker.ProjectName(m), runtimebroker.ServiceName),
-		TracesTarget:    traceTarget,
-		TracesSecurity:  traceSecurity,
+		LogsTarget:     observability.RuntimeTarget(runtimebroker.ProjectName(m), runtimebroker.ServiceName),
+		TracesTarget:   traceTarget,
+		TracesSecurity: traceSecurity,
 	}); err != nil {
 		return fmt.Errorf("register runtime broker observability: %w", err)
 	}
