@@ -53,7 +53,7 @@ var (
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
-			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", Verification: ObservabilityVerifyBackend},
+			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 		}},
 	}
@@ -66,7 +66,7 @@ var (
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
-			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", Verification: ObservabilityVerifyBackend},
+			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 			{Name: "traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 		}},
 	}
