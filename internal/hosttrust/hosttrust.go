@@ -189,7 +189,7 @@ func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
 	removed := 0
 	var removeErr error
 	for _, record := range state.Anchors {
-		backend, err := backendByName(record.Backend)
+		backend, err := resolveBackend(record.Backend)
 		if err != nil {
 			removeErr = errors.Join(removeErr, err)
 			continue
@@ -312,6 +312,8 @@ func DetectSystemBackend() (Backend, error) {
 	}
 	return nil, errors.New("no supported Linux system trust updater found; use 'baha trust export' and install the public CA manually")
 }
+
+var resolveBackend = backendByName
 
 func backendByName(name string) (Backend, error) {
 	switch name {
