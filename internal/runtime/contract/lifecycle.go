@@ -13,6 +13,7 @@ import (
 type WorkloadProvider interface {
 	Provider
 
+	TargetScope() string
 	Apply(context.Context, runtimemodel.WorkloadPlan) error
 	WaitReady(context.Context, runtimemodel.WorkloadPlan, time.Duration) error
 	Observe(context.Context, string, string, string) (runtimemodel.Observation, error)
