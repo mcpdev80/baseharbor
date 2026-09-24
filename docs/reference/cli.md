@@ -170,6 +170,27 @@ baha completion fish
 
 Generated completion is read-only and includes commands, options and useful fixed values such as `dev|test|prod`.
 
+## Contexts and effective deployment target
+
+BaseHarbor v0.4.15 introduces a first-class Context/Deployment Target foundation. Context, application and environment are independent axes, and one concrete deployment is identified by `context + application + environment`.
+
+Context selection is designed to support local Docker/Podman targets and later Kubernetes/OpenShift targets without adding runtime-specific fields to portable application intent.
+
+The effective context resolves in this order:
+
+```text
+explicit --context
+  > activated BASEHARBOR_CONTEXT
+  > configured default context
+  > local
+```
+
+Repository detection may select the current application/environment, but never defines the global deployment registry. `baha app list` is therefore CWD-independent.
+
+Shell-local activation is the preferred interactive model so separate terminals can safely target different contexts at the same time. Optional prompt integration can show a compact active-context segment before any BaseHarbor command is typed. Prompt style, environment labels/colors, accessibility mode, and placement before/after the path (or right prompt where supported) are user-configurable.
+
+See [Contexts and deployment targets](../explanation/contexts.md).
+
 ## Repository-aware shortcuts and structured output
 
 Inside a repository containing `baseharbor.yaml`, the root shortcuts use the same application lifecycle core:
