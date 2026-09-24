@@ -100,7 +100,7 @@ func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testin
 	}
 }
 
-func TestEnsureServiceAccessMaterializesTLSGatewaysFromIssuer(t *testing.T) {
+func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
 	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
 	if err != nil {
@@ -116,12 +116,26 @@ func TestEnsureServiceAccessMaterializesTLSGatewaysFromIssuer(t *testing.T) {
 	text := string(compose)
 	for _, wanted := range []string{
 		"openbao-access:",
-		"postgres-access:",
 		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8443",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("reconciled runtime is missing %q", wanted)
+		}
+	}
+	if strings.Contains(text, "postgres-access:") {
+		t.Fatal("control-plane PostgreSQL must use native TLS instead of a raw TLS proxy")
+	}
+	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wanted := range []string{"hostssl all all 0.0.0.0/0 scram-sha-256", "hostnossl all all 0.0.0.0/0 reject"} {
+		if !strings.Contains(string(hba), wanted) {
+			t.Fatalf("pg_hba.conf missing %q", wanted)
 		}
 	}
 }
