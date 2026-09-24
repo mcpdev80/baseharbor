@@ -26,6 +26,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
+	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
 var (
@@ -261,6 +262,20 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	})
 	mux.Handle("/runtime/", runtimeHandler)
 
+	var serverHandler http.Handler = mux
+	if cfg.boundRuntimeEnabled() {
+		observer, err := runtimeobservability.NewFromEnvironment(runtimeobservability.Config{
+			Component:   "runtime-broker",
+			Application: cfg.RuntimeAppName,
+			Environment: cfg.RuntimeEnvironment,
+		})
+		if err != nil {
+			return fmt.Errorf("configure runtime broker observability: %w", err)
+		}
+		mux.Handle("GET /metrics", observer.MetricsHandler())
+		serverHandler = observer.Wrap(mux)
+	}
+
 	if cfg.operatorAPIEnabled() {
 		if pool == nil {
 			return ErrMissingDatabaseURL
@@ -295,7 +310,7 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 	}
 	server := &http.Server{
 		Addr:              cfg.listenAddr(),
-		Handler:           mux,
+		Handler:           serverHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
