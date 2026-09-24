@@ -88,7 +88,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - |
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
-        body = b"# TYPE baseharbor_acceptance_metric gauge\\nbaseharbor_acceptance_metric 1\\n# EOF\\n"
+        body = b"# TYPE baseharbor_acceptance_metric gauge\nbaseharbor_acceptance_metric 1\n# EOF\n"
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
