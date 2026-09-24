@@ -14,8 +14,11 @@ import (
 )
 
 type testIssuer struct {
-	ca    *x509.Certificate
-	caKey *ecdsa.PrivateKey
+	ca         *x509.Certificate
+	caKey      *ecdsa.PrivateKey
+	validity   time.Duration
+	issueCalls int
+	renewCalls int
 }
 
 func newTestIssuer(t interface{ Fatal(...any) }) *testIssuer {
@@ -24,6 +27,10 @@ func newTestIssuer(t interface{ Fatal(...any) }) *testIssuer {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
+	validity := request.TTL
+	if i.validity > 0 {
+		validity = i.validity
+	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "Test CA"},
@@ -52,6 +59,7 @@ func (i *testIssuer) TrustBundle(context.Context) (TrustBundle, error) {
 }
 
 func (i *testIssuer) Issue(_ context.Context, request CertificateRequest) (IssuedCertificate, error) {
+	i.issueCalls++
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return IssuedCertificate{}, err
@@ -65,7 +73,7 @@ func (i *testIssuer) Issue(_ context.Context, request CertificateRequest) (Issue
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: request.CommonName},
 		NotBefore:    now.Add(-time.Minute),
-		NotAfter:     now.Add(request.TTL),
+		NotAfter:     now.Add(validity),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		DNSNames:     append([]string(nil), request.DNSNames...),
 		IPAddresses:  append([]net.IP(nil), request.IPAddresses...),
@@ -95,6 +103,7 @@ func (i *testIssuer) Issue(_ context.Context, request CertificateRequest) (Issue
 }
 
 func (i *testIssuer) Renew(ctx context.Context, _ IssuedCertificate, request CertificateRequest) (IssuedCertificate, error) {
+	i.renewCalls++
 	return i.Issue(ctx, request)
 }
 
