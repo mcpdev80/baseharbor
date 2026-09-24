@@ -342,10 +342,10 @@ func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files
 
 func configureManager(ctx context.Context, executor Executor, files bhruntime.Files, rootToken string) error {
 	commands := []string{
-		`exec bao secrets enable -path=baseharbor -version=2 kv`,
-		`exec bao secrets enable -path=baseharbor-pki pki`,
-		`exec bao secrets tune -max-lease-ttl=87600h baseharbor-pki`,
-		`exec bao auth enable approle`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor/"'; then bao secrets enable -path=baseharbor -version=2 kv >/dev/null; fi`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor-pki/"'; then bao secrets enable -path=baseharbor-pki pki >/dev/null; fi`,
+		`bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null`,
+		`if ! bao auth list -format=json | grep -q '"approle/"'; then bao auth enable approle >/dev/null; fi`,
 	}
 	for _, command := range commands {
 		if _, err := execWithToken(ctx, executor, files, rootToken, command); err != nil {
