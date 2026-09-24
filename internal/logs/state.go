@@ -247,6 +247,24 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 }
 
 func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	return EnsureRuntimeProjectOverrideForRuntime(
+		m,
+		runtime.Dir,
+		providerOverrideName,
+		application.RuntimeProjectName(m),
+		runtimeKind,
+		observability.SourceApplicationProvider,
+	)
+}
+
+func EnsureRuntimeProjectOverrideForRuntime(
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	runtimeKind string,
+	class observability.SourceClass,
+) (string, bool, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return "", false, err
@@ -255,42 +273,69 @@ func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime appl
 	if err != nil {
 		return "", false, err
 	}
+	includeApplicationProviders := policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider]
+	includePlatformProviders := policy.Enabled && policy.Collect[application.LogsSourcePlatformProvider]
 	sources, err := observability.ListLogs(
 		capability.ProviderPlacement{Scope: p.Scope, SharingBoundary: p.SharingBoundary, Ownership: capability.OwnershipBaseHarbor},
 		[]string{m.Name},
-		policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider],
-		false,
+		includeApplicationProviders,
+		includePlatformProviders,
 	)
 	if err != nil {
 		return "", false, err
 	}
-	project := application.RuntimeProjectName(m)
+
 	type providerService struct {
 		Service  string
 		Provider capability.ProviderKind
+		Class    observability.SourceClass
 	}
 	seen := map[string]providerService{}
 	for _, source := range sources {
-		if source.Class != observability.SourceApplicationProvider || source.OwnerApplication != m.Name {
+		if source.Class != class {
 			continue
 		}
 		sourceProject, service, ok := observability.ParseRuntimeTarget(source.Target)
 		if !ok || sourceProject != project {
 			continue
 		}
-		seen[service] = providerService{Service: service, Provider: source.Provider}
+		seen[service] = providerService{Service: service, Provider: source.Provider, Class: source.Class}
 	}
-	path := filepath.Join(runtime.Dir, providerOverrideName)
+
+	path := filepath.Join(dir, filename)
 	if len(seen) == 0 {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return "", false, err
 		}
 		return "", false, nil
 	}
-	registration, err := ApplicationRegistration(m)
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", false, err
 	}
+
+	port := 0
+	if !strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		switch class {
+		case observability.SourceApplicationProvider:
+			registration, err := ApplicationRegistration(m)
+			if err != nil {
+				return "", false, err
+			}
+			port = registration.ProviderSyslogPort
+		case observability.SourcePlatformProvider:
+			files, err := ExistingProviderFiles(m)
+			if err != nil {
+				return "", false, err
+			}
+			port, err = persistedPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
+			if err != nil {
+				return "", false, err
+			}
+		default:
+			return "", false, fmt.Errorf("unsupported runtime log source class %q", class)
+		}
+	}
+
 	services := make([]providerService, 0, len(seen))
 	for _, service := range seen {
 		services = append(services, service)
@@ -308,7 +353,7 @@ func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime appl
 		}
 		b.WriteString("      driver: syslog\n")
 		b.WriteString("      options:\n")
-		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)))
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", port)))
 		b.WriteString("        syslog-format: rfc5424\n")
 		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(string(source.Provider)+"/"+source.Service))
 	}
@@ -619,6 +664,24 @@ func hasPlatformProviderLogs(sources []observability.SignalSource) bool {
 		}
 	}
 	return false
+}
+
+func persistedPort(path, key string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && k == key {
+			port, err := strconv.Atoi(strings.TrimSpace(v))
+			if err == nil && port > 0 && port <= 65535 {
+				return port, nil
+			}
+			return 0, fmt.Errorf("invalid %s port", key)
+		}
+	}
+	return 0, fmt.Errorf("%s is not materialized", key)
 }
 
 func persistedOrAllocatedUDPPort(path, key string) (int, error) {
