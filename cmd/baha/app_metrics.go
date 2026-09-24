@@ -40,6 +40,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		}
 		return &managedMetricsExecution{
 			runtime:             compose,
+			issuer:              issuer,
 			manifest:            m,
 			registeredPlacement: registeredPlacement,
 			registered:          true,
@@ -54,6 +55,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	if !enabled {
 		return &managedMetricsExecution{
 			runtime:             compose,
+			issuer:              issuer,
 			manifest:            m,
 			enabled:             false,
 			registeredPlacement: registeredPlacement,
