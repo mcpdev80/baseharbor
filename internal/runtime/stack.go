@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -57,8 +60,51 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
 	}
 
+	openBaoPolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return Files{}, err
+	}
+	openBaoAccess, err := serviceaccess.EnsureHTTPGateway(openBaoPolicy, filepath.Join(stateDir, "providers", "openbao"), serviceaccess.HTTPGatewaySpec{
+		ServiceName: "openbao-access",
+		Upstream: "http://openbao:8200",
+		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT",
+		ContainerPort: 8443,
+		Networks: []string{"default"},
+		RequireClient: false,
+	})
+	if err != nil {
+		return Files{}, fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
+	}
+	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return Files{}, err
+	}
+	postgresAccess, err := serviceaccess.EnsureTCPGateway(postgresPolicy, filepath.Join(stateDir, "providers", "postgresql"), serviceaccess.TCPGatewaySpec{
+		ServiceName: "postgres-access",
+		UpstreamHost: "postgres",
+		UpstreamPort: 5432,
+		PublishedPortEnv: "BASEHARBOR_POSTGRES_PORT",
+		ContainerPort: 5432,
+	})
+	if err != nil {
+		return Files{}, fmt.Errorf("prepare control-plane PostgreSQL TLS access: %w", err)
+	}
+	rendered := string(composeYAML)
+	accessServices := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
+		ServiceName: "openbao-access", Upstream: "http://openbao:8200",
+		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT", ContainerPort: 8443,
+		Networks: []string{"default"}, RequireClient: false,
+	}) + serviceaccess.TCPGatewayComposeService(postgresAccess, serviceaccess.TCPGatewaySpec{
+		ServiceName: "postgres-access", UpstreamHost: "postgres", UpstreamPort: 5432,
+		PublishedPortEnv: "BASEHARBOR_POSTGRES_PORT", ContainerPort: 5432,
+	})
+	if marker := strings.Index(rendered, "\nvolumes:\n"); marker >= 0 {
+		rendered = rendered[:marker] + "\n" + accessServices + rendered[marker:]
+	} else {
+		return Files{}, errors.New("embedded runtime compose is missing volumes section")
+	}
 	composePath := filepath.Join(stateDir, composeName)
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
 	}
 
