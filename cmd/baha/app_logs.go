@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -19,8 +20,9 @@ type managedLogsExecution struct {
 	runtime   bhruntime.Compose
 	manifest  application.Manifest
 	services  []string
-	resources []capability.Resource
-	enabled   bool
+	resources       []capability.Resource
+	providerSources []observability.SignalSource
+	enabled         bool
 }
 
 func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
@@ -53,6 +55,20 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	if placement.Scope == capability.ScopeExternal {
 		return nil, fmt.Errorf("external Loki placement is selected but no external Compose log collector adapter is configured")
 	}
+	placement, err := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderLoki)
+	if err != nil {
+		return nil, err
+	}
+	providerSources, err := observability.ListLogs(
+		placement,
+		[]string{resolved.Manifest.Name},
+		policy.Collect[application.LogsSourceApplicationProvider],
+		policy.Collect[application.LogsSourcePlatformProvider],
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve provider log sources: %w", err)
+	}
+	prepared.providerSources = providerSources
 	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest, issuer)
 	requests := make([]capability.Request, 0, len(services))
 	resources := make([]capability.Resource, 0, len(services))
@@ -109,7 +125,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if _, err := logsprovider.EnsureWorkloadOverrideForRuntime(prepared.manifest, files, prepared.services, prepared.runtime.Engine()); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s\n", prepared.manifest.Name)
+	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(prepared.providerSources))
 	return nil
 }
 
