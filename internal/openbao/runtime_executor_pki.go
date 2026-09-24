@@ -11,8 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+		"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const RuntimeExecutorDNSName = "baseharbor-runtime-executor"
@@ -23,12 +22,14 @@ type RuntimeExecutorMTLSFiles struct {
 	Key  string
 }
 
-func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, dir string) (RuntimeExecutorMTLSFiles, bool, error) {
+func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, issuer serviceaccess.Issuer, dir string) (RuntimeExecutorMTLSFiles, bool, error) {
 	dir = filepath.Clean(dir)
 	if dir == "." || dir == "" {
 		return RuntimeExecutorMTLSFiles{}, false, errors.New("runtime executor identity directory is required")
 	}
-	issuer := NewServiceIssuer(executor, platformFiles)
+	if issuer == nil {
+		return RuntimeExecutorMTLSFiles{}, false, errors.New("runtime executor identity issuer is required")
+	}
 	trust, err := issuer.TrustBundle(ctx)
 	if err != nil {
 		return RuntimeExecutorMTLSFiles{}, false, fmt.Errorf("resolve runtime executor trust bundle: %w", err)
