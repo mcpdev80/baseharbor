@@ -21,6 +21,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     user: "postgres"
     read_only: true
     cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
     security_opt: ["no-new-privileges:true"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
@@ -82,6 +83,7 @@ networks:
 		"User=postgres",
 		"ReadOnly=true",
 		"DropCapability=all",
+		"AddCapability=net_bind_service",
 		"NoNewPrivileges=true",
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
