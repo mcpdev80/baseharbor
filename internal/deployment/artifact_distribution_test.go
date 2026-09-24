@@ -31,3 +31,20 @@ func TestNormalizeArtifactRepositoryPrefixRejectsPortableContractLeakShapes(t *t
 		}
 	}
 }
+
+
+func TestArtifactDestinationIsDeploymentDerived(t *testing.T) {
+	got, err := ArtifactDestination(
+		"ghcr.io/mcpdev80/baseharbor",
+		"BaseHarbor Demo",
+		"Dev",
+		"demo_app",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ghcr.io/mcpdev80/baseharbor/baseharbor-demo-demo-app:dev"
+	if got != want {
+		t.Fatalf("destination = %q, want %q", got, want)
+	}
+}
