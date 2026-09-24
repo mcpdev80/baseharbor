@@ -328,9 +328,24 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 		return nil
 	}
 	if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
-		return err
+		return quadletServiceStartError(ctx, units, err)
 	}
 	return quadletEnsureServiceUnitsActive(ctx, units)
+}
+
+func quadletServiceStartError(ctx context.Context, units []string, startErr error) error {
+	var diagnostics []string
+	for _, unit := range units {
+		status, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+		status = strings.TrimSpace(status)
+		if status != "" {
+			diagnostics = append(diagnostics, unit+": "+status)
+		}
+	}
+	if len(diagnostics) == 0 {
+		return startErr
+	}
+	return fmt.Errorf("%w; Quadlet unit diagnostics: %s", startErr, strings.Join(diagnostics, "\n"))
 }
 
 func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error {
