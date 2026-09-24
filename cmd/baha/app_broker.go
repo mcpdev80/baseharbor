@@ -50,7 +50,8 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			workloadDNSNames = append(workloadDNSNames, application.MetricsTargetAlias(m, source.Service))
 		}
 	}
-	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, compose, platformFiles, identity, files, workloadDNSNames)
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, issuer, identity, files, workloadDNSNames)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
 	}
@@ -118,7 +119,7 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 		return fmt.Errorf("resolve BaseHarbor data directory for runtime executor: %w", err)
 	}
 	identityDir := filepath.Join(dataDir, "runtime-executor", "identity")
-	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, compose, platformFiles, identityDir)
+	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, issuer, identityDir)
 	if err != nil {
 		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
 	}
