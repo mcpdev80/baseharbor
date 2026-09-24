@@ -53,6 +53,7 @@ func TestRegisterProviderSignalsUsesDescriptorAndRuntimeRealization(t *testing.T
 		Descriptor: capability.TempoIntegration,
 		Class:      SourcePlatformProvider,
 		Scope:      capability.ScopeShared,
+		Enabled:    map[SignalKind]bool{SignalMetrics: true},
 		Signals: map[string]ProviderSignalRuntime{
 			"tempo-metrics": {
 				Network: "baseharbor-traces",
@@ -84,6 +85,7 @@ func TestRegisterProviderSignalsRequiresEverySupportedRuntimeRealization(t *test
 		Descriptor: capability.TempoIntegration,
 		Class:      SourcePlatformProvider,
 		Scope:      capability.ScopeShared,
+		Enabled:    map[SignalKind]bool{SignalMetrics: true},
 	})
 	if err == nil {
 		t.Fatal("supported provider signal without runtime realization accepted")
@@ -99,6 +101,7 @@ func TestRegisterProviderSignalsRejectsUndeclaredOrUnsupportedRuntimeSignal(t *t
 		Class:            SourceApplicationProvider,
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: "demo",
+		Enabled:          map[SignalKind]bool{SignalMetrics: true},
 		Signals: map[string]ProviderSignalRuntime{
 			"metrics": {Network: "app", Target: "postgres:9187"},
 		},
@@ -121,5 +124,35 @@ func TestSignalSourceAcceptsApplicationClass(t *testing.T) {
 	}
 	if err := source.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRegisterProviderSignalsRemovesDisabledStaleSignal(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	registration := ProviderSignalRegistration{
+		ID:         "tempo:shared",
+		Descriptor: capability.TempoIntegration,
+		Class:      SourcePlatformProvider,
+		Scope:      capability.ScopeShared,
+		Enabled:    map[SignalKind]bool{SignalMetrics: true},
+		Signals: map[string]ProviderSignalRuntime{
+			"tempo-metrics": {Network: "baseharbor-traces", Target: "tempo:3200"},
+		},
+	}
+	if err := RegisterProviderSignals(registration); err != nil {
+		t.Fatal(err)
+	}
+	registration.Enabled = map[SignalKind]bool{}
+	registration.Signals = nil
+	if err := RegisterProviderSignals(registration); err != nil {
+		t.Fatal(err)
+	}
+	got, err := List(SignalMetrics, capability.ProviderPlacement{Scope: capability.ScopeShared}, nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("stale provider signals = %#v", got)
 	}
 }
