@@ -31,7 +31,7 @@ type Runtime interface {
 	DestroyProject(context.Context, string, string, string) error
 }
 
-func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath string) (Files, error) {
+func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string) (Files, error) {
 	dataDir = strings.TrimSpace(dataDir)
 	if dataDir == "" {
 		return Files{}, errors.New("BaseHarbor data directory is required for runtime executor")
@@ -43,11 +43,15 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor state directory: %w", err)
 	}
+	if strings.TrimSpace(s3Endpoint) == "" || strings.TrimSpace(s3TrustPath) == "" {
+		return Files{}, errors.New("runtime executor S3 HTTPS endpoint and trust bundle are required")
+	}
 	for label, path := range map[string]string{
 		"runtime CA":           identity.CA,
 		"executor certificate": identity.Cert,
 		"executor private key": identity.Key,
 		"S3 admin credentials": adminCredentialsPath,
+		"S3 trust bundle":      s3TrustPath,
 	} {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -59,6 +63,10 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	}
 
 	adminProjection, err := projectContainerReadableSecret(dir, adminCredentialsPath, "s3-admin.env", "S3 admin credentials")
+	if err != nil {
+		return Files{}, err
+	}
+	s3TrustProjection, err := projectContainerReadableSecret(dir, s3TrustPath, "s3-ca.pem", "S3 trust bundle")
 	if err != nil {
 		return Files{}, err
 	}
@@ -79,7 +87,7 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err := os.Chmod(envPath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor environment: %w", err)
 	}
-	content := composeYAML(image, identity, adminProjection)
+	content := composeYAML(image, identity, adminProjection, s3Endpoint, s3TrustProjection)
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime executor compose file: %w", err)
 	}
@@ -155,7 +163,7 @@ func DestroyShared(ctx context.Context, runtime Runtime, dataDir string) error {
 	return os.RemoveAll(files.Dir)
 }
 
-func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath string) string {
+func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string) string {
 	var b strings.Builder
 	b.WriteString("services:\n")
 	b.WriteString("  executor:\n")
@@ -169,7 +177,8 @@ func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminC
 	b.WriteString("      BASEHARBOR_EXECUTOR_TLS_CERT_FILE: \"/run/baseharbor/identity/executor-cert.pem\"\n")
 	b.WriteString("      BASEHARBOR_EXECUTOR_TLS_KEY_FILE: \"/run/secrets/executor-key\"\n")
 	b.WriteString("      BASEHARBOR_EXECUTOR_TLS_CLIENT_CA_FILE: \"/run/baseharbor/identity/ca.pem\"\n")
-	b.WriteString("      BASEHARBOR_EXECUTOR_S3_ENDPOINT: \"http://seaweedfs:8333\"\n")
+	fmt.Fprintf(&b, "      BASEHARBOR_EXECUTOR_S3_ENDPOINT: %s\n", strconv.Quote(s3Endpoint))
+	b.WriteString("      BASEHARBOR_EXECUTOR_S3_CA_FILE: \"/run/baseharbor/provider/s3-ca.pem\"\n")
 	b.WriteString("      BASEHARBOR_EXECUTOR_S3_ADMIN_CREDENTIALS_FILE: \"/run/secrets/s3-admin\"\n")
 	b.WriteString("      BASEHARBOR_EXECUTOR_STATE_DIR: \"/var/lib/baseharbor/runtime-resources\"\n")
 	b.WriteString("    read_only: true\n")
@@ -182,6 +191,7 @@ func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminC
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(identity.CA+":/run/baseharbor/identity/ca.pem:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(identity.Cert+":/run/baseharbor/identity/executor-cert.pem:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(s3TrustPath+":/run/baseharbor/provider/s3-ca.pem:ro"))
 	b.WriteString("      - runtime-resource-state:/var/lib/baseharbor/runtime-resources\n")
 	b.WriteString("    secrets:\n")
 	b.WriteString("      - executor-key\n")

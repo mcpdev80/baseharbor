@@ -470,6 +470,18 @@ func s3HTTPClient(files ProviderFiles) (*http.Client, error) {
 	return serviceaccess.NewHTTPClient(material, false)
 }
 
+func ServiceContainerEndpoint(files ProviderFiles) (string, error) {
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return "", err
+	}
+	host := "seaweedfs-access"
+	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
+		host = strings.TrimSpace(policy.ServerName)
+	}
+	return "https://" + host + ":8443", nil
+}
+
 func ServiceTrustBundle(files ProviderFiles) (string, error) {
 	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
 	if err != nil {

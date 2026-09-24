@@ -100,9 +100,17 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if platformFiles.Compose == "" || platformFiles.Env == "" {
 		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
 	}
-	_, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose)
+providerFiles, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose)
 	if err != nil {
 		return fmt.Errorf("converge runtime object-storage provider: %w", err)
+	}
+	s3Endpoint, err := objectstorage.ServiceContainerEndpoint(providerFiles)
+	if err != nil {
+		return fmt.Errorf("resolve runtime object-storage HTTPS endpoint: %w", err)
+	}
+	s3Trust, err := objectstorage.ServiceTrustBundle(providerFiles)
+	if err != nil {
+		return fmt.Errorf("resolve runtime object-storage trust bundle: %w", err)
 	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
@@ -113,7 +121,7 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err != nil {
 		return fmt.Errorf("converge runtime executor mTLS identity: %w", err)
 	}
-	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath)
+	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust)
 	if err != nil {
 		return fmt.Errorf("materialize runtime provider executor: %w", err)
 	}
