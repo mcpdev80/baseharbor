@@ -81,6 +81,14 @@ message ProviderObservabilitySignal {
   string protocol = 3;
   uint32 port = 4;
   string path = 5;
+  // Audit state: supported, unsupported, not-applicable or requires-adapter.
+  string status = 6;
+  // Standards-based realization: native, runtime, adapter, interaction or combined.
+  string mode = 7;
+  // Optional OpenTelemetry or other standards semantic convention identifier.
+  string semantic_convention = 8;
+  // endpoint, backend-query, span-query or none.
+  string verification = 9;
 }
 
 message LifecycleSupport {
