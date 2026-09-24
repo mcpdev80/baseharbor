@@ -8,12 +8,12 @@ type Model struct {
 	Services []Service
 }
 
-// Service describes one application workload service.
+// Service describes one application workload service. Args preserve the image CMD override semantics; provider-specific entrypoint fields are deliberately absent.
 type Service struct {
 	Name        string
 	Image       string
 	Build       *Build
-	Command     []string
+	Args        []string
 	Environment map[string]string
 	Ports       []Port
 }
