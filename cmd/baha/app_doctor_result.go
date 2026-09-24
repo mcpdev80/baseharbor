@@ -38,8 +38,8 @@ type applicationDoctorResult struct {
 	Checks          []preflight.Result                `json:"checks"`
 	Workload        []applicationDoctorWorkloadResult `json:"workload,omitempty"`
 	RequiredSecrets []applicationDoctorSecretResult   `json:"required_secrets,omitempty"`
-	TLS             *applicationTLSObservation                    `json:"tls,omitempty"`
-	ServiceTLS      []application.BackendTLSLifecycleObservation  `json:"service_tls,omitempty"`
+	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
+	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 
 	manifest               application.Manifest
 	workloadStatus         repositoryWorkloadStatus
