@@ -298,7 +298,6 @@ func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) 
 	}
 }
 
-
 func TestUnregisterApplicationWithoutRegistrationDoesNotRequireIssuer(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	runtime := &fakeRuntime{}

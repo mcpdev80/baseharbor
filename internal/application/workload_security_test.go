@@ -124,7 +124,6 @@ func TestComposeSecurityAllowsOrdinaryWorkload(t *testing.T) {
 	}
 }
 
-
 func TestComposeSecurityAcceptsShortSyntaxMounts(t *testing.T) {
 	m := New("demo", "production", false, false, false)
 	rendered := []byte(`{"services":{"api":{"volumes":["data:/data","/var/run/docker.sock:/var/run/docker.sock:ro"]}}}`)

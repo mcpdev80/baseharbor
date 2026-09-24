@@ -365,7 +365,6 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 	}
 }
 
-
 func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) {
 	rendered := providerComposeYAMLWithProviderNetworks(
 		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},

@@ -77,7 +77,6 @@ func TestProjectContainerReadableSecretPreservesProtectedSource(t *testing.T) {
 	}
 }
 
-
 func TestProjectContainerReadablePublicFileAcceptsReadableTrustBundle(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "executor")
@@ -101,7 +100,6 @@ func TestProjectContainerReadablePublicFileAcceptsReadableTrustBundle(t *testing
 		t.Fatalf("projection mode = %o, want 644", got)
 	}
 }
-
 
 func TestEnsureFilesProjectsExecutorPrivateKeyForNonRootRuntime(t *testing.T) {
 	root := t.TempDir()

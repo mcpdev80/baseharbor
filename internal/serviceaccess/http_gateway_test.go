@@ -53,7 +53,6 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 	}
 }
 
-
 func TestGatewayComposeRunsCaddyWithMinimalCapability(t *testing.T) {
 	files := HTTPGatewayFiles{
 		Caddyfile: "/tmp/access/Caddyfile",

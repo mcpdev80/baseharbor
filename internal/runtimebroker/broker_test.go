@@ -324,7 +324,6 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 	}
 }
 
-
 func TestProjectOwnerOnlyFilePreservesCanonicalPrivateKeyProtection(t *testing.T) {
 	root := t.TempDir()
 	files := application.RuntimeFiles{
