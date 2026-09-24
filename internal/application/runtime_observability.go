@@ -71,7 +71,6 @@ func reconcileRuntimeProviderObservability(
 	return observability.PruneOwnedProviderInstances(provider, observability.SourceApplicationProvider, capability.ScopeApplication, m.Name, keep)
 }
 
-
 func VerifyManagedProviderInteractions(ctx context.Context, runtime bhruntime.Compose, m Manifest, files RuntimeFiles, sources []observability.SignalSource) error {
 	needsPostgreSQL := false
 	needsValkey := false
