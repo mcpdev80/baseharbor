@@ -400,31 +400,8 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				if err := writeJSON(out, result); err != nil {
 					return err
 				}
-			} else if result.State == "not_applied" {
-				term := cli.NewTerminal(ctx, out, errOut)
-				term.Header(result.Application, result.Environment)
-				term.Section("Application")
-				term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
-				fmt.Fprintln(out, "\nNext:")
-				fmt.Fprintln(out, "  baha up")
-				fmt.Fprintln(out, "  baha app apply")
-				fmt.Fprintln(out, "\nNOT APPLIED")
 			} else {
-				renderApplicationDoctor(
-					ctx,
-					out,
-					errOut,
-					result.manifest,
-					result.Checks,
-					result.workloadStatus,
-					result.requiredSecretStatuses,
-					result.workloadSecurity,
-					result.Healthy,
-					result.ServiceTLS,
-					result.serviceTLSErr,
-					result.tlsStatus,
-					result.tlsErr,
-				)
+				renderCollectedApplicationDoctor(ctx, out, errOut, result)
 			}
 			if result.State == "not_applied" {
 				return nil
@@ -435,6 +412,35 @@ func appDoctorCommand(store application.Store) *cli.Command {
 			return nil
 		},
 	}
+}
+
+func renderCollectedApplicationDoctor(ctx context.Context, out, errOut io.Writer, result applicationDoctorResult) {
+	if result.State == "not_applied" {
+		term := cli.NewTerminal(ctx, out, errOut)
+		term.Header(result.Application, result.Environment)
+		term.Section("Application")
+		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha up")
+		fmt.Fprintln(out, "  baha app apply")
+		fmt.Fprintln(out, "\nNOT APPLIED")
+		return
+	}
+	renderApplicationDoctor(
+		ctx,
+		out,
+		errOut,
+		result.manifest,
+		result.Checks,
+		result.workloadStatus,
+		result.requiredSecretStatuses,
+		result.workloadSecurity,
+		result.Healthy,
+		result.ServiceTLS,
+		result.serviceTLSErr,
+		result.tlsStatus,
+		result.tlsErr,
+	)
 }
 
 func renderApplicationDoctor(
