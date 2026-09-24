@@ -116,7 +116,7 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 			if environment != "" {
 				applyArgs = []string{"--environment", environment}
 			}
-			if err := appApplyCommand(store).Run(ctx, applyArgs, out, errOut); err != nil {
+			if err := executeApplicationApplyLifecycle(ctx, store, applyArgs, out, errOut); err != nil {
 				metadata := newApplicationUpdateMetadata(resolved, state, "runtime-verification-failed", backup)
 				if metadataErr := resolved.Store.RecordLastUpdate(metadata); metadataErr != nil {
 					return errors.Join(fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err), fmt.Errorf("record failed application update metadata: %w", metadataErr))
