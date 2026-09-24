@@ -18,6 +18,8 @@ type Provider struct {
 	namespace string
 }
 
+var _ runtimecontract.WorkloadProvider = Provider{}
+
 func (Provider) Kind() runtimecontract.ProviderKind {
 	return runtimecontract.ProviderKubernetes
 }
