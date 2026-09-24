@@ -87,7 +87,8 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 	}
 
 	denied, err := exec.CommandContext(ctx, "kubectl", "auth", "can-i", "create", "namespaces").CombinedOutput()
-	if err == nil || strings.TrimSpace(string(denied)) != "no" {
+	fields := strings.Fields(string(denied))
+	if err == nil || len(fields) == 0 || fields[len(fields)-1] != "no" {
 		t.Fatalf("expected namespace creation to remain denied, output=%q err=%v", denied, err)
 	}
 }
