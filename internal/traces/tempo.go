@@ -224,10 +224,19 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if p.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	if err := observability.Update(observability.MetricsSource{
-		ID: "tempo:" + p.Project, Provider: capability.ProviderTempo, Class: class, Scope: p.Scope,
-		SharingBoundary: p.SharingBoundary, OwnerApplication: p.OwnerApplication,
-		Network: p.Network, Target: "tempo:3200", Path: "/metrics",
+	if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+		ID:               "tempo:" + p.Project,
+		Descriptor:       capability.TempoIntegration,
+		Class:            class,
+		Scope:            p.Scope,
+		SharingBoundary:  p.SharingBoundary,
+		OwnerApplication: p.OwnerApplication,
+		Signals: map[string]observability.ProviderSignalRuntime{
+			"tempo-metrics": {
+				Network: p.Network,
+				Target:  "tempo:3200",
+			},
+		},
 	}); err != nil {
 		return Placement{}, err
 	}
