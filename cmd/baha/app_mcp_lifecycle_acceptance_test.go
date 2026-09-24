@@ -23,6 +23,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	if _, err := bhruntime.DetectCompose(ctx); err != nil {
 		t.Skipf("runtime unavailable: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -38,6 +39,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 		Version:     application.CurrentVersion,
 		Name:        "mcp-lifecycle",
 		Environment: "dev",
+		Services:    application.Services{SQL: true},
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
 			Services: []string{"api"},
@@ -96,7 +98,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	mustGitUpdateTest(t, upstream, "add", "README.md")
 	mustGitUpdateTest(t, upstream, "commit", "-m", "upstream update")
 	mustGitUpdateTest(t, upstream, "push", "origin", "main")
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.update", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.update", map[string]any{"no_backup": true})
 
 	resolved, err := resolveApplication(application.DefaultStore(), nil, "MCP lifecycle acceptance drift")
 	if err != nil {
