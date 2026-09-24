@@ -55,10 +55,8 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 
 	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
 
-	if resolved.Manifest.Services.Secrets {
-		if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
-			return err
-		}
+	if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
+		return err
 	}
 
 	fmt.Fprintln(out, "Converging application backend and workload...")
@@ -121,7 +119,7 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "OpenBao is not initialized; bootstrapping managed secrets...")
+		fmt.Fprintln(out, "OpenBao is not initialized; bootstrapping the managed trust plane...")
 		return openBaoBootstrapCommand().Run(ctx, []string{"--recovery-file", recoveryPath}, out, errOut)
 	case state.Sealed:
 		recoveryPath, err := recoveryFileForRepositoryUp(ctx, in, out, opts, "unseal")
@@ -134,7 +132,7 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 		if err := platformopenbao.CheckManager(checkCtx, compose, files); err != nil {
 			return errors.New("OpenBao is initialized and unsealed but manager authentication is unavailable; run 'baha openbao status' for details")
 		}
-		fmt.Fprintln(out, "[OK] OpenBao managed secrets ready")
+		fmt.Fprintln(out, "[OK] OpenBao managed trust plane ready")
 		return nil
 	}
 }
