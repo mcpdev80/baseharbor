@@ -226,9 +226,8 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
 	b.WriteString("      - /config:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
+	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n")
-	b.WriteString("      - /bin/sh\n")
-	b.WriteString("      - -ec\n")
 	if files.AuthToken != "" {
 		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	} else {
