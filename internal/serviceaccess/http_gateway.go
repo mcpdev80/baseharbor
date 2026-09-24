@@ -220,7 +220,9 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
-	b.WriteString("    cap_add: [\"NET_BIND_SERVICE\"]\n")
+	if spec.ContainerPort < 1024 {
+		b.WriteString("    cap_add: [\"NET_BIND_SERVICE\"]\n")
+	}
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev\n")
