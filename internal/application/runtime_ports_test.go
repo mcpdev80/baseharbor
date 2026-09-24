@@ -1,14 +1,17 @@
 package application
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestReallocateRuntimePortsPreservesCredentials(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("port-retry", "dev", true, true, false)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
