@@ -1,22 +1,21 @@
 package serviceaccess
 
 import (
-	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
+	"context"
+	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+const managedCertificateRenewalWindow = 7 * 24 * time.Hour
 
 type TLSMaterial struct {
 	Source            PKISource `json:"source"`
@@ -28,7 +27,16 @@ type TLSMaterial struct {
 	ServerName        string    `json:"server_name"`
 }
 
-func EnsureTLSMaterial(policy Policy, dir string, dnsNames ...string) (TLSMaterial, error) {
+type managedPKIState struct {
+	Version         int       `json:"version"`
+	IssuerReference string    `json:"issuer_reference"`
+	ServerSerial    string    `json:"server_serial"`
+	ServerExpiresAt time.Time `json:"server_expires_at"`
+	ClientSerial    string    `json:"client_serial,omitempty"`
+	ClientExpiresAt time.Time `json:"client_expires_at,omitempty"`
+}
+
+func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir string, dnsNames ...string) (TLSMaterial, error) {
 	if !policy.TLSRequired {
 		return TLSMaterial{}, errors.New("BaseHarbor managed service access cannot disable TLS")
 	}
@@ -38,7 +46,7 @@ func EnsureTLSMaterial(policy Policy, dir string, dnsNames ...string) (TLSMateri
 	if policy.PKISource != PKIManagedLocal {
 		return TLSMaterial{}, fmt.Errorf("unsupported PKI source %q", policy.PKISource)
 	}
-	return ensureManagedLocal(policy, dir, dnsNames)
+	return ensureManagedLocal(ctx, issuer, policy, dir, dnsNames)
 }
 
 func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
@@ -48,21 +56,14 @@ func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
 	if policy.PKISource != PKIManagedLocal {
 		return TLSMaterial{}, fmt.Errorf("unsupported PKI source %q", policy.PKISource)
 	}
-	material := TLSMaterial{
-		Source:            PKIManagedLocal,
-		CA:                filepath.Join(dir, "ca.pem"),
-		ServerCertificate: filepath.Join(dir, "server-cert.pem"),
-		ServerKey:         filepath.Join(dir, "server-key.pem"),
-		ClientCertificate: filepath.Join(dir, "client-cert.pem"),
-		ClientKey:         filepath.Join(dir, "client-key.pem"),
-		ServerName:        policy.ServerName,
-	}
-	for _, path := range []string{material.CA, material.ServerCertificate, material.ServerKey, material.ClientCertificate, material.ClientKey} {
+	material := managedTLSMaterial(policy, dir)
+	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
+	for _, path := range requiredMaterialPaths(material, requireClient) {
 		if _, err := os.Stat(path); err != nil {
 			return TLSMaterial{}, err
 		}
 	}
-	if err := validateMaterial(material, true); err != nil {
+	if err := validateMaterial(material, requireClient); err != nil {
 		return TLSMaterial{}, err
 	}
 	return material, nil
@@ -87,14 +88,120 @@ func externalTLSMaterial(policy Policy) (TLSMaterial, error) {
 	return material, nil
 }
 
-func ensureManagedLocal(policy Policy, dir string, dnsNames []string) (TLSMaterial, error) {
+func ensureManagedLocal(ctx context.Context, issuer Issuer, policy Policy, dir string, dnsNames []string) (TLSMaterial, error) {
+	if issuer == nil {
+		return TLSMaterial{}, errors.New("managed-local PKI requires an issuer")
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return TLSMaterial{}, fmt.Errorf("create managed service PKI directory: %w", err)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return TLSMaterial{}, err
 	}
-	material := TLSMaterial{
+
+	material := managedTLSMaterial(policy, dir)
+	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
+	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
+		return TLSMaterial{}, err
+	} else if valid {
+		return material, nil
+	}
+
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return TLSMaterial{}, fmt.Errorf("resolve managed service trust bundle: %w", err)
+	}
+	if len(trust.PEM) == 0 {
+		return TLSMaterial{}, errors.New("managed service issuer returned an empty trust bundle")
+	}
+
+	names := uniqueNames(append([]string{policy.ServerName, "localhost"}, dnsNames...))
+	serverRequest := CertificateRequest{
+		CommonName: firstCertificateName(names),
+		TTL:        30 * 24 * time.Hour,
+	}
+	for _, name := range names {
+		if ip := net.ParseIP(name); ip != nil {
+			serverRequest.IPAddresses = append(serverRequest.IPAddresses, ip)
+			continue
+		}
+		serverRequest.DNSNames = append(serverRequest.DNSNames, name)
+	}
+	server, err := issuer.Issue(ctx, serverRequest)
+	if err != nil {
+		return TLSMaterial{}, fmt.Errorf("issue managed service server certificate: %w", err)
+	}
+
+	var client IssuedCertificate
+	if requireClient {
+		client, err = issuer.Issue(ctx, CertificateRequest{
+			CommonName: "baseharbor-service-client",
+			TTL:        30 * 24 * time.Hour,
+		})
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("issue managed service client certificate: %w", err)
+		}
+	}
+
+	files := map[string]struct {
+		data []byte
+		mode os.FileMode
+	}{
+		material.CA:                {data: trust.PEM, mode: 0o644},
+		material.ServerCertificate: {data: server.Certificate, mode: 0o644},
+		material.ServerKey:         {data: server.PrivateKey, mode: 0o600},
+	}
+	if requireClient {
+		files[material.ClientCertificate] = struct {
+			data []byte
+			mode os.FileMode
+		}{data: client.Certificate, mode: 0o644}
+		files[material.ClientKey] = struct {
+			data []byte
+			mode os.FileMode
+		}{data: client.PrivateKey, mode: 0o600}
+	}
+	for path, file := range files {
+		if len(file.data) == 0 {
+			return TLSMaterial{}, fmt.Errorf("managed service issuer returned empty material for %s", filepath.Base(path))
+		}
+		if err := writeAtomic(path, file.data, file.mode); err != nil {
+			return TLSMaterial{}, err
+		}
+	}
+	if !requireClient {
+		_ = os.Remove(material.ClientCertificate)
+		_ = os.Remove(material.ClientKey)
+		material.ClientCertificate = ""
+		material.ClientKey = ""
+	}
+
+	state := managedPKIState{
+		Version:         1,
+		IssuerReference: firstNonEmpty(server.IssuerReference, trust.IssuerReference),
+		ServerSerial:    server.Serial,
+		ServerExpiresAt: server.ExpiresAt,
+	}
+	if requireClient {
+		state.ClientSerial = client.Serial
+		state.ClientExpiresAt = client.ExpiresAt
+	}
+	stateData, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return TLSMaterial{}, err
+	}
+	stateData = append(stateData, '\n')
+	if err := writeAtomic(filepath.Join(dir, "state.json"), stateData, 0o600); err != nil {
+		return TLSMaterial{}, err
+	}
+	if err := validateMaterial(material, requireClient); err != nil {
+		return TLSMaterial{}, fmt.Errorf("validate issued managed service TLS material: %w", err)
+	}
+	return material, nil
+}
+
+func managedTLSMaterial(policy Policy, dir string) TLSMaterial {
+	return TLSMaterial{
 		Source:            PKIManagedLocal,
 		CA:                filepath.Join(dir, "ca.pem"),
 		ServerCertificate: filepath.Join(dir, "server-cert.pem"),
@@ -103,53 +210,25 @@ func ensureManagedLocal(policy Policy, dir string, dnsNames []string) (TLSMateri
 		ClientKey:         filepath.Join(dir, "client-key.pem"),
 		ServerName:        policy.ServerName,
 	}
-	if valid, err := managedMaterialValid(material, dnsNames); err != nil {
-		return TLSMaterial{}, err
-	} else if valid {
-		return material, nil
-	}
-
-	caCert, caKey, err := generateCA()
-	if err != nil {
-		return TLSMaterial{}, err
-	}
-	names := uniqueNames(append([]string{policy.ServerName, "localhost"}, dnsNames...))
-	serverCert, serverKey, err := issueCertificate(caCert, caKey, names, false)
-	if err != nil {
-		return TLSMaterial{}, err
-	}
-	clientCert, clientKey, err := issueCertificate(caCert, caKey, nil, true)
-	if err != nil {
-		return TLSMaterial{}, err
-	}
-	files := map[string][]byte{
-		material.CA:                pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw}),
-		material.ServerCertificate: serverCert,
-		material.ServerKey:         serverKey,
-		material.ClientCertificate: clientCert,
-		material.ClientKey:         clientKey,
-	}
-	for path, data := range files {
-		mode := os.FileMode(0o644)
-		if strings.HasSuffix(path, "-key.pem") {
-			mode = 0o600
-		}
-		if err := writeAtomic(path, data, mode); err != nil {
-			return TLSMaterial{}, err
-		}
-	}
-	return material, nil
 }
 
-func managedMaterialValid(material TLSMaterial, dnsNames []string) (bool, error) {
-	for _, path := range []string{material.CA, material.ServerCertificate, material.ServerKey, material.ClientCertificate, material.ClientKey} {
+func requiredMaterialPaths(material TLSMaterial, requireClient bool) []string {
+	paths := []string{material.CA, material.ServerCertificate, material.ServerKey}
+	if requireClient {
+		paths = append(paths, material.ClientCertificate, material.ClientKey)
+	}
+	return paths
+}
+
+func managedMaterialValid(material TLSMaterial, dnsNames []string, requireClient bool) (bool, error) {
+	for _, path := range requiredMaterialPaths(material, requireClient) {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		} else if err != nil {
 			return false, err
 		}
 	}
-	if err := validateMaterial(material, true); err != nil {
+	if err := validateMaterial(material, requireClient); err != nil {
 		return false, nil
 	}
 	ca, err := readCertificate(material.CA)
@@ -157,7 +236,7 @@ func managedMaterialValid(material TLSMaterial, dnsNames []string) (bool, error)
 		return false, nil
 	}
 	server, err := readCertificate(material.ServerCertificate)
-	if err != nil {
+	if err != nil || time.Now().Add(managedCertificateRenewalWindow).After(server.NotAfter) {
 		return false, nil
 	}
 	roots := x509.NewCertPool()
@@ -167,6 +246,15 @@ func managedMaterialValid(material TLSMaterial, dnsNames []string) (bool, error)
 			continue
 		}
 		if _, err := server.Verify(x509.VerifyOptions{Roots: roots, DNSName: name, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+			return false, nil
+		}
+	}
+	if requireClient {
+		client, err := readCertificate(material.ClientCertificate)
+		if err != nil || time.Now().Add(managedCertificateRenewalWindow).After(client.NotAfter) {
+			return false, nil
+		}
+		if _, err := client.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
 			return false, nil
 		}
 	}
@@ -188,7 +276,7 @@ func validateMaterial(material TLSMaterial, requireClient bool) error {
 	if time.Now().After(server.NotAfter) {
 		return errors.New("service TLS server certificate is expired")
 	}
-	if err := keyMatches(material.ServerKey, server); err != nil {
+	if err := keyMatches(material.ServerCertificate, material.ServerKey); err != nil {
 		return fmt.Errorf("service TLS server key: %w", err)
 	}
 	if requireClient {
@@ -199,82 +287,11 @@ func validateMaterial(material TLSMaterial, requireClient bool) error {
 		if time.Now().After(client.NotAfter) {
 			return errors.New("service TLS client certificate is expired")
 		}
-		if err := keyMatches(material.ClientKey, client); err != nil {
+		if err := keyMatches(material.ClientCertificate, material.ClientKey); err != nil {
 			return fmt.Errorf("service TLS client key: %w", err)
 		}
 	}
 	return nil
-}
-
-func generateCA() (*x509.Certificate, *ecdsa.PrivateKey, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-	serial, err := serialNumber()
-	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now().UTC()
-	template := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "BaseHarbor Managed Service CA", Organization: []string{"BaseHarbor"}},
-		NotBefore:             now.Add(-5 * time.Minute),
-		NotAfter:              now.AddDate(2, 0, 0),
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		return nil, nil, err
-	}
-	template.Raw = der
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil, nil, err
-	}
-	return cert, key, nil
-}
-
-func issueCertificate(ca *x509.Certificate, caKey *ecdsa.PrivateKey, dnsNames []string, client bool) ([]byte, []byte, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-	serial, err := serialNumber()
-	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now().UTC()
-	template := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "BaseHarbor Managed Service", Organization: []string{"BaseHarbor"}},
-		NotBefore:    now.Add(-5 * time.Minute),
-		NotAfter:     now.Add(30 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-	}
-	if client {
-		template.Subject.CommonName = "baseharbor-service-client"
-		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
-	} else {
-		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
-		template.DNSNames = dnsNames
-		for _, name := range dnsNames {
-			if ip := net.ParseIP(name); ip != nil {
-				template.IPAddresses = append(template.IPAddresses, ip)
-			}
-		}
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), nil
 }
 
 func readCertificate(path string) (*x509.Certificate, error) {
@@ -289,21 +306,16 @@ func readCertificate(path string) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
-func keyMatches(path string, cert *x509.Certificate) error {
-	data, err := os.ReadFile(path)
+func keyMatches(certPath, keyPath string) error {
+	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
 		return err
 	}
-	block, _ := pem.Decode(data)
-	if block == nil || block.Type != "PRIVATE KEY" {
-		return errors.New("private key PEM is invalid")
-	}
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	keyPEM, err := os.ReadFile(keyPath)
 	if err != nil {
 		return err
 	}
-	key, ok := parsed.(*ecdsa.PrivateKey)
-	if !ok || !key.PublicKey.Equal(cert.PublicKey) {
+	if _, err := tls.X509KeyPair(certPEM, keyPEM); err != nil {
 		return errors.New("certificate and private key do not match")
 	}
 	return nil
@@ -325,11 +337,6 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
-func serialNumber() (*big.Int, error) {
-	limit := new(big.Int).Lsh(big.NewInt(1), 128)
-	return rand.Int(rand.Reader, limit)
-}
-
 func uniqueNames(values []string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
@@ -347,6 +354,20 @@ func uniqueNames(values []string) []string {
 	return out
 }
 
-func sameCertificate(a, b *x509.Certificate) bool {
-	return a != nil && b != nil && bytes.Equal(a.Raw, b.Raw)
+func firstCertificateName(values []string) string {
+	for _, value := range values {
+		if value != "" && net.ParseIP(value) == nil {
+			return value
+		}
+	}
+	return "baseharbor-service"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
