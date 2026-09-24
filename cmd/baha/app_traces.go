@@ -118,6 +118,7 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 			return fmt.Errorf("provider trace source %s has unsupported verification %q", source.ID, source.Verification)
 		}
 		var traceID string
+		var err error
 		switch {
 		case source.Mode == capability.ObservabilityInteraction && source.Protocol == "interaction":
 			traceID, err = telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
