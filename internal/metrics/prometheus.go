@@ -960,10 +960,11 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, prometheusAccessSpec()))
 	b.WriteString("\nnetworks:\n")
-	// Docker Engine 29.x does not publish host ports for containers attached
-	// only to an internal bridge. The gateway remains host-local because its
-	// published port is explicitly bound to 127.0.0.1 and protected by TLS.
-	b.WriteString("  access:\n")
+	// Keep the clear-text Prometheus backend isolated. The TLS gateway joins a
+	// separate publish network so Docker/Podman can expose only its loopback
+	// HTTPS port without making the backend network host-reachable.
+	b.WriteString("  access:\n    internal: true\n")
+	b.WriteString("  publish: {}\n")
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i, registration := range registrations {
 			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
