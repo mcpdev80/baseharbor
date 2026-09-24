@@ -67,6 +67,7 @@ func TestGatewayComposeRunsCaddyWithOnlyBindServiceCapability(t *testing.T) {
 	for _, want := range []string{
 		"cap_drop: [\"ALL\"]",
 		"cap_add: [\"NET_BIND_SERVICE\"]",
+		"entrypoint: [\"/bin/sh\", \"-ec\"]",
 		"exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 	} {
 		if !strings.Contains(got, want) {
