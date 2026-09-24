@@ -159,7 +159,6 @@ func TestIntegrationDescriptorValidatesObservabilitySignals(t *testing.T) {
 	}
 }
 
-
 func TestManagedReferenceIntegrationsAuditEveryObservabilitySignal(t *testing.T) {
 	managed := []IntegrationDescriptor{
 		PostgreSQLIntegration,
