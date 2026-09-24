@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +62,8 @@ type traceEvent struct {
 	StatusCode int
 	Start      time.Time
 	End        time.Time
+	TraceID    []byte
+	SpanID     []byte
 }
 
 type statusWriter struct {
@@ -136,6 +139,15 @@ func (o *Observer) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		start := time.Now()
+		traceID := make([]byte, 16)
+		spanID := make([]byte, 8)
+		traceContext := false
+		if _, err := rand.Read(traceID); err == nil {
+			if _, err := rand.Read(spanID); err == nil {
+				w.Header().Set("traceparent", "00-"+hex.EncodeToString(traceID)+"-"+hex.EncodeToString(spanID)+"-01")
+				traceContext = true
+			}
+		}
 		recorder := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(recorder, r)
 		end := time.Now()
@@ -155,6 +167,10 @@ func (o *Observer) Wrap(next http.Handler) http.Handler {
 			StatusCode: status,
 			Start:      start,
 			End:        end,
+		}
+		if traceContext {
+			event.TraceID = traceID
+			event.SpanID = spanID
 		}
 		o.writeRequestLog(event)
 		if o.traceQueue != nil {
@@ -323,13 +339,19 @@ func parseOTLPHeaders(raw string) (http.Header, error) {
 }
 
 func tracePayload(component, application, environment string, event traceEvent) ([]byte, error) {
-	traceID := make([]byte, 16)
-	spanID := make([]byte, 8)
-	if _, err := rand.Read(traceID); err != nil {
-		return nil, err
+	traceID := append([]byte(nil), event.TraceID...)
+	spanID := append([]byte(nil), event.SpanID...)
+	if len(traceID) != 16 {
+		traceID = make([]byte, 16)
+		if _, err := rand.Read(traceID); err != nil {
+			return nil, err
+		}
 	}
-	if _, err := rand.Read(spanID); err != nil {
-		return nil, err
+	if len(spanID) != 8 {
+		spanID = make([]byte, 8)
+		if _, err := rand.Read(spanID); err != nil {
+			return nil, err
+		}
 	}
 
 	span := appendBytes(nil, 1, traceID)
