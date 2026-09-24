@@ -36,8 +36,10 @@ type ServiceCertificate struct {
 }
 
 func configureServicePKI(ctx context.Context, executor Executor, files bhruntime.Files, rootToken string) error {
-	if _, err := execWithToken(ctx, executor, files, rootToken,
-		`exec bao write -format=json baseharbor-pki/root/generate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`); err != nil {
+	const ensureRoot = `if ! bao read -format=json baseharbor-pki/cert/ca >/dev/null 2>&1; then
+  bao write -format=json baseharbor-pki/root/generate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256 >/dev/null
+fi`
+	if _, err := execWithToken(ctx, executor, files, rootToken, ensureRoot); err != nil {
 		return fmt.Errorf("configure OpenBao service PKI root: %w", err)
 	}
 	if _, err := execWithToken(ctx, executor, files, rootToken,
