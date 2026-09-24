@@ -1,11 +1,11 @@
-# Contexts and deployment targets
+# Targets and deployment destinations
 
 BaseHarbor separates **where** an application is operated from **what** the application needs and **which environment** is selected.
 
 A concrete deployment identity is:
 
 ```text
-context + application + environment
+target + application + environment
 ```
 
 Examples:
@@ -16,12 +16,12 @@ k3s      / demo     / dev
 k8s-prod / mailflow / prod
 ```
 
-## Context model
+## Target model
 
-A BaseHarbor context is deployment/operator state:
+A BaseHarbor target is deployment/operator state:
 
 ```text
-Context
+Target
 ├── Runtime Provider
 ├── Runtime Access Reference
 └── Target Scope
@@ -48,7 +48,7 @@ k8s-prod
 
 K3s is represented as a Kubernetes target rather than a new portable runtime type. Kubernetes/OpenShift-specific access and scope interpretation remain behind their Runtime Provider boundaries.
 
-Context, application and environment are independent axes. A context does not imply `dev`, `test` or `prod`, and an environment does not select a runtime.
+Target, application and environment are independent axes. A target does not imply `dev`, `test` or `prod`, and an environment does not select a runtime.
 
 ## Repository versus installed BaseHarbor state
 
@@ -68,7 +68,7 @@ cwd may answer "which application do I mean?"
 cwd must not answer "which applications does BaseHarbor know?"
 ```
 
-Context definitions are user configuration. Deployment/runtime state is user-global BaseHarbor state.
+Target definitions are user configuration. Deployment/runtime state is user-global BaseHarbor state.
 
 ```text
 $XDG_CONFIG_HOME/baseharbor/config.yaml
@@ -78,16 +78,16 @@ $XDG_DATA_HOME/baseharbor/
 ~/.local/share/baseharbor/
 ```
 
-## Context selection
+## Target selection
 
-The effective context resolves in this order:
+The effective target resolves in this order:
 
 ```text
-explicit --context
+explicit --target
         ↓
-activated BASEHARBOR_CONTEXT
+activated BASEHARBOR_TARGET
         ↓
-configured default context
+configured default target
         ↓
 local
 ```
@@ -96,7 +96,7 @@ Application and environment resolution remain separate.
 
 ## Shell-local activation
 
-BaseHarbor contexts are designed for shell-local activation, similar to a Python virtual environment.
+BaseHarbor targets are designed for shell-local activation, similar to a Python virtual environment.
 
 That means separate terminals can safely work against different targets at the same time:
 
@@ -106,7 +106,7 @@ Terminal B -> k3s
 Terminal C -> k8s-prod
 ```
 
-The active context is represented locally in the shell and wins over the configured default.
+The active target is represented locally in the shell and wins over the configured default.
 
 ## Prompt visibility
 
@@ -131,9 +131,9 @@ The prompt setup supports compact presets, live preview, text-only/accessibility
 
 ## Listing deployments
 
-Application discovery is context/global-state driven rather than repository-local.
+Application discovery is target/global-state driven rather than repository-local.
 
-A selected-context view can show:
+A selected-target view can show:
 
 ```text
 APPLICATION  ENVIRONMENT  STATE
@@ -142,7 +142,7 @@ demo         test         STOPPED
 mailflow     dev          READY
 ```
 
-An all-context view can show:
+An all-target view can show:
 
 ```text
 CONTEXT   APPLICATION  ENVIRONMENT  RUNTIME     STATE
@@ -155,6 +155,6 @@ The same result must be available regardless of the current directory.
 
 ## Machine parity
 
-Context/deployment identity is part of the shared semantic core. CLI, JSON and MCP expose the same effective target metadata. No interface may bypass context selection, ownership, policy or lifecycle verification.
+Target/deployment identity is part of the shared semantic core. CLI, JSON and MCP expose the same effective target metadata. No interface may bypass target selection, ownership, policy or lifecycle verification.
 
 This v0.4.15 foundation is tracked in issue #408 and is intentionally designed so the later Runtime Provider work in #396 and Kubernetes/OpenShift implementations can consume it without changing portable application intent.
