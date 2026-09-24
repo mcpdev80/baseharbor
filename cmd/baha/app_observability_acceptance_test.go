@@ -83,6 +83,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - -u
       - -c
       - |
+        import os
+        import ssl
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
         body = b"baseharbor_acceptance_metric 1\n# EOF\n"
@@ -103,7 +105,14 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
                 return
 
         print("baseharbor-observability-acceptance-api", flush=True)
-        HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+        server = HTTPServer(("0.0.0.0", 8080), Handler)
+        cert_file = os.environ.get("TLS_CERT_FILE", "").strip()
+        key_file = os.environ.get("TLS_KEY_FILE", "").strip()
+        if cert_file and key_file:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(certfile=cert_file, keyfile=key_file)
+            server.socket = context.wrap_socket(server.socket, server_side=True)
+        server.serve_forever()
   trace-probe:
     image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
