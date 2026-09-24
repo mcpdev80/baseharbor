@@ -1188,7 +1188,7 @@ func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Clie
 	if err != nil {
 		return nil, fmt.Errorf("load Prometheus service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {

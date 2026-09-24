@@ -66,7 +66,7 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 	if err != nil {
 		return nil, fmt.Errorf("load Loki service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Loki }

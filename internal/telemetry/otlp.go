@@ -466,7 +466,7 @@ func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Clien
 	if err != nil {
 		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }
 
 func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {

@@ -98,3 +98,42 @@ func TestManagedLocalMaterialIsUsable(t *testing.T) {
 		t.Fatalf("managed material invalid: %v", err)
 	}
 }
+
+
+func TestResolveManagedEnvironmentRejectsNoAuthentication(t *testing.T) {
+	if _, err := Resolve("prod", "prometheus", AuthenticationNone); err == nil {
+		t.Fatal("managed environment accepted no authentication")
+	}
+}
+
+func TestResolveTokenAuthentication(t *testing.T) {
+	token := filepath.Join(t.TempDir(), "access-token")
+	if err := os.WriteFile(token, []byte("opaque-test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvAuthentication, string(AuthenticationToken))
+	t.Setenv(EnvAuthTokenFile, token)
+	p, err := Resolve("prod", "prometheus", AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Authentication != AuthenticationToken || p.AuthTokenFile != token {
+		t.Fatalf("token authentication not resolved: %+v", p)
+	}
+}
+
+func TestResolveNativeAuthenticationDoesNotAcceptGenericOverride(t *testing.T) {
+	token := filepath.Join(t.TempDir(), "access-token")
+	if err := os.WriteFile(token, []byte("opaque-test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvAuthentication, string(AuthenticationToken))
+	t.Setenv(EnvAuthTokenFile, token)
+	p, err := Resolve("prod", "seaweedfs", AuthenticationNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Authentication != AuthenticationNative {
+		t.Fatalf("native provider authentication was overridden: %+v", p)
+	}
+}

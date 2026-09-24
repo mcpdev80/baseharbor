@@ -340,7 +340,7 @@ func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client,
 	if err != nil {
 		return nil, fmt.Errorf("load Tempo service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClient(material, policy.AuthenticationRequired)
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }
 
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {

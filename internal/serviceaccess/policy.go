@@ -17,6 +17,8 @@ const (
 	EnvClientKeyFile  = "BASEHARBOR_SERVICE_TLS_CLIENT_KEY_FILE"
 	EnvIssuerRef      = "BASEHARBOR_SERVICE_PKI_ISSUER_REF"
 	EnvServerName     = "BASEHARBOR_SERVICE_TLS_SERVER_NAME"
+	EnvAuthentication = "BASEHARBOR_SERVICE_AUTHENTICATION"
+	EnvAuthTokenFile   = "BASEHARBOR_SERVICE_AUTH_TOKEN_FILE"
 )
 
 type PKISource string
@@ -30,9 +32,13 @@ const (
 type AuthenticationMode string
 
 const (
-	AuthenticationNone   AuthenticationMode = "none"
-	AuthenticationNative AuthenticationMode = "native"
-	AuthenticationMTLS   AuthenticationMode = "mtls"
+	AuthenticationNone     AuthenticationMode = "none"
+	AuthenticationNative   AuthenticationMode = "native"
+	AuthenticationMTLS     AuthenticationMode = "mtls"
+	AuthenticationToken    AuthenticationMode = "token"
+	AuthenticationOIDC     AuthenticationMode = "oidc"
+	AuthenticationOAuth2   AuthenticationMode = "oauth2"
+	AuthenticationExternal AuthenticationMode = "external"
 )
 
 type Policy struct {
@@ -49,6 +55,7 @@ type Policy struct {
 	ClientCertificate      string             `json:"client_certificate,omitempty"`
 	ClientKey              string             `json:"client_key,omitempty"`
 	IssuerReference        string             `json:"issuer_reference,omitempty"`
+	AuthTokenFile          string             `json:"auth_token_file,omitempty"`
 }
 
 func Resolve(environment, provider string, authentication AuthenticationMode) (Policy, error) {
@@ -61,9 +68,19 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 		return Policy{}, errors.New("service access provider is required")
 	}
 	switch authentication {
-	case AuthenticationNone, AuthenticationNative, AuthenticationMTLS:
+	case AuthenticationNone, AuthenticationNative, AuthenticationMTLS, AuthenticationToken, AuthenticationOIDC, AuthenticationOAuth2, AuthenticationExternal:
 	default:
 		return Policy{}, fmt.Errorf("unsupported service authentication mode %q", authentication)
+	}
+	if authentication != AuthenticationNative {
+		if raw := strings.ToLower(strings.TrimSpace(value(provider, EnvAuthentication))); raw != "" {
+			switch AuthenticationMode(raw) {
+			case AuthenticationNone, AuthenticationMTLS, AuthenticationToken, AuthenticationOIDC, AuthenticationOAuth2, AuthenticationExternal:
+				authentication = AuthenticationMode(raw)
+			default:
+				return Policy{}, fmt.Errorf("%s has unsupported authentication mode %q", envName(provider, EnvAuthentication), raw)
+			}
+		}
 	}
 
 	p := Policy{
@@ -106,6 +123,19 @@ func Resolve(environment, provider string, authentication AuthenticationMode) (P
 	p.ClientCertificate = strings.TrimSpace(value(provider, EnvClientCertFile))
 	p.ClientKey = strings.TrimSpace(value(provider, EnvClientKeyFile))
 	p.IssuerReference = strings.TrimSpace(value(provider, EnvIssuerRef))
+	p.AuthTokenFile = strings.TrimSpace(value(provider, EnvAuthTokenFile))
+
+	if p.AuthenticationRequired && p.Authentication == AuthenticationNone {
+		return Policy{}, errors.New("managed service access requires an authentication mechanism")
+	}
+	if p.Authentication == AuthenticationToken {
+		if p.AuthTokenFile == "" {
+			return Policy{}, fmt.Errorf("%s is required for token authentication", envName(provider, EnvAuthTokenFile))
+		}
+		if err := validateFile("authentication token", p.AuthTokenFile, true); err != nil {
+			return Policy{}, err
+		}
+	}
 
 	if p.PKISource == PKIManagedLocal {
 		if p.ServerCertificate != "" || p.ServerKey != "" || p.TrustBundle != "" || p.ClientCertificate != "" || p.ClientKey != "" || p.IssuerReference != "" {

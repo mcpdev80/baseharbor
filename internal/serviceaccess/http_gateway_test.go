@@ -6,7 +6,7 @@ import (
 )
 
 func TestCaddyfileRequiresClientCertificateWhenRequested(t *testing.T) {
-	got := caddyfile("http://prometheus:9090", 8443, true)
+	got := caddyfile("http://prometheus:9090", 8443, AuthenticationMTLS)
 	for _, want := range []string{"tls /certs/server.pem /certs/server-key.pem", "mode require_and_verify", "reverse_proxy http://prometheus:9090"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway config missing %q:\n%s", want, got)
@@ -34,5 +34,22 @@ func TestGatewayComposePublishesOnlyTLSPort(t *testing.T) {
 	}
 	if strings.Contains(got, ":9090") {
 		t.Fatalf("gateway unexpectedly publishes upstream clear-text port:\n%s", got)
+	}
+}
+
+
+func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
+	got := caddyfile("http://prometheus:9090", 8443, AuthenticationToken)
+	for _, want := range []string{
+		"Bearer {$BASEHARBOR_ACCESS_TOKEN}",
+		"respond @unauthorized 401",
+		"reverse_proxy http://prometheus:9090",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("token gateway config missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "client_auth") {
+		t.Fatalf("token gateway unexpectedly requires mTLS:\n%s", got)
 	}
 }
