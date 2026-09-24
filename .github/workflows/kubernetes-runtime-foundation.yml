@@ -31,7 +31,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/runtime ./internal/workload ./internal/providers/runtime/kubernetes -count=1 -v
+          go test ./internal/runtime ./internal/workload ./internal/providers/runtime/kubernetes ./internal/application ./internal/deployment -count=1 -v
+
+          go test ./cmd/baha \
+            -run '^(TestParse|TestRuntime|TestProvider|Test.*Workload.*)
+
+      - name: Run real k3s renderer acceptance
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes \
+            -run '^TestKubernetesRenderedWorkloadLifecycleOnCI$' \
+            -count=1 -v
+ \
+            -count=1
 
       - name: Run real k3s renderer acceptance
         shell: bash
