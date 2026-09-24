@@ -11,6 +11,7 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 ## Verstehen
 
 - [Architektur](explanation/architecture.md)
+- [Kontexte und Deployment-Ziele](explanation/contexts.md)
 - [Application Contract](explanation/application-contract.md)
 - [Provider](explanation/providers.md)
 - [Security](explanation/security.md)
