@@ -1,6 +1,7 @@
 package serviceaccess
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,7 +88,7 @@ func TestManagedLocalMaterialIsUsable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	material, err := EnsureTLSMaterial(p, t.TempDir(), "prometheus")
+	material, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), p, t.TempDir(), "prometheus")
 	if err != nil {
 		t.Fatal(err)
 	}
