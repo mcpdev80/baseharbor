@@ -406,7 +406,6 @@ func parseCreateArgs(args []string) (name, environment string, sql, cache, objec
 	return name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, nil
 }
 
-
 func parseCreateWorkloadArgs(args []string) (string, []string, error) {
 	var compose string
 	var services []string
