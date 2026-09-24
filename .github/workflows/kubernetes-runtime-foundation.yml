@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           go test \
-            ./internal/artifact \
+            ./internal/artifact/... \
             ./internal/runtime \
             ./internal/workload \
             ./internal/providers/runtime/kubernetes \
