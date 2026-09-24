@@ -519,4 +519,3 @@ func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdi
 func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
 	return c.outputProjectFilesInputEnv(ctx, project, workdir, environment, composeFiles, nil, args...)
 }
-
