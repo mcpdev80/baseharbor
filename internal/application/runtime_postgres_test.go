@@ -147,8 +147,8 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 		"BASEHARBOR_ENVIRONMENT=dev",
 		"BASEHARBOR_BINDINGS=",
 		"DATABASE_URL=postgresql://",
-		"REDIS_URL=redis://",
-		"VALKEY_URL=redis://",
+		"REDIS_URL=rediss://",
+		"VALKEY_URL=rediss://",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("application contract missing %q", wanted)
@@ -251,10 +251,10 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 		"DATABASE_URL=postgresql://",
 		"DATABASE_PRIMARY_URL=postgresql://",
 		"DATABASE_ANALYTICS_URL=postgresql://",
-		"REDIS_CACHE_URL=redis://",
-		"REDIS_SESSIONS_URL=redis://",
-		"VALKEY_CACHE_URL=redis://",
-		"VALKEY_SESSIONS_URL=redis://",
+		"REDIS_CACHE_URL=rediss://",
+		"REDIS_SESSIONS_URL=rediss://",
+		"VALKEY_CACHE_URL=rediss://",
+		"VALKEY_SESSIONS_URL=rediss://",
 	} {
 		if !strings.Contains(appText, wanted) {
 			t.Fatalf("multi-instance application contract missing %q:\n%s", wanted, appText)
