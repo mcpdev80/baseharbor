@@ -226,6 +226,49 @@ func quadletInstallProject(ctx context.Context, project QuadletProject) error {
 	return err
 }
 
+func quadletChangedServiceUnits(project QuadletProject) ([]string, error) {
+	dir, err := quadletUserUnitDir()
+	if err != nil {
+		return nil, err
+	}
+	var units []string
+	seen := map[string]struct{}{}
+	for name, desired := range project.Files {
+		ext := filepath.Ext(name)
+		if ext != ".container" && ext != ".env" {
+			continue
+		}
+		actual, err := os.ReadFile(filepath.Join(dir, name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if string(actual) == desired {
+			continue
+		}
+		containerFile := name
+		if ext == ".env" {
+			containerFile = strings.TrimSuffix(name, ".env") + ".container"
+			if _, ok := project.Files[containerFile]; !ok {
+				continue
+			}
+		}
+		unit := quadletUnitForFile(containerFile)
+		if unit == "" {
+			continue
+		}
+		if _, ok := seen[unit]; ok {
+			continue
+		}
+		seen[unit] = struct{}{}
+		units = append(units, unit)
+	}
+	sort.Strings(units)
+	return units, nil
+}
+
 func quadletProjectInstalledUnchanged(dir string, project QuadletProject) (bool, error) {
 	existing, err := quadletInstalledProjectFiles(dir, project.Project)
 	if err != nil {
@@ -303,6 +346,10 @@ func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, sel
 }
 
 func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {
+	changedUnits, err := quadletChangedServiceUnits(project)
+	if err != nil {
+		return err
+	}
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
@@ -327,8 +374,27 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if len(units) == 0 {
 		return nil
 	}
-	if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
-		return quadletServiceStartError(ctx, units, err)
+	changed := make(map[string]struct{}, len(changedUnits))
+	for _, unit := range changedUnits {
+		changed[unit] = struct{}{}
+	}
+	var restartUnits, startUnits []string
+	for _, unit := range units {
+		if _, ok := changed[unit]; ok {
+			restartUnits = append(restartUnits, unit)
+			continue
+		}
+		startUnits = append(startUnits, unit)
+	}
+	if len(restartUnits) > 0 {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
+			return quadletServiceStartError(ctx, restartUnits, err)
+		}
+	}
+	if len(startUnits) > 0 {
+		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
+			return quadletServiceStartError(ctx, startUnits, err)
+		}
 	}
 	if err := quadletEnsureServiceUnitsActive(ctx, units); err != nil {
 		return err

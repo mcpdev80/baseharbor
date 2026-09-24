@@ -332,11 +332,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	cfg, err := bhruntime.LoadConfig(files.Env)
-	if err != nil {
-		return err
-	}
-	compose, files, err := startControlPlaneRuntime(ctx, out, bhruntime.Ports{Postgres: cfg.PostgresPort, OpenBao: cfg.OpenBaoPort})
+	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
 	}
@@ -398,6 +394,20 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
 	return compose, files, nil
+}
+
+func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
+	compose, err := bhruntime.DetectCompose(ctx)
+	if err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	return compose, nil
 }
 
 func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files, recoveryFile string, out io.Writer) error {
