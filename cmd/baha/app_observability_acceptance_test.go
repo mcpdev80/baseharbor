@@ -52,7 +52,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 
 	m := application.New("observability-fullstack-ci", "dev", true, true, false)
 	m = application.WithWorkload(m, "compose.yaml", "api", "trace-probe")
-	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
+	m = application.WithMetricsSource(m, "application", "api", 8080, "/cgi-bin/metrics")
 	m = application.WithLogsCollection(m, "application")
 	m = application.WithOTLPTelemetry(m, "traces")
 	if err := m.Validate(); err != nil {
@@ -85,8 +85,13 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - sh
       - -ec
       - |
-        mkdir -p /www
-        printf '# HELP baseharbor_acceptance_metric Full stack acceptance metric\n# TYPE baseharbor_acceptance_metric gauge\nbaseharbor_acceptance_metric 1\n' >/www/metrics
+        mkdir -p /www/cgi-bin
+        cat >/www/cgi-bin/metrics <<'SCRIPT'
+        #!/bin/sh
+        printf 'Content-Type: application/openmetrics-text; version=1.0.0; charset=utf-8\\r\\n\\r\\n'
+        printf '# HELP baseharbor_acceptance_metric Full stack acceptance metric\\n# TYPE baseharbor_acceptance_metric gauge\\nbaseharbor_acceptance_metric 1\\n# EOF\\n'
+        SCRIPT
+        chmod +x /www/cgi-bin/metrics
         echo baseharbor-observability-acceptance-api
         exec httpd -f -p 8080 -h /www
   trace-probe:
