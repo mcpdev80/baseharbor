@@ -248,6 +248,42 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 	})
 }
 
+func RuntimeTarget(project, service string) string {
+	return "runtime://" + strings.Trim(strings.TrimSpace(project), "/") + "/" + strings.Trim(strings.TrimSpace(service), "/")
+}
+
+func ParseRuntimeTarget(target string) (project, service string, ok bool) {
+	value := strings.TrimSpace(target)
+	if !strings.HasPrefix(value, "runtime://") {
+		return "", "", false
+	}
+	value = strings.TrimPrefix(value, "runtime://")
+	project, service, ok = strings.Cut(value, "/")
+	if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" || strings.Contains(service, "/") {
+		return "", "", false
+	}
+	return project, service, true
+}
+
+func PruneOwnedProviderInstances(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, keepIDs map[string]struct{}) error {
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Provider == provider && source.Class == class && source.Scope == scope && source.OwnerApplication == ownerApplication {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
 func signalKind(kind capability.ObservabilitySignalKind) (SignalKind, error) {
 	switch kind {
 	case capability.ObservabilityMetrics:
