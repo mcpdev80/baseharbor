@@ -156,3 +156,59 @@ func TestRegisterProviderSignalsRemovesDisabledStaleSignal(t *testing.T) {
 		t.Fatalf("stale provider signals = %#v", got)
 	}
 }
+
+
+func TestSignalSourceRejectsUnknownLogAndTraceProtocols(t *testing.T) {
+	for _, source := range []SignalSource{
+		{
+			ID: "logs", Kind: SignalLogs, Provider: capability.ProviderLoki,
+			Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+			OwnerApplication: "demo", Target: "provider", Protocol: "custom",
+		},
+		{
+			ID: "traces", Kind: SignalTraces, Provider: capability.ProviderTempo,
+			Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+			OwnerApplication: "demo", Target: "provider", Protocol: "custom",
+		},
+	} {
+		if err := source.Validate(); err == nil {
+			t.Fatalf("unsupported protocol accepted for %s", source.Kind)
+		}
+	}
+}
+
+func TestListLogsAndTracesUseSharedOwnershipFiltering(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	for _, source := range []SignalSource{
+		{
+			ID: "app-log", Kind: SignalLogs, Provider: capability.ProviderPostgreSQL,
+			Class: SourceApplicationProvider, Scope: capability.ScopeApplication,
+			OwnerApplication: "app-a", Target: "postgres", Protocol: "stdout-stderr",
+		},
+		{
+			ID: "platform-trace", Kind: SignalTraces, Provider: capability.ProviderOTelCollector,
+			Class: SourcePlatformProvider, Scope: capability.ScopeShared,
+			Target: "collector", Protocol: "otlp",
+		},
+	} {
+		if err := UpdateSignal(source); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	logs, err := ListLogs(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].ID != "app-log" {
+		t.Fatalf("logs = %#v", logs)
+	}
+
+	traces, err := ListTraces(capability.ProviderPlacement{Scope: capability.ScopeShared}, []string{"app-a"}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traces) != 1 || traces[0].ID != "platform-trace" {
+		t.Fatalf("traces = %#v", traces)
+	}
+}
