@@ -1,10 +1,13 @@
 package application
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
@@ -14,7 +17,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +45,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 	if !strings.Contains(string(firstEnv), "POSTGRES_HOST_PORT=") {
 		t.Fatal("runtime must allocate a local PostgreSQL port")
 	}
-	if _, err := EnsureRuntime(store, m); err != nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 	secondEnv, err := os.ReadFile(files.Env)
@@ -67,7 +70,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +114,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "runtime.env"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +133,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +201,7 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +280,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +292,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 	port := before["POSTGRES_PRIMARY_HOST_PORT"]
 
 	m = WithSQLInstances(m, "analytics")
-	if _, err := EnsureRuntime(store, m); err != nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 	after, err := readRuntimeEnv(files.Env)
@@ -307,7 +310,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("cache", "dev", false, true, false)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +329,7 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +345,7 @@ func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 func TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("secret-only", "dev", false, false, true)
-	if _, err := EnsureRuntime(store, m); err == nil {
+	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err == nil {
 		t.Fatal("expected secrets-only runtime to fail closed")
 	}
 }
