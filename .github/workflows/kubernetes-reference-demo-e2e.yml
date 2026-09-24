@@ -1,0 +1,76 @@
+name: "Test · Kubernetes Reference Demo OCI E2E"
+
+on:
+  push:
+    branches:
+      - 'feature/kubernetes-runtime-foundation'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-artifact:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[demo-e2e]')
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+      - name: Checkout reference demo
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-demo
+          ref: 231f97ed42f12363edc3358fab34d24930c59dc0
+
+      - name: Build and push ephemeral OCI image
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ttl.sh/baseharbor-demo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:1h"
+          docker build --pull -t "$image" demo-app
+          docker push "$image"
+          echo "reference=$image" >> "$GITHUB_OUTPUT"
+
+  kubernetes-demo:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[demo-e2e]')
+    needs: build-artifact
+    runs-on: [self-hosted, Linux, X64, baseharbor, kubernetes, k3s]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout BaseHarbor
+        uses: actions/checkout@v7.0.1
+
+      - name: Checkout pinned reference demo
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-demo
+          ref: 231f97ed42f12363edc3358fab34d24930c59dc0
+          path: .test/reference-demo
+
+      - name: Run real reference-demo Kubernetes lifecycle
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_DEMO_INTEGRATION: "1"
+          BASEHARBOR_DEMO_IMAGE: ${{ needs.build-artifact.outputs.image }}
+          BASEHARBOR_DEMO_ROOT: ${{ github.workspace }}/.test/reference-demo
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes \
+            -run '^TestKubernetesReferenceDemoArtifactLifecycleOnCI$' \
+            -count=1 -v
+
+      - name: Verify no BaseHarbor demo resources remain
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kubectl get deployment,service,configmap,secret \
+            -n "${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}" \
+            -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=baseharbor-demo' \
+            -o name | grep -q .; then
+            kubectl get deployment,service,configmap,secret \
+              -n "${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}" \
+              -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=baseharbor-demo'
+            exit 1
+          fi
