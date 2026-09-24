@@ -3,8 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
-	"testing"
+		"testing"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -34,7 +33,7 @@ func TestRuntimeProviderKindForRepositoryLegacyStateDefaultsCompose(t *testing.T
 	}
 }
 
-func TestRuntimeProviderKindForRepositoryRejectsUnavailableProvider(t *testing.T) {
+func TestRuntimeProviderKindForRepositoryAcceptsKubernetes(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, ".baseharbor")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
@@ -47,11 +46,11 @@ func TestRuntimeProviderKindForRepositoryRejectsUnavailableProvider(t *testing.T
 		ManifestPath:   filepath.Join(root, "baseharbor.yaml"),
 		FromRepository: true,
 	}
-	_, err := runtimeProviderKindForApplication(resolved)
-	if err == nil {
-		t.Fatal("unavailable runtime provider unexpectedly accepted")
+	got, err := runtimeProviderKindForApplication(resolved)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "kubernetes") {
-		t.Fatalf("error does not identify unavailable provider: %v", err)
+	if got != bhruntime.ProviderKubernetes {
+		t.Fatalf("provider = %q, want %q", got, bhruntime.ProviderKubernetes)
 	}
 }
