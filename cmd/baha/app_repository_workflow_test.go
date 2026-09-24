@@ -125,3 +125,37 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 		t.Fatal("expected init to refuse overwriting repository manifest")
 	}
 }
+
+
+func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{
+		"app", "init", "demo",
+		"--sql",
+		"--cache",
+		"--workload-compose", "compose.yaml",
+		"--workload-service", "demo-app",
+	}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	m, err := application.LoadManifestFile("baseharbor.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Workload.Compose != "compose.yaml" {
+		t.Fatalf("workload compose = %q want compose.yaml", m.Workload.Compose)
+	}
+	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "demo-app" {
+		t.Fatalf("unexpected workload services: %#v", m.Workload.Services)
+	}
+}
