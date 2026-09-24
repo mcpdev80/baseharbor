@@ -42,6 +42,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
       start_period: 1s
   worker:
     image: docker.io/library/alpine:3.22
+    entrypoint: ["/bin/sh", "-ec"]
     command: ["sh", "-c", "sleep 60"]
     depends_on:
       - db
@@ -122,6 +123,7 @@ networks:
 	for _, want := range []string{
 		"Requires=baseharbor-demo-db.service",
 		"After=baseharbor-demo-db.service",
+		"Entrypoint=[\"/bin/sh\",\"-ec\"]",
 		"Exec=sh -c \"sleep 60\"",
 	} {
 		if !strings.Contains(worker, want) {
