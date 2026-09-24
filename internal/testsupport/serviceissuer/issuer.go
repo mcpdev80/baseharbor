@@ -51,7 +51,7 @@ func New(t testing.TB) *Issuer {
 func (i *Issuer) TrustBundle(context.Context) (serviceaccess.TrustBundle, error) {
 	return serviceaccess.TrustBundle{
 		IssuerReference: "test://baseharbor",
-		PEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
+		PEM:             pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
 	}, nil
 }
 
@@ -94,11 +94,11 @@ func (i *Issuer) Issue(_ context.Context, request serviceaccess.CertificateReque
 	}
 	return serviceaccess.IssuedCertificate{
 		IssuerReference: "test://baseharbor",
-		Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}),
-		IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
-		Serial: serial.Text(16),
-		ExpiresAt: template.NotAfter,
+		Certificate:     pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		PrivateKey:      pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}),
+		IssuingCA:       pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
+		Serial:          serial.Text(16),
+		ExpiresAt:       template.NotAfter,
 	}, nil
 }
 
