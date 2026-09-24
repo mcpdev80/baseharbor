@@ -212,7 +212,6 @@ func TestListLogsAndTracesUseSharedOwnershipFiltering(t *testing.T) {
 	}
 }
 
-
 func TestRegisterProviderSignalsRemovesStaleSignalsAtomically(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
