@@ -1,4 +1,4 @@
-package kubernetes
+package kubernetes_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/artifact"
+	kubernetes "github.com/mcpdev80/baseharbor/internal/providers/runtime/kubernetes"
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 )
 
@@ -62,7 +63,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		t.Fatalf("build request = %#v", resolution.Builds[0])
 	}
 
-	provider, err := Detect(context.Background())
+	provider, err := kubernetes.Detect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		t.Fatal("Kubernetes target namespace is empty")
 	}
 
-	plan := Plan{
+	plan := runtimemodel.WorkloadPlan{
 		Application: manifest.Name,
 		Environment: manifest.Environment,
 		Target:      runtimemodel.Target{Scope: namespace},
@@ -79,7 +80,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		Images: map[string]string{
 			"demo-app": image,
 		},
-		Bindings: map[string]Binding{
+		Bindings: map[string]runtimemodel.Binding{
 			"APP_SECRET": {
 				Value:     "kubernetes-demo-ci",
 				Sensitive: true,
