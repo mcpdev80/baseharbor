@@ -129,16 +129,19 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if placement.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	return observability.Update(observability.MetricsSource{
+	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               "loki:" + placement.Project,
-		Provider:         capability.ProviderLoki,
+		Descriptor:       capability.LokiIntegration,
 		Class:            class,
 		Scope:            placement.Scope,
 		SharingBoundary:  placement.SharingBoundary,
 		OwnerApplication: placement.OwnerApplication,
-		Network:          placement.Network,
-		Target:           "loki:3100",
-		Path:             "/metrics",
+		Signals: map[string]observability.ProviderSignalRuntime{
+			"loki-metrics": {
+				Network: placement.Network,
+				Target:  "loki:3100",
+			},
+		},
 	})
 }
 
