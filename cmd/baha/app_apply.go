@@ -226,7 +226,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 				return err
 			}
 
-
 			renderRuntimeReady(term, m)
 			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
 				return convergeManagedTracesBeforeTelemetry(ctx, progress, providers.traces)
