@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,7 +33,10 @@ func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, executor Executor, p
 	if err != nil {
 		return RuntimeExecutorMTLSFiles{}, false, fmt.Errorf("resolve runtime executor trust bundle: %w", err)
 	}
-
+	ca, err := parseTrustCertificate(trust.PEM)
+	if err != nil {
+		return RuntimeExecutorMTLSFiles{}, false, err
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return RuntimeExecutorMTLSFiles{}, false, fmt.Errorf("create runtime executor identity directory: %w", err)
 	}
@@ -45,7 +48,7 @@ func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, executor Executor, p
 		Cert: filepath.Join(dir, "executor-cert.pem"),
 		Key:  filepath.Join(dir, "executor-key.pem"),
 	}
-	valid, err := runtimeExecutorIdentityValid(files, trust.PEM)
+	valid, err := runtimeExecutorIdentityValid(files, ca)
 	if err != nil {
 		return RuntimeExecutorMTLSFiles{}, false, err
 	}
@@ -54,10 +57,9 @@ func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, executor Executor, p
 	}
 
 	cert, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{
-		CommonName:  RuntimeExecutorDNSName,
-		DNSNames:    []string{RuntimeExecutorDNSName},
-		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
-		TTL:         30 * 24 * time.Hour,
+		CommonName: RuntimeExecutorDNSName,
+		DNSNames:   []string{RuntimeExecutorDNSName},
+		TTL:        30 * 24 * time.Hour,
 	})
 	if err != nil {
 		return RuntimeExecutorMTLSFiles{}, false, fmt.Errorf("issue runtime executor identity: %w", err)
@@ -71,10 +73,17 @@ func EnsureRuntimeExecutorMTLSIdentity(ctx context.Context, executor Executor, p
 			return RuntimeExecutorMTLSFiles{}, false, err
 		}
 	}
+	valid, err = runtimeExecutorIdentityValid(files, ca)
+	if err != nil {
+		return RuntimeExecutorMTLSFiles{}, false, err
+	}
+	if !valid {
+		return RuntimeExecutorMTLSFiles{}, false, errors.New("issued runtime executor identity failed verification")
+	}
 	return files, true, nil
 }
 
-func runtimeExecutorIdentityValid(files RuntimeExecutorMTLSFiles, trustPEM []byte) (bool, error) {
+func runtimeExecutorIdentityValid(files RuntimeExecutorMTLSFiles, ca *x509.Certificate) (bool, error) {
 	caPEM, err := os.ReadFile(files.CA)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -82,12 +91,13 @@ func runtimeExecutorIdentityValid(files RuntimeExecutorMTLSFiles, trustPEM []byt
 	if err != nil {
 		return false, fmt.Errorf("read runtime executor CA: %w", err)
 	}
-	if !bytes.Equal(bytes.TrimSpace(caPEM), bytes.TrimSpace(trustPEM)) {
+	block, _ := pem.Decode(caPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
 		return false, nil
 	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(trustPEM) {
-		return false, errors.New("runtime executor trust bundle contains no certificates")
+	storedCA, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || !bytes.Equal(storedCA.Raw, ca.Raw) {
+		return false, nil
 	}
-	return runtimeIdentityPairValid(files.Cert, files.Key, roots, x509.ExtKeyUsageServerAuth, RuntimeExecutorDNSName, "")
+	return runtimeIdentityPairValid(files.Cert, files.Key, ca, x509.ExtKeyUsageServerAuth, RuntimeExecutorDNSName, "")
 }
