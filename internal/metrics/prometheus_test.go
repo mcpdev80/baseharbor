@@ -391,3 +391,72 @@ func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) 
 		}
 	}
 }
+
+
+func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.MetricsEnabledEnv, "true")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
+
+	alpha := application.New("alpha", "dev", false, false, false)
+	alpha.Services.SQL = false
+	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
+
+	beta := alpha
+	beta.Name = "beta"
+
+	issuer := serviceissuer.New(t)
+	if _, err := EnsureProviderFiles(context.Background(), issuer, alpha); err != nil {
+		t.Fatal(err)
+	}
+	files, err := EnsureProviderFiles(context.Background(), issuer, beta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileReferenceProviderRegistry(alpha); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileReferenceProviderRegistry(beta); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeDir := filepath.Join(files.Dir, "service-access", "runtime")
+	if err := os.RemoveAll(runtimeDir); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &recordingRuntime{}
+	if err := UnregisterSharedApplication(context.Background(), runtime, issuer, alpha); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"ca.pem", "server.pem", "server-key.pem"} {
+		if _, err := os.Stat(filepath.Join(runtimeDir, name)); err != nil {
+			t.Fatalf("service access runtime projection %s was not reconciled: %v", name, err)
+		}
+	}
+
+	registrations, err := readRegistrations(files.Registrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registrations) != 1 || registrations[0].Application != "beta" {
+		t.Fatalf("registrations after unregister = %#v, want only beta", registrations)
+	}
+
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, want := range []string{
+		"./service-access/runtime/ca.pem:/certs/ca.pem:ro",
+		"./service-access/runtime/server.pem:/certs/server.pem:ro",
+		"./service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("reconciled shared Prometheus compose missing %q:\n%s", want, text)
+		}
+	}
+}
