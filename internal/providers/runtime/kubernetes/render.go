@@ -120,8 +120,8 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 		"image":           image,
 		"imagePullPolicy": "IfNotPresent",
 	}
-	if len(service.Command) > 0 {
-		container["command"] = append([]string(nil), service.Command...)
+	if len(service.Args) > 0 {
+		container["args"] = append([]string(nil), service.Args...)
 	}
 	if len(service.Ports) > 0 {
 		var ports []any
