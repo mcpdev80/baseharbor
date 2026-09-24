@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
@@ -213,7 +214,7 @@ networks:
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.EnsureRuntime(store, m)
+	files, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
