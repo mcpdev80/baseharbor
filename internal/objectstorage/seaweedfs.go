@@ -31,6 +31,9 @@ const (
 	ProviderService = "seaweedfs"
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
+
+	sharedProviderReconcileTimeout = 60 * time.Second
+	existingProviderProbeTimeout   = 3 * time.Second
 )
 
 type Runtime interface {
@@ -60,14 +63,17 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
 	}
-	files, err := EnsureProviderFiles(ctx, issuer)
+	reconcileCtx, cancel := context.WithTimeout(ctx, sharedProviderReconcileTimeout)
+	defer cancel()
+
+	files, err := EnsureProviderFiles(reconcileCtx, issuer)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
-	if err := runtime.ConfigProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.ConfigProject(reconcileCtx, ProviderProject, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
 	}
-	if err := runtime.UpProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.UpProject(reconcileCtx, ProviderProject, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
 	endpoint, err := providerEndpoint(files)
@@ -78,7 +84,7 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
-	if err := waitS3(ctx, client, endpoint); err != nil {
+	if err := waitS3(reconcileCtx, client, endpoint); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
 	credentials, credentialPath, err := EnsureAdminCredentials(files)
@@ -91,8 +97,34 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 		credentials.SecretAccessKey,
 	)
 	input := []byte(command + "\n")
-	if _, err := runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
+	if _, err := runtime.ExecProjectInput(reconcileCtx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("configure SeaweedFS runtime admin identity failed")
+	}
+	return files, credentials, credentialPath, nil
+}
+
+func ExistingReadySharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
+	files, err := ExistingProviderFiles()
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	client, err := s3HTTPClient(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, existingProviderProbeTimeout)
+	defer cancel()
+	if err := waitS3(probeCtx, client, endpoint); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("existing SeaweedFS provider is not ready: %w", err)
+	}
+	credentialPath := filepath.Join(files.Dir, providerAdminCredentialsFile)
+	credentials, err := LoadAdminCredentials(credentialPath)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
 	return files, credentials, credentialPath, nil
 }
