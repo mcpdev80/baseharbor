@@ -392,7 +392,6 @@ func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) 
 	}
 }
 
-
 func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
