@@ -23,6 +23,7 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -160,6 +161,7 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -292,6 +294,7 @@ func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detect runtime: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
