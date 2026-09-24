@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
-	"path/filepath"
 )
 
 const (
@@ -129,16 +129,32 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if placement.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	return observability.Update(observability.MetricsSource{
+	metricsPolicy, err := application.MetricsPolicy(d.app)
+	if err != nil {
+		return err
+	}
+	metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["loki-metrics"] = observability.ProviderSignalRuntime{
+			Network: placement.Network,
+			Target:  "loki:3100",
+		}
+	}
+	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               "loki:" + placement.Project,
-		Provider:         capability.ProviderLoki,
+		Descriptor:       capability.LokiIntegration,
 		Class:            class,
 		Scope:            placement.Scope,
 		SharingBoundary:  placement.SharingBoundary,
 		OwnerApplication: placement.OwnerApplication,
-		Network:          placement.Network,
-		Target:           "loki:3100",
-		Path:             "/metrics",
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	})
 }
 

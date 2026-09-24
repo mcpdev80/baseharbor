@@ -79,6 +79,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
 	}
+	if err := reconcileManagedRuntimeObservability(m); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
+	}
 	contract, err := EnsureRuntimeContract(m, files)
 	if err != nil {
 		return RuntimeFiles{}, err
@@ -382,6 +385,10 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	return b.String()
+}
+
+func RuntimeEnvironment(files RuntimeFiles) (map[string]string, error) {
+	return readRuntimeEnv(files.Env)
 }
 
 func validateRuntimeEnv(path string, m Manifest) error {

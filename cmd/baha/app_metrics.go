@@ -20,6 +20,8 @@ type managedMetricsExecution struct {
 	issuer              serviceaccess.Issuer
 	manifest            application.Manifest
 	enabled             bool
+	workloadEnabled     bool
+	providerOnlyEnabled bool
 	desiredPlacement    capability.ProviderPlacement
 	registeredPlacement capability.ProviderPlacement
 	registered          bool
@@ -51,7 +53,9 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	if err != nil {
 		return nil, err
 	}
-	enabled := policy.Enabled && policy.Collect[application.MetricsSourceApplication]
+	workloadEnabled := policy.Enabled && policy.Collect[application.MetricsSourceApplication]
+	providerOnlyEnabled := policy.Enabled && (policy.Collect[application.MetricsSourceApplicationProvider] || policy.Collect[application.MetricsSourcePlatformProvider])
+	enabled := workloadEnabled || providerOnlyEnabled
 	if !enabled {
 		return &managedMetricsExecution{
 			runtime:             compose,
@@ -89,6 +93,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		issuer:              issuer,
 		manifest:            m,
 		enabled:             true,
+		workloadEnabled:     workloadEnabled,
+		providerOnlyEnabled: providerOnlyEnabled,
 		desiredPlacement:    desiredPlacement,
 		registeredPlacement: registeredPlacement,
 		registered:          registered,
@@ -96,6 +102,9 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	}
 
 	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
+	if !workloadEnabled {
+		return prepared, nil
+	}
 	if len(m.Metrics.Sources) == 0 && runtimeMetrics {
 		return prepared, nil
 	}
@@ -143,11 +152,11 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 		return nil
 	}
 	if prepared.execution == nil {
-		if application.HasRuntimeMetricsPermissions(prepared.manifest) {
+		if application.HasRuntimeMetricsPermissions(prepared.manifest) || prepared.providerOnlyEnabled {
 			if err := prepared.driver.Provision(ctx, capability.Resource{}, capability.Binding{}); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "[READY] metrics-provider runtime source collection for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[READY] metrics-provider collection state converged for %s\n", prepared.manifest.Name)
 		}
 		return nil
 	}
@@ -210,7 +219,7 @@ func printResolvedMetricsPlacement(out io.Writer, m application.Manifest) error 
 	if err != nil {
 		return err
 	}
-	if !policy.Enabled || !policy.Collect[application.MetricsSourceApplication] {
+	if !policy.Enabled || (!policy.Collect[application.MetricsSourceApplication] && !policy.Collect[application.MetricsSourceApplicationProvider] && !policy.Collect[application.MetricsSourcePlatformProvider]) {
 		fmt.Fprintln(out, "Provider placement: prometheus -> not resolved (metrics collection disabled by deployment policy)")
 		return nil
 	}

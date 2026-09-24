@@ -18,6 +18,7 @@ type SourceClass string
 type SignalKind string
 
 const (
+	SourceApplication         SourceClass = "application"
 	SourceApplicationProvider SourceClass = "application-provider"
 	SourcePlatformProvider    SourceClass = "platform-provider"
 
@@ -54,18 +55,21 @@ func (s Security) Validate() error {
 }
 
 type SignalSource struct {
-	ID               string                   `json:"id"`
-	Kind             SignalKind               `json:"kind"`
-	Provider         capability.ProviderKind  `json:"provider"`
-	Class            SourceClass              `json:"class"`
-	Scope            capability.ProviderScope `json:"scope"`
-	SharingBoundary  string                   `json:"sharing_boundary,omitempty"`
-	OwnerApplication string                   `json:"owner_application,omitempty"`
-	Network          string                   `json:"network,omitempty"`
-	Target           string                   `json:"target"`
-	Protocol         string                   `json:"protocol"`
-	Path             string                   `json:"path,omitempty"`
-	Security         Security                 `json:"security"`
+	ID                 string                                   `json:"id"`
+	Kind               SignalKind                               `json:"kind"`
+	Provider           capability.ProviderKind                  `json:"provider"`
+	Class              SourceClass                              `json:"class"`
+	Scope              capability.ProviderScope                 `json:"scope"`
+	SharingBoundary    string                                   `json:"sharing_boundary,omitempty"`
+	OwnerApplication   string                                   `json:"owner_application,omitempty"`
+	Network            string                                   `json:"network,omitempty"`
+	Target             string                                   `json:"target"`
+	Protocol           string                                   `json:"protocol"`
+	Path               string                                   `json:"path,omitempty"`
+	Mode               capability.ObservabilityRealizationMode  `json:"mode,omitempty"`
+	SemanticConvention string                                   `json:"semantic_convention,omitempty"`
+	Verification       capability.ObservabilityVerificationMode `json:"verification,omitempty"`
+	Security           Security                                 `json:"security"`
 }
 
 func (s SignalSource) Validate() error {
@@ -77,7 +81,7 @@ func (s SignalSource) Validate() error {
 	default:
 		return fmt.Errorf("unsupported observability signal kind %q", s.Kind)
 	}
-	if s.Class != SourceApplicationProvider && s.Class != SourcePlatformProvider {
+	if s.Class != SourceApplication && s.Class != SourceApplicationProvider && s.Class != SourcePlatformProvider {
 		return fmt.Errorf("unsupported observability source class %q", s.Class)
 	}
 	if s.Scope != capability.ScopeShared && s.Scope != capability.ScopeApplication {
@@ -89,12 +93,25 @@ func (s SignalSource) Validate() error {
 	if strings.TrimSpace(s.Target) == "" || strings.TrimSpace(s.Protocol) == "" {
 		return errors.New("observability signal source requires target and protocol")
 	}
-	if s.Kind == SignalMetrics {
+	switch s.Kind {
+	case SignalMetrics:
 		if strings.TrimSpace(s.Network) == "" || !strings.HasPrefix(strings.TrimSpace(s.Path), "/") {
 			return errors.New("observability metrics source requires network and absolute path")
 		}
 		if s.Protocol != "openmetrics" {
 			return fmt.Errorf("observability metrics source requires openmetrics, got %q", s.Protocol)
+		}
+	case SignalLogs:
+		switch s.Protocol {
+		case "syslog-rfc5424", "stdout-stderr", "journald", "otlp":
+		default:
+			return fmt.Errorf("unsupported observability logs protocol %q", s.Protocol)
+		}
+	case SignalTraces:
+		switch s.Protocol {
+		case "otlp", "interaction":
+		default:
+			return fmt.Errorf("unsupported observability traces protocol %q", s.Protocol)
 		}
 	}
 	return s.Security.Validate()
@@ -133,6 +150,156 @@ func (s MetricsSource) signal() SignalSource {
 		ID: s.ID, Kind: SignalMetrics, Provider: s.Provider, Class: s.Class,
 		Scope: s.Scope, SharingBoundary: s.SharingBoundary, OwnerApplication: s.OwnerApplication,
 		Network: s.Network, Target: s.Target, Protocol: "openmetrics", Path: s.Path, Security: security,
+	}
+}
+
+// ProviderSignalRuntime is provider realization state for one declared signal.
+// It contains reachability/security details only; portable application intent
+// and product-specific collector configuration do not flow through this type.
+type ProviderSignalRuntime struct {
+	Network  string
+	Target   string
+	Security Security
+}
+
+// ProviderSignalRegistration binds a provider integration descriptor to one
+// concrete runtime instance. Multiple signal kinds intentionally share ID so
+// Remove(ID) tears down all BaseHarbor-owned observability registrations for
+// that provider instance.
+type ProviderSignalRegistration struct {
+	ID               string
+	Descriptor       capability.IntegrationDescriptor
+	Class            SourceClass
+	Scope            capability.ProviderScope
+	SharingBoundary  string
+	OwnerApplication string
+	Enabled          map[SignalKind]bool
+	Signals          map[string]ProviderSignalRuntime
+}
+
+func RegisterProviderSignals(registration ProviderSignalRegistration) error {
+	if strings.TrimSpace(registration.ID) == "" {
+		return errors.New("provider observability registration requires id")
+	}
+	if err := registration.Descriptor.Validate(); err != nil {
+		return fmt.Errorf("provider observability descriptor: %w", err)
+	}
+	declared := make(map[string]capability.ProviderObservabilitySignal, len(registration.Descriptor.Observability.Signals))
+	for _, signal := range registration.Descriptor.Observability.Signals {
+		declared[signal.Name] = signal
+	}
+	for name := range registration.Signals {
+		signal, ok := declared[name]
+		if !ok {
+			return fmt.Errorf("provider %q runtime signal %q is not declared", registration.Descriptor.Provider.Kind, name)
+		}
+		if !signal.Collectable() {
+			return fmt.Errorf("provider %q runtime signal %q is not collectable (status %q)", registration.Descriptor.Provider.Kind, name, signal.Status)
+		}
+	}
+
+	desired := make([]SignalSource, 0, len(registration.Descriptor.Observability.Signals))
+	for _, signal := range registration.Descriptor.Observability.Signals {
+		if !signal.Collectable() {
+			continue
+		}
+		kind, err := signalKind(signal.Kind)
+		if err != nil {
+			return err
+		}
+		if registration.Enabled != nil && !registration.Enabled[kind] {
+			continue
+		}
+		runtimeSignal, ok := registration.Signals[signal.Name]
+		if !ok {
+			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
+		}
+		source := SignalSource{
+			ID:                 registration.ID,
+			Kind:               kind,
+			Provider:           registration.Descriptor.Provider.Kind,
+			Class:              registration.Class,
+			Scope:              registration.Scope,
+			SharingBoundary:    registration.SharingBoundary,
+			OwnerApplication:   registration.OwnerApplication,
+			Network:            runtimeSignal.Network,
+			Target:             runtimeSignal.Target,
+			Protocol:           signal.Protocol,
+			Path:               signal.Path,
+			Mode:               signal.Mode,
+			SemanticConvention: signal.SemanticConvention,
+			Verification:       signal.Verification,
+			Security:           runtimeSignal.Security,
+		}
+		if err := source.Validate(); err != nil {
+			return fmt.Errorf("register provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
+		}
+		desired = append(desired, source)
+	}
+
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, existing := range sources {
+			if existing.ID == registration.ID && existing.Provider == registration.Descriptor.Provider.Kind {
+				continue
+			}
+			out = append(out, existing)
+		}
+		out = append(out, desired...)
+		return out, nil
+	})
+}
+
+func RuntimeTarget(project, service string) string {
+	return "runtime://" + strings.Trim(strings.TrimSpace(project), "/") + "/" + strings.Trim(strings.TrimSpace(service), "/")
+}
+
+func ParseRuntimeTarget(target string) (project, service string, ok bool) {
+	value := strings.TrimSpace(target)
+	if !strings.HasPrefix(value, "runtime://") {
+		return "", "", false
+	}
+	value = strings.TrimPrefix(value, "runtime://")
+	project, service, ok = strings.Cut(value, "/")
+	if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" || strings.Contains(service, "/") {
+		return "", "", false
+	}
+	return project, service, true
+}
+
+func PruneOwnedProviderInstances(provider capability.ProviderKind, class SourceClass, scope capability.ProviderScope, ownerApplication string, keepIDs map[string]struct{}) error {
+	path, err := registryPath()
+	if err != nil {
+		return err
+	}
+	return mutate(path, func(sources []SignalSource) ([]SignalSource, error) {
+		out := sources[:0]
+		for _, source := range sources {
+			if source.Provider == provider && source.Class == class && source.Scope == scope && source.OwnerApplication == ownerApplication {
+				if _, keep := keepIDs[source.ID]; !keep {
+					continue
+				}
+			}
+			out = append(out, source)
+		}
+		return out, nil
+	})
+}
+
+func signalKind(kind capability.ObservabilitySignalKind) (SignalKind, error) {
+	switch kind {
+	case capability.ObservabilityMetrics:
+		return SignalMetrics, nil
+	case capability.ObservabilityLogs:
+		return SignalLogs, nil
+	case capability.ObservabilityTraces:
+		return SignalTraces, nil
+	default:
+		return "", fmt.Errorf("unsupported provider observability signal kind %q", kind)
 	}
 }
 
@@ -208,6 +375,8 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 			continue
 		}
 		switch source.Class {
+		case SourceApplication:
+			continue
 		case SourceApplicationProvider:
 			if !includeApplicationProviders {
 				continue
@@ -241,6 +410,14 @@ func List(kind SignalKind, placement capability.ProviderPlacement, applications 
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
+}
+
+func ListLogs(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(SignalLogs, placement, applications, includeApplicationProviders, includePlatformProviders)
+}
+
+func ListTraces(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]SignalSource, error) {
+	return List(SignalTraces, placement, applications, includeApplicationProviders, includePlatformProviders)
 }
 
 func ListMetrics(placement capability.ProviderPlacement, applications []string, includeApplicationProviders, includePlatformProviders bool) ([]MetricsSource, error) {

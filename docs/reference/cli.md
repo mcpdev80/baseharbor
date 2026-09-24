@@ -284,6 +284,34 @@ Inspection remains strictly read-only. `stale` never removes contract state, and
 
 Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
 
+## Application observability contract
+
+Application instrumentation stays provider-neutral. BaseHarbor owns collector/backend selection, placement, trust and lifecycle.
+
+```text
+Metrics:
+  expose an OpenMetrics-compatible HTTP endpoint
+  recommended path: /metrics
+  BaseHarbor collects workload + supported managed-provider metrics
+  do not configure Prometheus in application code
+
+Logs:
+  write logs to stdout/stderr
+  structured records such as JSON are recommended where practical
+  BaseHarbor collects workload + supported managed-provider logs
+  do not configure Loki or Alloy in application code
+
+Traces:
+  use standard OpenTelemetry SDKs/exporters
+  emit OTLP through the BaseHarbor-provided binding
+  BaseHarbor injects endpoint/protocol/trust/auth material
+  BaseHarbor collects workload + supported managed-provider traces
+  do not configure Tempo or an OpenTelemetry Collector in application code
+```
+
+Metrics, logs and traces remain independent opt-in signal classes. Enabling metrics or logs does not invent trace intent. When a signal class is enabled, collection follows the generic source classes `application`, `application-provider` and, where placement/operator policy permits it, `platform-provider`.
+
+The same application instrumentation is expected to move unchanged between dev/test/prod. Environment-specific TLS, mTLS, external PKI, tokens and backend/provider placement remain protected BaseHarbor deployment state.
 ## Metrics collection policy
 
 A repository may declare one or more provider-neutral `metrics/v1` sources:

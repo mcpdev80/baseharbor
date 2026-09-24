@@ -318,6 +318,26 @@ func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service
 	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, cmdArgs...)
 }
 
+func (c Compose) ExecProjectFilesInput(ctx context.Context, project, workdir, service string, composeFiles []string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return "", err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", nil, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, input, args...)
+	}
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, nil, composeFiles, input, cmdArgs...)
+}
+
 func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
 	return c.ServicesProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
@@ -449,7 +469,7 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 	return stdout.String(), nil
 }
 
-func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, input []byte, args ...string) (string, error) {
 	if c.quadlet {
 		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
 	}
@@ -482,6 +502,7 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 	if err != nil {
 		return "", err
 	}
+	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -493,4 +514,8 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
 	}
 	return stdout.String(), nil
+}
+
+func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, environment, composeFiles, nil, args...)
 }

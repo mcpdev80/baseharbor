@@ -224,10 +224,32 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if p.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	if err := observability.Update(observability.MetricsSource{
-		ID: "tempo:" + p.Project, Provider: capability.ProviderTempo, Class: class, Scope: p.Scope,
-		SharingBoundary: p.SharingBoundary, OwnerApplication: p.OwnerApplication,
-		Network: p.Network, Target: "tempo:3200", Path: "/metrics",
+	metricsPolicy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return Placement{}, err
+	}
+	metricsEnabled := (application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["tempo-metrics"] = observability.ProviderSignalRuntime{
+			Network: p.Network,
+			Target:  "tempo:3200",
+		}
+	}
+	if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+		ID:               "tempo:" + p.Project,
+		Descriptor:       capability.TempoIntegration,
+		Class:            class,
+		Scope:            p.Scope,
+		SharingBoundary:  p.SharingBoundary,
+		OwnerApplication: p.OwnerApplication,
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	}); err != nil {
 		return Placement{}, err
 	}

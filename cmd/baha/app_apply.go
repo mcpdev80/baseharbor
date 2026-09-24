@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -154,6 +155,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
+			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
+			}); err != nil {
+				return err
+			}
 			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
 				return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
 			}); err != nil {
@@ -242,11 +248,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
 				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
-				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
 			}); err != nil {
 				return err
 			}
@@ -395,10 +396,23 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 	const maxAttempts = 3
 	project := application.RuntimeProjectName(m)
 
+	providerOverride, providerLogging, err := logsprovider.ExistingProviderSourceOverride(files)
+	if err != nil {
+		return err
+	}
+	composeFiles := []string{files.Compose}
+	if providerLogging {
+		composeFiles = append(composeFiles, providerOverride)
+	}
+	environment, err := application.RuntimeEnvironment(files)
+	if err != nil {
+		return err
+	}
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
+		err := compose.UpProjectFilesSelectedProgress(ctx, project, files.Dir, environment, nil, func(detail string) {
 			cli.ReportActivityDetail(out, detail)
-		})
+		}, composeFiles...)
 		if err == nil {
 			return nil
 		}
@@ -406,13 +420,17 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 			return err
 		}
 
-		if downErr := compose.DownProject(ctx, project, files.Compose, files.Env); downErr != nil {
+		if downErr := compose.DownProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); downErr != nil {
 			return errors.Join(err, fmt.Errorf("clean up partially started runtime before host-port retry: %w", downErr))
 		}
 		if reallocErr := application.ReallocateRuntimePorts(m, files); reallocErr != nil {
 			return errors.Join(err, fmt.Errorf("reallocate application host ports: %w", reallocErr))
 		}
-		if configErr := compose.ConfigProject(ctx, project, files.Compose, files.Env); configErr != nil {
+		environment, err = application.RuntimeEnvironment(files)
+		if err != nil {
+			return errors.Join(err, fmt.Errorf("reload application runtime environment after host-port reallocation: %w", err))
+		}
+		if configErr := compose.ConfigProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); configErr != nil {
 			return errors.Join(err, fmt.Errorf("validate runtime after host-port reallocation: %w", configErr))
 		}
 		fmt.Fprintf(out, "[RETRY] host-port conflict detected; reassigned loopback ports (attempt %d/%d)\n", attempt+1, maxAttempts)

@@ -32,19 +32,46 @@ type OptionalLifecycleSupport struct {
 }
 
 type ObservabilitySignalKind string
+type ObservabilitySupportStatus string
+type ObservabilityRealizationMode string
+type ObservabilityVerificationMode string
 
 const (
 	ObservabilityMetrics ObservabilitySignalKind = "metrics"
 	ObservabilityLogs    ObservabilitySignalKind = "logs"
 	ObservabilityTraces  ObservabilitySignalKind = "traces"
+
+	ObservabilitySupported       ObservabilitySupportStatus = "supported"
+	ObservabilityUnsupported     ObservabilitySupportStatus = "unsupported"
+	ObservabilityNotApplicable   ObservabilitySupportStatus = "not-applicable"
+	ObservabilityRequiresAdapter ObservabilitySupportStatus = "requires-adapter"
+
+	ObservabilityNative      ObservabilityRealizationMode = "native"
+	ObservabilityRuntime     ObservabilityRealizationMode = "runtime"
+	ObservabilityAdapter     ObservabilityRealizationMode = "adapter"
+	ObservabilityInteraction ObservabilityRealizationMode = "interaction"
+	ObservabilityCombined    ObservabilityRealizationMode = "combined"
+
+	ObservabilityVerifyEndpoint ObservabilityVerificationMode = "endpoint"
+	ObservabilityVerifyBackend  ObservabilityVerificationMode = "backend-query"
+	ObservabilityVerifySpan     ObservabilityVerificationMode = "span-query"
+	ObservabilityVerifyNone     ObservabilityVerificationMode = "none"
 )
 
 type ProviderObservabilitySignal struct {
-	Name     string                  `json:"name"`
-	Kind     ObservabilitySignalKind `json:"kind"`
-	Protocol string                  `json:"protocol"`
-	Port     int                     `json:"port,omitempty"`
-	Path     string                  `json:"path,omitempty"`
+	Name               string                        `json:"name"`
+	Kind               ObservabilitySignalKind       `json:"kind"`
+	Status             ObservabilitySupportStatus    `json:"status"`
+	Mode               ObservabilityRealizationMode  `json:"mode,omitempty"`
+	Protocol           string                        `json:"protocol,omitempty"`
+	SemanticConvention string                        `json:"semantic_convention,omitempty"`
+	Verification       ObservabilityVerificationMode `json:"verification"`
+	Port               int                           `json:"port,omitempty"`
+	Path               string                        `json:"path,omitempty"`
+}
+
+func (s ProviderObservabilitySignal) Collectable() bool {
+	return s.Status == ObservabilitySupported
 }
 
 type ProviderObservability struct {
@@ -174,20 +201,52 @@ func (d IntegrationDescriptor) Validate() error {
 			return fmt.Errorf("provider %q observability signal %q is declared more than once", d.Provider.Kind, signal.Name)
 		}
 		seenSignals[signal.Name] = struct{}{}
+		switch signal.Status {
+		case ObservabilitySupported, ObservabilityUnsupported, ObservabilityNotApplicable, ObservabilityRequiresAdapter:
+		default:
+			return fmt.Errorf("provider %q observability signal %q has unsupported status %q", d.Provider.Kind, signal.Name, signal.Status)
+		}
 		switch signal.Kind {
-		case ObservabilityMetrics:
-			if signal.Protocol != "openmetrics" {
-				return fmt.Errorf("provider %q metrics signal %q must use openmetrics", d.Provider.Kind, signal.Name)
-			}
-			if signal.Port < 1 || signal.Port > 65535 || !strings.HasPrefix(signal.Path, "/") {
-				return fmt.Errorf("provider %q metrics signal %q requires port and absolute path", d.Provider.Kind, signal.Name)
-			}
-		case ObservabilityLogs, ObservabilityTraces:
-			if signal.Protocol == "" {
-				return fmt.Errorf("provider %q observability signal %q requires protocol", d.Provider.Kind, signal.Name)
-			}
+		case ObservabilityMetrics, ObservabilityLogs, ObservabilityTraces:
 		default:
 			return fmt.Errorf("provider %q observability signal %q has unsupported kind %q", d.Provider.Kind, signal.Name, signal.Kind)
+		}
+		if signal.Status == ObservabilityUnsupported || signal.Status == ObservabilityNotApplicable {
+			if signal.Mode != "" || signal.Protocol != "" || signal.Port != 0 || signal.Path != "" {
+				return fmt.Errorf("provider %q observability signal %q cannot declare realization details for status %q", d.Provider.Kind, signal.Name, signal.Status)
+			}
+			if signal.Verification != ObservabilityVerifyNone {
+				return fmt.Errorf("provider %q observability signal %q must use verification %q for status %q", d.Provider.Kind, signal.Name, ObservabilityVerifyNone, signal.Status)
+			}
+			continue
+		}
+		switch signal.Mode {
+		case ObservabilityNative, ObservabilityRuntime, ObservabilityAdapter, ObservabilityInteraction, ObservabilityCombined:
+		default:
+			return fmt.Errorf("provider %q observability signal %q has unsupported realization mode %q", d.Provider.Kind, signal.Name, signal.Mode)
+		}
+		switch signal.Verification {
+		case ObservabilityVerifyEndpoint, ObservabilityVerifyBackend, ObservabilityVerifySpan:
+		case ObservabilityVerifyNone:
+			if signal.Status != ObservabilityRequiresAdapter {
+				return fmt.Errorf("provider %q observability signal %q cannot skip verification when supported", d.Provider.Kind, signal.Name)
+			}
+		default:
+			return fmt.Errorf("provider %q observability signal %q has unsupported verification %q", d.Provider.Kind, signal.Name, signal.Verification)
+		}
+		if signal.Status == ObservabilityRequiresAdapter && signal.Mode != ObservabilityAdapter && signal.Mode != ObservabilityCombined {
+			return fmt.Errorf("provider %q observability signal %q requires adapter realization", d.Provider.Kind, signal.Name)
+		}
+		if signal.Protocol == "" {
+			return fmt.Errorf("provider %q observability signal %q requires protocol", d.Provider.Kind, signal.Name)
+		}
+		if signal.Kind == ObservabilityMetrics && signal.Status == ObservabilitySupported && signal.Mode == ObservabilityNative {
+			if signal.Protocol != "openmetrics" {
+				return fmt.Errorf("provider %q native metrics signal %q must use openmetrics", d.Provider.Kind, signal.Name)
+			}
+			if signal.Port < 1 || signal.Port > 65535 || !strings.HasPrefix(signal.Path, "/") {
+				return fmt.Errorf("provider %q native metrics signal %q requires port and absolute path", d.Provider.Kind, signal.Name)
+			}
 		}
 	}
 	return nil

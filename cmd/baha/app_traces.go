@@ -7,19 +7,23 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 type managedTracesExecution struct {
-	execution *capability.Execution
-	driver    *tracesprovider.Driver
-	runtime   bhruntime.Compose
-	manifest  application.Manifest
-	enabled   bool
-	placement tracesprovider.Placement
-	resources []capability.Resource
+	execution       *capability.Execution
+	driver          *tracesprovider.Driver
+	runtime         bhruntime.Compose
+	manifest        application.Manifest
+	enabled         bool
+	placement       tracesprovider.Placement
+	resources       []capability.Resource
+	providerSources []observability.SignalSource
+	runtimeFiles    application.RuntimeFiles
 }
 
 func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
@@ -27,11 +31,17 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 	if !application.HasTraceSignal(m) {
 		return nil, nil
 	}
-	enabled, err := application.TracesCollectionEnabled(m)
+	policy, err := application.TracesPolicy(m)
 	if err != nil {
 		return nil, err
 	}
-	prepared := &managedTracesExecution{runtime: compose, manifest: m, enabled: enabled}
+	enabled := policy.Enabled && (policy.Collect[application.TracesSourceApplication] || policy.Collect[application.TracesSourceApplicationProvider] || policy.Collect[application.TracesSourcePlatformProvider])
+	prepared := &managedTracesExecution{
+		runtime:      compose,
+		manifest:     m,
+		enabled:      enabled,
+		runtimeFiles: application.RuntimeFilesFor(resolved.Store, m),
+	}
 	if !enabled {
 		return prepared, nil
 	}
@@ -79,7 +89,10 @@ func convergeManagedTracesBeforeTelemetry(ctx context.Context, out io.Writer, pr
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[READY] traces-provider  Tempo state converged for %s\n", prepared.manifest.Name)
+	if err := refreshProviderTraceSources(prepared); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "[READY] traces-provider  Tempo state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(prepared.providerSources))
 	return nil
 }
 
@@ -90,7 +103,50 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 	if _, err := prepared.execution.Verify(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "[VERIFIED] traces         verification trace ingested and queryable for %s\n", prepared.manifest.Name)
+	if err := refreshProviderTraceSources(prepared); err != nil {
+		return err
+	}
+	if err := application.VerifyManagedProviderInteractions(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.providerSources); err != nil {
+		return err
+	}
+	for _, source := range prepared.providerSources {
+		if source.Mode != capability.ObservabilityInteraction || source.Verification != capability.ObservabilityVerifySpan {
+			return fmt.Errorf("provider trace source %s has unsupported realization %q/%q", source.ID, source.Mode, source.Verification)
+		}
+		traceID, err := telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
+		if err != nil {
+			return err
+		}
+		if err := tracesprovider.VerifyTrace(ctx, prepared.manifest, traceID); err != nil {
+			return fmt.Errorf("verify provider trace %s: %w", source.ID, err)
+		}
+	}
+	fmt.Fprintf(out, "[VERIFIED] traces         application verification trace + %d provider interaction trace(s) queryable for %s\n", len(prepared.providerSources), prepared.manifest.Name)
+	return nil
+}
+
+func refreshProviderTraceSources(prepared *managedTracesExecution) error {
+	if prepared == nil || !prepared.enabled {
+		return nil
+	}
+	policy, err := application.TracesPolicy(prepared.manifest)
+	if err != nil {
+		return err
+	}
+	sources, err := observability.ListTraces(
+		capability.ProviderPlacement{
+			Scope:           prepared.placement.Scope,
+			SharingBoundary: prepared.placement.SharingBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		[]string{prepared.manifest.Name},
+		policy.Collect[application.TracesSourceApplicationProvider],
+		policy.Collect[application.TracesSourcePlatformProvider],
+	)
+	if err != nil {
+		return fmt.Errorf("resolve provider trace sources: %w", err)
+	}
+	prepared.providerSources = sources
 	return nil
 }
 

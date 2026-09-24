@@ -3,7 +3,9 @@ package telemetry
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -130,14 +132,26 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		return err
 	}
 	if resource.Provider == capability.ProviderOTelCollector {
-		if err := observability.Update(observability.MetricsSource{
-			ID:       "opentelemetry-collector:" + ProviderProject,
-			Provider: capability.ProviderOTelCollector,
-			Class:    observability.SourcePlatformProvider,
-			Scope:    capability.ScopeShared,
-			Network:  ProviderNetwork,
-			Target:   ProviderService + ":8888",
-			Path:     "/metrics",
+		metricsPolicy, err := application.MetricsPolicy(d.app)
+		if err != nil {
+			return err
+		}
+		metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) &&
+			metricsPolicy.Enabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+		signals := map[string]observability.ProviderSignalRuntime{}
+		if metricsEnabled {
+			signals["collector-metrics"] = observability.ProviderSignalRuntime{
+				Network: ProviderNetwork,
+				Target:  ProviderService + ":8888",
+			}
+		}
+		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+			ID:         "opentelemetry-collector:" + ProviderProject,
+			Descriptor: capability.OTelCollectorIntegration,
+			Class:      observability.SourcePlatformProvider,
+			Scope:      capability.ScopeShared,
+			Enabled:    map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+			Signals:    signals,
 		}); err != nil {
 			return err
 		}
@@ -517,6 +531,72 @@ func externalHeaders() map[string]string {
 		}
 	}
 	return result
+}
+
+func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {
+	if source.Kind != observability.SignalTraces || source.Protocol != "interaction" {
+		return "", fmt.Errorf("provider interaction trace source %q is not an interaction trace", source.ID)
+	}
+	files, err := ExistingProviderFiles()
+	if err != nil {
+		return "", err
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return "", err
+	}
+	client, err := managedOTLPHTTPClient(m.Environment, files)
+	if err != nil {
+		return "", err
+	}
+	payload, traceID := providerInteractionTracePayload(m, source)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("export provider interaction trace %s: %w", source.ID, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("export provider interaction trace %s: endpoint returned HTTP %d", source.ID, resp.StatusCode)
+	}
+	return traceID, nil
+}
+
+func providerInteractionTracePayload(m application.Manifest, source observability.SignalSource) ([]byte, string) {
+	now := uint64(time.Now().UnixNano())
+	identity := m.Name + "\x00" + m.Environment + "\x00" + string(source.Provider) + "\x00" + source.ID + "\x00" + strconv.FormatUint(now, 10)
+	traceHash := sha256.Sum256([]byte("trace\x00" + identity))
+	spanHash := sha256.Sum256([]byte("span\x00" + identity))
+	traceID := append([]byte(nil), traceHash[:16]...)
+	spanID := append([]byte(nil), spanHash[:8]...)
+
+	span := appendBytes(nil, 1, traceID)
+	span = appendBytes(span, 2, spanID)
+	span = appendString(span, 5, "baseharbor.provider.interaction.verify")
+	span = appendFixed64(span, 7, now)
+	span = appendFixed64(span, 8, now+1)
+	span = appendMessage(span, 9, keyValue("baseharbor.provider", string(source.Provider)))
+	span = appendMessage(span, 9, keyValue("baseharbor.source", source.ID))
+	span = appendMessage(span, 9, keyValue("baseharbor.source_class", string(source.Class)))
+	span = appendMessage(span, 9, keyValue("baseharbor.resource", source.Target))
+	if source.SemanticConvention != "" {
+		span = appendMessage(span, 9, keyValue("baseharbor.semantic_convention", source.SemanticConvention))
+	}
+
+	scopeSpans := appendMessage(nil, 2, span)
+	resource := []byte{}
+	resource = appendMessage(resource, 1, keyValue("service.name", "baseharbor"))
+	resource = appendMessage(resource, 1, keyValue("service.namespace", m.Name))
+	resource = appendMessage(resource, 1, keyValue("deployment.environment.name", m.Environment))
+	resource = appendMessage(resource, 1, keyValue("baseharbor.application", m.Name))
+	resourceSpans := appendMessage(nil, 1, resource)
+	resourceSpans = appendMessage(resourceSpans, 2, scopeSpans)
+	return appendMessage(nil, 1, resourceSpans), hex.EncodeToString(traceID)
 }
 
 func VerificationTracePayload(m application.Manifest) []byte {

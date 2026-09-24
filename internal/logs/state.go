@@ -22,6 +22,7 @@ import (
 const (
 	providerProject      = "baseharbor-logs"
 	workloadOverrideName = "workload.logging.override.yaml"
+	providerOverrideName = "provider.logging.override.yaml"
 )
 
 type Placement struct {
@@ -36,9 +37,10 @@ type Placement struct {
 }
 
 type Registration struct {
-	Application string `json:"application"`
-	Environment string `json:"environment"`
-	SyslogPort  int    `json:"syslog_port"`
+	Application        string `json:"application"`
+	Environment        string `json:"environment"`
+	SyslogPort         int    `json:"syslog_port"`
+	ProviderSyslogPort int    `json:"provider_syslog_port"`
 }
 
 type ProviderFiles struct {
@@ -140,7 +142,11 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind)), 0o644); err != nil {
+	providerSources, err := providerLogSources(p, registrations)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -228,6 +234,93 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 	return path, nil
 }
 
+func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	p, err := PlacementFor(m)
+	if err != nil {
+		return "", false, err
+	}
+	policy, err := application.LogsPolicy(m)
+	if err != nil {
+		return "", false, err
+	}
+	sources, err := observability.ListLogs(
+		capability.ProviderPlacement{Scope: p.Scope, SharingBoundary: p.SharingBoundary, Ownership: capability.OwnershipBaseHarbor},
+		[]string{m.Name},
+		policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider],
+		false,
+	)
+	if err != nil {
+		return "", false, err
+	}
+	project := application.RuntimeProjectName(m)
+	type providerService struct {
+		Service  string
+		Provider capability.ProviderKind
+	}
+	seen := map[string]providerService{}
+	for _, source := range sources {
+		if source.Class != observability.SourceApplicationProvider || source.OwnerApplication != m.Name {
+			continue
+		}
+		sourceProject, service, ok := observability.ParseRuntimeTarget(source.Target)
+		if !ok || sourceProject != project {
+			continue
+		}
+		seen[service] = providerService{Service: service, Provider: source.Provider}
+	}
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	if len(seen) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", false, err
+		}
+		return "", false, nil
+	}
+	registration, err := ApplicationRegistration(m)
+	if err != nil {
+		return "", false, err
+	}
+	services := make([]providerService, 0, len(seen))
+	for _, service := range seen {
+		services = append(services, service)
+	}
+	sort.Slice(services, func(i, j int) bool { return services[i].Service < services[j].Service })
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, source := range services {
+		fmt.Fprintf(&b, "  %s:\n", source.Service)
+		b.WriteString("    logging:\n")
+		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+			b.WriteString("      driver: journald\n")
+			continue
+		}
+		b.WriteString("      driver: syslog\n")
+		b.WriteString("      options:\n")
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)))
+		b.WriteString("        syslog-format: rfc5424\n")
+		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(string(source.Provider)+"/"+source.Service))
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return "", false, err
+	}
+	return path, true, nil
+}
+
+func ExistingProviderSourceOverride(runtime application.RuntimeFiles) (string, bool, error) {
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if !info.Mode().IsRegular() {
+		return "", false, errors.New("provider logging override is not a regular file")
+	}
+	return path, true, nil
+}
+
 func ExistingWorkloadOverride(runtime application.RuntimeFiles) (string, bool, error) {
 	path := filepath.Join(runtime.Dir, workloadOverrideName)
 	info, err := os.Stat(path)
@@ -241,6 +334,14 @@ func ExistingWorkloadOverride(runtime application.RuntimeFiles) (string, bool, e
 		return "", false, errors.New("logging workload override is not a regular file")
 	}
 	return path, true, nil
+}
+
+func RemoveProviderSourceOverride(runtime application.RuntimeFiles) error {
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
@@ -284,7 +385,11 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
 		return DestroyProvider(ctx, runtime, m)
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind(runtime))), 0o644); err != nil {
+	providerSources, err := providerLogSources(p, registrations)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind(runtime))), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -392,6 +497,28 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 	}
 }
 
+func providerLogSources(p Placement, registrations []Registration) ([]observability.SignalSource, error) {
+	applications := make([]string, 0, len(registrations))
+	seen := map[string]struct{}{}
+	for _, registration := range registrations {
+		if _, ok := seen[registration.Application]; ok {
+			continue
+		}
+		seen[registration.Application] = struct{}{}
+		applications = append(applications, registration.Application)
+	}
+	return observability.ListLogs(
+		capability.ProviderPlacement{
+			Scope:           p.Scope,
+			SharingBoundary: p.SharingBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		applications,
+		true,
+		true,
+	)
+}
+
 func reconcileRegistration(path string, m application.Manifest, present bool) ([]Registration, error) {
 	registrations, err := readRegistrations(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -411,8 +538,16 @@ func reconcileRegistration(path string, m application.Manifest, present bool) ([
 		r := Registration{Application: m.Name, Environment: m.Environment}
 		if existing != nil {
 			r.SyslogPort = existing.SyslogPort
-		} else {
+			r.ProviderSyslogPort = existing.ProviderSyslogPort
+		}
+		if r.SyslogPort == 0 {
 			r.SyslogPort, err = allocatePort("udp")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if r.ProviderSyslogPort == 0 {
+			r.ProviderSyslogPort, err = allocatePort("udp")
 			if err != nil {
 				return nil, err
 			}
@@ -449,7 +584,9 @@ func readRegistrations(path string) ([]Registration, error) {
 		return nil, fmt.Errorf("decode Loki registrations: %w", err)
 	}
 	for _, r := range registrations {
-		if strings.TrimSpace(r.Application) == "" || strings.TrimSpace(r.Environment) == "" || r.SyslogPort < 1 || r.SyslogPort > 65535 {
+		if strings.TrimSpace(r.Application) == "" || strings.TrimSpace(r.Environment) == "" ||
+			r.SyslogPort < 1 || r.SyslogPort > 65535 ||
+			r.ProviderSyslogPort < 1 || r.ProviderSyslogPort > 65535 {
 			return nil, errors.New("invalid Loki registration state")
 		}
 	}
