@@ -39,6 +39,24 @@ These values are deployment/operator state, not fields in `baseharbor.yaml`.
 
 A provider with native credentials/ACLs may use them. A service without suitable native authentication may use an mTLS gateway. The authentication mechanism is provider/runtime realization state.
 
+## Developer host trust
+
+Managed-local PKI may expose its public CA to the developer host without transferring issuer ownership to the CLI.
+
+Rules:
+
+- `baha up` checks whether the active managed-local CA is already trusted by the host when the repository lifecycle reaches an initialized, unsealed issuer;
+- interactive `baha up` may offer host-trust installation, but only after an explicit yes/no prompt;
+- `--yes` never implies host-trust consent;
+- automation opts in explicitly with `baha up --trust-host-ca` or `baha trust install --yes`;
+- `baha trust export --output PATH` exports only the public CA certificate/bundle; CA private keys remain inside the issuer provider;
+- BaseHarbor records only trust anchors that it installed itself, keyed by CA fingerprint;
+- ordinary `baha down` preserves host trust because the environment still exists;
+- global `baha destroy --yes` removes only BaseHarbor-owned host trust anchors and verifies the installed certificate fingerprint before deletion;
+- external-pki and BYOC trust roots remain operator-owned and are never installed, exported as BaseHarbor-owned material, or removed by BaseHarbor.
+
+Fingerprint-specific anchor names allow old and new roots to overlap during CA rotation instead of forcing destructive in-place replacement.
+
 ## External PKI
 
 External PKI is first-class.
