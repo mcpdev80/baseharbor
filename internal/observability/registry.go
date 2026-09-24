@@ -64,9 +64,12 @@ type SignalSource struct {
 	OwnerApplication string                   `json:"owner_application,omitempty"`
 	Network          string                   `json:"network,omitempty"`
 	Target           string                   `json:"target"`
-	Protocol         string                   `json:"protocol"`
-	Path             string                   `json:"path,omitempty"`
-	Security         Security                 `json:"security"`
+	Protocol           string                                  `json:"protocol"`
+	Path               string                                  `json:"path,omitempty"`
+	Mode               capability.ObservabilityRealizationMode `json:"mode,omitempty"`
+	SemanticConvention string                                  `json:"semantic_convention,omitempty"`
+	Verification       capability.ObservabilityVerificationMode `json:"verification,omitempty"`
+	Security           Security                                `json:"security"`
 }
 
 func (s SignalSource) Validate() error {
@@ -221,9 +224,12 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 			OwnerApplication: registration.OwnerApplication,
 			Network:          runtimeSignal.Network,
 			Target:           runtimeSignal.Target,
-			Protocol:         signal.Protocol,
-			Path:             signal.Path,
-			Security:         runtimeSignal.Security,
+			Protocol:           signal.Protocol,
+			Path:               signal.Path,
+			Mode:               signal.Mode,
+			SemanticConvention: signal.SemanticConvention,
+			Verification:       signal.Verification,
+			Security:           runtimeSignal.Security,
 		}
 		if err := source.Validate(); err != nil {
 			return fmt.Errorf("register provider %q signal %q: %w", registration.Descriptor.Provider.Kind, signal.Name, err)
