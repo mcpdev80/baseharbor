@@ -224,6 +224,23 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if p.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
+	metricsPolicy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return Placement{}, err
+	}
+	metricsEnabled := (application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["tempo-metrics"] = observability.ProviderSignalRuntime{
+			Network: p.Network,
+			Target:  "tempo:3200",
+		}
+	}
 	if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               "tempo:" + p.Project,
 		Descriptor:       capability.TempoIntegration,
@@ -231,12 +248,8 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		Scope:            p.Scope,
 		SharingBoundary:  p.SharingBoundary,
 		OwnerApplication: p.OwnerApplication,
-		Signals: map[string]observability.ProviderSignalRuntime{
-			"tempo-metrics": {
-				Network: p.Network,
-				Target:  "tempo:3200",
-			},
-		},
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	}); err != nil {
 		return Placement{}, err
 	}
