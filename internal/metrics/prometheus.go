@@ -124,11 +124,12 @@ type sourceRegistration struct {
 type Driver struct {
 	runtime   Runtime
 	app       application.Manifest
+	issuer    serviceaccess.Issuer
 	runtimeCA string
 	client    *http.Client
 }
 
-func NewDriver(runtime Runtime, app application.Manifest, runtimeCA ...string) *Driver {
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, runtimeCA ...string) *Driver {
 	caPath := ""
 	if len(runtimeCA) > 0 {
 		caPath = strings.TrimSpace(runtimeCA[0])
@@ -136,6 +137,7 @@ func NewDriver(runtime Runtime, app application.Manifest, runtimeCA ...string) *
 	return &Driver{
 		runtime:   runtime,
 		app:       app,
+		issuer:    issuer,
 		runtimeCA: caPath,
 		client:    nil,
 	}
@@ -182,7 +184,7 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
-	files, err := EnsureProviderFilesWithRuntimeCA(d.app, d.runtimeCA)
+	files, err := EnsureProviderFilesWithRuntimeCA(ctx, d.issuer, d.app, d.runtimeCA)
 	if err != nil {
 		return err
 	}
@@ -405,11 +407,11 @@ func providerMetricNetworks(sources []observability.MetricsSource) []string {
 	return result
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	return EnsureProviderFilesWithRuntimeCA(m, "")
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
+	return EnsureProviderFilesWithRuntimeCA(ctx, issuer, m, "")
 }
 
-func EnsureProviderFilesWithRuntimeCA(m application.Manifest, runtimeCASource string) (ProviderFiles, error) {
+func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeCASource string) (ProviderFiles, error) {
 	placement, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -513,7 +515,7 @@ func EnsureProviderFilesWithRuntimeCA(m application.Manifest, runtimeCASource st
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, prometheusAccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, prometheusAccessSpec())
 	if err != nil {
 		return ProviderFiles{}, err
 	}
