@@ -132,6 +132,29 @@ func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
 	return nameArgs, fix, nil
 }
 
+func classifyStructuredAppDoctor(result appDoctorStructuredResult) []appDoctorFinding {
+	findings := make([]appDoctorFinding, 0)
+	requiredByName := make(map[string]struct {
+		present   bool
+		usable    bool
+		generated bool
+	}, len(result.RequiredSecrets))
+	for _, secret := range result.RequiredSecrets {
+		requiredByName[secret.Name] = struct {
+			present   bool
+			usable    bool
+			generated bool
+		}{present: secret.Present, usable: secret.Usable, generated: secret.Generated}
+	}
+	for _, check := range result.Checks {
+		if check.OK {
+			continue
+		}
+		findings = append(findings, classifyAppDoctorFinding(check.Name, check.Detail, requiredByName))
+	}
+	return findings
+}
+
 func classifyApplicationDoctor(result applicationDoctorResult) []appDoctorFinding {
 	findings := make([]appDoctorFinding, 0)
 	requiredByName := make(map[string]struct {
