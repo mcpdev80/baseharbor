@@ -327,8 +327,39 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if len(units) == 0 {
 		return nil
 	}
-	_, err = quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...)
-	return err
+	if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, units...)...); err != nil {
+		return err
+	}
+	return quadletEnsureServiceUnitsActive(ctx, units)
+}
+
+func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error {
+	for _, unit := range units {
+		if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
+			continue
+		}
+		status, statusErr := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+		if statusErr != nil && strings.TrimSpace(status) == "" {
+			status = statusErr.Error()
+		}
+		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, strings.TrimSpace(status))
+	}
+	return nil
+}
+
+func quadletSystemctlCombined(ctx context.Context, args ...string) (string, error) {
+	path, err := exec.LookPath("systemctl")
+	if err != nil {
+		return "", err
+	}
+	full := append([]string{"--user"}, args...)
+	cmd := exec.CommandContext(ctx, path, full...)
+	cmd.Env = quadletUserRuntimeEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("systemctl --user %s: %w", strings.Join(args, " "), err)
+	}
+	return string(output), nil
 }
 
 func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, units []string, kind, directive string) error {
