@@ -11,6 +11,7 @@ import (
 )
 
 type managedProviderPreflightState struct {
+	issuer        serviceaccess.Issuer
 	exposure      *managedExposureExecution
 	objectStorage *managedObjectStorageExecution
 	traces        *managedTracesExecution
