@@ -35,6 +35,8 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 		false,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 	got := out.String()
 	for _, forbidden := range []string{"compose exec", "curl --fail", "bao status"} {
@@ -105,6 +107,8 @@ func TestDoctorTLSRendersBeforeFinalState(t *testing.T) {
 		nil,
 		application.WorkloadSecurityReport{},
 		false,
+		nil,
+		nil,
 		status,
 		nil,
 	)
