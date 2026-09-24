@@ -52,8 +52,18 @@ func TestApplyRuntimeProviderStatePreservesExplicitProfile(t *testing.T) {
 	}
 }
 
+func TestRuntimeProviderStateAcceptsKubernetes(t *testing.T) {
+	state, err := RuntimeProviderStateFromValues(map[string]string{RuntimeProviderEnvKey: "kubernetes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Provider != bhruntime.ProviderKubernetes {
+		t.Fatalf("provider = %q, want %q", state.Provider, bhruntime.ProviderKubernetes)
+	}
+}
+
 func TestRuntimeProviderStateRejectsUnavailableProvider(t *testing.T) {
-	for _, provider := range []string{"kubernetes", "openshift"} {
+	for _, provider := range []string{"openshift", "nomad"} {
 		if _, err := RuntimeProviderStateFromValues(map[string]string{RuntimeProviderEnvKey: provider}); err == nil {
 			t.Fatalf("provider %q unexpectedly accepted", provider)
 		}
