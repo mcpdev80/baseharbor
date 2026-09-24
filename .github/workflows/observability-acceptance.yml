@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   docker:
+    if: ${{ !contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 15
     env:
@@ -71,3 +72,89 @@ jobs:
         if: always()
         shell: bash
         run: bash scripts/ci-runtime-reset.sh docker
+
+  podman:
+    if: ${{ contains(github.ref_name, '/podman/') }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset persistent runner state
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Verify Quadlet-only runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/dev/null
+          generator=""
+          for candidate in \
+            "$(command -v podman-system-generator 2>/dev/null || true)" \
+            /usr/lib/systemd/system-generators/podman-system-generator \
+            /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          "$generator" --user --dryrun >/dev/null
+
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet observability acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Run focused full-stack observability acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -p 1 ./cmd/baha -run '^TestObservabilityFullStackAcceptanceInCI$' -count=1 -v
+
+      - name: Show Quadlet observability diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+          systemctl --user --failed --no-pager || true
+          systemctl --user list-units 'baseharbor*' --all --no-pager || true
+          for unit in $(systemctl --user list-units 'baseharbor*' --all --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+            [ -n "$unit" ] || continue
+            systemctl --user status "$unit" --no-pager -l || true
+            journalctl --user -u "$unit" -n 80 --no-pager || true
+          done
+          podman ps -a || true
+
+      - name: Cleanup persistent runner state
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
