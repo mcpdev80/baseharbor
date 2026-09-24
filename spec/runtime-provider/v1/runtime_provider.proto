@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package baseharbor.runtime.provider.v1;
+
+option go_package = "github.com/mcpdev80/baseharbor/spec/runtime-provider/v1;runtimeproviderv1";
+
+// RuntimeProvider defines the language-neutral external runtime provider
+// boundary. It is distinct from capability-provider and delivery-provider
+// protocols.
+//
+// Providers consume provider-neutral workload plans whose source/build inputs
+// have already been resolved to OCI artifacts. Runtime-native objects such as
+// Kubernetes Deployments, Podman Quadlets or Docker Compose projects remain
+// provider implementation details.
+service RuntimeProvider {
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Preflight(PreflightRequest) returns (PreflightResponse);
+  rpc Apply(ApplyRequest) returns (Operation);
+  rpc Observe(ObserveRequest) returns (Observation);
+  rpc Logs(LogsRequest) returns (LogsResponse);
+  rpc Exec(ExecRequest) returns (ExecResponse);
+  rpc Destroy(DestroyRequest) returns (Operation);
+  rpc GetOperation(GetOperationRequest) returns (Operation);
+  rpc CancelOperation(CancelOperationRequest) returns (Operation);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  // Protocol identifier, for example baseharbor.runtime.provider/v1.
+  string protocol = 1;
+  // Stable provider implementation identity.
+  string provider_id = 2;
+  // Provider implementation version, independent from protocol and runtime
+  // product versions.
+  string provider_version = 3;
+  repeated RuntimeCapability capabilities = 4;
+}
+
+enum RuntimeCapability {
+  RUNTIME_CAPABILITY_UNSPECIFIED = 0;
+  RUNTIME_CAPABILITY_WORKLOAD_LIFECYCLE = 1;
+  RUNTIME_CAPABILITY_SERVICE_EXEC = 2;
+  RUNTIME_CAPABILITY_PUBLISHED_PORTS = 3;
+  RUNTIME_CAPABILITY_RESOURCE_OWNERSHIP = 4;
+}
+
+message Target {
+  // Deployment-owned opaque runtime scope. A provider may realize this as a
+  // Kubernetes namespace, Compose project boundary, systemd user scope, etc.
+  // Portable application intent never assigns provider-native meaning to it.
+  string scope = 1;
+}
+
+message WorkloadPlan {
+  string application = 1;
+  string environment = 2;
+  Target target = 3;
+  repeated WorkloadService services = 4;
+  repeated RuntimeBinding bindings = 5;
+}
+
+message WorkloadService {
+  string name = 1;
+  // Resolved OCI image reference. Source/build configuration is forbidden at
+  // this boundary.
+  string image = 2;
+  repeated string args = 3;
+  repeated EnvironmentVariable environment = 4;
+  repeated ContainerPort ports = 5;
+}
+
+message EnvironmentVariable {
+  string name = 1;
+  string value = 2;
+}
+
+message ContainerPort {
+  uint32 container_port = 1;
+  string protocol = 2;
+}
+
+message RuntimeBinding {
+  string name = 1;
+
+  oneof source {
+    string public_value = 2;
+    // Opaque secret reference resolved only inside the trusted runtime
+    // projection boundary. Plaintext credentials must not be persisted in
+    // portable intent, diagnostics or provider registry state.
+    string secret_ref = 3;
+  }
+}
+
+message MutationContext {
+  // Stable idempotency key for mutating operations.
+  string idempotency_key = 1;
+}
+
+message PreflightRequest {
+  WorkloadPlan plan = 1;
+}
+
+message PreflightResponse {
+  bool supported = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+message ApplyRequest {
+  WorkloadPlan plan = 1;
+  MutationContext mutation = 2;
+}
+
+message ObserveRequest {
+  string application = 1;
+  string environment = 2;
+  Target target = 3;
+}
+
+message Observation {
+  bool found = 1;
+  repeated WorkloadStatus services = 2;
+  repeated Diagnostic diagnostics = 3;
+}
+
+message WorkloadStatus {
+  string service = 1;
+  bool ready = 2;
+  bool running = 3;
+  string detail = 4;
+}
+
+message LogsRequest {
+  string application = 1;
+  string environment = 2;
+  Target target = 3;
+  string service = 4;
+  uint32 tail = 5;
+}
+
+message LogsResponse {
+  bytes content = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+message ExecRequest {
+  string application = 1;
+  string environment = 2;
+  Target target = 3;
+  string service = 4;
+  repeated string args = 5;
+}
+
+message ExecResponse {
+  int32 exit_code = 1;
+  bytes stdout = 2;
+  bytes stderr = 3;
+  repeated Diagnostic diagnostics = 4;
+}
+
+message DestroyRequest {
+  string application = 1;
+  string environment = 2;
+  Target target = 3;
+  MutationContext mutation = 4;
+}
+
+message GetOperationRequest {
+  string operation_id = 1;
+}
+
+message CancelOperationRequest {
+  string operation_id = 1;
+}
+
+enum OperationState {
+  OPERATION_STATE_UNSPECIFIED = 0;
+  OPERATION_STATE_PENDING = 1;
+  OPERATION_STATE_RUNNING = 2;
+  OPERATION_STATE_SUCCEEDED = 3;
+  OPERATION_STATE_FAILED = 4;
+  OPERATION_STATE_CANCELED = 5;
+}
+
+message Operation {
+  string operation_id = 1;
+  OperationState state = 2;
+  repeated Diagnostic diagnostics = 3;
+}
+
+message Diagnostic {
+  string code = 1;
+  string severity = 2;
+  string message = 3;
+}
