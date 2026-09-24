@@ -95,7 +95,7 @@ func TestComposeRunsCaddyUnprivileged(t *testing.T) {
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",
 		"/tmp:rw,noexec,nosuid,nodev",
-		"/run/baseharbor:rw,exec,nosuid,nodev,mode=0700,uid=65532,gid=65532",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
 		"/config:rw,noexec,nosuid,nodev,mode=1777",
 		"/data:rw,noexec,nosuid,nodev,mode=1777",
 		"cat /usr/bin/caddy > /run/baseharbor/caddy",
