@@ -179,6 +179,31 @@ func valkeyGatewayCompose(instance string) string {
 	)
 }
 
+type BackendTLSLifecycleObservation struct {
+	Kind      string                             `json:"kind"`
+	Instance  string                             `json:"instance"`
+	Lifecycle serviceaccess.LifecycleObservation `json:"lifecycle"`
+}
+
+func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLifecycleObservation, error) {
+	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
+	for _, instance := range SQLInstanceNames(m) {
+		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect PostgreSQL TLS lifecycle for %s: %w", instance, err)
+		}
+		out = append(out, BackendTLSLifecycleObservation{Kind: "sql", Instance: instance, Lifecycle: lifecycle})
+	}
+	for _, instance := range CacheInstanceNames(m) {
+		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "valkey", instance), "service-access", "pki"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect Valkey TLS lifecycle for %s: %w", instance, err)
+		}
+		out = append(out, BackendTLSLifecycleObservation{Kind: "cache", Instance: instance, Lifecycle: lifecycle})
+	}
+	return out, nil
+}
+
 func backendCertificates(path string) (string, error) {
 	data, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
