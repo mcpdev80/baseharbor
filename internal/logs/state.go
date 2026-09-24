@@ -142,7 +142,11 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind)), 0o644); err != nil {
+	providerSources, err := providerLogSources(p, registrations)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -373,7 +377,11 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
 		return DestroyProvider(ctx, runtime, m)
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind(runtime))), 0o644); err != nil {
+	providerSources, err := providerLogSources(p, registrations)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind(runtime))), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -479,6 +487,28 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 		Networks:         []string{"logs-internal", "logs-publish"},
 		RequireClient:    true,
 	}
+}
+
+func providerLogSources(p Placement, registrations []Registration) ([]observability.SignalSource, error) {
+	applications := make([]string, 0, len(registrations))
+	seen := map[string]struct{}{}
+	for _, registration := range registrations {
+		if _, ok := seen[registration.Application]; ok {
+			continue
+		}
+		seen[registration.Application] = struct{}{}
+		applications = append(applications, registration.Application)
+	}
+	return observability.ListLogs(
+		capability.ProviderPlacement{
+			Scope:           p.Scope,
+			SharingBoundary: p.SharingBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		applications,
+		true,
+		true,
+	)
 }
 
 func reconcileRegistration(path string, m application.Manifest, present bool) ([]Registration, error) {
