@@ -34,6 +34,7 @@ type Driver struct {
 	runtime Runtime
 	engine  string
 	app     application.Manifest
+	issuer  serviceaccess.Issuer
 	client  *http.Client
 }
 
@@ -53,8 +54,8 @@ func runtimeKind(runtime Runtime) string {
 	return "docker"
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer}
 }
 
 func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
@@ -99,7 +100,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	files, err := EnsureProviderFilesForRuntime(d.app, d.engine)
+	files, err := EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
 	if err != nil {
 		return err
 	}
