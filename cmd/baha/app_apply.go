@@ -12,8 +12,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/machine"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -155,6 +155,11 @@ func appApplyCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
+			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
+			}); err != nil {
+				return err
+			}
 			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
 				return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
 			}); err != nil {
@@ -243,11 +248,6 @@ func appApplyCommand(store application.Store) *cli.Command {
 			}
 			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
 				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
-				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
 			}); err != nil {
 				return err
 			}
