@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -161,5 +162,45 @@ func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Fatalf("collector config missing %q:\n%s", want, config)
 		}
+	}
+}
+
+
+func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
+	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
+	source := observability.SignalSource{
+		ID:                 "postgresql:demo:postgres",
+		Kind:               observability.SignalTraces,
+		Provider:           capability.ProviderPostgreSQL,
+		Class:              observability.SourceApplicationProvider,
+		Scope:              capability.ScopeApplication,
+		OwnerApplication:   "demo",
+		Target:             observability.RuntimeTarget("baseharbor-demo-dev", "postgres"),
+		Protocol:           "interaction",
+		Mode:               capability.ObservabilityInteraction,
+		SemanticConvention: "database",
+		Verification:       capability.ObservabilityVerifySpan,
+	}
+
+	first, firstID := providerInteractionTracePayload(m, source)
+	second, secondID := providerInteractionTracePayload(m, source)
+	if firstID == secondID {
+		t.Fatalf("provider verification trace ids are not unique: %s", firstID)
+	}
+	for _, want := range []string{
+		"baseharbor.provider.interaction.verify",
+		"postgresql",
+		"postgresql:demo:postgres",
+		"baseharbor-demo-dev/postgres",
+		"database",
+		"demo",
+		"dev",
+	} {
+		if !strings.Contains(string(first), want) {
+			t.Fatalf("provider interaction trace missing %q", want)
+		}
+	}
+	if len(first) == 0 || len(second) == 0 {
+		t.Fatal("provider interaction trace payload is empty")
 	}
 }
