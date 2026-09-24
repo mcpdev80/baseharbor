@@ -16,7 +16,7 @@ const (
 )
 
 func postgresAccessService(instance string) string {
-	return runtimeServiceName("postgres", instance) + "-access"
+	return runtimeServiceName("postgres", instance)
 }
 
 func valkeyAccessService(instance string) string {
@@ -54,30 +54,25 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			return err
 		}
 		root := backendAccessRoot(files, "postgresql", instance)
-		gateway, err := serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName:      postgresAccessService(instance),
-			UpstreamHost:     runtimeServiceName("postgres", instance),
-			UpstreamPort:     5432,
-			PublishedPortEnv: postgresRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    5432,
-		})
+		material, err := serviceaccess.EnsureTLSMaterial(
+			ctx,
+			issuer,
+			policy,
+			filepath.Join(root, "service-access", "pki"),
+			runtimeServiceName("postgres", instance),
+			"127.0.0.1",
+		)
 		if err != nil {
-			return fmt.Errorf("prepare PostgreSQL TLS access for %s: %w", instance, err)
+			return fmt.Errorf("prepare PostgreSQL native TLS for %s: %w", instance, err)
 		}
-		sourcePolicy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
-		}
-		material, err := serviceaccess.ExistingTLSMaterial(sourcePolicy, filepath.Join(root, "service-access", "pki"))
-		if err != nil {
-			return err
+		if err := projectPostgresServerMaterial(root, material); err != nil {
+			return fmt.Errorf("project PostgreSQL native TLS for %s: %w", instance, err)
 		}
 		ca, err := projectBackendCA(files, "postgres", instance, material.CA)
 		if err != nil {
 			return err
 		}
 		values[postgresTLSCAKey(instance)] = ca
-		_ = gateway
 	}
 	for _, instance := range CacheInstanceNames(m) {
 		policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
@@ -106,6 +101,38 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 		values[valkeyTLSCAKey(instance)] = ca
 	}
 	return writeRuntimeEnv(files.Env, m, values)
+}
+
+func projectPostgresServerMaterial(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	for source, target := range map[string]string{
+		material.ServerCertificate: filepath.Join(runtimeDir, "server-cert.pem"),
+		material.ServerKey:         filepath.Join(runtimeDir, "server-key.pem"),
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("PostgreSQL TLS material %s is empty", filepath.Base(source))
+		}
+		if err := os.WriteFile(target, data, 0o600); err != nil {
+			return err
+		}
+		// The directory is owner-only on the host. Inside the unprivileged
+		// PostgreSQL container the mounted source must be readable so the
+		// process can copy the key into tmpfs and tighten it to 0600.
+		if err := os.Chmod(target, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func projectBackendCA(files RuntimeFiles, kind, instance, source string) (string, error) {
