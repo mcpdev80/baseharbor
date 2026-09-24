@@ -53,7 +53,7 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 	}
 }
 
-func TestGatewayComposeRunsCaddyWithMinimalCapability(t *testing.T) {
+func TestGatewayComposeRunsCaddyWithLeastPrivilege(t *testing.T) {
 	files := HTTPGatewayFiles{
 		Caddyfile: "/tmp/access/Caddyfile",
 		Material: TLSMaterial{
@@ -65,7 +65,6 @@ func TestGatewayComposeRunsCaddyWithMinimalCapability(t *testing.T) {
 	got := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "openbao-access", ContainerPort: 8443})
 	for _, want := range []string{
 		"cap_drop: [\"ALL\"]",
-		"cap_add: [\"NET_BIND_SERVICE\"]",
 		"entrypoint: [\"/bin/sh\", \"-ec\"]",
 		"exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
 	} {
@@ -73,9 +72,14 @@ func TestGatewayComposeRunsCaddyWithMinimalCapability(t *testing.T) {
 			t.Fatalf("gateway compose missing %q:\n%s", want, got)
 		}
 	}
-	for _, forbidden := range []string{"/run/baseharbor", "cat /usr/bin/caddy"} {
+	for _, forbidden := range []string{"cap_add:", "/run/baseharbor", "cat /usr/bin/caddy"} {
 		if strings.Contains(got, forbidden) {
-			t.Fatalf("gateway compose still uses runtime-specific Caddy staging %q:\n%s", forbidden, got)
+			t.Fatalf("gateway compose contains unnecessary runtime privilege/staging %q:\n%s", forbidden, got)
 		}
+	}
+
+	privilegedPort := HTTPGatewayComposeService(files, HTTPGatewaySpec{ServiceName: "https-access", ContainerPort: 443})
+	if !strings.Contains(privilegedPort, "cap_add: [\"NET_BIND_SERVICE\"]") {
+		t.Fatalf("gateway on privileged port must add NET_BIND_SERVICE:\n%s", privilegedPort)
 	}
 }
