@@ -47,7 +47,7 @@ func newTestIssuer(t interface{ Fatal(...any) }) *testIssuer {
 func (i *testIssuer) TrustBundle(context.Context) (TrustBundle, error) {
 	return TrustBundle{
 		IssuerReference: "test://issuer",
-		PEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
+		PEM:             pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
 	}, nil
 }
 
