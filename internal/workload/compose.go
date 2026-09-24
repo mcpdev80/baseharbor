@@ -203,7 +203,7 @@ func composeContainerPort(raw any) (Port, bool, error) {
 		}
 		parts := strings.Split(text, ":")
 		target := strings.TrimSpace(parts[len(parts)-1])
-		target = strings.Trim(target, ""'")
+		target = strings.Trim(target, "\"'")
 		number, err := strconv.Atoi(target)
 		if err != nil || number < 1 || number > 65535 {
 			return Port{}, false, fmt.Errorf("unsupported Compose port %q", value)
