@@ -234,7 +234,11 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			if err := runtime.ConfigProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("validate runtime broker log collection: %w", err)
 			}
-			if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
+			if found && runtime.Engine() == "docker" {
+				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectName(m), workdir, nil, nil, composeFiles...); err != nil {
+					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
+				}
+			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 			}
 		}
@@ -263,7 +267,11 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 		if err := runtime.ConfigProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("validate runtime executor log collection: %w", err)
 		}
-		if err := runtime.UpProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
+		if found && runtime.Engine() == "docker" {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
+				return fmt.Errorf("reconcile runtime executor log collection: %w", err)
+			}
+		} else if err := runtime.UpProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 		}
 	}
