@@ -137,7 +137,6 @@ func (s MetricsSource) signal() SignalSource {
 	}
 }
 
-
 // ProviderSignalRuntime is provider realization state for one declared signal.
 // It contains reachability/security details only; portable application intent
 // and product-specific collector configuration do not flow through this type.
