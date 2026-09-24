@@ -419,6 +419,8 @@ func appDoctorCommand(store application.Store) *cli.Command {
 					result.requiredSecretStatuses,
 					result.workloadSecurity,
 					result.Healthy,
+					result.ServiceTLS,
+					result.serviceTLSErr,
 					result.tlsStatus,
 					result.tlsErr,
 				)
@@ -444,6 +446,8 @@ func renderApplicationDoctor(
 	requiredSecrets []openbao.RequiredSecretStatus,
 	workloadSecurity application.WorkloadSecurityReport,
 	healthy bool,
+	serviceTLS []application.BackendTLSLifecycleObservation,
+	serviceTLSErr error,
 	tlsStatus *applicationTLSStatus,
 	tlsErr error,
 ) {
@@ -504,6 +508,12 @@ func renderApplicationDoctor(
 	if term.Verbose() {
 		printWorkloadSecurityFindings(out, workloadSecurity)
 	}
+	if serviceTLSErr != nil {
+		term.Section("Service TLS")
+		term.Result("FAILED", "lifecycle", serviceTLSErr.Error())
+	} else {
+		renderServiceTLSLifecycle(term, serviceTLS)
+	}
 	if tlsStatus != nil || tlsErr != nil {
 		term.Section("TLS")
 		if tlsErr != nil {
@@ -513,7 +523,7 @@ func renderApplicationDoctor(
 		}
 	}
 
-	if healthy && tlsErr == nil {
+	if healthy && serviceTLSErr == nil && tlsErr == nil {
 		fmt.Fprintln(out, "\nREADY")
 		return
 	}
