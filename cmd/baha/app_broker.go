@@ -100,7 +100,8 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if platformFiles.Compose == "" || platformFiles.Env == "" {
 		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
 	}
-	providerFiles, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose)
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	providerFiles, _, adminCredentialsPath, err := objectstorage.EnsureSharedProvider(ctx, compose, issuer)
 	if err != nil {
 		return fmt.Errorf("converge runtime object-storage provider: %w", err)
 	}
