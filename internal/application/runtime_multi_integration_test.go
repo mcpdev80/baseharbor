@@ -11,6 +11,7 @@ import (
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
@@ -29,7 +30,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
