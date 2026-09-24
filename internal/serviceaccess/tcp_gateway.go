@@ -1,6 +1,7 @@
 package serviceaccess
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,7 +28,7 @@ type TCPGatewaySpec struct {
 	Network          string
 }
 
-func EnsureTCPGateway(policy Policy, providerDir string, spec TCPGatewaySpec) (TCPGatewayFiles, error) {
+func EnsureTCPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec TCPGatewaySpec) (TCPGatewayFiles, error) {
 	if strings.TrimSpace(spec.ServiceName) == "" || strings.TrimSpace(spec.UpstreamHost) == "" {
 		return TCPGatewayFiles{}, errors.New("TCP service gateway name and upstream are required")
 	}
@@ -44,7 +45,7 @@ func EnsureTCPGateway(policy Policy, providerDir string, spec TCPGatewaySpec) (T
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return TCPGatewayFiles{}, err
 	}
-	material, err := EnsureTLSMaterial(policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
 	if err != nil {
 		return TCPGatewayFiles{}, err
 	}
