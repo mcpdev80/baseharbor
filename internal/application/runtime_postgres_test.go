@@ -82,6 +82,8 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	for _, wanted := range []string{
 		"docker.io/library/postgres:18-alpine",
 		"docker.io/valkey/valkey:9.1.2-alpine",
+		"./providers/postgresql/default/service-access/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"./providers/valkey/default/service-access/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
 		"postgres-data:/var/lib/postgresql",
 		"valkey-data:/data",
 		"appendonly yes",
