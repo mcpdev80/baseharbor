@@ -45,6 +45,10 @@ func (p Provider) Namespace() string {
 	return p.namespace
 }
 
+func (p Provider) TargetScope() string {
+	return p.namespace
+}
+
 // Detect resolves the standard Kubernetes client configuration from the
 // deployment environment. It deliberately does not require cluster-admin
 // discovery privileges; provider operations perform capability-specific API
