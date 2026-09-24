@@ -7,23 +7,13 @@ import (
 	"strconv"
 	"strings"
 
+	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 	"github.com/mcpdev80/baseharbor/internal/workload"
 	"gopkg.in/yaml.v3"
 )
 
-type Binding struct {
-	Value     string
-	Sensitive bool
-}
-
-type Plan struct {
-	Application string
-	Environment string
-	Namespace   string
-	Workload    workload.Model
-	Images      map[string]string
-	Bindings    map[string]Binding
-}
+type Binding = runtimemodel.Binding
+type Plan = runtimemodel.WorkloadPlan
 
 func Render(plan Plan) ([]byte, error) {
 	if strings.TrimSpace(plan.Application) == "" {
@@ -32,8 +22,8 @@ func Render(plan Plan) ([]byte, error) {
 	if strings.TrimSpace(plan.Environment) == "" {
 		return nil, errors.New("Kubernetes environment is required")
 	}
-	if strings.TrimSpace(plan.Namespace) == "" {
-		return nil, errors.New("Kubernetes namespace is required")
+	if strings.TrimSpace(plan.Target.Scope) == "" {
+		return nil, errors.New("Kubernetes runtime target scope (namespace) is required")
 	}
 	if len(plan.Workload.Services) == 0 {
 		return nil, errors.New("Kubernetes workload contains no services")
@@ -98,7 +88,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"kind":       "ConfigMap",
 			"metadata": map[string]any{
 				"name":        configName,
-				"namespace":   plan.Namespace,
+				"namespace":   plan.Target.Scope,
 				"labels":      cloneMap(labels),
 				"annotations": cloneMap(annotations),
 			},
@@ -112,7 +102,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"type":       "Opaque",
 			"metadata": map[string]any{
 				"name":        secretName,
-				"namespace":   plan.Namespace,
+				"namespace":   plan.Target.Scope,
 				"labels":      cloneMap(labels),
 				"annotations": cloneMap(annotations),
 			},
@@ -159,7 +149,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 		"kind":       "Deployment",
 		"metadata": map[string]any{
 			"name":        name,
-			"namespace":   plan.Namespace,
+			"namespace":   plan.Target.Scope,
 			"labels":      cloneMap(labels),
 			"annotations": cloneMap(annotations),
 		},
@@ -198,7 +188,7 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 			"kind":       "Service",
 			"metadata": map[string]any{
 				"name":        name,
-				"namespace":   plan.Namespace,
+				"namespace":   plan.Target.Scope,
 				"labels":      cloneMap(labels),
 				"annotations": cloneMap(annotations),
 			},
