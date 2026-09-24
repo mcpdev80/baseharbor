@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -113,6 +116,9 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
 			return err
 		}
+		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+			return err
+		}
 		fmt.Fprintf(out, "[SKIPPED] logs             log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
 		return nil
 	}
@@ -160,7 +166,69 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if _, _, err := logsprovider.EnsureProviderSourceOverrideForRuntime(prepared.manifest, files, prepared.runtime.Engine()); err != nil {
 		return err
 	}
+	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(providerSources))
+	return nil
+}
+
+func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	if application.RequiresRuntimeBroker(m) {
+		brokerFiles, err := runtimebroker.Existing(files)
+		if err == nil {
+			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntime(
+				m,
+				files.Dir,
+				"broker.logging.override.yaml",
+				runtimebroker.ProjectName(m),
+				runtime.Engine(),
+				observability.SourceApplicationProvider,
+			)
+			if err != nil {
+				return fmt.Errorf("materialize runtime broker log collection: %w", err)
+			}
+			composeFiles := []string{brokerFiles.Compose}
+			if found {
+				composeFiles = append(composeFiles, override)
+			}
+			workdir := filepath.Dir(brokerFiles.Compose)
+			if err := runtime.ConfigProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
+				return fmt.Errorf("validate runtime broker log collection: %w", err)
+			}
+			if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
+				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
+			}
+		}
+	}
+
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	if executorFiles, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
+		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntime(
+			m,
+			executorFiles.Dir,
+			"observability.logging.override.yaml",
+			runtimeexecutor.ProjectName,
+			runtime.Engine(),
+			observability.SourcePlatformProvider,
+		)
+		if err != nil {
+			return fmt.Errorf("materialize runtime executor log collection: %w", err)
+		}
+		composeFiles := []string{executorFiles.Compose}
+		if found {
+			composeFiles = append(composeFiles, override)
+		}
+		if err := runtime.ConfigProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
+			return fmt.Errorf("validate runtime executor log collection: %w", err)
+		}
+		if err := runtime.UpProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
+			return fmt.Errorf("reconcile runtime executor log collection: %w", err)
+		}
+	}
 	return nil
 }
 
