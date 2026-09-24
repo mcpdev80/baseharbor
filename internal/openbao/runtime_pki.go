@@ -16,8 +16,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+		"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type RuntimeMTLSFiles struct {
@@ -33,11 +32,13 @@ type RuntimeMTLSFiles struct {
 // EnsureRuntimeMTLSIdentity preserves the application-scoped runtime identity
 // contract while delegating all certificate issuance to the managed service
 // issuer. BaseHarbor no longer stores or uses a CA private key in Go code.
-func EnsureRuntimeMTLSIdentity(ctx context.Context, executor Executor, platformFiles bhruntime.Files, identity ApplicationIdentity, appFiles application.RuntimeFiles, workloadDNSNames []string) (RuntimeMTLSFiles, bool, error) {
+func EnsureRuntimeMTLSIdentity(ctx context.Context, issuer serviceaccess.Issuer, identity ApplicationIdentity, appFiles application.RuntimeFiles, workloadDNSNames []string) (RuntimeMTLSFiles, bool, error) {
 	if err := validateApplicationIdentity(identity); err != nil {
 		return RuntimeMTLSFiles{}, false, err
 	}
-	issuer := NewServiceIssuer(executor, platformFiles)
+	if issuer == nil {
+		return RuntimeMTLSFiles{}, false, errors.New("runtime identity issuer is required")
+	}
 	trust, err := issuer.TrustBundle(ctx)
 	if err != nil {
 		return RuntimeMTLSFiles{}, false, fmt.Errorf("resolve runtime identity trust bundle: %w", err)
