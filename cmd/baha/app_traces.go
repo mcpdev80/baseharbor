@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
+	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
@@ -110,10 +114,18 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 		return err
 	}
 	for _, source := range prepared.providerSources {
-		if source.Mode != capability.ObservabilityInteraction || source.Verification != capability.ObservabilityVerifySpan {
-			return fmt.Errorf("provider trace source %s has unsupported realization %q/%q", source.ID, source.Mode, source.Verification)
+		if source.Verification != capability.ObservabilityVerifySpan {
+			return fmt.Errorf("provider trace source %s has unsupported verification %q", source.ID, source.Verification)
 		}
-		traceID, err := telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
+		var traceID string
+		switch {
+		case source.Mode == capability.ObservabilityInteraction && source.Protocol == "interaction":
+			traceID, err = telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
+		case source.Mode == capability.ObservabilityNative && source.Protocol == "otlp":
+			traceID, err = runtimeComponentTraceProbe(ctx, prepared, source)
+		default:
+			return fmt.Errorf("provider trace source %s has unsupported realization %q/%q", source.ID, source.Mode, source.Protocol)
+		}
 		if err != nil {
 			return err
 		}
@@ -121,8 +133,82 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 			return fmt.Errorf("verify provider trace %s: %w", source.ID, err)
 		}
 	}
-	fmt.Fprintf(out, "[VERIFIED] traces         application verification trace + %d provider interaction trace(s) queryable for %s\n", len(prepared.providerSources), prepared.manifest.Name)
+	fmt.Fprintf(out, "[VERIFIED] traces         application verification trace + %d provider trace(s) queryable for %s\n", len(prepared.providerSources), prepared.manifest.Name)
 	return nil
+}
+
+func runtimeComponentTraceProbe(ctx context.Context, prepared *managedTracesExecution, source observability.SignalSource) (string, error) {
+	switch source.Provider {
+	case capability.ProviderRuntimeBroker:
+		brokerFiles, err := runtimebroker.Existing(prepared.runtimeFiles)
+		if err != nil {
+			return "", fmt.Errorf("load runtime broker for trace verification: %w", err)
+		}
+		raw, err := prepared.runtime.ExecProject(
+			ctx,
+			runtimebroker.ProjectName(prepared.manifest),
+			brokerFiles.Compose,
+			prepared.runtimeFiles.Env,
+			runtimebroker.ServiceName,
+			"curl", "--include", "--silent", "--show-error",
+			"--resolve", "baseharbor-runtime:8443:127.0.0.1",
+			"--cacert", "/run/baseharbor/identity/ca.pem",
+			"--cert", "/run/secrets/probe-client-cert",
+			"--key", "/run/secrets/probe-client-key",
+			runtimebroker.RuntimeURL+"/runtime/__baseharbor_observability_probe",
+		)
+		if err != nil {
+			return "", fmt.Errorf("trigger runtime broker trace: %w", err)
+		}
+		return traceIDFromHTTPResponse(raw)
+	case capability.ProviderRuntimeExecutor:
+		dataDir, err := bhruntime.DataDir("")
+		if err != nil {
+			return "", err
+		}
+		executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
+		if err != nil {
+			return "", fmt.Errorf("load runtime executor for trace verification: %w", err)
+		}
+		raw, err := prepared.runtime.ExecProject(
+			ctx,
+			runtimeexecutor.ProjectName,
+			executorFiles.Compose,
+			executorFiles.Env,
+			runtimeexecutor.ServiceName,
+			"curl", "--include", "--silent", "--show-error",
+			"--resolve", "baseharbor-runtime-executor:9443:127.0.0.1",
+			"--cacert", "/run/baseharbor/identity/ca.pem",
+			"--cert", "/run/baseharbor/observability/client-cert.pem",
+			"--key", "/run/secrets/observer-client-key",
+			runtimeexecutor.ExecutorURL+"/internal/__baseharbor_observability_probe",
+		)
+		if err != nil {
+			return "", fmt.Errorf("trigger runtime executor trace: %w", err)
+		}
+		return traceIDFromHTTPResponse(raw)
+	default:
+		return "", fmt.Errorf("native OTLP trace source %s has no runtime probe adapter", source.ID)
+	}
+}
+
+func traceIDFromHTTPResponse(raw string) (string, error) {
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "traceparent") {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(value), "-")
+		if len(parts) != 4 || len(parts[1]) != 32 || len(parts[2]) != 16 {
+			return "", errors.New("runtime traceparent response is invalid")
+		}
+		if parts[1] == strings.Repeat("0", 32) {
+			return "", errors.New("runtime traceparent contains an invalid zero trace id")
+		}
+		return strings.ToLower(parts[1]), nil
+	}
+	return "", errors.New("runtime traceparent response header is missing")
 }
 
 func refreshProviderTraceSources(prepared *managedTracesExecution) error {
