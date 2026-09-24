@@ -13,7 +13,6 @@ func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
 	wantNames := []string{
 		"baseharbor-mailflow-prod_default",
 		"baseharbor-mailflow-prod-postgres-1",
-		"baseharbor-mailflow-prod-postgres-access-1",
 		"baseharbor-mailflow-prod_postgres-data",
 		"baseharbor-mailflow-prod-valkey-1",
 		"baseharbor-mailflow-prod-valkey-access-1",
