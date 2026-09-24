@@ -1196,7 +1196,7 @@ func prometheusAccessSpec() serviceaccess.HTTPGatewaySpec {
 		Upstream:         "http://prometheus:9090",
 		PublishedPortEnv: "BASEHARBOR_PROMETHEUS_PORT",
 		ContainerPort:    8443,
-		Networks:         []string{"access"},
+		Networks:         []string{"access", "publish"},
 		RequireClient:    true,
 	}
 }
