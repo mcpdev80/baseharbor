@@ -240,7 +240,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func VerifyApplicationBuckets(ctx context.Context, runtime Runtime, app application.Manifest, files application.RuntimeFiles) error {
-	driver := NewDriver(runtime, app, files)
+	driver := NewDriver(runtime, app, files, nil)
 	for _, bucket := range application.ObjectStorageBucketNames(app) {
 		resource := capability.Resource{
 			Application: app.Name,
