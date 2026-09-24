@@ -66,7 +66,7 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err != nil {
 		return Files{}, err
 	}
-	s3TrustProjection, err := projectContainerReadableSecret(dir, s3TrustPath, "s3-ca.pem", "S3 trust bundle")
+	s3TrustProjection, err := projectContainerReadablePublicFile(dir, s3TrustPath, "s3-ca.pem", "S3 trust bundle")
 	if err != nil {
 		return Files{}, err
 	}
@@ -98,6 +98,14 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 }
 
 func projectContainerReadableSecret(dir, source, targetName, label string) (string, error) {
+	return projectContainerReadableFile(dir, source, targetName, label, true)
+}
+
+func projectContainerReadablePublicFile(dir, source, targetName, label string) (string, error) {
+	return projectContainerReadableFile(dir, source, targetName, label, false)
+}
+
+func projectContainerReadableFile(dir, source, targetName, label string, requireOwnerOnly bool) (string, error) {
 	info, err := os.Lstat(source)
 	if err != nil {
 		return "", fmt.Errorf("inspect %s: %w", label, err)
@@ -105,7 +113,7 @@ func projectContainerReadableSecret(dir, source, targetName, label string) (stri
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("%s must be a regular file", label)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
+	if requireOwnerOnly && info.Mode().Perm()&0o077 != 0 {
 		return "", fmt.Errorf("%s is accessible by group or others (%o)", label, info.Mode().Perm())
 	}
 	data, err := os.ReadFile(source)
