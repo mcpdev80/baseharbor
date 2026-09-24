@@ -186,7 +186,14 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - "%s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro"
       - "%s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro"
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=\"${POSTGRES_PASSWORD}\" psql \"host=127.0.0.1 port=5432 user=${POSTGRES_USER} dbname=${POSTGRES_DB} sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1' | grep -q '^1
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql \"host=127.0.0.1 port=5432 user=$${POSTGRES_USER} dbname=$${POSTGRES_DB} sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1' | grep -q '^1$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+`, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot)
+}
 
 func writeValkeyComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("valkey", instance)
