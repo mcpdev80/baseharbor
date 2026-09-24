@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -145,7 +146,15 @@ func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(lokiAccessEnvironment(m, registrations), "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, lokiAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind, accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -264,7 +273,15 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, m application.M
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind(runtime))), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(lokiAccessEnvironment(m, registrations), "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, lokiAccessSpec())
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind(runtime), accessFiles)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {
@@ -318,10 +335,44 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 			if err != nil || port < 1 || port > 65535 {
 				return "", errors.New("invalid Loki API port")
 			}
-			return fmt.Sprintf("http://127.0.0.1:%d", port), nil
+			return fmt.Sprintf("https://127.0.0.1:%d", port), nil
 		}
 	}
 	return "", errors.New("Loki API port is missing")
+}
+
+func lokiAccessEnvironment(m application.Manifest, registrations []Registration) string {
+	managed := !lokiDevelopmentEnvironment(m.Environment)
+	for _, registration := range registrations {
+		if !lokiDevelopmentEnvironment(registration.Environment) {
+			managed = true
+			break
+		}
+	}
+	if managed {
+		return "prod"
+	}
+	return "dev"
+}
+
+func lokiDevelopmentEnvironment(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "dev", "development":
+		return true
+	default:
+		return false
+	}
+}
+
+func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName: "loki-access",
+		Upstream: "http://loki:3100",
+		PublishedPortEnv: "BASEHARBOR_LOKI_PORT",
+		ContainerPort: 8443,
+		Networks: []string{"logs-internal", "logs-publish"},
+		RequireClient: true,
+	}
 }
 
 func reconcileRegistration(path string, m application.Manifest, present bool) ([]Registration, error) {

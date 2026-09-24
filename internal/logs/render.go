@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func lokiConfig() string {
@@ -134,6 +135,14 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 }
 
 func providerComposeYAMLForRuntime(placement Placement, registrations []Registration, runtimeKind string) string {
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: "./service-access/Caddyfile",
+		Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
+	}
+	return providerComposeYAMLForRuntimeAndAccess(placement, registrations, runtimeKind, access)
+}
+
+func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations []Registration, runtimeKind string, access serviceaccess.HTTPGatewayFiles) string {
 	var b strings.Builder
 	b.WriteString("services:\n")
 	b.WriteString("  loki:\n")
@@ -147,9 +156,8 @@ func providerComposeYAMLForRuntime(placement Placement, registrations []Registra
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
 	b.WriteString("      - loki-data:/loki\n")
-	b.WriteString("    ports:\n")
-	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100\"\n")
-	b.WriteString("    networks: [logs-internal, logs-publish]\n")
+	b.WriteString("    networks: [logs-internal]\n")
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, lokiAccessSpec()))
 	b.WriteString("  alloy:\n")
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
