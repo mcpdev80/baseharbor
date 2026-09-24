@@ -40,9 +40,6 @@ func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) 
 	if strings.TrimSpace(spec.Upstream) == "" {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream is required")
 	}
-	if strings.TrimSpace(spec.PublishedPortEnv) == "" {
-		return HTTPGatewayFiles{}, errors.New("HTTP service gateway published port environment is required")
-	}
 	if spec.ContainerPort == 0 {
 		spec.ContainerPort = 8443
 	}
@@ -167,8 +164,10 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("      - /bin/sh\n")
 	b.WriteString("      - -ec\n")
 	b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
-	b.WriteString("    ports:\n")
-	fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
+	if strings.TrimSpace(spec.PublishedPortEnv) != "" {
+		b.WriteString("    ports:\n")
+		fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
+	}
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Caddyfile+":/etc/caddy/Caddyfile:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.ServerCertificate+":/certs/server.pem:ro"))
