@@ -16,6 +16,7 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 	"github.com/mcpdev80/baseharbor/internal/traces"
 )
 
@@ -34,9 +35,10 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	t.Setenv(application.TracesEnabledEnv, "true")
 
 	m := application.WithOTLPTelemetry(application.New("traces-acceptance", "dev", false, false, false), "traces")
+	issuer := serviceissuer.New(t)
 
 	traceResource := capability.Resource{Application: m.Name, Kind: capability.Traces, Name: "default", Provider: capability.ProviderTempo}
-	traceDriver := traces.NewDriver(compose, m)
+	traceDriver := traces.NewDriver(compose, m, issuer)
 	if err := traceDriver.Preflight(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,7 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otelDriver := telemetry.NewDriver(compose, m, application.RuntimeFiles{})
+	otelDriver := telemetry.NewDriver(compose, m, application.RuntimeFiles{}, issuer)
 	otelDriver.SetTraceBackend(traces.NetworkEndpoint(placement), placement.Network)
 	otelResource := capability.Resource{Application: m.Name, Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderOTelCollector}
 	otelBinding := capability.Binding{
