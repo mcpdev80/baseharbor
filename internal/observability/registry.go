@@ -90,12 +90,25 @@ func (s SignalSource) Validate() error {
 	if strings.TrimSpace(s.Target) == "" || strings.TrimSpace(s.Protocol) == "" {
 		return errors.New("observability signal source requires target and protocol")
 	}
-	if s.Kind == SignalMetrics {
+	switch s.Kind {
+	case SignalMetrics:
 		if strings.TrimSpace(s.Network) == "" || !strings.HasPrefix(strings.TrimSpace(s.Path), "/") {
 			return errors.New("observability metrics source requires network and absolute path")
 		}
 		if s.Protocol != "openmetrics" {
 			return fmt.Errorf("observability metrics source requires openmetrics, got %q", s.Protocol)
+		}
+	case SignalLogs:
+		switch s.Protocol {
+		case "syslog-rfc5424", "stdout-stderr", "journald", "otlp":
+		default:
+			return fmt.Errorf("unsupported observability logs protocol %q", s.Protocol)
+		}
+	case SignalTraces:
+		switch s.Protocol {
+		case "otlp", "interaction":
+		default:
+			return fmt.Errorf("unsupported observability traces protocol %q", s.Protocol)
 		}
 	}
 	return s.Security.Validate()
