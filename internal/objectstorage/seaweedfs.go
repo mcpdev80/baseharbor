@@ -23,6 +23,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -72,7 +73,11 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime) (ProviderFiles, 
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
-	if err := waitS3(ctx, &http.Client{Timeout: 10 * time.Second}, endpoint); err != nil {
+	client, err := s3HTTPClient(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	if err := waitS3(ctx, client, endpoint); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
 	credentials, credentialPath, err := EnsureAdminCredentials(files)
@@ -92,7 +97,7 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime) (ProviderFiles, 
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
-	return &Driver{runtime: runtime, app: app, files: files, client: &http.Client{Timeout: 10 * time.Second}, createdBuckets: map[string]struct{}{}}
+	return &Driver{runtime: runtime, app: app, files: files, createdBuckets: map[string]struct{}{}}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
@@ -165,8 +170,20 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(providerFiles.Dir, "service-access", "pki"))
+	if err != nil {
+		return fmt.Errorf("load S3 service trust material: %w", err)
+	}
+	containerHost := "seaweedfs-access"
+	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
+		containerHost = strings.TrimSpace(policy.ServerName)
+	}
 	physical := PhysicalBucketName(d.app, resource.Name)
-	if err := application.MaterializeObjectStorageBinding(d.app, d.files, resource.Name, physical, endpoint); err != nil {
+	if err := application.MaterializeObjectStorageBinding(d.app, d.files, resource.Name, physical, endpoint, "https://"+containerHost+":8443", material.CA); err != nil {
 		return fmt.Errorf("materialize S3 application binding: %w", err)
 	}
 	return nil
@@ -184,6 +201,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	endpoint, err := providerEndpoint(providerFiles)
 	if err != nil {
 		return err
+	}
+	if d.client == nil {
+		d.client, err = s3HTTPClient(providerFiles)
+		if err != nil {
+			return err
+		}
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
 	var probe [18]byte
@@ -324,7 +347,15 @@ func EnsureProviderFiles() (ProviderFiles, error) {
 	if err := writeEnv(files.Env, values); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAML()), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, s3AccessSpec())
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithAccess(accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, fmt.Errorf("write SeaweedFS provider compose: %w", err)
 	}
 	if err := os.Chmod(files.Compose, 0o600); err != nil {
@@ -363,7 +394,13 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 }
 
 func providerComposeYAML() string {
-	return fmt.Sprintf(`services:
+	access := serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile", Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"}}
+	return providerComposeYAMLWithAccess(access)
+}
+
+func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`services:
   seaweedfs:
     image: %s
     restart: unless-stopped
@@ -374,8 +411,6 @@ func providerComposeYAML() string {
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     command: server -s3 -iam=true -s3.iam.readOnly=false
-    ports:
-      - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8333"
     volumes:
       - seaweedfs-data:/data
     networks:
@@ -389,7 +424,10 @@ volumes:
 networks:
   object-storage:
     name: baseharbor-object-storage
-`, ProviderImage)
+`, ProviderImage))
+	text := b.String()
+	text = strings.Replace(text, "volumes:\n  seaweedfs-data:\n", serviceaccess.HTTPGatewayComposeService(access, s3AccessSpec())+"volumes:\n  seaweedfs-data:\n", 1)
+	return text
 }
 
 func providerEndpoint(files ProviderFiles) (string, error) {
@@ -406,7 +444,42 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 	if err != nil || n < 1 || n > 65535 {
 		return "", fmt.Errorf("invalid SeaweedFS provider port")
 	}
-	return "http://127.0.0.1:" + port, nil
+	return "https://127.0.0.1:" + port, nil
+}
+
+func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName: "seaweedfs-access",
+		Upstream: "http://seaweedfs:8333",
+		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
+		ContainerPort: 8443,
+		Networks: []string{"object-storage"},
+		RequireClient: false,
+	}
+}
+
+func s3HTTPClient(files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load S3 service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClient(material, false)
+}
+
+func ServiceTrustBundle(files ProviderFiles) (string, error) {
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return "", err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return "", err
+	}
+	return material.CA, nil
 }
 
 func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
