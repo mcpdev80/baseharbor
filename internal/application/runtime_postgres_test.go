@@ -34,6 +34,18 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 	if strings.Contains(string(compose), "postgres-data:/var/lib/postgresql/data") {
 		t.Fatal("PostgreSQL 18 runtime must not use the pre-18 data volume mount")
 	}
+	hba, err := os.ReadFile(filepath.Join(files.Dir, "providers", "postgresql", defaultServiceInstance, "runtime", "pg_hba.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wanted := range []string{
+		"hostssl all all 0.0.0.0/0 scram-sha-256",
+		"hostnossl all all 0.0.0.0/0 reject",
+	} {
+		if !strings.Contains(string(hba), wanted) {
+			t.Fatalf("PostgreSQL TLS policy missing %q", wanted)
+		}
+	}
 
 	firstEnv, err := os.ReadFile(files.Env)
 	if err != nil {
