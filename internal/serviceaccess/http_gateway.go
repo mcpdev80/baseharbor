@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -65,11 +66,48 @@ func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) 
 		Caddyfile: filepath.Join(dir, "Caddyfile"),
 		Material: gatewayMaterial,
 	}
-	config := caddyfile(spec.Upstream, spec.ContainerPort, spec.RequireClient && policy.AuthenticationRequired)
+	requireClient, err := reconcileGatewayAuthentication(dir, spec.RequireClient && policy.AuthenticationRequired)
+	if err != nil {
+		return HTTPGatewayFiles{}, err
+	}
+	config := caddyfile(spec.Upstream, spec.ContainerPort, requireClient)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
 	return files, nil
+}
+
+type gatewayState struct {
+	Version                int  `json:"version"`
+	AuthenticationRequired bool `json:"authentication_required"`
+}
+
+func reconcileGatewayAuthentication(dir string, requested bool) (bool, error) {
+	path := filepath.Join(dir, "state.json")
+	state := gatewayState{Version: 1, AuthenticationRequired: requested}
+	if data, err := os.ReadFile(path); err == nil {
+		var previous gatewayState
+		if err := json.Unmarshal(data, &previous); err != nil {
+			return false, fmt.Errorf("decode service access state: %w", err)
+		}
+		if previous.Version != 1 {
+			return false, fmt.Errorf("unsupported service access state version %d", previous.Version)
+		}
+		if previous.AuthenticationRequired {
+			state.AuthenticationRequired = true
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	data = append(data, '\n')
+	if err := writeAtomic(path, data, 0o600); err != nil {
+		return false, err
+	}
+	return state.AuthenticationRequired, nil
 }
 
 func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
