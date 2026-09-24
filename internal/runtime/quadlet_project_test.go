@@ -83,7 +83,7 @@ networks:
 		"User=postgres",
 		"ReadOnly=true",
 		"DropCapability=all",
-		"AddCapability=net_bind_service",
+		"AddCapability=NET_BIND_SERVICE",
 		"NoNewPrivileges=true",
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
