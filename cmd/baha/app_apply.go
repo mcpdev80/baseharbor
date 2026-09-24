@@ -38,272 +38,272 @@ func appApplyCommand(store application.Store) *cli.Command {
 }
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "apply")
+	resolved, err := resolveApplication(store, args, "apply")
+	if err != nil {
+		return err
+	}
+	m := resolved.Manifest
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(m.Name, m.Environment)
+	plan, err := application.BuildPlan(m)
+	if err != nil {
+		return err
+	}
+	term.Section("Plan")
+	term.Info("desired actions", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
+	if resolved.FromRepository {
+		fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
+	}
+	if err := printResolvedTracesPlacement(out, m); err != nil {
+		return err
+	}
+	if err := printResolvedMetricsPlacement(out, m); err != nil {
+		return err
+	}
+	if err := printResolvedLogsPlacement(out, resolved); err != nil {
+		return err
+	}
+	var compose bhruntime.Compose
+	var platformFiles bhruntime.Files
+	var issuer serviceaccess.Issuer
+	providers := &managedProviderPreflightState{}
+	var workloadSecurity application.WorkloadSecurityReport
+	checks := []preflight.Check{
+		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
+		{Name: "manifest permissions", Run: func(context.Context) error {
+			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+		}},
+		{Name: "application workload", Run: func(context.Context) error {
+			return preflightRepositoryWorkload(resolved)
+		}},
+		{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
+			required := []bhruntime.RuntimeCapability{bhruntime.CapabilityWorkloadLifecycle}
+			if m.Services.Secrets || requiresObjectStorageProviderAdmin(m) {
+				required = append(required, bhruntime.CapabilityServiceExec)
+			}
+			var err error
+			compose, err = detectComposeForApplication(ctx, resolved, required...)
+			return err
+		}},
+		{Name: "workload security", Run: func(ctx context.Context) error {
+			var err error
+			workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
+			return err
+		}},
+		{Name: "connectivity policy", Run: func(context.Context) error {
+			_, err := application.LoadConnectivityRules()
+			return err
+		}},
+		{Name: "provider registry", Run: func(context.Context) error {
+			return application.CheckReferenceProviderRegistry(m)
+		}},
+	}
+	needsServiceIssuer := requiresManagedServiceIssuer(m)
+	if needsServiceIssuer || application.RequiresRuntimeBroker(m) {
+		checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
+			var err error
+			platformFiles, err = bhruntime.ExistingFiles("")
 			if err != nil {
-				return err
+				return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
 			}
-			m := resolved.Manifest
-			term := cli.NewTerminal(ctx, out, errOut)
-			term.Header(m.Name, m.Environment)
-			plan, err := application.BuildPlan(m)
-			if err != nil {
-				return err
-			}
-			term.Section("Plan")
-			term.Info("desired actions", fmt.Sprintf("%d action(s) resolved", len(plan.Actions)))
-			if resolved.FromRepository {
-				fmt.Fprintf(out, "Manifest: %s (repository source of truth)\n", resolved.ManifestPath)
-			}
-			if err := printResolvedTracesPlacement(out, m); err != nil {
-				return err
-			}
-			if err := printResolvedMetricsPlacement(out, m); err != nil {
-				return err
-			}
-			if err := printResolvedLogsPlacement(out, resolved); err != nil {
-				return err
-			}
-			var compose bhruntime.Compose
-			var platformFiles bhruntime.Files
-			var issuer serviceaccess.Issuer
-			providers := &managedProviderPreflightState{}
-			var workloadSecurity application.WorkloadSecurityReport
-			checks := []preflight.Check{
-				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error {
-					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
-				}},
-				{Name: "application workload", Run: func(context.Context) error {
-					return preflightRepositoryWorkload(resolved)
-				}},
-				{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
-					required := []bhruntime.RuntimeCapability{bhruntime.CapabilityWorkloadLifecycle}
-					if m.Services.Secrets || requiresObjectStorageProviderAdmin(m) {
-						required = append(required, bhruntime.CapabilityServiceExec)
-					}
-					var err error
-					compose, err = detectComposeForApplication(ctx, resolved, required...)
-					return err
-				}},
-				{Name: "workload security", Run: func(ctx context.Context) error {
-					var err error
-					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
-					return err
-				}},
-				{Name: "connectivity policy", Run: func(context.Context) error {
-					_, err := application.LoadConnectivityRules()
-					return err
-				}},
-				{Name: "provider registry", Run: func(context.Context) error {
-					return application.CheckReferenceProviderRegistry(m)
-				}},
-			}
-			needsServiceIssuer := requiresManagedServiceIssuer(m)
-			if needsServiceIssuer || application.RequiresRuntimeBroker(m) {
-				checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
-					var err error
-					platformFiles, err = bhruntime.ExistingFiles("")
-					if err != nil {
-						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
-					}
-					return nil
-				}})
-			}
-			if needsServiceIssuer {
-				checks = append(checks, preflight.Check{Name: "managed service PKI", Run: func(ctx context.Context) error {
-					issuer = openbao.NewServiceIssuer(compose, platformFiles)
-					status, err := issuer.Status(ctx)
-					if err != nil {
-						return fmt.Errorf("managed service PKI is not ready: %w", err)
-					}
-					if !status.Ready {
-						return errors.New("managed service PKI is not ready")
-					}
-					return nil
-				}})
-			}
-			if application.RequiresRuntimeBroker(m) {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				checks = append(checks,
-					preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
-						return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
-					}},
-				)
-			}
-			checks = appendManagedProviderPreflights(checks, &compose, resolved, providers, &issuer)
-			var results []preflight.Result
-			var ok bool
-			if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
-				results, ok = preflight.RunWithTimeout(ctx, checks, 30*time.Second)
-				return nil
-			}); err != nil {
-				return err
-			}
-			renderPreflightUX(term, results)
-			if term.Verbose() {
-				printWorkloadSecurityFindings(out, workloadSecurity)
-			}
-			if !ok {
-				return errors.New("application preflight failed")
-			}
-			if err := prepareUndeclaredProviderCleanup(ctx, compose, resolved, providers, issuer); err != nil {
-				return fmt.Errorf("prepare obsolete provider cleanup: %w", err)
-			}
-
-			files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, m)
-			if err != nil {
-				return err
-			}
-			if application.HasManagedRuntimeServices(m) {
-				project := application.RuntimeProjectName(m)
-				if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
-					return err
-				}
-			}
-			if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
-				return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
-			}); err != nil {
-				return err
-			}
-
-			if m.Services.Secrets {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
-				if err := activity(ctx, term, "Preparing application secret scope", func(io.Writer) error {
-					return openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath)
-				}); err != nil {
-					return err
-				}
-				generated, err := reconcileGeneratedApplicationSecrets(ctx, compose, platformFiles, m, files)
-				if err != nil {
-					return fmt.Errorf("generated secrets reconciliation failed: %w", err)
-				}
-				for _, name := range generated {
-					fmt.Fprintf(out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
-				}
-				if err := resolveMissingRequiredSecretsInteractive(ctx, secretService, compose, platformFiles, m, files, out); err != nil {
-					return err
-				}
-				if err := checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files); err != nil {
-					return fmt.Errorf("required secrets check failed: %w", err)
-				}
-			}
-
-			if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
-				return startManagedRuntime(ctx, progress, compose, m, files)
-			}); err != nil {
-				return classifyOperationalFailure(err, "managed application services")
-			}
-
-			verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
-			defer verifyCancel()
-			var verifyErr error
-			if err := activity(ctx, term, "Waiting for backend readiness", func(progress io.Writer) error {
-				cli.ReportActivityDetail(progress, "checking managed service readiness")
-				for verifyCtx.Err() == nil {
-					verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
-					if verifyErr == nil && m.Services.Secrets {
-						identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-						verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-						if verifyErr == nil {
-							verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
-						}
-					}
-					if verifyErr == nil {
-						cli.ReportActivityDetail(progress, "managed services ready")
-						break
-					}
-					select {
-					case <-verifyCtx.Done():
-					case <-time.After(time.Second):
-					}
-				}
-				if verifyErr != nil {
-					return fmt.Errorf("application verification failed: %w", verifyErr)
-				}
-				return nil
-			}); err != nil {
-				return err
-			}
-
-			renderRuntimeReady(term, m)
-			if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
-				return convergeManagedTracesBeforeTelemetry(ctx, progress, providers.traces)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Reconciling telemetry transport", func(progress io.Writer) error {
-				return convergeManagedTelemetry(ctx, progress, providers.telemetry)
-			}); err != nil {
-				return err
-			}
-			if application.RequiresRuntimeBroker(m) {
-				if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
-					return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
-				}); err != nil {
-					return err
-				}
-				printRuntimeBrokerDocs(out, files)
-			}
-			if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
-				return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
-				return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
-				return convergeManagedMetricsBeforeWorkload(ctx, progress, providers.metrics)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Starting repository workload", func(progress io.Writer) error {
-				_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
-				return err
-			}); err != nil {
-				resource := "repository workload"
-				if len(m.Workload.Services) == 1 {
-					resource = m.Workload.Services[0]
-				}
-				return classifyOperationalFailure(err, resource)
-			}
-			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
-				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
-			}
-			if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
-				return verifyManagedMetricsAfterWorkload(ctx, progress, providers.metrics)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Verifying log ingestion", func(progress io.Writer) error {
-				return verifyManagedLogsAfterWorkload(ctx, progress, providers.logs)
-			}); err != nil {
-				return err
-			}
-			if err := activity(ctx, term, "Verifying application exposure", func(progress io.Writer) error {
-				return convergeManagedExposure(ctx, progress, providers.exposure)
-			}); err != nil {
-				return err
-			}
-			registryResources := managedLogsRegistryResources(providers.logs)
-			registryResources = append(registryResources, managedTracesRegistryResources(providers.traces)...)
-			if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
-				return fmt.Errorf("record provider registry after successful convergence: %w", err)
-			}
-			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
-				return fmt.Errorf("record successfully applied repository desired state: %w", err)
-			}
-			term.Section("Application")
-			if resolved.FromRepository && !term.Quiet() {
-				fmt.Fprintln(out, "  Environment contract: baha app env --path")
-			}
-			term.Success("READY", "application and requested infrastructure verified")
 			return nil
-		
+		}})
+	}
+	if needsServiceIssuer {
+		checks = append(checks, preflight.Check{Name: "managed service PKI", Run: func(ctx context.Context) error {
+			issuer = openbao.NewServiceIssuer(compose, platformFiles)
+			status, err := issuer.Status(ctx)
+			if err != nil {
+				return fmt.Errorf("managed service PKI is not ready: %w", err)
+			}
+			if !status.Ready {
+				return errors.New("managed service PKI is not ready")
+			}
+			return nil
+		}})
+	}
+	if application.RequiresRuntimeBroker(m) {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		checks = append(checks,
+			preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
+				return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
+			}},
+		)
+	}
+	checks = appendManagedProviderPreflights(checks, &compose, resolved, providers, &issuer)
+	var results []preflight.Result
+	var ok bool
+	if err := activity(ctx, term, "Checking application prerequisites", func(io.Writer) error {
+		results, ok = preflight.RunWithTimeout(ctx, checks, 30*time.Second)
+		return nil
+	}); err != nil {
+		return err
+	}
+	renderPreflightUX(term, results)
+	if term.Verbose() {
+		printWorkloadSecurityFindings(out, workloadSecurity)
+	}
+	if !ok {
+		return errors.New("application preflight failed")
+	}
+	if err := prepareUndeclaredProviderCleanup(ctx, compose, resolved, providers, issuer); err != nil {
+		return fmt.Errorf("prepare obsolete provider cleanup: %w", err)
+	}
+
+	files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, m)
+	if err != nil {
+		return err
+	}
+	if application.HasManagedRuntimeServices(m) {
+		project := application.RuntimeProjectName(m)
+		if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
+	}
+	if err := activity(ctx, term, "Reconciling object storage", func(progress io.Writer) error {
+		return convergeManagedObjectStorage(ctx, progress, providers.objectStorage)
+	}); err != nil {
+		return err
+	}
+
+	if m.Services.Secrets {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
+		if err := activity(ctx, term, "Preparing application secret scope", func(io.Writer) error {
+			return openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath)
+		}); err != nil {
+			return err
+		}
+		generated, err := reconcileGeneratedApplicationSecrets(ctx, compose, platformFiles, m, files)
+		if err != nil {
+			return fmt.Errorf("generated secrets reconciliation failed: %w", err)
+		}
+		for _, name := range generated {
+			fmt.Fprintf(out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
+		}
+		if err := resolveMissingRequiredSecretsInteractive(ctx, secretService, compose, platformFiles, m, files, out); err != nil {
+			return err
+		}
+		if err := checkRequiredApplicationSecrets(ctx, compose, platformFiles, m, files); err != nil {
+			return fmt.Errorf("required secrets check failed: %w", err)
+		}
+	}
+
+	if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
+		return startManagedRuntime(ctx, progress, compose, m, files)
+	}); err != nil {
+		return classifyOperationalFailure(err, "managed application services")
+	}
+
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer verifyCancel()
+	var verifyErr error
+	if err := activity(ctx, term, "Waiting for backend readiness", func(progress io.Writer) error {
+		cli.ReportActivityDetail(progress, "checking managed service readiness")
+		for verifyCtx.Err() == nil {
+			verifyErr = verifyDesiredRuntimeServices(verifyCtx, compose, m, files)
+			if verifyErr == nil && m.Services.Secrets {
+				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+				verifyErr = openbao.CheckApplicationScope(verifyCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
+				if verifyErr == nil {
+					verifyErr = checkRequiredApplicationSecrets(verifyCtx, compose, platformFiles, m, files)
+				}
+			}
+			if verifyErr == nil {
+				cli.ReportActivityDetail(progress, "managed services ready")
+				break
+			}
+			select {
+			case <-verifyCtx.Done():
+			case <-time.After(time.Second):
+			}
+		}
+		if verifyErr != nil {
+			return fmt.Errorf("application verification failed: %w", verifyErr)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	renderRuntimeReady(term, m)
+	if err := activity(ctx, term, "Reconciling trace storage", func(progress io.Writer) error {
+		return convergeManagedTracesBeforeTelemetry(ctx, progress, providers.traces)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Reconciling telemetry transport", func(progress io.Writer) error {
+		return convergeManagedTelemetry(ctx, progress, providers.telemetry)
+	}); err != nil {
+		return err
+	}
+	if application.RequiresRuntimeBroker(m) {
+		if err := activity(ctx, term, "Starting secure runtime broker", func(progress io.Writer) error {
+			return ensureAndStartRuntimeBroker(ctx, progress, compose, platformFiles, m, files)
+		}); err != nil {
+			return err
+		}
+		printRuntimeBrokerDocs(out, files)
+	}
+	if err := activity(ctx, term, "Verifying trace ingestion", func(progress io.Writer) error {
+		return verifyManagedTracesAfterTelemetry(ctx, progress, providers.traces)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Reconciling log collection", func(progress io.Writer) error {
+		return convergeManagedLogsBeforeWorkload(ctx, progress, files, providers.logs)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Reconciling metrics collection", func(progress io.Writer) error {
+		return convergeManagedMetricsBeforeWorkload(ctx, progress, providers.metrics)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Starting repository workload", func(progress io.Writer) error {
+		_, err := applyRepositoryWorkload(ctx, progress, compose, resolved, files)
+		return err
+	}); err != nil {
+		resource := "repository workload"
+		if len(m.Workload.Services) == 1 {
+			resource = m.Workload.Services[0]
+		}
+		return classifyOperationalFailure(err, resource)
+	}
+	if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+		return fmt.Errorf("reconcile cross-application connectivity: %w", err)
+	}
+	if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
+		return verifyManagedMetricsAfterWorkload(ctx, progress, providers.metrics)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Verifying log ingestion", func(progress io.Writer) error {
+		return verifyManagedLogsAfterWorkload(ctx, progress, providers.logs)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, term, "Verifying application exposure", func(progress io.Writer) error {
+		return convergeManagedExposure(ctx, progress, providers.exposure)
+	}); err != nil {
+		return err
+	}
+	registryResources := managedLogsRegistryResources(providers.logs)
+	registryResources = append(registryResources, managedTracesRegistryResources(providers.traces)...)
+	if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
+		return fmt.Errorf("record provider registry after successful convergence: %w", err)
+	}
+	if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
+		return fmt.Errorf("record successfully applied repository desired state: %w", err)
+	}
+	term.Section("Application")
+	if resolved.FromRepository && !term.Quiet() {
+		fmt.Fprintln(out, "  Environment contract: baha app env --path")
+	}
+	term.Success("READY", "application and requested infrastructure verified")
+	return nil
+
 }
 
 type applicationSecretSetter interface {
