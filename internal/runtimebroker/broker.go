@@ -35,6 +35,10 @@ func ProjectName(m application.Manifest) string {
 	return "baseharbor-broker-" + m.Name + "-" + m.Environment
 }
 
+func ObservabilityNetworkName(m application.Manifest) string {
+	return ProjectName(m) + "-observability"
+}
+
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
 	if !application.RequiresRuntimeBroker(m) {
 		return Files{}, errors.New("application runtime broker requires at least one managed runtime capability")
@@ -340,6 +344,11 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 
 func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
+	metricsPolicy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return "", err
+	}
+	metricsEnabled := metricsPolicy.Enabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
 	paths := map[string]string{
 		"runtime token":              tokenPath,
 		"runtime permissions":        permissionsPath,
@@ -498,6 +507,11 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	b.WriteString("        aliases:\n")
 	b.WriteString("          - baseharbor-runtime\n")
 	b.WriteString("          - baseharbor-secrets\n")
+	if metricsEnabled {
+		b.WriteString("      observability:\n")
+		b.WriteString("        aliases:\n")
+		b.WriteString("          - baseharbor-runtime\n")
+	}
 	if m.Services.Secrets {
 		b.WriteString("      secrets: {}\n")
 	}
@@ -537,6 +551,11 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 		b.WriteString("    external: true\n")
 	}
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
+	if metricsEnabled {
+		b.WriteString("  observability:\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(ObservabilityNetworkName(m)))
+		b.WriteString("    internal: true\n")
+	}
 	if m.Services.Secrets {
 		b.WriteString("  secrets:\n")
 		b.WriteString("    external: true\n")
