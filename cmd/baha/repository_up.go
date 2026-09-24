@@ -46,9 +46,15 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 	}
 	switch decision {
 	case repositoryUpNoop:
-		fmt.Fprintln(out, "Application is already READY. No changes.")
+		if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Application is already READY. No application changes.")
 		return nil
 	case repositoryUpStart:
+		if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
+			return err
+		}
 		fmt.Fprintln(out, "Application runtime exists but is stopped; starting existing runtime...")
 		return appUpCommand(store).Run(ctx, nil, out, errOut)
 	}
