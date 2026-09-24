@@ -27,10 +27,6 @@ func newTestIssuer(t interface{ Fatal(...any) }) *testIssuer {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	validity := request.TTL
-	if i.validity > 0 {
-		validity = i.validity
-	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "Test CA"},
@@ -69,6 +65,10 @@ func (i *testIssuer) Issue(_ context.Context, request CertificateRequest) (Issue
 		return IssuedCertificate{}, err
 	}
 	now := time.Now().UTC()
+	validity := request.TTL
+	if i.validity > 0 {
+		validity = i.validity
+	}
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: request.CommonName},
