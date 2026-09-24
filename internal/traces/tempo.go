@@ -345,7 +345,7 @@ func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client,
 }
 
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {
-	files, _, err := EnsureProviderFiles(m)
+	files, _, err := ExistingProviderFiles(m)
 	if err != nil {
 		return err
 	}
