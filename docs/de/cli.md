@@ -373,7 +373,7 @@ baha app tls update
 
 `--check` ist read-only. Mutation validiert Quelle, Key-Pair und FQDN, verweigert Downgrades, installiert owner-only Dateien, startet den Workload bei Bedarf neu und verifiziert Readiness. Bei Fehlern wird der vorherige geschuetzte Zertifikatsstand wiederhergestellt.
 
-ACME-Automation, OpenBao-PKI-Issuance und ein providerneutraler TLS-Contract bleiben Future Work.
+ACME-Automation fuer Public Ingress bleibt Future Work. Der Managed-Service-Access-Zertifikatslebenszyklus ist dagegen providerneutral umgesetzt: OpenBao PKI ist der managed-local Referenz-Issuer, BYOC/statisches External-PKI bleibt operator-owned und issuer-backed External-PKI kann ueber denselben Service-Access-Contract erneuern.
 
 ## Stoppen, fortsetzen und zerstoeren
 
