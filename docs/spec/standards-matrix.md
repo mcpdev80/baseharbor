@@ -8,7 +8,7 @@ This matrix is the pre-v0.5 standards-first baseline. It records what BaseHarbor
 | Service connection | Service Binding Specification | 1.1.0 | Open specification | servicebinding.io community; Apache-2.0 | Mature in cloud-native ecosystems | Well-known binding names: `type`, `provider`, `host`, `port`, `uri`, `username`, `password`, `certificates`, `private-key` | Identity refs, authorization, rotation/revocation, ownership and verification metadata | **ALIGN** |
 | Provider/resource architecture | Crossplane resource/provider/reconciliation model | v2.4 docs line | Established architecture pattern | CNCF ecosystem; Apache-2.0 project | High | desired/observed state, provider abstraction, external realization and reconciliation concepts | Do not import Kubernetes CRDs/finalizers/namespaces into portable intent | **KEEP / ALIGN** |
 | Service lifecycle | Open Service Broker API | v2.17 family | Open API / architecture pattern | Open Service Broker community; Apache-2.0 | Mature but narrower than BaseHarbor | catalog, plan, provision, update, bind, unbind, deprovision and async-operation concepts | BaseHarbor adds reconciliation, placement, ownership, verification, backup/restore and runtime separation | **KEEP / ALIGN** |
-| Provider distribution | OCI Image / Distribution / Runtime | Image 1.1.1, Distribution 1.1.1, Runtime 1.3.0 | Open standard | Open Container Initiative / Linux Foundation; Apache-2.0 | Very high | provider artifacts, digest identity, indexes/platforms, registry-neutral distribution | BaseHarbor catalog metadata and compatibility rules | **KEEP** |
+| Runtime provider process boundary | gRPC + Protocol Buffers over BaseHarbor runtime semantics | draft v1 | Open transport/IDL + BaseHarbor extension | CNCF ecosystem tooling / Protocol Buffers open source | High transport maturity; BaseHarbor runtime semantics pre-freeze | language-neutral external runtime providers | No standard spans Docker, Podman, Kubernetes and OpenShift lifecycle without importing platform-specific orchestration objects | **BAHA EXTENSION / ALIGN** |\n| Provider distribution | OCI Image / Distribution / Runtime | Image 1.1.1, Distribution 1.1.1, Runtime 1.3.0 | Open standard | Open Container Initiative / Linux Foundation; Apache-2.0 | Very high | provider artifacts, digest identity, indexes/platforms, registry-neutral distribution | BaseHarbor catalog metadata and compatibility rules | **KEEP** |
 | Observability | OpenTelemetry / OTLP | OTel 1.61.0, OTLP 1.11.0 | Open standard | CNCF; Apache-2.0 | Very high | traces, metrics, logs transport and semantic conventions | BaseHarbor intent/policy/provider resolution only | **KEEP / ALIGN** |
 | Identity | OpenID Connect / OAuth | OIDC Core 1.0 Errata 2 | Open standard | OpenID Foundation | Very high | discovery, issuer, scopes/claims, standard authentication/token semantics | BaseHarbor authorization/policy and provider lifecycle | **ADOPT** |
 | Messaging description | AsyncAPI | 3.1.0 | Open standard | AsyncAPI Initiative; Apache-2.0 | High | channel/operation/message API description | Broker provisioning, placement and lifecycle | **ADOPT when messaging ships** |
@@ -35,8 +35,9 @@ This matrix is the pre-v0.5 standards-first baseline. It records what BaseHarbor
 ### KEEP
 
 - provider-neutral application intent;
-- Provider Integration Contract lifecycle;
-- gRPC/Protocol Buffers process boundary;
+- capability/service Provider Integration Contract lifecycle;
+- separate Runtime Provider lifecycle contract;
+- gRPC/Protocol Buffers process boundaries;
 - OCI distribution direction;
 - desired/observed/reconcile/verify model;
 - provider placement and ownership;
@@ -61,6 +62,7 @@ No shipped v0.4 contract is currently scheduled for blind replacement. Any repla
 - reconciliation/verification semantics;
 - provider catalog metadata above OCI;
 - security lifecycle metadata not covered by Service Binding;
+- cross-runtime workload lifecycle semantics not covered by OCI/Compose/Kubernetes individually;
 - minimal vector service semantics if/when implemented.
 
 ## Freeze requirements
