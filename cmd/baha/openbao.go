@@ -93,6 +93,9 @@ func openBaoBootstrapCommand() *cli.Command {
 			if err := platformopenbao.Bootstrap(bootstrapCtx, compose, files, recoveryPath); err != nil {
 				return err
 			}
+			if err := reconcileControlPlaneServiceAccess(bootstrapCtx, compose, files); err != nil {
+				return fmt.Errorf("reconcile control-plane service access after OpenBao bootstrap: %w", err)
+			}
 			fmt.Fprintln(out, "[OK] OpenBao initialized and unsealed")
 			fmt.Fprintln(out, "[OK] baseharbor KV v2 mount configured")
 			fmt.Fprintln(out, "[OK] restricted manager AppRole configured and verified")
@@ -126,6 +129,9 @@ func openBaoUnsealCommand() *cli.Command {
 			}
 			if err := platformopenbao.CheckManager(unsealCtx, compose, files); err != nil {
 				return errors.New("OpenBao unsealed but manager authentication verification failed")
+			}
+			if err := reconcileControlPlaneServiceAccess(unsealCtx, compose, files); err != nil {
+				return fmt.Errorf("reconcile control-plane service access after OpenBao unseal: %w", err)
 			}
 			fmt.Fprintln(out, "[OK] OpenBao is unsealed")
 			fmt.Fprintln(out, "[OK] manager AppRole authentication succeeded")
