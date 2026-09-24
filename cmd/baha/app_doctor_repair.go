@@ -89,7 +89,7 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 					return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
 				}
 			}
-			if err := appApplyCommand(store).Run(ctx, nameArgs, out, errOut); err != nil {
+			if err := executeApplicationApplyLifecycle(ctx, store, nameArgs, out, errOut); err != nil {
 				return fmt.Errorf("safe application repair failed: %w", err)
 			}
 
