@@ -2,6 +2,7 @@ package serviceaccess
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -187,6 +188,94 @@ func TestIssuerBackedExternalPKIRejectsMismatchedAdapter(t *testing.T) {
 	}
 	if _, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), p, t.TempDir(), "prometheus"); err == nil {
 		t.Fatal("mismatched external issuer adapter was accepted")
+	}
+}
+
+func TestBYOCExpiryEvidenceAndReplacementRollout(t *testing.T) {
+	ctx := context.Background()
+	issuer := newTestIssuer(t)
+	issuer.validity = 48 * time.Hour
+	dir := t.TempDir()
+
+	cert, err := issuer.Issue(ctx, CertificateRequest{
+		CommonName: "service.local",
+		DNSNames:   []string{"service.local"},
+		TTL:        30 * 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPath := filepath.Join(dir, "server.pem")
+	keyPath := filepath.Join(dir, "server-key.pem")
+	caPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(certPath, cert.Certificate, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, cert.PrivateKey, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(caPath, trust.PEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Policy{
+		Environment:       "prod",
+		Provider:          "demo",
+		TLSRequired:       true,
+		Authentication:    AuthenticationNone,
+		PKISource:         PKIBYOC,
+		ServerName:        "service.local",
+		ServerCertificate: certPath,
+		ServerKey:         keyPath,
+		TrustBundle:       caPath,
+	}
+	stateDir := filepath.Join(dir, "state")
+	if _, err := EnsureTLSMaterial(ctx, nil, p, stateDir, "service.local"); err != nil {
+		t.Fatal(err)
+	}
+	readState := func() staticPKIState {
+		data, err := os.ReadFile(filepath.Join(stateDir, "static-state.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state staticPKIState
+		if err := json.Unmarshal(data, &state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	before := readState()
+	if before.Health != "critical" || before.LifecycleOwner != "operator" || before.Warning == "" {
+		t.Fatalf("unexpected BYOC expiry evidence: %+v", before)
+	}
+
+	issuer.validity = 60 * 24 * time.Hour
+	replacement, err := issuer.Issue(ctx, CertificateRequest{
+		CommonName: "service.local",
+		DNSNames:   []string{"service.local"},
+		TTL:        30 * 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certPath, replacement.Certificate, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, replacement.PrivateKey, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureTLSMaterial(ctx, nil, p, stateDir, "service.local"); err != nil {
+		t.Fatal(err)
+	}
+	after := readState()
+	if after.Health != "ok" || after.Warning != "" {
+		t.Fatalf("replacement BYOC material did not clear expiry warning: %+v", after)
+	}
+	if after.ServerFingerprint == before.ServerFingerprint {
+		t.Fatal("replacement BYOC certificate fingerprint did not change")
 	}
 }
 
