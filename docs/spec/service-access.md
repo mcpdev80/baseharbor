@@ -8,7 +8,7 @@ Certificate issuance and trust ownership are deliberately separate from portable
 
 The service-access layer supports:
 
-- `managed-local` — BaseHarbor generates scoped local TLS material as the developer-friendly reference realization;
+- `managed-local` — BaseHarbor resolves certificate issuance through the provider-neutral issuer boundary; the current Compose reference realization is OpenBao PKI;
 - `external-pki` — an operator supplies externally issued X.509 server/client certificates and trust material;
 - `byoc` — an operator supplies certificate/key/trust files without transferring CA ownership to BaseHarbor.
 
@@ -46,5 +46,7 @@ External PKI is first-class.
 BaseHarbor accepts external server certificates, private keys, trust bundles and, where mTLS is required, client certificates/keys. The application contract does not change when switching from managed-local material to an enterprise CA.
 
 Private keys remain protected state. Normal status/evidence output records only source/ownership/verification metadata, never key material or credential-bearing URLs.
+
+The issuer boundary owns trust retrieval, issue/renew/revoke lifecycle and readiness. The current managed-local reference issuer is OpenBao PKI. CA private keys and issuer state stay inside the issuer provider and must not be owned by the `baha` CLI host.
 
 Future issuer integrations (for example ACME, enterprise certificate services, cert-manager or OpenShift issuers) attach behind this same boundary. An issuer product must never become portable application intent.
