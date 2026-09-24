@@ -57,6 +57,24 @@ func TestExportWritesOnlyPublicCA(t *testing.T) {
 	}
 }
 
+func TestExportRefusesOverwrite(t *testing.T) {
+	ca := testCA(t, "BaseHarbor export CA")
+	path := filepath.Join(t.TempDir(), "baseharbor-ca.pem")
+	if err := os.WriteFile(path, []byte("operator-owned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Export(path, ca); err == nil {
+		t.Fatal("expected existing export destination to fail closed")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "operator-owned" {
+		t.Fatal("existing export destination was modified")
+	}
+}
+
 func TestInstallAndRemoveOwnedTrust(t *testing.T) {
 	stateDir := t.TempDir()
 	anchors := t.TempDir()
