@@ -20,6 +20,16 @@ var (
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	t.Helper()
 	runtimeIntegrationTrustPlaneOnce.Do(func() {
+		stateDir, err := os.MkdirTemp("", "baseharbor-ci-state-")
+		if err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
+		if err := os.Setenv("BASEHARBOR_STATE_DIR", stateDir); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
+
 		var out bytes.Buffer
 		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
