@@ -41,6 +41,33 @@ func EnsureTLSMaterial(policy Policy, dir string, dnsNames ...string) (TLSMateri
 	return ensureManagedLocal(policy, dir, dnsNames)
 }
 
+func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
+	if policy.PKISource == PKIExternal || policy.PKISource == PKIBYOC {
+		return externalTLSMaterial(policy)
+	}
+	if policy.PKISource != PKIManagedLocal {
+		return TLSMaterial{}, fmt.Errorf("unsupported PKI source %q", policy.PKISource)
+	}
+	material := TLSMaterial{
+		Source: PKIManagedLocal,
+		CA: filepath.Join(dir, "ca.pem"),
+		ServerCertificate: filepath.Join(dir, "server-cert.pem"),
+		ServerKey: filepath.Join(dir, "server-key.pem"),
+		ClientCertificate: filepath.Join(dir, "client-cert.pem"),
+		ClientKey: filepath.Join(dir, "client-key.pem"),
+		ServerName: policy.ServerName,
+	}
+	for _, path := range []string{material.CA, material.ServerCertificate, material.ServerKey, material.ClientCertificate, material.ClientKey} {
+		if _, err := os.Stat(path); err != nil {
+			return TLSMaterial{}, err
+		}
+	}
+	if err := validateMaterial(material, true); err != nil {
+		return TLSMaterial{}, err
+	}
+	return material, nil
+}
+
 func externalTLSMaterial(policy Policy) (TLSMaterial, error) {
 	if policy.ServerCertificate == "" || policy.ServerKey == "" || policy.TrustBundle == "" {
 		return TLSMaterial{}, errors.New("external TLS material is incomplete")
