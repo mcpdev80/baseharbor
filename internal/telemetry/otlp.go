@@ -42,6 +42,7 @@ type Driver struct {
 	runtime          Runtime
 	app              application.Manifest
 	files            application.RuntimeFiles
+	issuer           serviceaccess.Issuer
 	externalEndpoint string
 	traceEndpoint    string
 	traceNetwork     string
@@ -55,11 +56,12 @@ type ProviderFiles struct {
 	Config  string
 }
 
-func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles) *Driver {
+func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{
 		runtime:          runtime,
 		app:              app,
 		files:            files,
+		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
 		client:           nil,
 	}
@@ -106,7 +108,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
 	}
-	files, err := EnsureProviderFilesWithTraceBackendForEnvironment(d.traceEndpoint, d.traceNetwork, d.app.Environment)
+	files, err := EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment)
 	if err != nil {
 		return err
 	}
@@ -247,15 +249,15 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	return nil
 }
 
-func EnsureProviderFiles() (ProviderFiles, error) {
-	return EnsureProviderFilesWithTraceBackendForEnvironment("", "", "dev")
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, issuer, "", "", "dev")
 }
 
-func EnsureProviderFilesWithTraceBackend(traceEndpoint, traceNetwork string) (ProviderFiles, error) {
-	return EnsureProviderFilesWithTraceBackendForEnvironment(traceEndpoint, traceNetwork, "dev")
+func EnsureProviderFilesWithTraceBackend(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork string) (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, issuer, traceEndpoint, traceNetwork, "dev")
 }
 
-func EnsureProviderFilesWithTraceBackendForEnvironment(traceEndpoint, traceNetwork, environment string) (ProviderFiles, error) {
+func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment string) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
@@ -303,7 +305,7 @@ func EnsureProviderFilesWithTraceBackendForEnvironment(traceEndpoint, traceNetwo
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, otlpAccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, otlpAccessSpec())
 	if err != nil {
 		return ProviderFiles{}, err
 	}
