@@ -361,6 +361,9 @@ func appDestroyCommand(store application.Store) *cli.Command {
 				if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 					return fmt.Errorf("remove workload logging override: %w", err)
 				}
+				if err := logsprovider.RemoveProviderSourceOverride(files); err != nil {
+					return fmt.Errorf("remove provider logging override: %w", err)
+				}
 			}
 			tracePlacement, traceFound, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo)
 			if err != nil {
