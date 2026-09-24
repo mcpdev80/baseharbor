@@ -14,10 +14,10 @@ import (
 )
 
 type managedTracesExecution struct {
-	execution *capability.Execution
-	driver    *tracesprovider.Driver
-	runtime   bhruntime.Compose
-	manifest  application.Manifest
+	execution       *capability.Execution
+	driver          *tracesprovider.Driver
+	runtime         bhruntime.Compose
+	manifest        application.Manifest
 	enabled         bool
 	placement       tracesprovider.Placement
 	resources       []capability.Resource
@@ -45,8 +45,8 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 	prepared.placement = placement
 	providerSources, err := observability.ListTraces(
 		capability.ProviderPlacement{
-			Scope:            placement.Scope,
-			SharingBoundary:  placement.SharingBoundary,
+			Scope:           placement.Scope,
+			SharingBoundary: placement.SharingBoundary,
 			Ownership:       capability.OwnershipBaseHarbor,
 		},
 		[]string{m.Name},
