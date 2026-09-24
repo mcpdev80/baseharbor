@@ -366,12 +366,12 @@ func lokiDevelopmentEnvironment(environment string) bool {
 
 func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName: "loki-access",
-		Upstream: "http://loki:3100",
+		ServiceName:      "loki-access",
+		Upstream:         "http://loki:3100",
 		PublishedPortEnv: "BASEHARBOR_LOKI_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"logs-internal", "logs-publish"},
-		RequireClient: true,
+		ContainerPort:    8443,
+		Networks:         []string{"logs-internal", "logs-publish"},
+		RequireClient:    true,
 	}
 }
 

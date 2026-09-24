@@ -322,12 +322,12 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 
 func tempoAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName: "tempo-access",
-		Upstream: "http://tempo:3200",
+		ServiceName:      "tempo-access",
+		Upstream:         "http://tempo:3200",
 		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"traces"},
-		RequireClient: true,
+		ContainerPort:    8443,
+		Networks:         []string{"traces"},
+		RequireClient:    true,
 	}
 }
 

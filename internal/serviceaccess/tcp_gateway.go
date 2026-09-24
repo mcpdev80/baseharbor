@@ -53,9 +53,9 @@ func EnsureTCPGateway(policy Policy, providerDir string, spec TCPGatewaySpec) (T
 		return TCPGatewayFiles{}, err
 	}
 	files := TCPGatewayFiles{
-		Dir: dir,
-		Config: filepath.Join(dir, "haproxy.cfg"),
-		PEM: filepath.Join(dir, "runtime", "server.pem"),
+		Dir:      dir,
+		Config:   filepath.Join(dir, "haproxy.cfg"),
+		PEM:      filepath.Join(dir, "runtime", "server.pem"),
 		Material: projected,
 	}
 	cfg := tcpGatewayConfig(spec)

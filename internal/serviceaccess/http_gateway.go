@@ -59,9 +59,9 @@ func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) 
 		return HTTPGatewayFiles{}, err
 	}
 	files := HTTPGatewayFiles{
-		Dir: dir,
+		Dir:       dir,
 		Caddyfile: filepath.Join(dir, "Caddyfile"),
-		Material: gatewayMaterial,
+		Material:  gatewayMaterial,
 	}
 	requireClient, err := reconcileGatewayAuthentication(dir, spec.RequireClient && policy.AuthenticationRequired)
 	if err != nil {
@@ -205,7 +205,7 @@ func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, erro
 	}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
-		RootCAs: roots,
+		RootCAs:    roots,
 		ServerName: strings.TrimSpace(material.ServerName),
 	}
 	if requireClient && (material.ClientCertificate == "" || material.ClientKey == "") {
@@ -222,9 +222,9 @@ func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, erro
 		config.Certificates = []tls.Certificate{cert}
 	}
 	transport := &http.Transport{
-		TLSClientConfig: config,
+		TLSClientConfig:     config,
 		TLSHandshakeTimeout: 5 * time.Second,
-		DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		DialContext:         (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 	}
 	return &http.Client{Transport: transport, Timeout: 10 * time.Second}, nil
 }

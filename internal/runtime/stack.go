@@ -65,12 +65,12 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, err
 	}
 	openBaoAccess, err := serviceaccess.EnsureHTTPGateway(openBaoPolicy, filepath.Join(stateDir, "providers", "openbao"), serviceaccess.HTTPGatewaySpec{
-		ServiceName: "openbao-access",
-		Upstream: "http://openbao:8200",
+		ServiceName:      "openbao-access",
+		Upstream:         "http://openbao:8200",
 		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"default"},
-		RequireClient: false,
+		ContainerPort:    8443,
+		Networks:         []string{"default"},
+		RequireClient:    false,
 	})
 	if err != nil {
 		return Files{}, fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
@@ -80,11 +80,11 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, err
 	}
 	postgresAccess, err := serviceaccess.EnsureTCPGateway(postgresPolicy, filepath.Join(stateDir, "providers", "postgresql"), serviceaccess.TCPGatewaySpec{
-		ServiceName: "postgres-access",
-		UpstreamHost: "postgres",
-		UpstreamPort: 5432,
+		ServiceName:      "postgres-access",
+		UpstreamHost:     "postgres",
+		UpstreamPort:     5432,
 		PublishedPortEnv: "BASEHARBOR_POSTGRES_PORT",
-		ContainerPort: 5432,
+		ContainerPort:    5432,
 	})
 	if err != nil {
 		return Files{}, fmt.Errorf("prepare control-plane PostgreSQL TLS access: %w", err)

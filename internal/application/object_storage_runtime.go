@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	S3TLSHostCAEnv      = "S3_TLS_CA_FILE"
-	S3TLSContainerCA    = "/run/baseharbor/bindings/object-storage/ca.pem"
+	S3TLSHostCAEnv   = "S3_TLS_CA_FILE"
+	S3TLSContainerCA = "/run/baseharbor/bindings/object-storage/ca.pem"
 )
 
 type ObjectStorageCredentials struct {

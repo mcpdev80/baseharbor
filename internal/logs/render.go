@@ -137,7 +137,7 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 func providerComposeYAMLForRuntime(placement Placement, registrations []Registration, runtimeKind string) string {
 	access := serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
-		Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
+		Material:  serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
 	}
 	return providerComposeYAMLForRuntimeAndAccess(placement, registrations, runtimeKind, access)
 }

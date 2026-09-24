@@ -448,12 +448,12 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 
 func otlpAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
-		ServiceName: "otel-collector-access",
-		Upstream: "http://otel-collector:4318",
+		ServiceName:      "otel-collector-access",
+		Upstream:         "http://otel-collector:4318",
 		PublishedPortEnv: "BASEHARBOR_OTLP_PORT",
-		ContainerPort: 8443,
-		Networks: []string{"telemetry"},
-		RequireClient: true,
+		ContainerPort:    8443,
+		Networks:         []string{"telemetry"},
+		RequireClient:    true,
 	}
 }
 

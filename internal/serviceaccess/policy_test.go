@@ -60,7 +60,10 @@ func TestProviderSpecificOverrideWins(t *testing.T) {
 	t.Setenv(EnvPKISource, string(PKIManagedLocal))
 	t.Setenv("BASEHARBOR_PROMETHEUS_PKI_SOURCE", string(PKIBYOC))
 	dir := t.TempDir()
-	for _, item := range []struct{name string; mode os.FileMode}{
+	for _, item := range []struct {
+		name string
+		mode os.FileMode
+	}{
 		{"server.pem", 0o644}, {"server-key.pem", 0o600}, {"ca.pem", 0o644},
 	} {
 		if err := os.WriteFile(filepath.Join(dir, item.name), []byte("x"), item.mode); err != nil {
