@@ -464,7 +464,11 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 		}
 		if time.Now().After(readinessDeadline) {
 			fmt.Fprint(out, formatted)
-			return errors.New("control-plane runtime started but did not become ready")
+			detail := strings.TrimSpace(formatted)
+			if detail == "" {
+				return errors.New("control-plane runtime started but did not become ready")
+			}
+			return fmt.Errorf("control-plane runtime started but did not become ready: %s", detail)
 		}
 		select {
 		case <-ctx.Done():
