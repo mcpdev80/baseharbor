@@ -55,6 +55,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithLogsCollection(m, "application")
 	m = application.WithOTLPTelemetry(m, "traces")
+	m = application.WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -129,14 +130,20 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderOTelCollector,
 		capability.ProviderLoki,
 		capability.ProviderTempo,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 	assertSignalProviders(t, m, observability.SignalLogs, []capability.ProviderKind{
 		capability.ProviderPostgreSQL,
 		capability.ProviderValkey,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 	assertSignalProviders(t, m, observability.SignalTraces, []capability.ProviderKind{
 		capability.ProviderPostgreSQL,
 		capability.ProviderValkey,
+		capability.ProviderRuntimeBroker,
+		capability.ProviderRuntimeExecutor,
 	})
 
 	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
