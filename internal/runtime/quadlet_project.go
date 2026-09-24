@@ -34,6 +34,7 @@ type quadletComposeService struct {
 	Environment composeEnv                `yaml:"environment"`
 	Restart     string                    `yaml:"restart"`
 	Command     quadletStringList         `yaml:"command"`
+	Entrypoint  quadletStringList         `yaml:"entrypoint"`
 	Volumes     []string                  `yaml:"volumes"`
 	Networks    quadletNetworkAttachments `yaml:"networks"`
 	DependsOn   quadletStringSet          `yaml:"depends_on"`
@@ -531,6 +532,13 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			fmt.Fprintf(&unit, "Volume=%s:/run/secrets/%s:ro\n", source, secretTarget)
 		}
 
+		if len(service.Entrypoint) > 0 {
+			entrypoint, err := json.Marshal([]string(service.Entrypoint))
+			if err != nil {
+				return QuadletProject{}, fmt.Errorf("encode Compose service %q entrypoint: %w", serviceName, err)
+			}
+			fmt.Fprintf(&unit, "Entrypoint=%s\n", entrypoint)
+		}
 		if len(service.Command) > 0 {
 			fmt.Fprintf(&unit, "Exec=%s\n", quadletSystemdJoin(service.Command))
 		}
