@@ -101,3 +101,55 @@ func TestProjectContainerReadablePublicFileAcceptsReadableTrustBundle(t *testing
 		t.Fatalf("projection mode = %o, want 644", got)
 	}
 }
+
+
+func TestEnsureFilesProjectsExecutorPrivateKeyForNonRootRuntime(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, mode os.FileMode) string {
+		t.Helper()
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte(name), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	identity := openbao.RuntimeExecutorMTLSFiles{
+		CA:   write("ca.pem", 0o644),
+		Cert: write("executor-cert.pem", 0o644),
+		Key:  write("executor-key.pem", 0o600),
+	}
+	admin := write("s3-admin.env", 0o600)
+	trust := write("s3-ca.pem", 0o644)
+	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "baseharbor-runtime:test")
+
+	files, err := EnsureFiles(filepath.Join(root, "data"), identity, admin, "https://seaweedfs-access:8443", trust)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	projected := filepath.Join(files.Dir, "executor-key.pem")
+	info, err := os.Stat(projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("projected executor key mode = %o, want 644", got)
+	}
+	sourceInfo, err := os.Stat(identity.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sourceInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("canonical executor key mode = %o, want 600", got)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compose), projected) {
+		t.Fatalf("runtime executor compose does not use projected private key:\n%s", compose)
+	}
+}
