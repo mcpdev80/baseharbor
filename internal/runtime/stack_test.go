@@ -172,13 +172,15 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeUsesLoopbackBindings(t *testing.T) {
+func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
 	text := string(composeYAML)
-	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432") {
-		t.Fatal("postgres is not bound to loopback")
-	}
-	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200") {
-		t.Fatal("openbao is not bound to loopback")
+	for _, forbidden := range []string{
+		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("embedded runtime directly publishes plaintext backend %q", forbidden)
+		}
 	}
 	if strings.Contains(text, "-dev") {
 		t.Fatal("openbao must not run in dev mode")

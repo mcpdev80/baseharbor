@@ -18,6 +18,8 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 			Key:  "/tmp/executor-key.pem",
 		},
 		"/tmp/s3-admin.env",
+		"https://seaweedfs-access:8443",
+		"/tmp/s3-ca.pem",
 	)
 
 	if strings.Contains(got, "state-init:") {

@@ -116,6 +116,10 @@ type MetricsSource struct {
 	Security         Security
 }
 
+func (s MetricsSource) Validate() error {
+	return s.signal().Validate()
+}
+
 func (s MetricsSource) signal() SignalSource {
 	scheme := strings.ToLower(strings.TrimSpace(s.Scheme))
 	if scheme == "" {

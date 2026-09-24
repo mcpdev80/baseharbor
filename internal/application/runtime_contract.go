@@ -305,7 +305,7 @@ func readRuntimeEnvBytes(data []byte) (map[string]string, error) {
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+		if !ok || strings.TrimSpace(key) == "" {
 			return nil, fmt.Errorf("application runtime environment contains an invalid entry")
 		}
 		values[key] = value
