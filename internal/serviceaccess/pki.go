@@ -2,6 +2,7 @@ package serviceaccess
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -27,6 +28,18 @@ type TLSMaterial struct {
 	ServerName        string    `json:"server_name"`
 }
 
+type staticPKIState struct {
+	Version           int       `json:"version"`
+	Source            PKISource `json:"source"`
+	LifecycleOwner    string    `json:"lifecycle_owner"`
+	RenewalMode       string    `json:"renewal_mode"`
+	ServerFingerprint string    `json:"server_fingerprint"`
+	ServerExpiresAt   time.Time `json:"server_expires_at"`
+	ClientExpiresAt   time.Time `json:"client_expires_at,omitempty"`
+	Health            string    `json:"health"`
+	Warning           string    `json:"warning,omitempty"`
+}
+
 type managedPKIState struct {
 	Version         int       `json:"version"`
 	IssuerReference string    `json:"issuer_reference"`
@@ -44,10 +57,10 @@ func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir st
 	}
 	switch policy.PKISource {
 	case PKIBYOC:
-		return externalTLSMaterial(policy)
+		return ensureStaticExternalMaterial(policy, dir)
 	case PKIExternal:
 		if strings.TrimSpace(policy.IssuerReference) == "" {
-			return externalTLSMaterial(policy)
+			return ensureStaticExternalMaterial(policy, dir)
 		}
 		if issuer == nil {
 			return TLSMaterial{}, errors.New("issuer-backed external-pki requires an issuer adapter")
@@ -90,6 +103,59 @@ func ExistingTLSMaterial(policy Policy, dir string) (TLSMaterial, error) {
 	if !requireClient {
 		material.ClientCertificate = ""
 		material.ClientKey = ""
+	}
+	return material, nil
+}
+
+func ensureStaticExternalMaterial(policy Policy, dir string) (TLSMaterial, error) {
+	material, err := externalTLSMaterial(policy)
+	if err != nil {
+		return TLSMaterial{}, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return TLSMaterial{}, fmt.Errorf("create static PKI lifecycle state directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return TLSMaterial{}, err
+	}
+	server, err := readCertificate(material.ServerCertificate)
+	if err != nil {
+		return TLSMaterial{}, err
+	}
+	sum := sha256.Sum256(server.Raw)
+	state := staticPKIState{
+		Version:           1,
+		Source:            policy.PKISource,
+		LifecycleOwner:    "operator",
+		RenewalMode:       "replace-and-reconcile",
+		ServerFingerprint: fmt.Sprintf("%x", sum[:]),
+		ServerExpiresAt:   server.NotAfter.UTC(),
+		Health:            "ok",
+	}
+	if policy.PKISource == PKIExternal {
+		state.LifecycleOwner = "external"
+	}
+	remaining := time.Until(server.NotAfter)
+	switch {
+	case remaining <= 7*24*time.Hour:
+		state.Health = "critical"
+		state.Warning = "certificate expires within 7 days; replace the configured certificate/key material and reconcile before expiry"
+	case remaining <= 30*24*time.Hour:
+		state.Health = "warn"
+		state.Warning = "certificate expires within 30 days; prepare replacement certificate/key material and reconcile"
+	}
+	if material.ClientCertificate != "" {
+		if client, clientErr := readCertificate(material.ClientCertificate); clientErr == nil {
+			state.ClientExpiresAt = client.NotAfter.UTC()
+		}
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return TLSMaterial{}, err
+	}
+	data = append(data, '\n')
+	if err := writeAtomic(filepath.Join(dir, "static-state.json"), data, 0o600); err != nil {
+		return TLSMaterial{}, err
 	}
 	return material, nil
 }
