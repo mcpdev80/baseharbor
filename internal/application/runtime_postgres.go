@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
@@ -52,7 +53,7 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 	}
 }
 
-func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
+func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
 	if err := m.Validate(); err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -67,7 +68,7 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
-	if err := EnsureBackendServiceAccess(files, m); err != nil {
+	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
 
@@ -88,8 +89,8 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 }
 
 // EnsurePostgresRuntime is kept for callers from the first runtime milestone.
-func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
-	return EnsureRuntime(store, m)
+func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
+	return EnsureRuntime(ctx, issuer, store, m)
 }
 
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
