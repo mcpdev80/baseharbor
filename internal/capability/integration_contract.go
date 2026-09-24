@@ -70,6 +70,10 @@ type ProviderObservabilitySignal struct {
 	Path               string                        `json:"path,omitempty"`
 }
 
+func (s ProviderObservabilitySignal) Collectable() bool {
+	return s.Status == ObservabilitySupported
+}
+
 type ProviderObservability struct {
 	Signals []ProviderObservabilitySignal `json:"signals,omitempty"`
 }
@@ -223,6 +227,10 @@ func (d IntegrationDescriptor) Validate() error {
 		}
 		switch signal.Verification {
 		case ObservabilityVerifyEndpoint, ObservabilityVerifyBackend, ObservabilityVerifySpan:
+		case ObservabilityVerifyNone:
+			if signal.Status != ObservabilityRequiresAdapter {
+				return fmt.Errorf("provider %q observability signal %q cannot skip verification when supported", d.Provider.Kind, signal.Name)
+			}
 		default:
 			return fmt.Errorf("provider %q observability signal %q has unsupported verification %q", d.Provider.Kind, signal.Name, signal.Verification)
 		}
