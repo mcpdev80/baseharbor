@@ -449,7 +449,7 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 		}
 		for _, capability := range service.CapAdd {
 			if strings.TrimSpace(capability) != "" {
-				fmt.Fprintf(&unit, "AddCapability=%s\n", strings.ToLower(strings.TrimSpace(capability)))
+				fmt.Fprintf(&unit, "AddCapability=%s\n", strings.TrimSpace(capability))
 			}
 		}
 		for _, option := range service.SecurityOpt {
