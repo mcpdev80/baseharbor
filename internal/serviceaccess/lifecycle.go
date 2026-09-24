@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -67,12 +66,6 @@ func InspectLifecycle(dir string) (LifecycleObservation, error) {
 		return LifecycleObservation{}, fmt.Errorf("unsupported static PKI state version %d", state.Version)
 	}
 	health, warning := lifecycleHealth(state.ServerExpiresAt, state.RenewalMode)
-	if strings.TrimSpace(state.Warning) != "" {
-		warning = state.Warning
-	}
-	if strings.TrimSpace(state.Health) != "" {
-		health = state.Health
-	}
 	return LifecycleObservation{
 		Source:          state.Source,
 		LifecycleOwner:  state.LifecycleOwner,
