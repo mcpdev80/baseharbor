@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func backendAccessRoot(files RuntimeFiles, kind, instance string) string {
 	return filepath.Join(files.Dir, "providers", kind, instance)
 }
 
-func EnsureBackendServiceAccess(files RuntimeFiles, m Manifest) error {
+func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
 		return err
@@ -53,7 +54,7 @@ func EnsureBackendServiceAccess(files RuntimeFiles, m Manifest) error {
 			return err
 		}
 		root := backendAccessRoot(files, "postgresql", instance)
-		gateway, err := serviceaccess.EnsureTCPGateway(policy, root, serviceaccess.TCPGatewaySpec{
+		gateway, err := serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
 			ServiceName:      postgresAccessService(instance),
 			UpstreamHost:     runtimeServiceName("postgres", instance),
 			UpstreamPort:     5432,
@@ -84,7 +85,7 @@ func EnsureBackendServiceAccess(files RuntimeFiles, m Manifest) error {
 			return err
 		}
 		root := backendAccessRoot(files, "valkey", instance)
-		_, err = serviceaccess.EnsureTCPGateway(policy, root, serviceaccess.TCPGatewaySpec{
+		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
 			ServiceName:      valkeyAccessService(instance),
 			UpstreamHost:     runtimeServiceName("valkey", instance),
 			UpstreamPort:     6379,
