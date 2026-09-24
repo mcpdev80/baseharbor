@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,7 +64,10 @@ func (r *fakeRuntime) UpProject(_ context.Context, _ string, _ string, envFile s
 	})
 	r.listener = listener
 	r.server = &http.Server{Handler: mux}
-	go func() { _ = r.server.Serve(listener) }()
+	providerDir := filepath.Dir(envFile)
+	certFile := filepath.Join(providerDir, "service-access", "runtime", "server.pem")
+	keyFile := filepath.Join(providerDir, "service-access", "runtime", "server-key.pem")
+	go func() { _ = r.server.ServeTLS(listener, certFile, keyFile) }()
 	return nil
 }
 
