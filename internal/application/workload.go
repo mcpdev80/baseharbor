@@ -285,6 +285,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
+		hasBackendTLS := managedRuntime
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -311,7 +312,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
-		if hasTelemetryTLS || hasObjectStorageTLS {
+		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS {
 			b.WriteString("    volumes:\n")
 			if hasTelemetryTLS {
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
@@ -322,6 +323,18 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			}
 			if hasObjectStorageTLS {
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[S3TLSHostCAEnv]+":"+S3TLSContainerCA+":ro"))
+			}
+			if hasBackendTLS {
+				for _, instance := range SQLInstanceNames(m) {
+					if ca := strings.TrimSpace(values[postgresTLSCAKey(instance)]); ca != "" {
+						fmt.Fprintf(&b, "      - %s\n", strconv.Quote(ca+":"+postgresTLSCAContainerPath(instance)+":ro"))
+					}
+				}
+				for _, instance := range CacheInstanceNames(m) {
+					if ca := strings.TrimSpace(values[valkeyTLSCAKey(instance)]); ca != "" {
+						fmt.Fprintf(&b, "      - %s\n", strconv.Quote(ca+":"+valkeyTLSCAContainerPath(instance)+":ro"))
+					}
+				}
 			}
 		}
 		if hasNetworks {
@@ -396,6 +409,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 		if instance == preferredPostgres {
 			env["DATABASE_URL"] = uri
+			env["DATABASE_CA_FILE"] = postgresTLSCAContainerPath(instance)
 		}
 		if instance != defaultServiceInstance {
 			env["DATABASE_"+envInstanceToken(instance)+"_URL"] = uri
@@ -477,6 +491,8 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		if instance == preferredRedis {
 			env["REDIS_URL"] = uri
 			env["VALKEY_URL"] = uri
+			env["REDIS_CA_FILE"] = valkeyTLSCAContainerPath(instance)
+			env["VALKEY_CA_FILE"] = valkeyTLSCAContainerPath(instance)
 		}
 		if instance != defaultServiceInstance {
 			token := envInstanceToken(instance)
@@ -500,11 +516,15 @@ func postgresContainerConnectionURL(values map[string]string, instance string) (
 	if err != nil {
 		return "", err
 	}
+	query := url.Values{}
+	query.Set("sslmode", "verify-ca")
+	query.Set("sslrootcert", postgresTLSCAContainerPath(instance))
 	u := &url.URL{
-		Scheme: "postgresql",
-		User:   url.UserPassword(username, password),
-		Host:   net.JoinHostPort(runtimeServiceName("postgres", instance), "5432"),
-		Path:   "/" + database,
+		Scheme:   "postgresql",
+		User:     url.UserPassword(username, password),
+		Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+		Path:     "/" + database,
+		RawQuery: query.Encode(),
 	}
 	return u.String(), nil
 }
@@ -515,9 +535,9 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 		return "", err
 	}
 	u := &url.URL{
-		Scheme: "redis",
+		Scheme: "rediss",
 		User:   url.UserPassword("default", password),
-		Host:   net.JoinHostPort(runtimeServiceName("valkey", instance), "6379"),
+		Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
 		Path:   "/0",
 	}
 	return u.String(), nil
