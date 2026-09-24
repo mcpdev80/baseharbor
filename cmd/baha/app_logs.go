@@ -199,6 +199,12 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	if err := runtime.ConfigProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); err != nil {
 		return fmt.Errorf("validate application-provider log collection: %w", err)
 	}
+	if found && runtime.Engine() == "docker" {
+		if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, project, files.Dir, environment, nil, composeFiles...); err != nil {
+			return fmt.Errorf("reconcile application-provider log collection: %w", err)
+		}
+		return nil
+	}
 	if err := runtime.UpProjectFilesSelectedNoBuildProgress(ctx, project, files.Dir, environment, nil, nil, composeFiles...); err != nil {
 		return fmt.Errorf("reconcile application-provider log collection: %w", err)
 	}
