@@ -52,7 +52,10 @@ func VerifyApplication(ctx context.Context, m application.Manifest, services []s
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client, err := lokiHTTPClient(m, files)
+	if err != nil {
+		return err
+	}
 	for _, service := range services {
 		if err := waitForStream(ctx, client, endpoint, m, service); err != nil {
 			return err

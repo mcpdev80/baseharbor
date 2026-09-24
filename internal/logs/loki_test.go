@@ -110,6 +110,39 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	}
 }
 
+func TestVerifyApplicationUsesServiceAccessTLS(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.LogsEnabledEnv, "true")
+	runtime := &fakeRuntime{}
+	defer runtime.Close()
+
+	m := application.New("demo", "dev", false, false, false)
+	m.Logs = application.LogsRequirements{Collect: []string{"application"}}
+	driver := logs.NewDriver(runtime, m, serviceissuer.New(t))
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.Logs,
+		Name:        "api",
+		Provider:    capability.ProviderLoki,
+	}
+	binding := capability.Binding{
+		Logs: &capability.LogsBinding{
+			Direction: "collect",
+			Format:    "syslog-rfc5424",
+			Service:   "api",
+		},
+	}
+	if err := driver.Preflight(context.Background(), resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Provision(context.Background(), resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := logs.VerifyApplication(context.Background(), m, []string{"api"}); err != nil {
+		t.Fatalf("verify application through managed service access: %v", err)
+	}
+}
+
 func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
