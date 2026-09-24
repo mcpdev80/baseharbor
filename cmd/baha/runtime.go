@@ -274,6 +274,13 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
 		return fmt.Errorf("wait for OpenBao control-plane readiness: %w", err)
 	}
+	if state, inspectErr := platformopenbao.Inspect(ctx, compose, files); inspectErr == nil && state.Initialized && !state.Sealed {
+		if managerErr := platformopenbao.CheckManager(ctx, compose, files); managerErr == nil {
+			if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+				return fmt.Errorf("reconcile control-plane service access: %w", err)
+			}
+		}
+	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
 	}
@@ -427,6 +434,9 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 	}
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		return fmt.Errorf("verify OpenBao manager authentication after control-plane start: %w", err)
+	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+		return fmt.Errorf("reconcile control-plane service access after start: %w", err)
 	}
 
 	var formatted string
