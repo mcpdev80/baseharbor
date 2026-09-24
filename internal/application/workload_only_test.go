@@ -1,10 +1,13 @@
 package application
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func workloadOnlyManifest() Manifest {
@@ -68,7 +71,7 @@ func TestWorkloadOnlyRuntimeMaterializationDoesNotInventBackend(t *testing.T) {
 	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
 	m := workloadOnlyManifest()
 
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatalf("EnsureRuntime() error = %v", err)
 	}
