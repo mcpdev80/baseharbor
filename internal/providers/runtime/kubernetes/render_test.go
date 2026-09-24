@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 	"github.com/mcpdev80/baseharbor/internal/workload"
 )
 
@@ -25,7 +26,7 @@ func TestRenderReferenceDemoUsesArtifactOverrideAndNamespacedResources(t *testin
 	out, err := Render(Plan{
 		Application: "baseharbor-demo",
 		Environment: "dev",
-		Namespace:   "baseharbor-ci",
+		Target:      runtimemodel.Target{Scope: "baseharbor-ci"},
 		Workload:    model,
 		Images: map[string]string{
 			"demo-app": "registry.example/baseharbor-demo@sha256:deadbeef",
@@ -82,7 +83,7 @@ func TestRenderBuildBackedServiceRequiresResolvedArtifact(t *testing.T) {
 	_, err := Render(Plan{
 		Application: "demo",
 		Environment: "dev",
-		Namespace:   "baseharbor-ci",
+		Target:      runtimemodel.Target{Scope: "baseharbor-ci"},
 		Workload: workload.Model{Services: []workload.Service{{
 			Name:  "app",
 			Build: &workload.Build{Context: "."},
