@@ -572,13 +572,17 @@ func existingProviderFilesForPlacement(placement Placement) (ProviderFiles, erro
 	return providerFilesAt(placement.Dir)
 }
 
-func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, found, err := RegisteredPlacementFor(m)
+func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
+	providerPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
 	}
-	if !found || placement.Scope != capability.ScopeShared {
+	if !found || providerPlacement.Scope != capability.ScopeShared {
 		return nil
+	}
+	placement, err := placementFromProviderPlacement(m, providerPlacement)
+	if err != nil {
+		return err
 	}
 	files, err := existingProviderFilesForPlacement(placement)
 	if errors.Is(err, os.ErrNotExist) {
@@ -591,6 +595,29 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m applica
 	if err != nil {
 		return err
 	}
+
+	policy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return err
+	}
+	allowedApplications := make([]string, 0, len(registrations))
+	for _, registration := range registrations {
+		allowedApplications = append(allowedApplications, registration.Application)
+	}
+	providerSources, err := observability.ListMetrics(
+		providerPlacement,
+		allowedApplications,
+		policy.Collect[application.MetricsSourceApplicationProvider],
+		policy.Collect[application.MetricsSourcePlatformProvider],
+	)
+	if err != nil {
+		return err
+	}
+	if err := syncProviderTargets(files.TargetsDir, providerSources); err != nil {
+		return err
+	}
+	providerNetworks := providerMetricNetworks(providerSources)
+
 	_, caErr := os.Stat(files.RuntimeCA)
 	hasRuntimeCA := caErr == nil
 	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
@@ -602,7 +629,16 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, m applica
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworks(placement, registrations, nil, hasRuntimeCA)), 0o600); err != nil {
+
+	accessPolicy, err := serviceaccess.Resolve(prometheusAccessEnvironment(m, registrations), "prometheus", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, prometheusAccessSpec())
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, accessFiles)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
