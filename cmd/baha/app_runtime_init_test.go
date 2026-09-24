@@ -20,11 +20,25 @@ import (
 )
 
 func TestParseRepositoryInitOptions(t *testing.T) {
-	opts, err := parseRepositoryInitOptions([]string{"--hostname", "mail.example.test", "--tls=existing", "--cert-dir", "/tmp/certs", "--yes"})
+	opts, err := parseRepositoryInitOptions([]string{
+		"--runtime", "kubernetes",
+		"--artifact-repository=ghcr.io/mcpdev80/baseharbor",
+		"--buildkit-address", "unix:///run/user/1001/buildkit/buildkitd.sock",
+		"--hostname", "mail.example.test",
+		"--tls=existing",
+		"--cert-dir", "/tmp/certs",
+		"--yes",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Hostname != "mail.example.test" || opts.TLSMode != "existing" || opts.CertDir != "/tmp/certs" || !opts.Yes {
+	if opts.RuntimeProvider != "kubernetes" ||
+		opts.ArtifactRepository != "ghcr.io/mcpdev80/baseharbor" ||
+		opts.BuildKitAddress != "unix:///run/user/1001/buildkit/buildkitd.sock" ||
+		opts.Hostname != "mail.example.test" ||
+		opts.TLSMode != "existing" ||
+		opts.CertDir != "/tmp/certs" ||
+		!opts.Yes {
 		t.Fatalf("unexpected options: %#v", opts)
 	}
 	if _, err := parseRepositoryInitOptions([]string{"--tls=openbao-pki"}); err == nil {
@@ -39,7 +53,9 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 		TLSMode:         "existing",
 		CertDir:         "/operator/certs",
 		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
-		RuntimeProvider: bhruntime.ProviderCompose,
+		RuntimeProvider:    bhruntime.ProviderCompose,
+		ArtifactRepository: "ghcr.io/mcpdev80/baseharbor",
+		BuildKitAddress:    "unix:///run/user/1001/buildkit/buildkitd.sock",
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -64,6 +80,12 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=compose\n") {
 		t.Fatalf("runtime provider missing from init state: %s", data)
+	}
+	if !strings.Contains(string(data), "BASEHARBOR_ARTIFACT_REPOSITORY=ghcr.io/mcpdev80/baseharbor\n") {
+		t.Fatalf("artifact repository missing from init state: %s", data)
+	}
+	if !strings.Contains(string(data), "BASEHARBOR_BUILDKIT_ADDRESS=unix:///run/user/1001/buildkit/buildkitd.sock\n") {
+		t.Fatalf("BuildKit address missing from init state: %s", data)
 	}
 }
 
