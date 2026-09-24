@@ -78,6 +78,8 @@ func TestDoctorVerboseKeepsRuntimeDiagnostics(t *testing.T) {
 		false,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 	if !strings.Contains(out.String(), "compose exec -T broker") {
 		t.Fatalf("verbose doctor hid diagnostic detail:\n%s", out.String())
