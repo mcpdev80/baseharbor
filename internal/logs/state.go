@@ -230,6 +230,93 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 	return path, nil
 }
 
+func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	p, err := PlacementFor(m)
+	if err != nil {
+		return "", false, err
+	}
+	policy, err := application.LogsPolicy(m)
+	if err != nil {
+		return "", false, err
+	}
+	sources, err := observability.ListLogs(
+		capability.ProviderPlacement{Scope: p.Scope, SharingBoundary: p.SharingBoundary, Ownership: capability.OwnershipBaseHarbor},
+		[]string{m.Name},
+		policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider],
+		false,
+	)
+	if err != nil {
+		return "", false, err
+	}
+	project := application.RuntimeProjectName(m)
+	type providerService struct {
+		Service  string
+		Provider capability.ProviderKind
+	}
+	seen := map[string]providerService{}
+	for _, source := range sources {
+		if source.Class != observability.SourceApplicationProvider || source.OwnerApplication != m.Name {
+			continue
+		}
+		sourceProject, service, ok := observability.ParseRuntimeTarget(source.Target)
+		if !ok || sourceProject != project {
+			continue
+		}
+		seen[service] = providerService{Service: service, Provider: source.Provider}
+	}
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	if len(seen) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", false, err
+		}
+		return "", false, nil
+	}
+	registration, err := ApplicationRegistration(m)
+	if err != nil {
+		return "", false, err
+	}
+	services := make([]providerService, 0, len(seen))
+	for _, service := range seen {
+		services = append(services, service)
+	}
+	sort.Slice(services, func(i, j int) bool { return services[i].Service < services[j].Service })
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, source := range services {
+		fmt.Fprintf(&b, "  %s:\n", source.Service)
+		b.WriteString("    logging:\n")
+		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+			b.WriteString("      driver: journald\n")
+			continue
+		}
+		b.WriteString("      driver: syslog\n")
+		b.WriteString("      options:\n")
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)))
+		b.WriteString("        syslog-format: rfc5424\n")
+		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(string(source.Provider)+"/"+source.Service))
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return "", false, err
+	}
+	return path, true, nil
+}
+
+func ExistingProviderSourceOverride(runtime application.RuntimeFiles) (string, bool, error) {
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if !info.Mode().IsRegular() {
+		return "", false, errors.New("provider logging override is not a regular file")
+	}
+	return path, true, nil
+}
+
 func ExistingWorkloadOverride(runtime application.RuntimeFiles) (string, bool, error) {
 	path := filepath.Join(runtime.Dir, workloadOverrideName)
 	info, err := os.Stat(path)
