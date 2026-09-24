@@ -194,6 +194,10 @@ func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
 			removeErr = errors.Join(removeErr, err)
 			continue
 		}
+		if err := verifyRecordedAnchor(record); err != nil {
+			removeErr = errors.Join(removeErr, err)
+			continue
+		}
 		if err := backend.Remove(ctx, record.Path); err != nil {
 			removeErr = errors.Join(removeErr, fmt.Errorf("remove owned host trust %s: %w", record.Path, err))
 			continue
@@ -207,6 +211,24 @@ func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
 		return removed, err
 	}
 	return removed, nil
+}
+
+func verifyRecordedAnchor(record AnchorRecord) error {
+	data, err := os.ReadFile(record.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect recorded host trust anchor %s: %w", record.Path, err)
+	}
+	_, fingerprint, err := ParseCA(data)
+	if err != nil {
+		return fmt.Errorf("validate recorded host trust anchor %s: %w", record.Path, err)
+	}
+	if fingerprint != record.Fingerprint {
+		return fmt.Errorf("refusing to remove host trust anchor %s: installed certificate fingerprint no longer matches BaseHarbor ownership state", record.Path)
+	}
+	return nil
 }
 
 func StateRecords(stateDir string) ([]AnchorRecord, error) {
