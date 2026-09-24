@@ -200,13 +200,16 @@ func RegisterProviderSignals(registration ProviderSignalRegistration) error {
 		if !signal.Collectable() {
 			continue
 		}
-		runtimeSignal, ok := registration.Signals[signal.Name]
-		if !ok {
-			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
-		}
 		kind, err := signalKind(signal.Kind)
 		if err != nil {
 			return err
+		}
+		if registration.Enabled != nil && !registration.Enabled[kind] {
+			continue
+		}
+		runtimeSignal, ok := registration.Signals[signal.Name]
+		if !ok {
+			return fmt.Errorf("provider %q supported signal %q has no runtime realization", registration.Descriptor.Provider.Kind, signal.Name)
 		}
 		source := SignalSource{
 			ID:               registration.ID,
