@@ -27,6 +27,24 @@ func appBackupCommand(store application.Store) *cli.Command {
 		Usage:   "baha app backup [NAME] --password-file FILE [--output FILE]",
 		Long:    "Quiesces the repository workload and per-application secret broker, captures desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope, encrypts the complete recovery unit, then restarts the quiesced application components.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			return executeApplicationBackupLifecycle(ctx, store, args, out, errOut)
+		},
+	}
+}
+
+func appRestoreCommand(store application.Store) *cli.Command {
+	return &cli.Command{
+		Name:    "restore",
+		Summary: "Restore and verify an encrypted application recovery unit",
+		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
+		Long:    "Validates and decrypts the complete archive before mutation, rebuilds protected BaseHarbor application state, restores PostgreSQL and the matching OpenBao secret scope while the workload remains stopped, regenerates runtime identities, then starts and verifies the broker and repository workload.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			return executeApplicationRestoreLifecycle(ctx, store, args, out, errOut)
+		},
+	}
+}
+
+func executeApplicationBackupLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 			filtered, environment, err := extractApplicationEnvironment(args, "backup")
 			if err != nil {
 				return err
@@ -154,17 +172,10 @@ func appBackupCommand(store application.Store) *cli.Command {
 			}
 			fmt.Fprintf(out, "Backup for %s (%s) written to %s.\n", m.Name, m.Environment, outputPath)
 			return nil
-		},
-	}
+		
 }
 
-func appRestoreCommand(store application.Store) *cli.Command {
-	return &cli.Command{
-		Name:    "restore",
-		Summary: "Restore and verify an encrypted application recovery unit",
-		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
-		Long:    "Validates and decrypts the complete archive before mutation, rebuilds protected BaseHarbor application state, restores PostgreSQL and the matching OpenBao secret scope while the workload remains stopped, regenerates runtime identities, then starts and verifies the broker and repository workload.",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+func executeApplicationRestoreLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 			filtered, environment, err := extractApplicationEnvironment(args, "restore")
 			if err != nil {
 				return err
@@ -324,8 +335,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 			}
 			fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
 			return nil
-		},
-	}
+		
 }
 
 func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
