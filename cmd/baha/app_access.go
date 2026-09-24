@@ -37,7 +37,10 @@ func appPSQLCommand(store application.Store) *cli.Command {
 				user = "baseharbor"
 			}
 			cmd := exec.CommandContext(ctx, path, "-h", binding.Host, "-p", binding.Port, "-U", user, "-d", binding.Database)
-			cmd.Env = replaceProcessEnv("PGPASSWORD", binding.Password)
+			env := replaceProcessEnv("PGPASSWORD", binding.Password)
+			env = replaceEnvIn(env, "PGSSLMODE", "verify-ca")
+			env = replaceEnvIn(env, "PGSSLROOTCERT", binding.CertificatesPath)
+			cmd.Env = env
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
 			fmt.Fprintf(errOut, "Connecting to %s PostgreSQL instance %s...\n", resolved.Manifest.Name, binding.Instance)
 			return cmd.Run()
@@ -67,7 +70,7 @@ func appRedisCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return fmt.Errorf("valkey-cli or redis-cli client not found in PATH")
 			}
-			cmd := exec.CommandContext(ctx, path, "-h", binding.Host, "-p", binding.Port)
+			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
 			fmt.Fprintf(errOut, "Connecting to %s Valkey instance %s...\n", resolved.Manifest.Name, binding.Instance)
@@ -383,6 +386,17 @@ func parseExecArgs(args []string) (appName, service string, command []string, er
 		return "", "", nil, usageError("SERVICE and COMMAND are required", "Example: baha app exec api env")
 	}
 	return appName, positional[0], positional[1:], nil
+}
+
+func replaceEnvIn(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			out = append(out, item)
+		}
+	}
+	return append(out, prefix+value)
 }
 
 func replaceProcessEnv(key, value string) []string {
