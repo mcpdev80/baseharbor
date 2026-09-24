@@ -13,8 +13,9 @@ import (
 // Provider is the first-party Kubernetes runtime provider identity. Workload
 // translation lives in this package; application intent remains provider-neutral.
 type Provider struct {
-	kubectl string
-	context string
+	kubectl   string
+	context   string
+	namespace string
 }
 
 func (Provider) Kind() runtimecontract.ProviderKind {
@@ -38,6 +39,10 @@ func (p Provider) Context() string {
 	return p.context
 }
 
+func (p Provider) Namespace() string {
+	return p.namespace
+}
+
 // Detect resolves the standard Kubernetes client configuration from the
 // deployment environment. It deliberately does not require cluster-admin
 // discovery privileges; provider operations perform capability-specific API
@@ -56,5 +61,22 @@ func Detect(ctx context.Context) (Provider, error) {
 	if current == "" {
 		return Provider{}, errors.New("Kubernetes runtime provider has no current context")
 	}
-	return Provider{kubectl: path, context: current}, nil
+
+	namespaceCmd := exec.CommandContext(
+		ctx,
+		path,
+		"config", "view",
+		"--minify",
+		"-o", "jsonpath={..namespace}",
+	)
+	namespaceOutput, err := namespaceCmd.CombinedOutput()
+	if err != nil {
+		return Provider{}, fmt.Errorf("resolve Kubernetes namespace: %w: %s", err, strings.TrimSpace(string(namespaceOutput)))
+	}
+	namespace := strings.TrimSpace(string(namespaceOutput))
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	return Provider{kubectl: path, context: current, namespace: namespace}, nil
 }
