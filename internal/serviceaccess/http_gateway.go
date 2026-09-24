@@ -34,7 +34,7 @@ type HTTPGatewaySpec struct {
 	RequireClient    bool
 }
 
-func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
+func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
 	if strings.TrimSpace(spec.ServiceName) == "" {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway name is required")
 	}
@@ -51,7 +51,7 @@ func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return HTTPGatewayFiles{}, fmt.Errorf("create service access state: %w", err)
 	}
-	material, err := EnsureTLSMaterial(policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
