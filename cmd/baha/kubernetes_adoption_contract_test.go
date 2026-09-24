@@ -251,7 +251,7 @@ func TestKubernetesReferenceDemoTargetAcceptance(t *testing.T) {
 		"S3_BUCKET",
 		"APP_SECRET",
 	} {
-		if !containsString(spec.KubernetesRealization.Bindings, requiredBinding) {
+		if !containsExactString(spec.KubernetesRealization.Bindings, requiredBinding) {
 			t.Fatalf("required application binding %s missing", requiredBinding)
 		}
 	}
@@ -260,13 +260,13 @@ func TestKubernetesReferenceDemoTargetAcceptance(t *testing.T) {
 		"baseharbor.io/application",
 		"baseharbor.io/environment",
 	} {
-		if !containsString(spec.KubernetesRealization.OwnershipLabels, requiredLabel) {
+		if !containsExactString(spec.KubernetesRealization.OwnershipLabels, requiredLabel) {
 			t.Fatalf("required ownership label %s missing", requiredLabel)
 		}
 	}
 }
 
-func containsString(values []string, want string) bool {
+func containsExactString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
 			return true
