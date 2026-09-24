@@ -160,7 +160,7 @@ func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
 	}
 	compose := string(data)
 	for _, required := range []string{
-		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100",
+		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:8443",
 		"networks: [logs-internal, logs-publish]",
 		"logs-internal:",
 		"internal: true",
