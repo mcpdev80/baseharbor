@@ -74,8 +74,8 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Start BaseHarbor and, inside an application repository, converge the application",
-			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--control-plane-only] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
-			Long:    "Starts or reuses the local BaseHarbor control plane. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup requires an operator-selected recovery-file path outside .baseharbor; interactive terminals ask for it, while non-interactive use supplies --recovery-file PATH. The repository manifest remains unchanged when -e/--environment selects a deployment context; the override is applied only to resolved runtime state. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
+			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--control-plane-only] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Long:    "Starts or reuses the local BaseHarbor control plane. --trust-host-ca is the explicit non-interactive opt-in for installing the managed-local public CA into the host trust store; --yes alone never changes host trust. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup requires an operator-selected recovery-file path outside .baseharbor; interactive terminals ask for it, while non-interactive use supplies --recovery-file PATH. The repository manifest remains unchanged when -e/--environment selects a deployment context; the override is applied only to resolved runtime state. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},
 		{
@@ -143,6 +143,7 @@ func rootCommand() *cli.Command {
 		disconnectCommand(),
 		connectionsCommand(),
 		openBaoCommand(),
+		trustCommand(),
 		updateCommand(),
 		{
 			Name:    "version",
