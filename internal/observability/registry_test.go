@@ -157,7 +157,6 @@ func TestRegisterProviderSignalsRemovesDisabledStaleSignal(t *testing.T) {
 	}
 }
 
-
 func TestSignalSourceRejectsUnknownLogAndTraceProtocols(t *testing.T) {
 	for _, source := range []SignalSource{
 		{
