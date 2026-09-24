@@ -131,10 +131,10 @@ func projectBackendCA(files RuntimeFiles, kind, instance, source string) (string
 }
 
 func backendGatewayComposeFiles(kind, instance string) serviceaccess.TCPGatewayFiles {
-	root := filepath.Join(".", "providers", kind, instance, "service-access")
+	root := "./" + filepath.ToSlash(filepath.Join("providers", kind, instance, "service-access"))
 	return serviceaccess.TCPGatewayFiles{
-		Config:   filepath.Join(root, "haproxy.cfg"),
-		PEM:      filepath.Join(root, "runtime", "server.pem"),
+		Config:   root + "/haproxy.cfg",
+		PEM:      root + "/runtime/server.pem",
 		Material: serviceaccess.TLSMaterial{ServerName: ""},
 	}
 }
