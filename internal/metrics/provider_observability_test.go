@@ -60,7 +60,6 @@ func TestPrometheusConfigSeparatesApplicationAndProviderTargets(t *testing.T) {
 	}
 }
 
-
 func TestSecureProviderMetricsRenderMTLSScrapeContract(t *testing.T) {
 	root := t.TempDir()
 	write := func(name, value string) string {
@@ -73,15 +72,15 @@ func TestSecureProviderMetricsRenderMTLSScrapeContract(t *testing.T) {
 	}
 
 	source := observability.MetricsSource{
-		ID:       "runtime-broker:demo:dev",
-		Provider: capability.ProviderPostgreSQL,
-		Class:    observability.SourceApplicationProvider,
-		Scope:    capability.ScopeApplication,
+		ID:               "runtime-broker:demo:dev",
+		Provider:         capability.ProviderPostgreSQL,
+		Class:            observability.SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
 		OwnerApplication: "demo",
-		Network:  "baseharbor-demo-dev",
-		Target:   "baseharbor-runtime:8443",
-		Path:     "/metrics",
-		Scheme:   "https",
+		Network:          "baseharbor-demo-dev",
+		Target:           "baseharbor-runtime:8443",
+		Path:             "/metrics",
+		Scheme:           "https",
 		Security: observability.Security{
 			TLSRequired:       true,
 			Authentication:    "mtls",
@@ -114,12 +113,12 @@ func TestSecureProviderMetricsRenderMTLSScrapeContract(t *testing.T) {
 	for _, want := range []string{
 		"job_name: baseharbor-provider-secure-" + token,
 		"scheme: https",
-		"metrics_path: "/metrics"",
+		"metrics_path: \"/metrics\"",
 		"/etc/prometheus/targets/" + providerTargetFileName(source),
 		"ca_file: /etc/prometheus/provider-security/" + token + "-ca.pem",
 		"cert_file: /etc/prometheus/provider-security/" + token + "-client.pem",
 		"key_file: /etc/prometheus/provider-security/" + token + "-client-key.pem",
-		"server_name: "baseharbor-runtime"",
+		"server_name: \"baseharbor-runtime\"",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("secure provider scrape config missing %q:\n%s", want, rendered)
