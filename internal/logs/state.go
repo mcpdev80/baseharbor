@@ -104,11 +104,11 @@ func providerFiles(p Placement) ProviderFiles {
 	}
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	return EnsureProviderFilesForRuntime(m, "docker")
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
+	return EnsureProviderFilesForRuntime(ctx, issuer, m, "docker")
 }
 
-func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
 	p, err := PlacementFor(m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -150,7 +150,7 @@ func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(accessPolicy, files.Dir, lokiAccessSpec())
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, lokiAccessSpec())
 	if err != nil {
 		return ProviderFiles{}, err
 	}
