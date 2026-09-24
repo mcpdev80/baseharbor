@@ -219,7 +219,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]... [--workload-compose FILE --workload-service NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive capability picker uses detected defaults and lets you confirm them with a terminal checkbox UI; flags provide the deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -267,7 +267,7 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "-e", "--sql-instance", "--cache-instance", "--s3-bucket", "--require-secret":
+		case "--environment", "-e", "--sql-instance", "--cache-instance", "--s3-bucket", "--require-secret", "--workload-compose", "--workload-service":
 			skipNext = true
 			continue
 		}
@@ -280,6 +280,10 @@ func hasCreateName(args []string) bool {
 
 func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, err := parseCreateArgs(args)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	workloadCompose, workloadServices, err := parseCreateWorkloadArgs(args)
 	if err != nil {
 		return application.Manifest{}, err
 	}
@@ -316,6 +320,9 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
 	}
 	m = application.WithRequiredSecrets(m, required...)
+	if workloadCompose != "" {
+		m = application.WithWorkload(m, workloadCompose, workloadServices...)
+	}
 	if err := m.Validate(); err != nil {
 		return application.Manifest{}, err
 	}
@@ -377,6 +384,13 @@ func parseCreateArgs(args []string) (name, environment string, sql, cache, objec
 			environment = args[i]
 		case strings.HasPrefix(arg, "--environment="):
 			environment = strings.TrimPrefix(arg, "--environment=")
+		case arg == "--workload-compose" || arg == "--workload-service":
+			if i+1 >= len(args) {
+				return "", "", false, false, false, false, nil, nil, nil, nil, usageError(arg+" requires a value", "Run 'baha app init --help' for available options.")
+			}
+			i++
+		case strings.HasPrefix(arg, "--workload-compose=") || strings.HasPrefix(arg, "--workload-service="):
+			// Parsed separately by parseCreateWorkloadArgs.
 		case strings.HasPrefix(arg, "-"):
 			return "", "", false, false, false, false, nil, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
 		default:
@@ -390,6 +404,48 @@ func parseCreateArgs(args []string) (name, environment string, sql, cache, objec
 		return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
 	}
 	return name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, nil
+}
+
+
+func parseCreateWorkloadArgs(args []string) (string, []string, error) {
+	var compose string
+	var services []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--workload-compose":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return "", nil, usageError("--workload-compose requires a file path", "Example: --workload-compose compose.yaml")
+			}
+			i++
+			compose = strings.TrimSpace(args[i])
+		case strings.HasPrefix(arg, "--workload-compose="):
+			compose = strings.TrimSpace(strings.TrimPrefix(arg, "--workload-compose="))
+			if compose == "" {
+				return "", nil, usageError("--workload-compose requires a file path", "Example: --workload-compose compose.yaml")
+			}
+		case arg == "--workload-service":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return "", nil, usageError("--workload-service requires a service name", "Example: --workload-service api")
+			}
+			i++
+			services = append(services, strings.TrimSpace(args[i]))
+		case strings.HasPrefix(arg, "--workload-service="):
+			service := strings.TrimSpace(strings.TrimPrefix(arg, "--workload-service="))
+			if service == "" {
+				return "", nil, usageError("--workload-service requires a service name", "Example: --workload-service api")
+			}
+			services = append(services, service)
+		}
+	}
+	services = uniqueSorted(services)
+	switch {
+	case compose == "" && len(services) > 0:
+		return "", nil, usageError("--workload-service requires --workload-compose", "Example: --workload-compose compose.yaml --workload-service api")
+	case compose != "" && len(services) == 0:
+		return "", nil, usageError("--workload-compose requires at least one --workload-service", "Example: --workload-compose compose.yaml --workload-service api")
+	}
+	return compose, services, nil
 }
 
 func serviceNames(m application.Manifest) string {
