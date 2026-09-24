@@ -67,11 +67,15 @@ func TestRuntimeSelectionRejectsUnknownProfile(t *testing.T) {
 	}
 }
 
-func TestRuntimeSelectionRejectsUnavailableProvider(t *testing.T) {
-	if _, err := RuntimeSelectionFromValues(map[string]string{
+func TestRuntimeSelectionAcceptsKubernetes(t *testing.T) {
+	selection, err := RuntimeSelectionFromValues(map[string]string{
 		RuntimeProviderEnvKey: "kubernetes",
 		RuntimeProfileEnvKey:  "standard",
-	}); err == nil {
-		t.Fatal("unavailable runtime provider unexpectedly accepted")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Provider != bhruntime.ProviderKubernetes {
+		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderKubernetes)
 	}
 }
