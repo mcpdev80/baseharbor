@@ -62,8 +62,7 @@ func NormalizeArtifactRepositoryPrefix(value string) (string, error) {
 	if strings.Contains(value, "://") {
 		return "", fmt.Errorf("artifact repository prefix must be an OCI registry/repository reference without URL scheme: %q", value)
 	}
-	if strings.ContainsAny(value, " 	
-") {
+	if strings.ContainsAny(value, " \t\r\n") {
 		return "", fmt.Errorf("artifact repository prefix contains whitespace: %q", value)
 	}
 	if strings.Contains(value, "@") {
