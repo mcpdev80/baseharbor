@@ -230,6 +230,7 @@ func TestRegisterProviderSignalsRemovesStaleSignalsAtomically(t *testing.T) {
 		Descriptor: capability.TempoIntegration,
 		Class:      SourcePlatformProvider,
 		Scope:      capability.ScopeShared,
+		Enabled:    map[SignalKind]bool{SignalMetrics: true},
 		Signals: map[string]ProviderSignalRuntime{
 			"tempo-metrics": {Network: "traces", Target: "tempo:3200"},
 		},
