@@ -41,7 +41,7 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	if !strings.Contains(text, "DATABASE_URL=<masked>") || !strings.Contains(text, "REDIS_URL=<masked>") {
 		t.Fatalf("default output did not mask service credentials: %s", text)
 	}
-	if strings.Contains(text, "postgresql://") || strings.Contains(text, "redis://") {
+	if strings.Contains(text, "postgresql://") || strings.Contains(text, "redis://") || strings.Contains(text, "rediss://") {
 		t.Fatalf("default output leaked service URLs: %s", text)
 	}
 
@@ -49,7 +49,7 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "postgresql://") || !strings.Contains(out.String(), "redis://") {
+	if !strings.Contains(out.String(), "postgresql://") || !strings.Contains(out.String(), "rediss://") {
 		t.Fatalf("explicit reveal did not return native service URLs: %s", out.String())
 	}
 
