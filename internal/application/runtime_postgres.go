@@ -341,6 +341,9 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
+	if values[S3TLSHostCAEnv] != "" {
+		fmt.Fprintf(&b, "%s=%s\n", S3TLSHostCAEnv, values[S3TLSHostCAEnv])
+	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
 			key := s3RuntimeKey(bucket, suffix)
@@ -354,7 +357,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	if HasOTLPTelemetry(m) {
-		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT"} {
+		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT", OTLPTLSHostCAEnv, OTLPTLSHostClientCertEnv, OTLPTLSHostClientKeyEnv} {
 			if values[key] != "" {
 				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 			}
