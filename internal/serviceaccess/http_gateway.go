@@ -56,16 +56,56 @@ func EnsureHTTPGateway(policy Policy, providerDir string, spec HTTPGatewaySpec) 
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
+	gatewayMaterial, err := projectGatewayMaterial(dir, material)
+	if err != nil {
+		return HTTPGatewayFiles{}, err
+	}
 	files := HTTPGatewayFiles{
 		Dir: dir,
 		Caddyfile: filepath.Join(dir, "Caddyfile"),
-		Material: material,
+		Material: gatewayMaterial,
 	}
 	config := caddyfile(spec.Upstream, spec.ContainerPort, spec.RequireClient && policy.AuthenticationRequired)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
 	return files, nil
+}
+
+func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
+	runtimeDir := filepath.Join(dir, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return TLSMaterial{}, fmt.Errorf("create service access runtime projection: %w", err)
+	}
+	project := func(source, name string) (string, error) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "", err
+		}
+		target := filepath.Join(runtimeDir, name)
+		// The enclosing directory is owner-only. Files mounted into the
+		// unprivileged gateway must be readable by its runtime UID.
+		if err := writeAtomic(target, data, 0o644); err != nil {
+			return "", err
+		}
+		return target, nil
+	}
+	ca, err := project(material.CA, "ca.pem")
+	if err != nil {
+		return TLSMaterial{}, fmt.Errorf("project service trust bundle: %w", err)
+	}
+	cert, err := project(material.ServerCertificate, "server.pem")
+	if err != nil {
+		return TLSMaterial{}, fmt.Errorf("project service server certificate: %w", err)
+	}
+	key, err := project(material.ServerKey, "server-key.pem")
+	if err != nil {
+		return TLSMaterial{}, fmt.Errorf("project service server key: %w", err)
+	}
+	material.CA = ca
+	material.ServerCertificate = cert
+	material.ServerKey = key
+	return material, nil
 }
 
 func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) string {
