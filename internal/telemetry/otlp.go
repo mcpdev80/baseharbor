@@ -166,7 +166,11 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err := application.MaterializeOTLPTLSBinding(d.app, d.files, material.CA, material.ClientCertificate, material.ClientKey); err != nil {
 		return err
 	}
-	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://otel-collector-access:8443")
+	containerHost := "otel-collector-access"
+	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
+		containerHost = strings.TrimSpace(policy.ServerName)
+	}
+	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://"+containerHost+":8443")
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
