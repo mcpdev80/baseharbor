@@ -336,6 +336,14 @@ func ExistingWorkloadOverride(runtime application.RuntimeFiles) (string, bool, e
 	return path, true, nil
 }
 
+func RemoveProviderSourceOverride(runtime application.RuntimeFiles) error {
+	path := filepath.Join(runtime.Dir, providerOverrideName)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 	path := filepath.Join(runtime.Dir, workloadOverrideName)
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
