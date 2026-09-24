@@ -25,7 +25,6 @@ var appApplySecretReadHidden = readApplicationSecretFromTerminal
 var appApplySecretIsTerminal = appInitReaderIsTerminal
 
 func appApplyCommand(store application.Store) *cli.Command {
-	secretService := applicationsecret.New(store)
 	return &cli.Command{
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
@@ -38,6 +37,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 }
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	secretService := applicationsecret.New(store)
 	resolved, err := resolveApplication(store, args, "apply")
 	if err != nil {
 		return err
