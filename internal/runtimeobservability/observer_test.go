@@ -132,7 +132,6 @@ func TestObserverExportsOTLPHTTPProtobuf(t *testing.T) {
 	}
 }
 
-
 func decodeLogRecords(t *testing.T, data []byte) []map[string]any {
 	t.Helper()
 	lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
