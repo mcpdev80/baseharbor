@@ -166,19 +166,6 @@ func backendGatewayComposeFiles(kind, instance string) serviceaccess.TCPGatewayF
 	}
 }
 
-func postgresGatewayCompose(instance string) string {
-	return serviceaccess.TCPGatewayComposeService(
-		backendGatewayComposeFiles("postgresql", instance),
-		serviceaccess.TCPGatewaySpec{
-			ServiceName:      postgresAccessService(instance),
-			UpstreamHost:     runtimeServiceName("postgres", instance),
-			UpstreamPort:     5432,
-			PublishedPortEnv: postgresRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    5432,
-		},
-	)
-}
-
 func valkeyGatewayCompose(instance string) string {
 	return serviceaccess.TCPGatewayComposeService(
 		backendGatewayComposeFiles("valkey", instance),
