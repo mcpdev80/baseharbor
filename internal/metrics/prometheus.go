@@ -106,6 +106,10 @@ type Runtime interface {
 	DestroyProject(context.Context, string, string, string) error
 }
 
+type runtimeDiagnostics interface {
+	DiagnosticsProject(context.Context, string, string, string) string
+}
+
 type ProviderFiles struct {
 	Dir           string
 	Compose       string
@@ -209,6 +213,14 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	}
 	d.client = client
 	if err := waitReady(reconcileCtx, d.client, endpoint); err != nil {
+		if diagnostics, ok := d.runtime.(runtimeDiagnostics); ok {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail := diagnostics.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
+			diagnosticCancel()
+			if strings.TrimSpace(detail) != "" {
+				return fmt.Errorf("wait for Prometheus readiness: %w\n%s", err, detail)
+			}
+		}
 		return fmt.Errorf("wait for Prometheus readiness: %w", err)
 	}
 	return nil
