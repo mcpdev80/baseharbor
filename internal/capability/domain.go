@@ -42,6 +42,8 @@ const (
 	ProviderPrometheus    ProviderKind = "prometheus"
 	ProviderLoki          ProviderKind = "loki"
 	ProviderTempo         ProviderKind = "tempo"
+	ProviderRuntimeBroker ProviderKind = "runtime-broker"
+	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
 )
 
 // Provider describes the capability surface of one provider implementation.
