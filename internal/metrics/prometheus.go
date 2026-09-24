@@ -626,7 +626,7 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -1043,7 +1043,7 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, false, access)
 }
 
-func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, access serviceaccess.HTTPGatewayFiles) string {
+func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, access serviceaccess.HTTPGatewayFiles, providerSources ...[]observability.MetricsSource) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -1069,7 +1069,32 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
 	}
 	if hasProviderSecurity {
-		b.WriteString("      - ./provider-security:/etc/prometheus/provider-security:ro\n")
+		securityFiles := map[string]struct{}{}
+		if len(providerSources) > 0 {
+			for _, source := range providerSources[0] {
+				if !source.Security.TLSRequired {
+					continue
+				}
+				token := providerSourceToken(source.ID)
+				securityFiles[token+"-ca.pem"] = struct{}{}
+				if source.Security.ClientCertificate != "" {
+					securityFiles[token+"-client.pem"] = struct{}{}
+					securityFiles[token+"-client-key.pem"] = struct{}{}
+				}
+			}
+		}
+		if len(securityFiles) == 0 {
+			b.WriteString("      - ./provider-security:/etc/prometheus/provider-security:ro\n")
+		} else {
+			names := make([]string, 0, len(securityFiles))
+			for name := range securityFiles {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote("./provider-security/"+name+":/etc/prometheus/provider-security/"+name+":ro"))
+			}
+		}
 	}
 	b.WriteString("      - prometheus-data:/prometheus\n")
 	for i, registration := range registrations {
