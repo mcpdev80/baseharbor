@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type managedLogsExecution struct {
@@ -21,7 +22,7 @@ type managedLogsExecution struct {
 	enabled   bool
 }
 
-func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedLogsExecution, error) {
+func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
 	if !resolved.FromRepository {
 		return nil, nil
 	}
@@ -50,7 +51,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	if placement.Scope == capability.ScopeExternal {
 		return nil, fmt.Errorf("external Loki placement is selected but no external Compose log collector adapter is configured")
 	}
-	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest)
+	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest, issuer)
 	requests := make([]capability.Request, 0, len(services))
 	resources := make([]capability.Resource, 0, len(services))
 	for _, service := range services {
