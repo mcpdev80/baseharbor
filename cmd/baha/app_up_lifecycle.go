@@ -147,7 +147,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			e.compose, err = detectComposeForApplication(ctx, e.resolved, required...)
 			return err
 		}},
-		{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
+		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
 			var err error
 			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
 			if err != nil {
