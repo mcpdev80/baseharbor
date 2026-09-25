@@ -277,7 +277,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 			return err
 		}
 	}
-	if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy previous managed backend before restore: %w", err)
 	}
 	if m.Services.Secrets {
