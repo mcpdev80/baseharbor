@@ -33,6 +33,7 @@ type Placement struct {
 type Registration struct {
 	Application        string `json:"application"`
 	Environment        string `json:"environment"`
+	Namespace          string `json:"namespace,omitempty"`
 	SyslogPort         int    `json:"syslog_port"`
 	ProviderSyslogPort int    `json:"provider_syslog_port"`
 }
@@ -139,7 +140,7 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 		return ProviderFiles{}, err
 	}
 	files := providerFiles(p)
-	registrations, err := reconcileRegistration(files.Registrations, m, true)
+	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, true)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
