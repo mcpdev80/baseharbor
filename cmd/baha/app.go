@@ -75,7 +75,7 @@ func appCommand(store application.Store) *cli.Command {
 				if allTargets {
 					items, err = deployment.ListAllDeployments()
 				} else {
-					target, resolveErr := effectiveTarget()
+					target, resolveErr := effectiveTarget(ctx)
 					if resolveErr != nil {
 						return resolveErr
 					}
