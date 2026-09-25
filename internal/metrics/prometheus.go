@@ -1381,6 +1381,14 @@ func prometheusTargetDiagnostic(ctx context.Context, client *http.Client, endpoi
 }
 
 func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return VerifyProviderSourcesAt(ctx, m, dataDir, "")
+}
+
+func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDir, namespace string) error {
 	policy, err := application.MetricsPolicy(m)
 	if err != nil {
 		return err
@@ -1391,7 +1399,7 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	}
 	allowedApplications := []string{m.Name}
 	if placement.Scope == capability.ScopeShared {
-		if files, fileErr := ExistingProviderFiles(m); fileErr == nil {
+		if files, fileErr := ExistingProviderFilesAt(dataDir, namespace, m); fileErr == nil {
 			if registrations, regErr := readRegistrations(files.Registrations); regErr == nil {
 				allowedApplications = allowedApplications[:0]
 				for _, registration := range registrations {
@@ -1409,7 +1417,7 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	if err != nil || len(sources) == 0 {
 		return err
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
