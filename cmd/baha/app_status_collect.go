@@ -126,7 +126,7 @@ func (c *applicationStatusCollection) collectObjectStorageCheck(ctx context.Cont
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	err := objectstorage.VerifyApplicationBuckets(checkCtx, c.compose, c.manifest, c.files)
+	err := objectstorage.VerifyApplicationBucketsAt(checkCtx, c.compose, c.manifest, c.files, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 	cancel()
 	if err != nil {
 		c.result.AddCheck("object-storage", false, err.Error())
@@ -140,7 +140,7 @@ func (c *applicationStatusCollection) collectTelemetryCheck(ctx context.Context)
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	err := telemetry.VerifyApplication(checkCtx, c.manifest, c.files)
+	err := telemetry.VerifyApplicationAt(checkCtx, c.manifest, c.files, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 	cancel()
 	if err != nil {
 		c.result.AddCheck("telemetry/otlp", false, err.Error())
@@ -272,7 +272,7 @@ func (c *applicationStatusCollection) collectLogsCheck(ctx context.Context) {
 		logServices = append(logServices, service.Service)
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, applicationLogsStatusTimeout)
-	err := logsprovider.VerifyApplication(checkCtx, c.manifest, logServices)
+	err := logsprovider.VerifyApplicationAt(checkCtx, c.manifest, logServices, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 	cancel()
 	if err != nil {
 		c.result.AddCheck("logs", false, err.Error())
