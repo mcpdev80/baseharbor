@@ -42,6 +42,14 @@ func WorkloadProjectName(m Manifest) string {
 	return "baseharbor-workload-" + m.Name + "-" + m.Environment
 }
 
+func WorkloadProjectNameForNamespace(m Manifest, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return WorkloadProjectName(m)
+	}
+	return "baseharbor-workload-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
 func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
 	project := strings.TrimSpace(strings.TrimPrefix(runtime.Project, "baseharbor-"))
 	if project == "" {
