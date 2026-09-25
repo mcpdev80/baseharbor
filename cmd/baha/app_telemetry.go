@@ -25,13 +25,13 @@ func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, res
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
-	driver := telemetry.NewDriver(compose, m, files, issuer)
+	driver := telemetry.NewDriverAt(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	if traces != nil && traces.enabled {
 		driver.SetTraceBackend("http://tempo:4318", traces.placement.Network)
 	} else if enabled, policyErr := application.TracesCollectionEnabled(m); policyErr != nil {
 		return nil, policyErr
 	} else if enabled {
-		if _, placement, stateErr := tracesprovider.ExistingProviderFiles(m); stateErr == nil {
+		if _, placement, stateErr := tracesprovider.ExistingProviderFilesAt(resolved.TargetStateRoot, resolved.Target.Name, m); stateErr == nil {
 			driver.SetTraceBackend("http://tempo:4318", placement.Network)
 		}
 	}
