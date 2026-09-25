@@ -345,7 +345,7 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 }
 
 func detectComposeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.Compose, error) {
-	provider, err := bhruntime.DetectProviderForKind(bhruntime.ProviderKind(target.RuntimeProvider))
+	provider, err := bhruntime.DetectProviderForKind(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
 		return bhruntime.Compose{}, err
 	}
