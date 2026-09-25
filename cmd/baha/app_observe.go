@@ -156,7 +156,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		}
 	}
 	if m.Services.Secrets {
-		platformFiles, platformErr := bhruntime.ExistingFiles("")
+		platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {
