@@ -1,6 +1,6 @@
 # Lokale Control Plane
 
-Die aktuelle BaseHarbor-Control-Plane ist bewusst single-node und local-first. `baha up` startet PostgreSQL 18 und OpenBao 2.6.x, standardmaessig nur auf Loopback.
+Die aktuelle BaseHarbor-Control-Plane ist bewusst single-node. Auf Docker-/Podman-Targets ist sie local-first und gehoert dem effektiven Target. `baha up` startet PostgreSQL 18 und OpenBao 2.6.x, standardmaessig nur auf Loopback.
 
 Docker fuehrt die generierte Runtime ueber Docker Compose aus. Podman uebersetzt dasselbe Compose-basierte Runtime-Modell in native Quadlet-Units und verwaltet sie rootless ueber `systemd --user`. `podman-compose` wird fuer den BaseHarbor-Podman-Lifecycle nicht benoetigt.
 
@@ -30,21 +30,23 @@ baha up --postgres-port 15432 --openbao-port 18200
 
 Belegte explizite Ports führen zu einem Fehler statt zu einer stillen Umkonfiguration.
 
-## Globaler Runtime-State
+## Target-scoped Runtime-State
 
-Die Control Plane ist benutzer-/maschinenbezogen. Der Standardpfad ist:
+Control Plane, Provider und Deployments gehoeren dem effektiven Target. Der Standardpfad ist:
 
 ```text
-$XDG_DATA_HOME/baseharbor/runtime/
+$XDG_DATA_HOME/baseharbor/targets/<target>/
 ```
 
 oder ohne `XDG_DATA_HOME`:
 
 ```text
-~/.local/share/baseharbor/runtime/
+~/.local/share/baseharbor/targets/<target>/
 ```
 
-`BASEHARBOR_STATE_DIR` bleibt ein expliziter Override. Ein alter repository-lokaler `.baseharbor/runtime`-Stand wird nur zur Kompatibilität wiederverwendet, wenn noch kein globaler Zustand existiert.
+Darunter liegen unter anderem `runtime/`, `providers/` und `deployments/`. Mehrere Docker-/Podman-Targets koennen dadurch parallel existieren, ohne BaseHarbor-eigenen Zustand zu teilen.
+
+`BASEHARBOR_STATE_DIR` und repository-lokaler `.baseharbor/runtime`-State sind nur noch Legacy-Kompatibilitaet fuer vor-v0.4.15 erzeugten Runtime-State; neuer Target-owned State verwendet die XDG-Target-Grenze.
 
 ## OpenBao
 
