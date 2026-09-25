@@ -322,3 +322,24 @@ func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhrunti
 	}
 	return target, files, nil
 }
+
+func existingTargetRuntimeFiles(ctx context.Context) (bhruntime.Files, error) {
+	_, files, err := targetRuntimeFiles(ctx)
+	return files, err
+}
+
+func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deployment.ResolvedTarget, bhruntime.Files, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	files, err := bhruntime.EnsureFilesForProject(root, targetRuntimeProjectName(target), ports)
+	if err != nil {
+		return target, bhruntime.Files{}, err
+	}
+	return target, files, nil
+}
