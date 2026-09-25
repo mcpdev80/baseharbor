@@ -105,15 +105,15 @@ func appUpCommand(store application.Store) *cli.Command {
 					if !application.HasManagedRuntimeServices(m) {
 						return nil
 					}
-					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+					return compose.ConfigProject(ctx, files.Project, files.Compose, files.Env)
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+					before, err = application.InspectOwnedRuntimeResourcesForFiles(ctx, compose, m, files)
 					return err
 				}},
 				{Name: "persistent data volumes", Run: func(context.Context) error {
-					for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+					for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, files.Project) {
 						if !application.ResourceNamedExists(before, volume) {
 							return fmt.Errorf("managed %s is missing; refusing to recreate persistent state during app up", volume.Name)
 						}
@@ -165,7 +165,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}
 
 			if application.HasManagedRuntimeServices(m) {
-				project := application.RuntimeProjectName(m)
+				project := files.Project
 				if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
 					return compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
 						cli.ReportActivityDetail(progress, detail)
