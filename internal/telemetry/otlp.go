@@ -64,16 +64,23 @@ type ProviderFiles struct {
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{
-		runtime: runtime, app: app, files: files, issuer: issuer,
+		runtime:          runtime,
+		app:              app,
+		files:            files,
+		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
 	}
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{
-		runtime: runtime, app: app, files: files, issuer: issuer,
+		runtime:          runtime,
+		app:              app,
+		files:            files,
+		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
-		dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace),
+		dataDir:          filepath.Clean(dataDir),
+		namespace:        strings.TrimSpace(namespace),
 	}
 }
 
@@ -367,7 +374,14 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 
 func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
-	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Config: filepath.Join(dir, "collector.yaml"), Project: scopedTelemetryName(ProviderProject, namespace), Network: scopedTelemetryName(ProviderNetwork, namespace)}
+	files := ProviderFiles{
+		Dir:     dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Config:  filepath.Join(dir, "collector.yaml"),
+		Project: scopedTelemetryName(ProviderProject, namespace),
+		Network: scopedTelemetryName(ProviderNetwork, namespace),
+	}
 	for _, path := range []string{files.Compose, files.Env, files.Config} {
 		if _, err := os.Stat(path); err != nil {
 			return ProviderFiles{}, err
