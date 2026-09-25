@@ -68,14 +68,16 @@ jobs:
             docker inspect --format '{{.Name}} project={{index .Config.Labels "com.docker.compose.project"}} service={{index .Config.Labels "com.docker.compose.service"}} log={{json .HostConfig.LogConfig}}' "$id" || true
           done
           echo "::endgroup::"
-          for project in baseharbor-telemetry baseharbor-traces baseharbor-logs baseharbor-metrics baseharbor-runtime-executor; do
-            echo "::group::$project"
-            docker ps -a --filter "label=com.docker.compose.project=$project" || true
-            for id in $(docker ps -aq --filter "label=com.docker.compose.project=$project"); do
-              docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id" || true
-              docker logs "$id" || true
-            done
-            echo "::endgroup::"
+          for id in $(docker ps -aq); do
+            project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$id" 2>/dev/null || true)"
+            case "$project" in
+              baseharbor*)
+                echo "::group::$project/$id"
+                docker inspect --format '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$id" || true
+                docker logs "$id" || true
+                echo "::endgroup::"
+                ;;
+            esac
           done
 
       - name: Cleanup persistent runner state

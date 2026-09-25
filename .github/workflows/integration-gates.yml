@@ -36,6 +36,10 @@ jobs:
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
+          export XDG_CONFIG_HOME="$workdir/xdg-config"
+          export XDG_DATA_HOME="$workdir/xdg-data"
+          export BASEHARBOR_TARGET=ci
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha app create ci-demo --sql --cache
           /tmp/baha app plan ci-demo | grep -q "dedicated PostgreSQL service"
           /tmp/baha app plan ci-demo | grep -q "authenticated Valkey service"
@@ -44,36 +48,36 @@ jobs:
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
           /tmp/baha app doctor ci-demo | grep -q "^READY$"
-          test -f .baseharbor/apps/ci-demo/runtime/compose.yaml
-          ! grep -q "ports:" .baseharbor/apps/ci-demo/runtime/compose.yaml
+          test -f $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml
+          ! grep -q "ports:" $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml
 
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli set lifecycle_probe preserved' | grep -q '^OK$'
-          env_hash_before=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
+          docker compose --project-name baseharbor-ci-ci-demo-dev --file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml --env-file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -c "CREATE TABLE lifecycle_probe (value text NOT NULL); INSERT INTO lifecycle_probe VALUES ('preserved');"
+          docker compose --project-name baseharbor-ci-ci-demo-dev --file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml --env-file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli set lifecycle_probe preserved' | grep -q '^OK$'
+          env_hash_before=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env | awk '{print $1}')
 
           /tmp/baha app down ci-demo | grep -q "persistent data preserved"
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-ci-demo-dev)"
+          docker volume inspect baseharbor-ci-ci-demo-dev_postgres-data >/dev/null
+          docker volume inspect baseharbor-ci-ci-demo-dev_valkey-data >/dev/null
 
           /tmp/baha app up ci-demo | grep -q "runtime and requested infrastructure verified"
-          env_hash_after=$(sha256sum .baseharbor/apps/ci-demo/runtime/runtime.env | awk '{print $1}')
+          env_hash_after=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env | awk '{print $1}')
           test "$env_hash_before" = "$env_hash_after"
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated SELECT 1 succeeded"
           /tmp/baha app status ci-demo --verbose | grep -q "authenticated PING returned PONG"
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
-          docker compose --project-name baseharbor-ci-demo-dev --file .baseharbor/apps/ci-demo/runtime/compose.yaml --env-file .baseharbor/apps/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
+          docker compose --project-name baseharbor-ci-ci-demo-dev --file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml --env-file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env exec -T postgres psql -U baseharbor -d ci_demo_dev -tAc "SELECT value FROM lifecycle_probe" | grep -q '^preserved$'
+          docker compose --project-name baseharbor-ci-ci-demo-dev --file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/compose.yaml --env-file $XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev/state/ci-demo/runtime/runtime.env exec -T valkey sh -ec 'VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli get lifecycle_probe' | grep -q '^preserved$'
 
           /tmp/baha app destroy ci-demo | grep -q "No changes were made"
-          test -d .baseharbor/apps/ci-demo
-          docker volume inspect baseharbor-ci-demo-dev_postgres-data >/dev/null
-          docker volume inspect baseharbor-ci-demo-dev_valkey-data >/dev/null
+          test -d "$XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev"
+          docker volume inspect baseharbor-ci-ci-demo-dev_postgres-data >/dev/null
+          docker volume inspect baseharbor-ci-ci-demo-dev_valkey-data >/dev/null
 
           /tmp/baha app destroy ci-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/ci-demo
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
-          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-demo-dev)"
+          test ! -e "$XDG_DATA_HOME/baseharbor/targets/ci/deployments/ci-demo/dev"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-ci-demo-dev)"
+          test -z "$(docker network ls -q --filter label=com.docker.compose.project=baseharbor-ci-ci-demo-dev)"
+          test -z "$(docker volume ls -q --filter label=com.docker.compose.project=baseharbor-ci-ci-demo-dev)"
 
   s3:
     if: ${{ inputs.gate == 'all' || inputs.gate == 's3' }}
@@ -93,42 +97,44 @@ jobs:
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
-          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
-
+          export XDG_CONFIG_HOME="$workdir/xdg-config"
+          export XDG_DATA_HOME="$workdir/xdg-data"
+          export BASEHARBOR_TARGET=ci
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha app create s3-demo --s3-bucket assets
           /tmp/baha app plan s3-demo | grep -q "isolated S3 bucket assets"
           /tmp/baha app preflight s3-demo | grep -q "Preflight passed"
           /tmp/baha --verbose app apply s3-demo 2>&1 | tee /tmp/s3-apply.out
           grep -Eq '\[VERIFIED\][[:space:]]+object-storage[[:space:]]+assets authenticated S3 Put/Get' /tmp/s3-apply.out
 
-          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
+          provider_dir="$XDG_DATA_HOME/baseharbor/targets/ci/providers/seaweedfs"
           test -f "$provider_dir/compose.yaml"
           test -f "$provider_dir/runtime.env"
           ! grep -Eq 'ACCESS_KEY|SECRET_KEY|AWS_' "$provider_dir/runtime.env"
           grep -q 'server -s3 -iam=true' "$provider_dir/compose.yaml"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage-ci)"
 
           /tmp/baha app env s3-demo | tee /tmp/s3-env.out
           grep -q '^AWS_ACCESS_KEY_ID=<masked>$' /tmp/s3-env.out
           grep -q '^AWS_SECRET_ACCESS_KEY=<masked>$' /tmp/s3-env.out
           grep -q '^S3_BUCKET=bh-s3-demo-dev-assets$' /tmp/s3-env.out
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
-          test "$(stat -c '%a' .baseharbor/apps/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
+          test "$(stat -c '%a' $XDG_DATA_HOME/baseharbor/targets/ci/deployments/s3-demo/dev/state/s3-demo/runtime/bindings/object-storage-s3/assets/access_key_id)" = "600"
+          test "$(stat -c '%a' $XDG_DATA_HOME/baseharbor/targets/ci/deployments/s3-demo/dev/state/s3-demo/runtime/bindings/object-storage-s3/assets/secret_access_key)" = "600"
 
           /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
           /tmp/baha app doctor s3-demo | grep -q "^READY$"
 
           /tmp/baha app down s3-demo | grep -q "persistent data preserved"
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage-ci)"
           /tmp/baha app up s3-demo | grep -q "runtime and requested infrastructure verified"
           /tmp/baha app status s3-demo | grep -q "authenticated S3 Put/Get"
 
           /tmp/baha app destroy s3-demo --yes | grep -q "permanently deleted"
-          test ! -e .baseharbor/apps/s3-demo
-          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage)"
+          test ! -e "$XDG_DATA_HOME/baseharbor/targets/ci/deployments/s3-demo/dev"
+          test -n "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-object-storage-ci)"
 
-          docker compose --project-name baseharbor-object-storage --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
-          rm -rf "$BASEHARBOR_STATE_DIR"
+          docker compose --project-name baseharbor-object-storage-ci --file "$provider_dir/compose.yaml" --env-file "$provider_dir/runtime.env" down -v
+          rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
 
   openbao:
     if: ${{ inputs.gate == 'all' || inputs.gate == 'openbao' }}
@@ -150,18 +156,12 @@ jobs:
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
-          mkdir -p .baseharbor/runtime
-          chmod 700 .baseharbor .baseharbor/runtime
-          cat > .baseharbor/runtime/runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=ci-control-plane-only
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
-          EOF
-          chmod 600 .baseharbor/runtime/runtime.env
-
-          /tmp/baha up | grep -q "control-plane runtime started"
+          export XDG_CONFIG_HOME="$workdir/xdg-config"
+          export XDG_DATA_HOME="$workdir/xdg-data"
+          export BASEHARBOR_TARGET=ci
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
+          runtime_dir="$XDG_DATA_HOME/baseharbor/targets/ci/runtime"
+          /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200 | grep -q "control-plane runtime started"
 
           set +e
           /tmp/baha openbao status >/tmp/openbao-before.out 2>&1
@@ -173,9 +173,9 @@ jobs:
           recovery="$workdir/openbao-recovery.json"
           /tmp/baha openbao bootstrap --recovery-file "$recovery" | tee /tmp/openbao-bootstrap.out
           test "$(stat -c '%a' "$recovery")" = "600"
-          test "$(stat -c '%a' .baseharbor/runtime/openbao-admin.env)" = "600"
+          test "$(stat -c '%a' $runtime_dir/openbao-admin.env)" = "600"
           ! grep -q 'root_token' "$recovery"
-          ! grep -Eq 'ROOT|UNSEAL' .baseharbor/runtime/openbao-admin.env
+          ! grep -Eq 'ROOT|UNSEAL' $runtime_dir/openbao-admin.env
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           /tmp/baha app create required-demo --sql --require-secret API_TOKEN
@@ -195,7 +195,7 @@ jobs:
           set -e
           test "$required_code" -eq 1
           grep -q "required secrets check failed" /tmp/required-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-required-demo-dev)"
 
           /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
           grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
@@ -218,7 +218,7 @@ jobs:
           set -e
           test "$required_up_code" -eq 1
           grep -q "required application secrets" /tmp/required-up-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-required-demo-dev)"
 
           printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app up required-demo | grep -q "runtime and requested infrastructure verified"
@@ -247,7 +247,6 @@ jobs:
               - name: EXTERNAL_TOKEN
           EOF
 
-          export BASEHARBOR_STATE_DIR="$workdir/.baseharbor/runtime"
           /tmp/baha app preflight | tee /tmp/generated-preflight-before.out
           grep -q "SECRET_KEY" /tmp/generated-preflight-before.out
           grep -q "EXTERNAL_TOKEN" /tmp/generated-preflight-before.out
@@ -276,12 +275,10 @@ jobs:
           /tmp/baha app doctor | grep -q "^READY$"
           /tmp/baha app destroy --yes | grep -q "permanently deleted"
           cd "$workdir"
-          unset BASEHARBOR_STATE_DIR
-
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env restart openbao
+          docker compose --project-name baseharbor-ci --file "$runtime_dir/compose.yaml" --env-file "$runtime_dir/runtime.env" restart openbao
           for i in $(seq 1 20); do
             set +e
-            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env exec -T openbao bao status >/dev/null 2>&1
+            docker compose --project-name baseharbor-ci --file "$runtime_dir/compose.yaml" --env-file "$runtime_dir/runtime.env" exec -T openbao bao status >/dev/null 2>&1
             code=$?
             set -e
             if [ "$code" -eq 2 ]; then
@@ -301,4 +298,4 @@ jobs:
           /tmp/baha openbao unseal --recovery-file "$recovery" | grep -q "manager AppRole authentication succeeded"
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
-          docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v
+          docker compose --project-name baseharbor-ci --file "$runtime_dir/compose.yaml" --env-file "$runtime_dir/runtime.env" down -v

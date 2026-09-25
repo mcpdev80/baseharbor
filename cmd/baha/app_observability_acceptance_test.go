@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -155,16 +154,15 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderRuntimeExecutor,
 	})
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
-	stored, _, err := store.Load(m.Name)
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(store, stored)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	workload, found, err := application.MaterializeWorkload(root, stored, files)
+	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
 	if err != nil || !found {
 		t.Fatalf("materialize workload: found=%v err=%v", found, err)
 	}
@@ -183,7 +181,7 @@ curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @- "${OTEL_EXP
 	if _, err := compose.ExecProjectFilesInput(ctx, workload.Project, root, "trace-probe", composeFiles, payload, "sh", "-ec", tracePost); err != nil {
 		t.Fatalf("workload OTLP export through injected binding failed: %v", err)
 	}
-	if err := tracesprovider.VerifyTrace(ctx, stored, traceID); err != nil {
+	if err := tracesprovider.VerifyTrace(ctx, resolved.Manifest, traceID); err != nil {
 		t.Fatalf("workload OTLP trace was not queryable from Tempo: %v", err)
 	}
 }
