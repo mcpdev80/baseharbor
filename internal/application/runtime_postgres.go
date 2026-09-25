@@ -24,6 +24,7 @@ type RuntimeFiles struct {
 	ApplicationEnv string
 	Bindings       string
 	Project        string
+	Namespace      string
 }
 
 func RuntimeProjectName(m Manifest) string {
@@ -60,6 +61,7 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 		ApplicationEnv: filepath.Join(dir, "application.env"),
 		Bindings:       filepath.Join(dir, "bindings"),
 		Project:        RuntimeProjectNameForStore(store, m),
+		Namespace:      strings.TrimSpace(store.Namespace),
 	}
 }
 
