@@ -37,13 +37,12 @@ func QuadletAvailable(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	return exec.CommandContext(ctx, path, "version").Run() == nil
+	cmd := exec.CommandContext(ctx, path, "version")
+	cmd.Env = runtimeCommandEnv(path)
+	return cmd.Run() == nil
 }
 
 func quadletUserUnitDir() (string, error) {
-	if config := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); config != "" {
-		return filepath.Join(config, "containers", "systemd"), nil
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -445,7 +444,9 @@ func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletPro
 		if !ok {
 			return fmt.Errorf("Quadlet service %q has no expected container name", service)
 		}
-		if err := exec.CommandContext(ctx, podman, "container", "exists", container).Run(); err == nil {
+		cmd := exec.CommandContext(ctx, podman, "container", "exists", container)
+			cmd.Env = runtimeCommandEnv(podman)
+			if err := cmd.Run(); err == nil {
 			continue
 		}
 		unit := project.ServiceUnits[service]
@@ -568,6 +569,7 @@ func quadletRuntimeResourceExists(ctx context.Context, kind, name string) (bool,
 		return false, err
 	}
 	cmd := exec.CommandContext(ctx, path, kind, "exists", name)
+	cmd.Env = runtimeCommandEnv(path)
 	if err := cmd.Run(); err == nil {
 		return true, nil
 	} else if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -694,6 +696,7 @@ func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []str
 	args := []string{kind, "rm", "-f"}
 	args = append(args, names...)
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = runtimeCommandEnv(path)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -715,6 +718,7 @@ func quadletExec(ctx context.Context, runtimeCommand, container string, input []
 	full = append(full, container)
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, runtimeCommand, full...)
+	cmd.Env = runtimeCommandEnv(runtimeCommand)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}
@@ -745,6 +749,7 @@ func quadletLogs(ctx context.Context, runtimeCommand string, project QuadletProj
 			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project.Project)
 		}
 		cmd := exec.CommandContext(ctx, runtimeCommand, "logs", "--tail", "120", container)
+			cmd.Env = runtimeCommandEnv(runtimeCommand)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

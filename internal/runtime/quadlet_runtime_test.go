@@ -114,9 +114,25 @@ func TestQuadletProjectBuildUnitsSelectsOnlyChangedServices(t *testing.T) {
 	}
 }
 
+func TestQuadletUserUnitDirIgnoresApplicationXDGConfigIsolation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "isolated-app-config"))
+
+	unitDir, err := quadletUserUnitDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".config", "containers", "systemd")
+	if unitDir != want {
+		t.Fatalf("unit dir = %q, want systemd-visible path %q", unitDir, want)
+	}
+}
+
 func TestQuadletChangedServiceUnitsDetectsDefinitionAndEnvironmentChanges(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(filepath.Dir(dir)))
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "isolated-app-config"))
 	unitDir, err := quadletUserUnitDir()
 	if err != nil {
 		t.Fatal(err)
