@@ -67,19 +67,21 @@ func TestRepositoryDesiredStateFingerprintChangesWithDeploymentState(t *testing.
 	if err := os.WriteFile(manifestPath, []byte("version: 1\napp:\n  name: demo\n  environment: dev\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:       application.New("demo", "dev", false, false, false),
-		ManifestPath:   manifestPath,
-		FromRepository: true,
+		Manifest:            application.New("demo", "dev", false, false, false),
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		FromRepository:      true,
 	}
-	if err := updateRepositoryInitValues(repo, map[string]string{"HTTP_PORT": "8080"}); err != nil {
+	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8080"}); err != nil {
 		t.Fatal(err)
 	}
 	first, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := updateRepositoryInitValues(repo, map[string]string{"HTTP_PORT": "8081"}); err != nil {
+	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8081"}); err != nil {
 		t.Fatal(err)
 	}
 	second, err := repositoryDesiredStateFingerprint(context.Background(), resolved)
