@@ -8,9 +8,6 @@
 <em>KI-generiert, menschlich spezifiziert, maschinell verifiziert.</em></p>
 
 <p align="center">
-  <a href="https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml">
-    <img src="https://github.com/mcpdev80/baseharbor/actions/workflows/release.yml/badge.svg" alt="Release">
-  </a>
   <a href="https://github.com/mcpdev80/baseharbor/releases">
     <img src="https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver" alt="GitHub Release">
   </a>
