@@ -61,6 +61,17 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{
+		runtime: runtime,
+		engine: runtimeKind(runtime),
+		app: app,
+		issuer: issuer,
+		dataDir: filepath.Clean(dataDir),
+		namespace: strings.TrimSpace(namespace),
+	}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
@@ -74,6 +85,34 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 		return nil, fmt.Errorf("load Loki service access identity: %w", err)
 	}
 	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+}
+
+func (d *Driver) placement() (Placement, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return PlacementForAt(d.dataDir, d.namespace, d.app)
+	}
+	return PlacementFor(d.app)
+}
+
+func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureProviderFilesForRuntimeAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.engine)
+	}
+	return EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
+}
+
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace, d.app)
+	}
+	return ExistingProviderFiles(d.app)
+}
+
+func (d *Driver) applicationRegistration() (Registration, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ApplicationRegistrationAt(d.dataDir, d.namespace, d.app)
+	}
+	return ApplicationRegistration(d.app)
 }
 
 func (d *Driver) placement() (Placement, error) {
