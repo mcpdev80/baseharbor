@@ -197,6 +197,7 @@ jobs:
           }
 
           run_integration_test() {
+            bash scripts/ci-runtime-reset.sh podman
             if ! "$@"; then
               diagnose_quadlet_integration
               return 1
