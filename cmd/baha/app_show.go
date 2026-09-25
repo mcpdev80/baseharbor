@@ -118,7 +118,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	if err != nil {
 		return overview, err
 	}
-	running, err := compose.RunningServicesProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return overview, err
 	}
