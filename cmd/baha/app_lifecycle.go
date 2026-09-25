@@ -98,7 +98,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			} else if stopped {
 				term.Result("STOPPED", "workload", "repository workload stopped; application-owned volumes preserved")
 			}
-			if err := logsprovider.StopProvider(ctx, compose, m); err != nil {
+			if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 				return fmt.Errorf("stop application-scoped logs provider: %w", err)
 			}
 			if application.RequiresRuntimeBroker(m) {
@@ -364,7 +364,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			}
 		}
 		var cleanupIssuer serviceaccess.Issuer = openbao.NewServiceIssuer(compose, platformFiles)
-		if err := logsprovider.UnregisterApplication(ctx, compose, cleanupIssuer, m); err != nil {
+		if err := logsprovider.UnregisterApplicationAt(ctx, compose, cleanupIssuer, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 			return fmt.Errorf("remove application log collector registration: %w", err)
 		}
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
