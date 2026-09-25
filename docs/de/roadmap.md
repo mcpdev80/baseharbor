@@ -223,11 +223,24 @@ In v0.4.14 umgesetzt/abgeschlossen:
 
 Das Modell liegt bewusst unterhalb von CLI-/Runtime-Praesentation. Spaetere Compose-, Kubernetes-, OpenShift- und delegierte Delivery-Adapter koennen dieselbe Semantik verwenden, ohne Runtime-spezifische Felder in den portablen Application Intent aufzunehmen.
 
-### v0.4.15 - Audit- und Evidence-Semantik
+### v0.4.15 - Target-, Service-Access-, Observability- und Evidence-Fundament
 
-- secret-safe Lifecycle-/Policy-/Verification-Events;
-- klare Trennung von Desired/Enforced/Observed/Verified;
-- generische Evidence-Export-Grenze ohne Vendor-Lock-in.
+Bereits umgesetzt:
+
+- First-Class Target als eigene Achse neben Application und Environment;
+- Deployment-Identitaet `target + application + environment`;
+- getrennte Runtime-Provider-, Access-Referenz- und Scope-Semantik;
+- XDG-basierte globale Konfiguration und Target-scoped Runtime-/Deployment-State;
+- CWD-unabhaengige Deployment-Registry und installationsweite `app list --all-targets`-Sicht;
+- Docker-/Podman-Isolation fuer Control Plane, Provider, Workloads, Broker, Networks und Volumes;
+- shell-lokale Target-Aktivierung, sichtbare Prompt-Integration sowie JSON-/MCP-Paritaet;
+- Kubernetes-/OpenShift-Target-Vertraege ohne vorgezogene Runtime-Implementierung; Execution bleibt bis zum jeweiligen Runtime-Track fail-closed.
+
+Die verbleibende v0.4.15-Sequenz baut darauf auf:
+
+- **#397** TLS everywhere plus environment-aware Service-Access-Baseline;
+- **#398** vollstaendige automatische Metrics-/Logs-Semantik;
+- **#212** secret-safe Audit-/Evidence-Semantik mit klarer Trennung von Desired/Enforced/Observed/Verified und generischer Evidence-Export-Grenze ohne Vendor-Lock-in.
 
 ### v0.4.16 - Capability Provider SDK, Starter Kit und Conformance
 
