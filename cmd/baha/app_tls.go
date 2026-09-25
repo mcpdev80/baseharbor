@@ -123,7 +123,7 @@ func appTLSCommand(store application.Store) *cli.Command {
 						return usageError("unknown app tls update option "+arg, "Run 'baha app tls update --help' for usage.")
 					}
 				}
-				resolved, err := resolveApplication(store, nil, "tls update")
+				resolved, err := resolveApplication(ctx, store, nil, "tls update")
 				if err != nil {
 					return err
 				}
