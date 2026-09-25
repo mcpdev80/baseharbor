@@ -6,22 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-09-25
+
 ### Added
 
 - First-class deployment Targets separate deployment destination from Application and Environment; concrete deployment identity is now `target + application + environment`.
 - Target configuration lives in XDG user config while mutable runtime/deployment state is isolated below `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
-- `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective target identity across human and machine interfaces.
-
-- Added explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
-- Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
+- `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective Target identity across human and machine interfaces.
+- Complete agent-native lifecycle operations over the shared machine/MCP core, including apply, update, repair, backup, restore and destroy with typed safety metadata and approval requirements.
+- Generic provider/runtime observability declarations and registration for metrics, logs and traces, including Runtime Broker and Runtime Executor observability.
+- Explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
 
 ### Changed
 
 - Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
-- `baha app list` now reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
-
-- Podman runtime execution now uses native Quadlets instead of the external `podman-compose` provider. BaseHarbor keeps Compose-based workload/provider definitions as the compatibility input, translates them into Quadlet units, and manages the Podman lifecycle through rootless `systemd --user`; Docker continues to use Docker Compose.
+- `baha app list` reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
+- Managed service access now follows the provider-neutral TLS/PKI and environment-aware access baseline, including external/BYOC PKI and protected trust/auth material.
+- Observability collection uses the shared source/ownership/placement model instead of product-specific registration branches; runtime component metrics/logs/traces participate in the same semantic registry.
+- Podman runtime execution uses native Quadlets instead of the external `podman-compose` provider. Docker continues to use Docker Compose.
 - Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
+- Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
+
+### Security
+
+- TLS remains mandatory for managed network service access, with environment-aware developer/test/production access semantics and fail-closed ownership/authentication behavior.
+- MCP mutation paths reuse the same policy, ownership, preflight, reconciliation and verification semantics as CLI/JSON; no generic shell, Docker, Compose or Podman execution primitive is exposed.
+- Observability registration preserves application/environment/sharing-boundary isolation and secret-safe metadata.
+- Full installation cleanup never broadens ownership assumptions to foreign resources and preserves application source repositories and external application-owned data.
 
 ## [0.4.14]
 
