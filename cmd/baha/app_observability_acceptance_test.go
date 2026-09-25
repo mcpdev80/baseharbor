@@ -181,7 +181,7 @@ curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @- "${OTEL_EXP
 	if _, err := compose.ExecProjectFilesInput(ctx, workload.Project, root, "trace-probe", composeFiles, payload, "sh", "-ec", tracePost); err != nil {
 		t.Fatalf("workload OTLP export through injected binding failed: %v", err)
 	}
-	if err := tracesprovider.VerifyTrace(ctx, resolved.Manifest, traceID); err != nil {
+	if err := tracesprovider.VerifyTraceAt(ctx, resolved.Manifest, traceID, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
 		t.Fatalf("workload OTLP trace was not queryable from Tempo: %v", err)
 	}
 }
