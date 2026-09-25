@@ -14,6 +14,11 @@ on:
         required: true
         default: develop
         type: string
+      demo_ref:
+        description: Exact baseharbor-demo ref or commit SHA to validate
+        required: true
+        default: db98e54050009686ea887a3c7f6b2e88b12345ed
+        type: string
   push:
     branches:
       - 'release-candidate/**'
@@ -196,6 +201,7 @@ jobs:
           cat >"$rows" <<EOF
           Candidate resolution	${{ steps.release.outcome }}	SemVer, changelog, release notes and develop ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Source readability	${{ steps.source_readability.outcome }}	production file/function size guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
           Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
@@ -238,10 +244,26 @@ jobs:
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
 
+  mcp_lifecycle:
+    name: pre-release-mcp-lifecycle
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/mcp-lifecycle-acceptance.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+
+  observability_full_stack:
+    name: pre-release-observability-full-stack
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/observability-acceptance.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+
   demo_catalog:
     name: pre-release-demo-catalog
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/demo-gate-catalog.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_ref || 'main' }}
 
   demo_docker:
     name: pre-release-docker-demo
@@ -476,6 +498,8 @@ jobs:
       - validate
       - docker_runtime
       - podman
+      - mcp_lifecycle
+      - observability_full_stack
       - demo_catalog
       - demo_docker
       - demo_podman
@@ -495,6 +519,8 @@ jobs:
           Source/build validation	${{ needs.validate.result }}	Formatting, source tests, docs, workflow syntax, snapshot and runtime image build
           Docker runtime core	${{ needs.docker_runtime.result }}	Runtime integration, recovery and observability
           Podman runtime core	${{ needs.podman.result }}	Runtime integration, recovery and observability
+          MCP lifecycle	${{ needs.mcp_lifecycle.result }}	Generic-client semantic lifecycle on Docker and Podman/Quadlet
+          Observability full stack	${{ needs.observability_full_stack.result }}	Metrics, logs and traces semantic acceptance on Docker and Podman/Quadlet
           External demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
           Docker demo acceptance	${{ needs.demo_docker.result }}	All registered gates once on one persistent Docker environment
           Podman demo acceptance	${{ needs.demo_podman.result }}	All registered gates once on one persistent Podman/Quadlet environment
@@ -521,6 +547,8 @@ jobs:
           test "${{ needs.validate.result }}" = "success"
           test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
+          test "${{ needs.mcp_lifecycle.result }}" = "success"
+          test "${{ needs.observability_full_stack.result }}" = "success"
           test "${{ needs.demo_docker.result }}" = "success"
           test "${{ needs.demo_podman.result }}" = "success"
 
