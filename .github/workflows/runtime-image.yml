@@ -8,7 +8,7 @@ on:
         required: false
         type: string
       version_tag:
-        description: Release tag used for image metadata, for example v0.4.14
+        description: Release tag used for image metadata, for example v0.4.15
         required: false
         type: string
   workflow_dispatch:
