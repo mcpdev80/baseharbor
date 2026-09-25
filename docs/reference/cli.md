@@ -26,6 +26,7 @@ baha
 ├── init
 ├── up
 ├── down
+├── destroy
 ├── plan
 ├── status
 ├── doctor
@@ -303,6 +304,32 @@ baha up --postgres-port 15432 --openbao-port 18200
 The default ports are checked before first initialization. An occupied default port is not blindly bound.
 
 Control-plane and provider state is owned by the effective Target under `$XDG_DATA_HOME/baseharbor/targets/<target>/` or `~/.local/share/baseharbor/targets/<target>/` when XDG is unset. This keeps runtime state, generated artifacts, provider registries, networks and deployment records isolated across Targets.
+
+## Destroy and uninstall cleanup
+
+The normal global destroy remains Target-scoped and fail-closed:
+
+```bash
+baha destroy
+baha destroy --yes
+```
+
+It refuses to remove the effective Target while application bindings or unresolved ownership constraints remain.
+
+For an intentional complete BaseHarbor cleanup across the installation:
+
+```bash
+baha destroy --all
+baha destroy --all --yes
+```
+
+`--all` enumerates registered deployments and every configured or BaseHarbor state-backed Target, releases BaseHarbor-managed connectivity, destroys applications through the existing ownership-aware lifecycle, then removes shared runtime/provider resources, control-plane state and BaseHarbor XDG data/config. Cleanup is best-effort across damaged or partially missing state and ends with a `REMOVED` / `SKIPPED` / `NOT FOUND` / `FAILED` report.
+
+The full cleanup is intentionally aggressive only toward resources that BaseHarbor can identify as its own. It never deletes application source repositories or foreign/external application-owned resources. If runtime ownership cannot be established safely, the external resource is left untouched and reported instead of guessed.
+
+Without `--yes`, an interactive terminal requires explicit confirmation; non-interactive use only prints the destructive scope and makes no changes.
+
+After successful full cleanup, remove the `baha` binary separately from the directory where it was installed. The release installer defaults to `~/.local/bin/baha`.
 
 ## Read-only repository inspection
 
