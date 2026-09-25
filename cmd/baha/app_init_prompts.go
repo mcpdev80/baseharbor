@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/x/term"
 	"io"
 	"os"
 	"strconv"
 	"strings"
-	"github.com/charmbracelet/x/term"
 )
 
 func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
