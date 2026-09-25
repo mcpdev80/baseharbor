@@ -86,11 +86,11 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Permanently remove the global BaseHarbor control plane and its owned state",
-			Usage:   "baha destroy [--yes]",
-			Long:    "Shows a destruction plan for the global BaseHarbor Compose project, its owned volumes, runtime state and provider-registry metadata. Refuses to run while application bindings remain. Application-owned repository data and volumes are not removed.",
+			Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
+			Usage:   "baha destroy [--yes] | baha destroy --all [--yes]",
+			Long:    "Without --all, shows the ownership-safe destruction plan for the effective Target and refuses to run while application bindings remain. --all is the explicit installation cleanup path: it removes BaseHarbor-managed deployments across all Targets, shared runtime/provider resources, control-plane data and BaseHarbor XDG state/config while preserving application source repositories and external application-owned data.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				return runtimeDestroy(ctx, args, out)
+				return runtimeDestroyCommand(ctx, args, out, errOut)
 			},
 		},
 		{

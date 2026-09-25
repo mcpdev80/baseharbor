@@ -6,7 +6,7 @@
 
 ```text
 baha
-├── up / down / plan / status / doctor
+├── up / down / destroy / plan / status / doctor
 ├── agent describe
 ├── mcp serve
 ├── serve
@@ -267,6 +267,32 @@ baha destroy --yes
 ```
 
 Der Befehl entfernt nur das BaseHarbor-eigene Control-Plane-Compose-Projekt, dessen Volumes, Runtime-State und Provider-Registry-Metadaten. Solange Application-Bindings existieren, bricht er fail-closed ab.
+
+## Vollstaendiges Destroy / Deinstallation
+
+Der normale globale Destroy bleibt Target-scoped und fail-closed:
+
+```bash
+baha destroy
+baha destroy --yes
+```
+
+Er verweigert das Entfernen des effektiven Targets, solange Application-Bindings oder ungeklaerte Ownership-Abhaengigkeiten existieren.
+
+Fuer eine bewusst vollstaendige BaseHarbor-Bereinigung ueber alle Targets:
+
+```bash
+baha destroy --all
+baha destroy --all --yes
+```
+
+`--all` ermittelt alle registrierten Deployments sowie konfigurierte oder im BaseHarbor-State vorhandene Targets, loest BaseHarbor-eigene Connectivity, zerlegt Applications ueber den bestehenden ownership-sicheren Lifecycle und entfernt danach Shared Runtime/Provider, Control-Plane-State sowie BaseHarbor-XDG-Data/Config.
+
+Bei teilweise kaputtem oder fehlendem State arbeitet der Full-Destroy best-effort weiter und beendet sich mit einem Report aus `REMOVED`, `SKIPPED`, `NOT FOUND` und `FAILED`. Fremde oder nicht eindeutig BaseHarbor-eigene Runtime-Ressourcen werden nicht geraten oder geloescht.
+
+Application-Source-Repositories sowie externe/app-eigene Daten bleiben erhalten. Ohne `--yes` ist im interaktiven Terminal eine explizite Bestaetigung erforderlich; non-interaktiv wird nur der Umfang gezeigt und nichts veraendert.
+
+Nach erfolgreichem Full-Destroy wird das `baha`-Binary separat aus seinem Installationsverzeichnis entfernt. Der Release-Installer verwendet standardmaessig `~/.local/bin/baha`.
 
 ## Anwendung
 

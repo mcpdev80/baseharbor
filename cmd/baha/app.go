@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,13 +34,13 @@ func appCommand(store application.Store) *cli.Command {
 			Name:    "create",
 			Summary: "Create an application manifest in BaseHarbor state",
 			Usage:   "baha app create NAME [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
-			Long:    "Creates legacy/BaseHarbor-managed declarative application state only; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
+			Long:    "Creates BaseHarbor-managed declarative application source on the effective Target; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				m, err := manifestFromCreateArgs(args)
 				if err != nil {
 					return err
 				}
-				path, err := store.Create(m)
+				path, err := createTargetManagedApplication(ctx, m)
 				if err != nil {
 					return err
 				}
@@ -247,6 +248,65 @@ func appCommand(store application.Store) *cli.Command {
 		},
 	}
 	return app
+}
+
+func createTargetManagedApplication(ctx context.Context, m application.Manifest) (string, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return "", err
+	}
+	id := deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: m.Name,
+		Environment: m.Environment,
+	}
+	root, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(root); err == nil {
+		return "", fmt.Errorf("%w: %s/%s/%s", application.ErrExists, id.Target, id.Application, id.Environment)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+
+	sourceRoot := filepath.Join(root, "source")
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(sourceRoot, application.RepositoryManifestName)
+	if err := os.WriteFile(path, []byte(m.YAML()), 0o600); err != nil {
+		_ = os.RemoveAll(root)
+		return "", err
+	}
+	intent, err := json.Marshal(m)
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return "", err
+	}
+	record := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: id,
+		Source: deployment.DeploymentSource{
+			Kind:       "managed",
+			Repository: sourceRoot,
+			Manifest:   path,
+		},
+		Applied: deployment.AppliedDeployment{
+			Intent:          intent,
+			RuntimeProvider: target.RuntimeProvider,
+			GeneratedState: map[string]string{
+				"deployment": root,
+				"state":      filepath.Join(root, "state"),
+			},
+		},
+		Observed: deployment.ObservedDeployment{State: "created"},
+	}
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		_ = os.RemoveAll(root)
+		return "", err
+	}
+	return path, nil
 }
 
 func appInitCommand() *cli.Command {
