@@ -85,7 +85,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
 				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
 			}
-			if tracePlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo); err != nil {
+			if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
 				return err
 			} else if found && tracePlacement.Scope == capability.ScopeApplication {
 				if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
@@ -279,7 +279,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 	}
 	if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
-		metricsPlacement, found, placementErr := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+		metricsPlacement, found, placementErr := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 		if placementErr != nil {
 			return placementErr
 		}
@@ -372,7 +372,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("remove provider logging override: %w", err)
 		}
 	}
-	tracePlacement, traceFound, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo)
+	tracePlacement, traceFound, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo)
 	if err != nil {
 		return err
 	}
@@ -381,7 +381,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("destroy application-scoped traces provider: %w", err)
 		}
 	}
-	metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	metricsPlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
 	}
@@ -424,7 +424,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("remove normalized repository TLS state: %w", err)
 		}
 	}
-	if err := application.ReleaseApplicationProviderRegistry(m); err != nil {
+	if err := application.ReleaseApplicationProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
 	}
 	if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
