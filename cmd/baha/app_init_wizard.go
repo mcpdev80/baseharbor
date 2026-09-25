@@ -123,159 +123,19 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	printProjectDetection(out, d)
 	fmt.Fprintln(out)
 
-	name, err := promptLine(reader, out, "Application name", d.Name)
+	selection, err := collectGuidedInitSelection(reader, out, d)
 	if err != nil {
 		return err
 	}
-	name = slugifyAppName(name)
-	if name == "" {
-		return errors.New("application name cannot be empty")
-	}
-	environment, err := promptLine(reader, out, "Environment", "dev")
+	m, err := buildGuidedInitManifest(reader, out, d, selection)
 	if err != nil {
 		return err
-	}
-	environment = slugifyAppName(environment)
-	if environment == "" {
-		return errors.New("environment cannot be empty")
-	}
-
-	compose := d.Compose
-	workloadServices := append([]string(nil), d.WorkloadServices...)
-	ambiguousServices := append([]string(nil), d.AmbiguousServices...)
-	if len(d.ComposeCandidates) > 1 {
-		compose, err = promptCompose(reader, out, d.ComposeCandidates)
-		if err != nil {
-			return err
-		}
-		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
-		if err != nil {
-			return err
-		}
-		workloadServices = append([]string(nil), analysis.WorkloadServices...)
-		ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
-	}
-	if len(ambiguousServices) > 0 {
-		confirmedWorkload, err := promptAmbiguousComposeServices(reader, out, ambiguousServices)
-		if err != nil {
-			return err
-		}
-		workloadServices = uniqueSorted(append(workloadServices, confirmedWorkload...))
-	}
-
-	defaults := []bool{
-		d.SQL,
-		d.Cache,
-		d.ObjectStorage,
-		len(d.SecretCandidates) > 0,
-		d.Metrics,
-		d.OTLP && len(d.OTLPSignals) > 0,
-		false,
-	}
-	allowNone := len(workloadServices) > 0
-	selected, err := promptCapabilityList(reader, out, defaults, allowNone)
-	if err != nil {
-		return err
-	}
-
-	var sqlInstances, cacheInstances, objectStorageBuckets []string
-	if selected[0] {
-		sqlInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
-		if err != nil {
-			return err
-		}
-	}
-	if selected[1] {
-		cacheInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
-		if err != nil {
-			return err
-		}
-	}
-	if selected[2] {
-		objectStorageBuckets, err = promptServiceInstances(reader, out, "S3 buckets", nil)
-		if err != nil {
-			return err
-		}
-		if len(objectStorageBuckets) == 0 {
-			objectStorageBuckets = []string{"default"}
-		}
-	}
-
-	var secretPolicies []guidedSecretPolicy
-	if selected[3] {
-		printManagedCredentialSummary(out, selected, len(d.RuntimePermissions) > 0)
-		secretPolicies, err = promptSecretPolicies(reader, out, d.SecretCandidates, d.SecretSources)
-		if err != nil {
-			return err
-		}
-		additional, err := promptLine(reader, out, "Additional application secret names (comma-separated, Enter for none)", "")
-		if err != nil {
-			return err
-		}
-		for _, item := range strings.Split(additional, ",") {
-			item = strings.TrimSpace(item)
-			if item != "" {
-				secretPolicies = append(secretPolicies, guidedSecretPolicy{Name: item, Required: true, Provision: "later"})
-			}
-		}
-	}
-
-	m := detectedApplicationManifest(name, environment, selected[0], selected[1], selected[2], selected[3], compose != "" && len(workloadServices) > 0)
-	if len(sqlInstances) > 0 {
-		m = application.WithSQLInstances(m, sqlInstances...)
-	}
-	if len(cacheInstances) > 0 {
-		m = application.WithCacheInstances(m, cacheInstances...)
-	}
-	if len(objectStorageBuckets) > 0 {
-		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
-	}
-	m = applyGuidedSecretPolicies(m, secretPolicies)
-	if compose != "" && len(workloadServices) > 0 {
-		m = application.WithWorkload(m, filepath.ToSlash(compose), workloadServices...)
-	}
-	if selected[4] {
-		service, port, ok := detectedMetricsTarget(d, workloadServices)
-		if !ok {
-			service, port, err = promptMetricsTarget(reader, out, workloadServices)
-			if err != nil {
-				return err
-			}
-		}
-		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
-	}
-	if selected[5] {
-		defaultSignals := strings.Join(d.OTLPSignals, ",")
-		if defaultSignals == "" {
-			defaultSignals = "traces"
-		}
-		value, err := promptLine(reader, out, "OTLP signals (comma-separated)", defaultSignals)
-		if err != nil {
-			return err
-		}
-		signals := uniqueSorted(strings.Split(value, ","))
-		if len(signals) == 0 {
-			return errors.New("OTLP telemetry requires at least one signal")
-		}
-		m = application.WithOTLPTelemetry(m, signals...)
-	}
-	if selected[6] {
-		m = application.WithLogsCollection(m, "application")
-	}
-	if len(d.RuntimePermissions) > 0 {
-		services, err := runtimePermissionServices(reader, out, workloadServices)
-		if err != nil {
-			return err
-		}
-		for capabilityID, operations := range d.RuntimePermissions {
-			m = application.WithRuntimePermission(m, capabilityID, services, operations...)
-		}
 	}
 	if err := m.Validate(); err != nil {
 		return err
 	}
 
-	printAdoptionSummary(out, m, d, secretPolicies)
+	printAdoptionSummary(out, m, d, selection.secretPolicies)
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
 		fmt.Fprintln(out, "----------------------------------------")
