@@ -392,161 +392,22 @@ func activeSelectedWorkloadServices(active, selected []string) []string {
 }
 
 func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	execution, found, err := prepareRepositoryWorkloadExecution(ctx, out, compose, resolved, files)
 	if err != nil || !found {
 		return false, err
 	}
-	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
-	if err != nil {
+	if err := execution.rebuildChangedServices(ctx, out); err != nil {
 		return false, err
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
-	if err != nil {
+	if err := execution.start(ctx, out); err != nil {
+		execution.cleanup(ctx)
 		return false, err
 	}
-	if _, err := analyzeResolvedRepositoryWorkloadSecurity(ctx, compose, resolved, workload, environment, composeFiles); err != nil {
-		return false, fmt.Errorf("workload security preflight before start: %w", err)
+	if err := execution.waitReady(ctx, out); err != nil {
+		execution.cleanup(ctx)
+		return false, err
 	}
-	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...); err != nil {
-		return false, fmt.Errorf("validate application workload Compose integration: %w", err)
-	}
-	activeServices, err := compose.ServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("resolve application workload services: %w", err)
-	}
-	expectedServices := activeSelectedWorkloadServices(activeServices, workload.Services)
-	if len(expectedServices) == 0 {
-		return false, fmt.Errorf("application workload has no active selected Compose services")
-	}
-
-	beforeStates, err := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("inspect application workload before start: %w", err)
-	}
-	beforeServices := make(map[string]struct{}, len(beforeStates))
-	for _, state := range beforeStates {
-		beforeServices[state.Service] = struct{}{}
-	}
-	if len(beforeStates) == 0 {
-		if err := preflightRepositoryWorkloadPublishedPorts(ctx, runtimeInput, out, workload, files, environment); err != nil {
-			return false, err
-		}
-	}
-
-	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
-	if err != nil {
-		return false, fmt.Errorf("resolve application workload build identity: %w", err)
-	}
-	buildState, err := loadRepositoryWorkloadBuildState(files)
-	if err != nil {
-		return false, fmt.Errorf("load application workload build identity: %w", err)
-	}
-	changedBuildServices := changedRepositoryWorkloadBuildServices(buildFingerprints, buildState)
-	if len(buildFingerprints) > 0 {
-		if len(changedBuildServices) == 0 {
-			cli.ReportActivityDetail(out, "source unchanged")
-		} else {
-			cli.ReportActivityDetail(out, "source changes detected: "+strings.Join(changedBuildServices, ", "))
-			if err := compose.BuildProjectFilesSelectedProgress(ctx, workload.Project, workload.RepositoryRoot, environment, changedBuildServices, func(detail string) {
-				cli.ReportActivityDetail(out, detail)
-			}, composeFiles...); err != nil {
-				return false, fmt.Errorf("rebuild changed application workload: %w", err)
-			}
-			var replace []string
-			for _, service := range changedBuildServices {
-				if _, existed := beforeServices[service]; existed {
-					replace = append(replace, service)
-				}
-			}
-			if len(replace) > 0 {
-				if err := compose.StopProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, replace, composeFiles...); err != nil {
-					return false, fmt.Errorf("replace changed application workload services: %w", err)
-				}
-			}
-			cli.ReportActivityDetail(out, "rebuilt "+strings.Join(changedBuildServices, ", "))
-		}
-	}
-
-	cleanupNewResources := func() {
-		timeout := 30 * time.Second
-		if ctx.Err() != nil {
-			timeout = 2 * time.Second
-		}
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-		defer cancel()
-		if len(beforeStates) == 0 {
-			_ = compose.DownProjectFilesEnv(cleanupCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-			return
-		}
-		var newlyCreated []string
-		for _, service := range expectedServices {
-			if _, existed := beforeServices[service]; !existed {
-				newlyCreated = append(newlyCreated, service)
-			}
-		}
-		if len(newlyCreated) > 0 {
-			_ = compose.StopProjectFilesSelected(cleanupCtx, workload.Project, workload.RepositoryRoot, environment, newlyCreated, composeFiles...)
-		}
-	}
-	startServices := []string(nil)
-	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
-		startServices = expectedServices
-	}
-	if err := startRepositoryWorkloadWithPortFallback(ctx, runtimeInput, out, compose, workload, files, environment, startServices, composeFiles); err != nil {
-		cleanupNewResources()
-		return false, fmt.Errorf("start application workload: %w", err)
-	}
-
-	cli.ReportActivityDetail(out, "waiting for workload service and HTTP/TLS readiness")
-	fmt.Fprintf(out, "[WAIT] workload          waiting up to %s for service and HTTP/TLS readiness\n", repositoryWorkloadReadinessTimeout)
-	initState, err := loadRepositoryInitState(workload.RepositoryRoot)
-	if err != nil {
-		cleanupNewResources()
-		return false, fmt.Errorf("load repository deployment state for readiness: %w", err)
-	}
-	verifyCtx, cancel := context.WithTimeout(ctx, repositoryWorkloadReadinessTimeout)
-	defer cancel()
-	var lastStatus repositoryWorkloadStatus
-	var lastErr error
-	for verifyCtx.Err() == nil {
-		states, stateErr := compose.ServiceStatesProjectFilesEnv(verifyCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-		if stateErr != nil {
-			lastErr = stateErr
-		} else {
-			exposures := inspectWorkloadExposures(verifyCtx, expectedServices, states, initState.Hostname)
-			services := attachWorkloadExposures(buildWorkloadServiceStatuses(expectedServices, states), exposures)
-			lastStatus = repositoryWorkloadStatus{
-				Found:     true,
-				Workload:  workload,
-				Services:  services,
-				Exposures: exposures,
-			}
-			lastErr = workloadExposureReadinessError(exposures)
-		}
-		if lastErr == nil && lastStatus.Ready() {
-			cli.ReportActivityDetail(out, "workload ready")
-			fmt.Fprintf(out, "[READY] workload         %d Compose service(s) ready\n", len(expectedServices))
-			if len(lastStatus.Exposures) > 0 {
-				fmt.Fprintf(out, "[READY] exposure         %d/%d published HTTP/TLS endpoint(s) ready\n", lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
-			}
-			if len(buildFingerprints) > 0 {
-				if err := persistRepositoryWorkloadBuildState(files, buildFingerprints); err != nil {
-					return false, fmt.Errorf("record verified workload build identity: %w", err)
-				}
-			}
-			fmt.Fprintf(out, "Workload Compose: %s\n", workload.Compose)
-			return true, nil
-		}
-		select {
-		case <-verifyCtx.Done():
-		case <-time.After(repositoryWorkloadReadinessPollInterval):
-		}
-	}
-	cleanupNewResources()
-	if lastErr != nil {
-		return false, fmt.Errorf("verify application workload readiness after %s: %w", repositoryWorkloadReadinessTimeout, lastErr)
-	}
-	return false, fmt.Errorf("application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d", repositoryWorkloadReadinessTimeout, lastStatus.ReadyCount(), len(expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+	return true, nil
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
