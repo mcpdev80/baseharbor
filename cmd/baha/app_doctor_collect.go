@@ -17,25 +17,25 @@ import (
 )
 
 type applicationDoctorCollector struct {
-	resolved         resolvedApplication
-	manifest         application.Manifest
-	result           applicationDoctorResult
-	files            application.RuntimeFiles
-	runtimeErr       error
-	serviceTLS       []application.BackendTLSLifecycleObservation
-	serviceTLSErr    error
-	compose          bhruntime.Compose
-	running          []string
-	platformFiles    bhruntime.Files
-	requiredStatuses []openbao.RequiredSecretStatus
-	workloadStatus   repositoryWorkloadStatus
+	resolved          resolvedApplication
+	manifest          application.Manifest
+	result            applicationDoctorResult
+	files             application.RuntimeFiles
+	runtimeErr        error
+	serviceTLS        []application.BackendTLSLifecycleObservation
+	serviceTLSErr     error
+	compose           bhruntime.Compose
+	running           []string
+	platformFiles     bhruntime.Files
+	requiredStatuses  []openbao.RequiredSecretStatus
+	workloadStatus    repositoryWorkloadStatus
 	workloadStatusErr error
-	workloadSecurity application.WorkloadSecurityReport
-	results          []preflight.Result
-	ok               bool
-	tlsStatus        *applicationTLSStatus
-	tlsObservation   *applicationTLSObservation
-	tlsErr           error
+	workloadSecurity  application.WorkloadSecurityReport
+	results           []preflight.Result
+	ok                bool
+	tlsStatus         *applicationTLSStatus
+	tlsObservation    *applicationTLSObservation
+	tlsErr            error
 }
 
 func newApplicationDoctorCollector(ctx context.Context, store application.Store, args []string) (*applicationDoctorCollector, bool, error) {
