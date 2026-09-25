@@ -36,6 +36,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
+			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
@@ -59,11 +60,11 @@ func appDownCommand(store application.Store) *cli.Command {
 					return err
 				}},
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
-					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+					return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 					return err
 				}},
 			}
@@ -107,18 +108,18 @@ func appDownCommand(store application.Store) *cli.Command {
 				term.Result("STOPPED", "runtime-broker", "application runtime broker stopped")
 			}
 
-			project := application.RuntimeProjectName(m)
+			project := runtimeProject
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
-			after, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
+			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 			if err != nil {
 				return fmt.Errorf("verify application down: %w", err)
 			}
 			if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
 				return errors.New("verify application down: container or network still exists")
 			}
-			for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, runtimeProject) {
 				if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
 					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
 				}
@@ -160,6 +161,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	m := resolved.Manifest
+	runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
@@ -200,14 +202,14 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		checks = append(checks,
 			preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 			preflight.Check{Name: "runtime configuration", Run: func(ctx context.Context) error {
-				return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+				return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 			}},
 		)
 	}
 	if application.HasManagedRuntimeServices(m) {
 		checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
 			var err error
-			existing, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+			existing, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 			return err
 		}})
 	}
@@ -322,16 +324,16 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 	}
 	if runtimeErr == nil {
-		if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
+		if err := compose.DestroyProject(ctx, runtimeProject, files.Compose, files.Env); err != nil {
 			return err
 		}
 	} else if partialRuntime && len(existing) != 0 {
-		if err := compose.DestroyOwnedProjectResources(ctx, application.RuntimeProjectName(m), application.ExpectedRuntimeResources(m)); err != nil {
+		if err := compose.DestroyOwnedProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject)); err != nil {
 			return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
 		}
 	}
 	if application.HasManagedRuntimeServices(m) {
-		remaining, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
+		remaining, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 		if err != nil {
 			return fmt.Errorf("verify application runtime destruction: %w", err)
 		}
