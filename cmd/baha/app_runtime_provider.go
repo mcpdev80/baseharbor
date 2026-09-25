@@ -13,7 +13,7 @@ import (
 func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.ProviderKind, error) {
 	provider := bhruntime.ProviderKind(resolved.Target.RuntimeProvider)
 	if provider == "" {
-		provider = bhruntime.ProviderCompose
+		return "", fmt.Errorf("target %q has no runtime provider", resolved.Target.Name)
 	}
 	return bhruntime.ParseProviderKind(string(provider))
 }
