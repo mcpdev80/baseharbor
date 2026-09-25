@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -155,16 +154,15 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderRuntimeExecutor,
 	})
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
-	stored, _, err := store.Load(m.Name)
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(store, stored)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	workload, found, err := application.MaterializeWorkload(root, stored, files)
+	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
 	if err != nil || !found {
 		t.Fatalf("materialize workload: found=%v err=%v", found, err)
 	}
