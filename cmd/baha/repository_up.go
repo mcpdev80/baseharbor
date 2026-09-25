@@ -34,7 +34,7 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 	}
 
 	store := application.DefaultStore()
-	resolved, err := resolveApplication(store, nil, "apply")
+	resolved, err := resolveApplication(ctx, store, nil, "apply")
 	if err != nil {
 		return err
 	}
