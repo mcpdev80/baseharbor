@@ -48,6 +48,7 @@ func TestAgentDescribeJSON(t *testing.T) {
 }
 
 func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyTools(t *testing.T) {
+	target := configureTestTarget(t)
 	root := t.TempDir()
 	manifest := application.Manifest{
 		Version:     application.CurrentVersion,
@@ -72,10 +73,11 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		t.Fatal(err)
 	}
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	store := testDeploymentStore(t, target, manifest)
 	if _, err := store.Create(manifest); err != nil {
 		t.Fatal(err)
 	}
+	registerTestDeployment(t, target, manifest, root, filepath.Join(root, application.RepositoryManifestName))
 	server := newMCPServer(store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
