@@ -80,27 +80,8 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	}
 	defer func() { _ = telemetry.DestroySharedProviderAt(context.Background(), compose, providerState, namespace) }()
 
-	files, err := telemetry.ExistingProviderFilesAt(providerState, namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	endpoint, err := telemetry.ProviderEndpoint(files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(telemetry.VerificationTracePayload(m)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	_ = resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		t.Fatalf("OTLP verification export returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	if err := otelDriver.Verify(ctx, otelResource, otelBinding); err != nil {
+		t.Fatalf("export OTLP verification trace: %v", err)
 	}
 
 	if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
