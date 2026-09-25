@@ -61,7 +61,7 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		Name:        "default",
 		Provider:    capability.ProviderTempo,
 	}
-	if err := application.CheckAdditionalProviderResources(m, []capability.Resource{resource}); err != nil {
+	if err := application.CheckAdditionalProviderResourcesAt(resolved.TargetStateRoot, m, []capability.Resource{resource}); err != nil {
 		return nil, fmt.Errorf("trace provider registry preflight: %w", err)
 	}
 	request := capability.Request{
