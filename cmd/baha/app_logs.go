@@ -124,7 +124,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.UnregisterApplicationAt(ctx, prepared.runtime, prepared.issuer, prepared.dataDir, prepared.namespace, prepared.manifest); err != nil {
 			return err
 		}
-		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
+		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[SKIPPED] logs             log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
@@ -181,7 +181,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, providerOverride, providerOverrideFound); err != nil {
 		return err
 	}
-	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
+	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
 	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
@@ -199,7 +199,10 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	if err != nil {
 		return err
 	}
-	project := application.RuntimeProjectName(m)
+	project := strings.TrimSpace(files.Project)
+	if project == "" {
+		project = application.RuntimeProjectName(m)
+	}
 	composeFiles := []string{files.Compose}
 	if found {
 		composeFiles = append(composeFiles, override)
@@ -219,13 +222,13 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	return nil
 }
 
-func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir string) error {
+func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
 			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
 				dataDir,
-				"",
+				namespace,
 				m,
 				files.Dir,
 				"broker.logging.override.yaml",
@@ -254,15 +257,10 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 		}
 	}
 
-	dataDir := filepath.Clean(files.Dir)
-	for filepath.Base(dataDir) != "deployments" && filepath.Dir(dataDir) != dataDir {
-		dataDir = filepath.Dir(dataDir)
-	}
-	if filepath.Base(dataDir) == "deployments" {
-		dataDir = filepath.Dir(dataDir)
-	}
 	if executorFiles, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntime(
+		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+			dataDir,
+			namespace,
 			m,
 			executorFiles.Dir,
 			"observability.logging.override.yaml",
