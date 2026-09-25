@@ -22,7 +22,6 @@ var (
 	date    = "unknown"
 )
 
-var globalTargetOverride string
 
 func main() {
 	signal.Ignore(syscall.SIGPIPE)
@@ -117,8 +116,7 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 		fmt.Fprintf(out, "BaseHarbor %s\ncommit %s\nbuilt %s\n", version, commit, date)
 		return nil
 	}
-	globalTargetOverride = target
-	defer func() { globalTargetOverride = "" }()
+	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
