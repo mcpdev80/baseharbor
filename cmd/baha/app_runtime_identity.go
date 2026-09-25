@@ -79,7 +79,7 @@ func resolveRuntimeIdentityMutation(store application.Store, args []string, acti
 	if name != "" {
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplication(store, appArgs, "runtime-identity "+action)
+	resolved, err := resolveApplication(ctx, store, appArgs, "runtime-identity "+action)
 	if err != nil {
 		return resolvedApplication{}, false, err
 	}
