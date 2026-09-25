@@ -181,7 +181,7 @@ func (c *applicationDoctorCollector) appendObservabilityChecks(checks []prefligh
 				for _, service := range status.Services {
 					services = append(services, service.Service)
 				}
-				return logsprovider.VerifyApplication(ctx, m, services)
+				return logsprovider.VerifyApplicationAt(ctx, m, services, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 			}})
 		}
 	}
@@ -199,7 +199,7 @@ func (c *applicationDoctorCollector) appendObservabilityChecks(checks []prefligh
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
-			return objectstorage.VerifyApplicationBuckets(ctx, c.compose, m, c.files)
+			return objectstorage.VerifyApplicationBucketsAt(ctx, c.compose, m, c.files, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 		}})
 	}
 	if application.HasOTLPTelemetry(m) {
@@ -207,7 +207,7 @@ func (c *applicationDoctorCollector) appendObservabilityChecks(checks []prefligh
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
-			return telemetry.VerifyApplication(ctx, m, c.files)
+			return telemetry.VerifyApplicationAt(ctx, m, c.files, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 		}})
 	}
 	return checks
