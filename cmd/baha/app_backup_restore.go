@@ -87,7 +87,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	}
 	var platformFiles bhruntime.Files
 	if m.Services.Secrets {
-		platformFiles, err = bhruntime.ExistingFiles("")
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return err
 		}
@@ -234,7 +234,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
-		platformFiles, err = bhruntime.ExistingFiles("")
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
 		}
