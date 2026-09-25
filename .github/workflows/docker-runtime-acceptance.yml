@@ -74,6 +74,10 @@ jobs:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
         run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
+      - name: Reset runtime state before recovery test
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
       - name: Verify control-plane recovery
         id: recovery
         env:
