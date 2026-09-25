@@ -169,6 +169,10 @@ jobs:
 
           /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
 
+      - name: Reset runtime state before integration tests
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh podman
+
       - name: Run runtime integration tests serially
         id: runtime_integration
         env:
