@@ -386,7 +386,7 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 			return err
 		}
 	}
-	if err := logsprovider.VerifyProviderSources(ctx, prepared.manifest, prepared.providerSources); err != nil {
+	if err := logsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.providerSources, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[VERIFIED] logs          %d workload stream(s), %d provider stream(s) ingested for %s\n", len(prepared.services), len(prepared.providerSources), prepared.manifest.Name)
