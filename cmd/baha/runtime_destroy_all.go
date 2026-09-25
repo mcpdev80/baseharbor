@@ -58,7 +58,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	}
 
 	targets, discoveryResults := discoverFullDestroyTargets()
-	deployments, deploymentErr := deployment.ListAllDeployments()
+	deployments, deploymentResults := discoverFullDestroyDeployments()
 
 	fmt.Fprintln(out, "WARNING")
 	fmt.Fprintln(out)
@@ -68,11 +68,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.")
 	fmt.Fprintf(out, "Targets: %d\n", len(targets))
-	if deploymentErr == nil {
-		fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
-	} else {
-		fmt.Fprintf(out, "Registered deployments: unknown (%v)\n", deploymentErr)
-	}
+	fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
 	if !confirmed {
 		if noInput(parent) || !readerIsTerminal(runtimeInput) {
 			fmt.Fprintln(out, "No changes were made. Re-run with --yes to perform the full cleanup.")
@@ -89,13 +85,11 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	}
 
 	results := append([]fullDestroyResult{}, discoveryResults...)
+	results = append(results, deploymentResults...)
 	for _, target := range targets {
 		releaseFullDestroyConnectivity(parent, target, &results)
 	}
-	if deploymentErr != nil {
-		results = append(results, fullDestroyResult{Status: "FAILED", Resource: "deployment-registry", Detail: deploymentErr.Error()})
-	} else {
-		for _, record := range deployments {
+	for _, record := range deployments {
 			targetCtx := withTargetOverride(parent, record.Identity.Target)
 			args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
 			if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
@@ -113,7 +107,6 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 				Target:   record.Identity.Target,
 				Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
 			})
-		}
 	}
 
 	for _, target := range targets {
@@ -257,6 +250,70 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 		}
 		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: resource})
 	}
+}
+
+func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDestroyResult) {
+	root, err := deployment.DataRoot()
+	if err != nil {
+		return nil, []fullDestroyResult{{Status: "FAILED", Resource: "deployment-registry", Detail: err.Error()}}
+	}
+	targetEntries, err := os.ReadDir(filepath.Join(root, "targets"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, []fullDestroyResult{{Status: "FAILED", Resource: "deployment-registry", Detail: err.Error()}}
+	}
+
+	var records []deployment.DeploymentRecord
+	var results []fullDestroyResult
+	for _, targetEntry := range targetEntries {
+		if !targetEntry.IsDir() || deployment.ValidateTargetName(targetEntry.Name()) != nil {
+			continue
+		}
+		deploymentsRoot := filepath.Join(root, "targets", targetEntry.Name(), "deployments")
+		appEntries, readErr := os.ReadDir(deploymentsRoot)
+		if errors.Is(readErr, os.ErrNotExist) {
+			continue
+		}
+		if readErr != nil {
+			results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment-registry", Detail: readErr.Error()})
+			continue
+		}
+		for _, appEntry := range appEntries {
+			if !appEntry.IsDir() {
+				continue
+			}
+			envEntries, envErr := os.ReadDir(filepath.Join(deploymentsRoot, appEntry.Name()))
+			if envErr != nil {
+				results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name(), Detail: envErr.Error()})
+				continue
+			}
+			for _, envEntry := range envEntries {
+				if !envEntry.IsDir() {
+					continue
+				}
+				id := deployment.DeploymentIdentity{Target: targetEntry.Name(), Application: appEntry.Name(), Environment: envEntry.Name()}
+				record, loadErr := deployment.LoadDeploymentRecord(id)
+				if loadErr != nil {
+					results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(), Detail: loadErr.Error()})
+					continue
+				}
+				records = append(records, record)
+			}
+		}
+	}
+	sort.Slice(records, func(i, j int) bool {
+		a, b := records[i].Identity, records[j].Identity
+		if a.Target != b.Target {
+			return a.Target < b.Target
+		}
+		if a.Application != b.Application {
+			return a.Application < b.Application
+		}
+		return a.Environment < b.Environment
+	})
+	return records, results
 }
 
 func bestEffortApplicationCleanup(parent context.Context, record deployment.DeploymentRecord, results *[]fullDestroyResult) {
