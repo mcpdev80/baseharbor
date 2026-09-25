@@ -79,6 +79,15 @@ Use local/repository validation first. Use GitHub Actions where required by the 
 
 Do not refactor unrelated code in the same change. Preserve current architecture unless the task demonstrates a missing primitive.
 
+## 12. Delete merged branches
+
+Branches are temporary work surfaces, not long-lived history.
+
+- A feature, fix, release-preparation or validation branch MUST be deleted after its changes have been merged or otherwise fully incorporated into the target branch.
+- Temporary `runtime-validation/*` branches MUST be removed as soon as the validation result is no longer needed.
+- Long-lived branches are limited to explicitly designated integration or maintained work tracks such as `main`, `develop` and intentionally retained active feature/test branches.
+- Before deleting a diverged branch, verify that any required changes are already present in the target branch or are intentionally obsolete.
+
 ## Documentation
 
 Follow [Documentation style](STYLE_GUIDE.md).
