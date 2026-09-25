@@ -278,7 +278,12 @@ func renderPromptSegment(prompt deployment.PromptConfig, target, applicationName
 	envLabel := ""
 	switch prompt.Environment {
 	case "always":
-		if env != "" {
+		if env == "prod" || env == "production" {
+			envLabel = strings.TrimSpace(prompt.ProdIndicator)
+			if envLabel == "" {
+				envLabel = "PROD"
+			}
+		} else if env != "" {
 			envLabel = strings.ToUpper(env)
 		}
 	case "critical-only", "":
