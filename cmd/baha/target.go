@@ -159,7 +159,7 @@ func targetCommand() *cli.Command {
 					if _, ok := cfg.Targets[args[0]]; !ok {
 						return fmt.Errorf("target %q is not configured", args[0])
 					}
-					fmt.Fprintf(out, "export BASEHARBOR_TARGET=%q\n", args[0])
+					fmt.Fprint(out, shellActivationCode(currentShellName(), args[0]))
 					return nil
 				},
 			},
@@ -171,7 +171,7 @@ func targetCommand() *cli.Command {
 					if len(args) != 0 {
 						return usageError("baha target deactivate does not accept arguments", "Example: eval \"$(baha target deactivate)\"")
 					}
-					fmt.Fprintln(out, "unset BASEHARBOR_TARGET")
+					fmt.Fprint(out, shellDeactivationCode(currentShellName()))
 					return nil
 				},
 			},
