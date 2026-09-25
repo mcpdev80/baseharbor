@@ -39,6 +39,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -164,6 +165,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return err
 	}
