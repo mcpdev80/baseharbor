@@ -90,23 +90,23 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		releaseFullDestroyConnectivity(parent, target, &results)
 	}
 	for _, record := range deployments {
-			targetCtx := withTargetOverride(parent, record.Identity.Target)
-			args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
-			if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
-				results = append(results, fullDestroyResult{
-					Status:   "FAILED",
-					Target:   record.Identity.Target,
-					Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
-					Detail:   err.Error(),
-				})
-				bestEffortApplicationCleanup(targetCtx, record, &results)
-				continue
-			}
+		targetCtx := withTargetOverride(parent, record.Identity.Target)
+		args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
+		if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
 			results = append(results, fullDestroyResult{
-				Status:   "REMOVED",
+				Status:   "FAILED",
 				Target:   record.Identity.Target,
 				Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
+				Detail:   err.Error(),
 			})
+			bestEffortApplicationCleanup(targetCtx, record, &results)
+			continue
+		}
+		results = append(results, fullDestroyResult{
+			Status:   "REMOVED",
+			Target:   record.Identity.Target,
+			Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
+		})
 	}
 
 	for _, target := range targets {
