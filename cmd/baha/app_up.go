@@ -71,7 +71,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 					var err error
-					platformFiles, err = bhruntime.ExistingFiles("")
+					platformFiles, err = existingTargetRuntimeFiles(ctx)
 					if err != nil {
 						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
 					}
