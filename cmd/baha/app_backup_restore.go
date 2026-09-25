@@ -270,6 +270,9 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		return fmt.Errorf("record restored deployment: %w", err)
+	}
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
