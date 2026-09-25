@@ -359,7 +359,7 @@ func EnsureRuntimeProjectOverrideForRuntime(
 			}
 			port = registration.ProviderSyslogPort
 		case observability.SourcePlatformProvider:
-			files, err := ExistingProviderFiles(m)
+			files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 			if err != nil {
 				return "", false, err
 			}
@@ -446,7 +446,15 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 }
 
 func UnregisterApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return UnregisterApplicationAt(ctx, runtime, issuer, dataDir, "", m)
+}
+
+func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}
@@ -476,7 +484,7 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 		return err
 	}
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
-		return DestroyProvider(ctx, runtime, m)
+		return DestroyProviderAt(ctx, runtime, dataDir, namespace, m)
 	}
 	providerSources, err := providerLogSources(p, registrations)
 	if err != nil {
@@ -513,7 +521,15 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope != capability.ScopeApplication {
 		return err
 	}
@@ -528,7 +544,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}
