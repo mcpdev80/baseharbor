@@ -24,10 +24,16 @@ const applicationSecretOperationTimeout = 60 * time.Second
 type Service struct {
 	store         application.Store
 	runtimeClient *openbao.ApplicationRuntimeClient
+	compose       *bhruntime.Compose
+	platformFiles *bhruntime.Files
 }
 
 func New(store application.Store) *Service {
 	return &Service{store: store}
+}
+
+func NewForRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files) *Service {
+	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
 }
 
 // NewRuntime creates the narrow data-plane service used by the managed runtime
@@ -181,13 +187,23 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if err := application.CheckRuntimePermissions(files); err != nil {
 		return resolvedApplication{}, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
-	if err != nil {
-		return resolvedApplication{}, err
+	var compose bhruntime.Compose
+	if s.compose != nil {
+		compose = *s.compose
+	} else {
+		compose, err = bhruntime.DetectCompose(ctx)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
-	platformFiles, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
+	var platformFiles bhruntime.Files
+	if s.platformFiles != nil {
+		platformFiles = *s.platformFiles
+	} else {
+		platformFiles, err = bhruntime.ExistingFiles("")
+		if err != nil {
+			return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
+		}
 	}
 	return resolvedApplication{manifest: m, compose: compose, platformFiles: platformFiles, identity: openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}, credentialsPath: openbao.ApplicationCredentialsPath(files.Dir)}, nil
 }

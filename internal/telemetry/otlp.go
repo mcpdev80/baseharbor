@@ -600,10 +600,18 @@ func externalHeaders() map[string]string {
 }
 
 func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", err
+	}
+	return ExportProviderInteractionTraceAt(ctx, m, source, dataDir, "")
+}
+
+func ExportProviderInteractionTraceAt(ctx context.Context, m application.Manifest, source observability.SignalSource, dataDir, namespace string) (string, error) {
 	if source.Kind != observability.SignalTraces || source.Protocol != "interaction" {
 		return "", fmt.Errorf("provider interaction trace source %q is not an interaction trace", source.ID)
 	}
-	files, err := ExistingProviderFiles()
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
 	if err != nil {
 		return "", err
 	}

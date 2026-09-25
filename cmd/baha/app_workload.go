@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -257,7 +256,10 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 	if len(resolved.Manifest.Secrets.Required) == 0 && len(resolved.Manifest.Secrets.Optional) == 0 {
 		return environment, nil
 	}
-	service := applicationsecret.New(resolved.Store)
+	service, err := resolvedApplicationSecretService(ctx, resolved)
+	if err != nil {
+		return nil, err
+	}
 	requiredNames := application.RequiredSecretNames(resolved.Manifest)
 	if len(requiredNames) > 0 {
 		values, err := service.GetMany(ctx, resolved.Manifest.Name, requiredNames)
