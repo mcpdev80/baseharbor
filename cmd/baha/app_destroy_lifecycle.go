@@ -24,20 +24,20 @@ import (
 )
 
 type applicationDestroyExecution struct {
-	resolved             resolvedApplication
-	manifest             application.Manifest
-	runtimeProject       string
-	term                 *cli.Terminal
-	out                  io.Writer
-	confirmed            bool
-	fullReset            bool
-	files                application.RuntimeFiles
-	runtimeErr           error
-	partialRuntime       bool
-	compose              bhruntime.Compose
-	existing             []bhruntime.ProjectResource
-	platformFiles        bhruntime.Files
-	destroyOpenBaoScope  bool
+	resolved            resolvedApplication
+	manifest            application.Manifest
+	runtimeProject      string
+	term                *cli.Terminal
+	out                 io.Writer
+	confirmed           bool
+	fullReset           bool
+	files               application.RuntimeFiles
+	runtimeErr          error
+	partialRuntime      bool
+	compose             bhruntime.Compose
+	existing            []bhruntime.ProjectResource
+	platformFiles       bhruntime.Files
+	destroyOpenBaoScope bool
 }
 
 func newApplicationDestroyExecution(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) (*applicationDestroyExecution, error) {
