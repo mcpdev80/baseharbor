@@ -367,4 +367,3 @@ func validateSecretKey(key string) error {
 	}
 	return nil
 }
-
