@@ -3,13 +3,14 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-func reconcileManagedRuntimeObservability(m Manifest) error {
+func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	logsPolicy, err := LogsPolicy(m)
 	if err != nil {
 		return err
@@ -20,7 +21,10 @@ func reconcileManagedRuntimeObservability(m Manifest) error {
 		return err
 	}
 	tracesEnabled := tracesPolicy.Enabled && tracesPolicy.Collect[TracesSourceApplicationProvider]
-	project := RuntimeProjectName(m)
+	project = strings.TrimSpace(project)
+	if project == "" {
+		project = RuntimeProjectName(m)
+	}
 
 	if err := reconcileRuntimeProviderObservability(m, project, "postgres", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled, tracesEnabled); err != nil {
 		return err
@@ -74,7 +78,10 @@ func reconcileRuntimeProviderObservability(
 func VerifyManagedProviderInteractions(ctx context.Context, runtime bhruntime.Compose, m Manifest, files RuntimeFiles, sources []observability.SignalSource) error {
 	needsPostgreSQL := false
 	needsValkey := false
-	project := RuntimeProjectName(m)
+	project := strings.TrimSpace(files.Project)
+	if project == "" {
+		project = RuntimeProjectName(m)
+	}
 	for _, source := range sources {
 		if source.Kind != observability.SignalTraces || source.Mode != capability.ObservabilityInteraction {
 			continue
