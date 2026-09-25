@@ -297,6 +297,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
 		return fmt.Errorf("record successfully applied repository desired state: %w", err)
 	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		return fmt.Errorf("record verified target deployment: %w", err)
+	}
 	term.Section("Application")
 	if resolved.FromRepository && !term.Quiet() {
 		fmt.Fprintln(out, "  Environment contract: baha app env --path")
