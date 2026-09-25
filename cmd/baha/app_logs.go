@@ -328,13 +328,6 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		}
 	}
 
-	dataDir := filepath.Clean(files.Dir)
-	for filepath.Base(dataDir) != "deployments" && filepath.Dir(dataDir) != dataDir {
-		dataDir = filepath.Dir(dataDir)
-	}
-	if filepath.Base(dataDir) == "deployments" {
-		dataDir = filepath.Dir(dataDir)
-	}
 	executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
 	if err == nil {
 		out, execErr := runtime.ExecProject(
