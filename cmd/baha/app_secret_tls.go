@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
@@ -23,7 +22,7 @@ const (
 	defaultTLSKeySecret  = "TLS_KEY_FILE"
 )
 
-func appSecretTLSSetCommand(store application.Store, service *applicationsecret.Service) *cli.Command {
+func appSecretTLSSetCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "tls-set",
 		Summary: "Validate and store a TLS certificate chain and private key",
@@ -35,6 +34,10 @@ func appSecretTLSSetCommand(store application.Store, service *applicationsecret.
 				return err
 			}
 			resolved, err := resolveSecretApplication(ctx, store, name, "secret tls-set")
+			if err != nil {
+				return err
+			}
+			service, err := resolvedApplicationSecretService(ctx, resolved)
 			if err != nil {
 				return err
 			}
