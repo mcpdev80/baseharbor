@@ -20,15 +20,25 @@ var (
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	t.Helper()
 	runtimeIntegrationTrustPlaneOnce.Do(func() {
-		stateDir, err := os.MkdirTemp("", "baseharbor-ci-state-")
+		configHome, err := os.MkdirTemp("", "baseharbor-ci-config-")
 		if err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
-		if err := os.Setenv("BASEHARBOR_STATE_DIR", stateDir); err != nil {
+		dataHome, err := os.MkdirTemp("", "baseharbor-ci-data-")
+		if err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
+		if err := os.Setenv("XDG_DATA_HOME", dataHome); err != nil {
+			runtimeIntegrationTrustPlaneErr = err
+			return
+		}
+		_ = os.Unsetenv("BASEHARBOR_TARGET")
 
 		var out bytes.Buffer
 		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
@@ -67,7 +77,7 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 	if runtimeIntegrationTrustPlaneErr != nil {
 		t.Fatalf("prepare BaseHarbor integration trust plane: %v", runtimeIntegrationTrustPlaneErr)
 	}
-	if _, err := bhruntime.ExistingFiles(""); err != nil {
+	if _, err := existingTargetRuntimeFiles(ctx); err != nil {
 		t.Fatalf("BaseHarbor integration trust plane state missing: %v", err)
 	}
 }
