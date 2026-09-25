@@ -157,7 +157,17 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
 	assertNoReverseConnectivity(t, ctx, compose, target, targetFiles)
 
-	if err := suspendConnectivityForManifest(ctx, compose, target); err != nil {
+	selectedTarget, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetDataDir, err := targetDataRoot(selectedTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedTarget := resolvedApplication{Manifest: target, Target: selectedTarget, TargetStateRoot: targetDataDir}
+
+	if err := suspendConnectivityForManifest(ctx, compose, resolvedTarget); err != nil {
 		t.Fatalf("suspend target connectivity: %v", err)
 	}
 	rules, err = application.LoadConnectivityRules()
@@ -168,7 +178,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		t.Fatalf("relay definition should remain available for reconciliation: %v", err)
 	}
 
-	if err := reconcileConnectivityForManifest(ctx, io.Discard, compose, target); err != nil {
+	if err := reconcileConnectivityForManifest(ctx, io.Discard, compose, resolvedTarget); err != nil {
 		t.Fatalf("reconcile target connectivity: %v", err)
 	}
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
