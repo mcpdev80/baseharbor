@@ -17,6 +17,14 @@ func referenceProviderRegistryStore() (capability.RegistryStore, error) {
 	if err != nil {
 		return capability.RegistryStore{}, err
 	}
+	return referenceProviderRegistryStoreAt(dataDir)
+}
+
+func referenceProviderRegistryStoreAt(dataDir string) (capability.RegistryStore, error) {
+	dataDir = filepath.Clean(dataDir)
+	if dataDir == "." || dataDir == "" {
+		return capability.RegistryStore{}, fmt.Errorf("provider registry data root is required")
+	}
 	return capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}, nil
 }
 
@@ -25,7 +33,15 @@ func referenceProviderRegistryStore() (capability.RegistryStore, error) {
 // callers use this during preflight so invalid provider metadata fails before
 // any runtime or workload mutation.
 func CheckReferenceProviderRegistry(m Manifest) error {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckReferenceProviderRegistryAt(dataDir, m)
+}
+
+func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -41,7 +57,15 @@ func CheckReferenceProviderRegistry(m Manifest) error {
 }
 
 func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Resource) error {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return ReconcileReferenceProviderRegistryAt(dataDir, m, additional...)
+}
+
+func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional ...capability.Resource) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -55,7 +79,15 @@ func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Res
 }
 
 func CheckAdditionalProviderResources(m Manifest, additional []capability.Resource) error {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckAdditionalProviderResourcesAt(dataDir, m, additional)
+}
+
+func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional []capability.Resource) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -93,7 +125,15 @@ func registerAdditionalProviderResources(registry *capability.Registry, m Manife
 }
 
 func CheckControlPlaneDestroySafe() error {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckControlPlaneDestroySafeAt(dataDir)
+}
+
+func CheckControlPlaneDestroySafeAt(dataDir string) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -102,25 +142,26 @@ func CheckControlPlaneDestroySafe() error {
 		return err
 	}
 	if len(registry.Bindings) != 0 {
-		return fmt.Errorf("provider registry still contains %d application binding(s); destroy managed applications before the global control plane", len(registry.Bindings))
+		return fmt.Errorf("provider registry still contains %d application binding(s); destroy managed applications before the control plane", len(registry.Bindings))
 	}
 	for _, instance := range registry.Instances {
 		if instance.Scope == capability.ScopeApplication {
-			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the global control plane", instance.ID)
+			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the control plane", instance.ID)
 		}
-	}
-	rules, err := LoadConnectivityRules()
-	if err != nil {
-		return err
-	}
-	if len(rules) != 0 {
-		return fmt.Errorf("connectivity policy still contains %d cross-application rule(s); disconnect them before the global control plane", len(rules))
 	}
 	return nil
 }
 
 func RegisteredProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+	return RegisteredProviderPlacementAt(dataDir, m, provider)
+}
+
+func RegisteredProviderPlacementAt(dataDir string, m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return capability.ProviderPlacement{}, false, err
 	}
@@ -167,7 +208,15 @@ func RegisteredProviderPlacement(m Manifest, provider capability.ProviderKind) (
 }
 
 func ReleaseApplicationProviderRegistry(m Manifest) error {
-	store, err := referenceProviderRegistryStore()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return ReleaseApplicationProviderRegistryAt(dataDir, m)
+}
+
+func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
