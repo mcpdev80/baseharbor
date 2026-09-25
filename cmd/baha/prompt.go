@@ -188,15 +188,18 @@ func promptCommand() *cli.Command {
 		Name:    "prompt",
 		Hidden:  true,
 		Summary: "Render the local BaseHarbor prompt segment",
-		Usage:   "baha prompt [--plain]",
+		Usage:   "baha prompt [--plain|--position-only]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			plain := false
+			positionOnly := false
 			for _, arg := range args {
 				switch arg {
 				case "--plain":
 					plain = true
+				case "--position-only":
+					positionOnly = true
 				default:
-					return unknownOptionUsage("baha prompt", arg, "--plain")
+					return unknownOptionUsage("baha prompt", arg, "--plain", "--position-only")
 				}
 			}
 			cfg, err := deployment.LoadConfig()
@@ -204,6 +207,14 @@ func promptCommand() *cli.Command {
 				return err
 			}
 			if !cfg.Prompt.Enabled || cfg.Prompt.Preset == "none" {
+				return nil
+			}
+			if positionOnly {
+				position := strings.TrimSpace(cfg.Prompt.Position)
+				if position == "" {
+					position = "before-path"
+				}
+				fmt.Fprint(out, position)
 				return nil
 			}
 			target, err := effectiveTarget(ctx)
@@ -348,16 +359,21 @@ func shellInitCommand() *cli.Command {
 func bashShellInit() string {
 	return `baha_target_activate() { export BASEHARBOR_TARGET="$1"; }
 baha_target_deactivate() { unset BASEHARBOR_TARGET; }
-_baha_prompt_segment() { command baha prompt 2>/dev/null || true; }
 _baha_prompt_command() {
-    local bh="$(_baha_prompt_segment)"
-    if [ -n "$bh" ]; then
-        PS1="$bh ${PS1#"$BH_LAST_PROMPT "}"
-        BH_LAST_PROMPT="$bh"
-    elif [ -n "$BH_LAST_PROMPT" ]; then
-        PS1="${PS1#"$BH_LAST_PROMPT "}"
-        BH_LAST_PROMPT=""
+    local bh position base
+    bh="$(command baha prompt 2>/dev/null || true)"
+    position="$(command baha prompt --position-only 2>/dev/null || true)"
+    if [ -n "$BH_BASE_PS1" ]; then
+        base="$BH_BASE_PS1"
+    else
+        base="$PS1"
+        BH_BASE_PS1="$PS1"
     fi
+    case "$position" in
+        after-path) PS1="$base $bh " ;;
+        *)          PS1="$bh $base" ;;
+    esac
+    [ -z "$bh" ] && PS1="$base"
 }
 PROMPT_COMMAND="_baha_prompt_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 `
@@ -368,13 +384,21 @@ func zshShellInit() string {
 baha_target_deactivate() { unset BASEHARBOR_TARGET; }
 autoload -Uz add-zsh-hook
 _baha_prompt_command() {
-    local bh="$(command baha prompt 2>/dev/null)"
-    if [[ -n "$bh" ]]; then
-        PROMPT="$bh ${PROMPT#${BH_LAST_PROMPT}% }"
-        BH_LAST_PROMPT="$bh"
-    elif [[ -n "$BH_LAST_PROMPT" ]]; then
-        PROMPT="${PROMPT#${BH_LAST_PROMPT}% }"
-        BH_LAST_PROMPT=""
+    local bh position
+    bh="$(command baha prompt 2>/dev/null)"
+    position="$(command baha prompt --position-only 2>/dev/null)"
+    if [[ "$position" == "right" ]]; then
+        RPROMPT="$bh"
+        PROMPT="${BH_BASE_PROMPT:-$PROMPT}"
+    else
+        RPROMPT=""
+        [[ -z "$BH_BASE_PROMPT" ]] && BH_BASE_PROMPT="$PROMPT"
+        if [[ "$position" == "after-path" ]]; then
+            PROMPT="$BH_BASE_PROMPT $bh "
+        else
+            PROMPT="$bh $BH_BASE_PROMPT"
+        fi
+        [[ -z "$bh" ]] && PROMPT="$BH_BASE_PROMPT"
     fi
 }
 add-zsh-hook precmd _baha_prompt_command
@@ -391,11 +415,33 @@ end
 if functions -q fish_prompt; and not functions -q __baha_original_fish_prompt
     functions -c fish_prompt __baha_original_fish_prompt
     function fish_prompt
+        set -l position (command baha prompt --position-only 2>/dev/null)
         set -l bh (command baha prompt 2>/dev/null)
-        if test -n "$bh"
+        if test "$position" = "before-path"; and test -n "$bh"
             printf "%s " "$bh"
         end
         __baha_original_fish_prompt
+        if test "$position" = "after-path"; and test -n "$bh"
+            printf " %s " "$bh"
+        end
+    end
+end
+if functions -q fish_right_prompt; and not functions -q __baha_original_fish_right_prompt
+    functions -c fish_right_prompt __baha_original_fish_right_prompt
+    function fish_right_prompt
+        set -l position (command baha prompt --position-only 2>/dev/null)
+        if test "$position" = "right"
+            command baha prompt 2>/dev/null
+        else
+            __baha_original_fish_right_prompt
+        end
+    end
+else if not functions -q fish_right_prompt
+    function fish_right_prompt
+        set -l position (command baha prompt --position-only 2>/dev/null)
+        if test "$position" = "right"
+            command baha prompt 2>/dev/null
+        end
     end
 end
 `
