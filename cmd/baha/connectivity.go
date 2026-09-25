@@ -90,7 +90,7 @@ func connectCommand() *cli.Command {
 			fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
 			fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
 
-			if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
+			if err := convergeConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, sourceContainers, targetNetwork); err != nil {
 				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
 				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
 				return err
@@ -144,7 +144,7 @@ func disconnectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
+			if err := suspendConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, containers); err != nil {
 				return err
 			}
 			if err := application.RemoveConnectivityRuleAt(dataDir, rule); err != nil {
@@ -220,7 +220,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
@@ -245,7 +245,7 @@ func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.Compo
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
+		if err := suspendConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, containers); err != nil {
 			return err
 		}
 	}
