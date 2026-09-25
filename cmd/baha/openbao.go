@@ -145,7 +145,7 @@ func openBaoRuntime(ctx context.Context) (bhruntime.Compose, bhruntime.Files, er
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, fmt.Errorf("BaseHarbor runtime is not initialized: %w", err)
 	}
