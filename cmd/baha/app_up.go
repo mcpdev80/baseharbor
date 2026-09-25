@@ -22,7 +22,7 @@ func appUpCommand(store application.Store) *cli.Command {
 		Usage:   "baha app up [NAME]",
 		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Repository workloads are started after their BaseHarbor backend and per-application secret broker are ready. Workload-only applications skip the empty managed-runtime start and resume their repository Compose workload directly. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "up")
+			resolved, err := resolveApplication(ctx, store, args, "up")
 			if err != nil {
 				return err
 			}
