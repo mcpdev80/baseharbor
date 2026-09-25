@@ -48,6 +48,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 			manifest:            m,
 			registeredPlacement: registeredPlacement,
 			registered:          true,
+			dataDir:             resolved.TargetStateRoot,
+			namespace:           resolved.Target.Name,
 		}, nil
 	}
 
@@ -66,6 +68,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 			enabled:             false,
 			registeredPlacement: registeredPlacement,
 			registered:          registered,
+			dataDir:             resolved.TargetStateRoot,
+			namespace:           resolved.Target.Name,
 		}, nil
 	}
 
@@ -167,7 +171,7 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	if err := metricsprovider.PruneApplicationTargets(prepared.manifest, metricsprovider.DesiredTargetFiles(prepared.manifest)); err != nil {
+	if err := metricsprovider.PruneApplicationTargetsAt(prepared.dataDir, prepared.namespace, prepared.manifest, metricsprovider.DesiredTargetFiles(prepared.manifest)); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[UPDATED] metrics-provider Prometheus target state for %s\n", prepared.manifest.Name)
@@ -202,12 +206,12 @@ func cleanupRegisteredMetricsPlacement(ctx context.Context, prepared *managedMet
 	}
 	switch prepared.registeredPlacement.Scope {
 	case capability.ScopeShared:
-		if err := metricsprovider.PruneRegisteredApplicationTargets(prepared.manifest, nil); err != nil {
+		if err := metricsprovider.PruneRegisteredApplicationTargetsAt(prepared.dataDir, prepared.namespace, prepared.manifest, nil); err != nil {
 			return err
 		}
-		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest)
+		return metricsprovider.UnregisterSharedApplicationAt(ctx, prepared.runtime, prepared.issuer, prepared.dataDir, prepared.namespace, prepared.manifest)
 	case capability.ScopeApplication:
-		return metricsprovider.DestroyProvider(ctx, prepared.runtime, prepared.manifest)
+		return metricsprovider.DestroyProviderAt(ctx, prepared.runtime, prepared.dataDir, prepared.namespace, prepared.manifest)
 	case capability.ScopeExternal:
 		return nil
 	default:
