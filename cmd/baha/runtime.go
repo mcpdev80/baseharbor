@@ -130,7 +130,7 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
-	if _, err := bhruntime.ExistingFiles(""); err == nil {
+	if _, err := existingTargetRuntimeFiles(parent); err == nil {
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
 		}
@@ -328,7 +328,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 		}
 	}
 
-	files, err := bhruntime.ExistingFiles("")
+	files, err := existingTargetRuntimeFiles(parent)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
@@ -372,39 +372,43 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.C
 	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
 		return err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
-	return compose.Up(ctx, files.Compose, files.Env)
+	return compose.UpProject(ctx, files.Project, files.Compose, files.Env)
 }
 
 func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.EnsureFilesWithPorts("", ports)
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
 	return compose, files, nil
 }
 
 func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return bhruntime.Compose{}, err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
 		return bhruntime.Compose{}, err
 	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, err
 	}
 	return compose, nil
@@ -486,14 +490,14 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
 	if err := suspendSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("suspend shared platform runtime: %w", err)
 	}
-	if err := compose.Down(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime stopped")
@@ -737,7 +741,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := metricsprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
 		return fmt.Errorf("destroy shared metrics providers: %w", err)
 	}
-	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
 	}
 	if err := os.RemoveAll(runtimeDir); err != nil {
@@ -773,12 +777,12 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	status, err := compose.Status(ctx, files.Compose, files.Env)
+	status, err := compose.StatusProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return err
 	}
 	fmt.Fprint(out, status)
-	running, err := compose.RunningServicesProject(ctx, "baseharbor", files.Compose, files.Env)
+	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return err
 	}
