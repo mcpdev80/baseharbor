@@ -96,7 +96,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 			return err
 		}},
 		{Name: "provider registry", Run: func(context.Context) error {
-			return application.CheckReferenceProviderRegistry(m)
+			return application.CheckReferenceProviderRegistryAt(resolved.TargetStateRoot, m)
 		}},
 	}
 	needsServiceIssuer := requiresManagedServiceIssuer(m)
@@ -291,7 +291,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	}
 	registryResources := managedLogsRegistryResources(providers.logs)
 	registryResources = append(registryResources, managedTracesRegistryResources(providers.traces)...)
-	if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m, registryResources...); err != nil {
 		return fmt.Errorf("record provider registry after successful convergence: %w", err)
 	}
 	if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
