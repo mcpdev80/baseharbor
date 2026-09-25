@@ -53,18 +53,30 @@ type ProviderFiles struct {
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
-	if err != nil {
-		return Placement{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
 	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
+	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+	if err != nil {
+		return Placement{}, err
+	}
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
 		project := providerProject
-		dir := filepath.Join(dataDir, "providers", "loki", "shared")
+		if prefix != "" {
+			project = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
+		}
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
 		if p.SharingBoundary != "" {
@@ -77,13 +89,13 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 		network := project + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
+		suffix := prefix + m.Name + "-" + m.Environment
 		project := providerProject + "-" + suffix
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
 			Network:          project + "-internal",
-			Dir:              filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
+			Dir:              filepath.Join(filepath.Clean(dataDir), "providers", "loki", "applications", m.Name, m.Environment),
 			LokiVolume:       "baseharbor-loki-data-" + suffix,
 			AlloyVolume:      "baseharbor-alloy-data-" + suffix,
 			OwnerApplication: m.Name,
@@ -111,7 +123,15 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 }
 
 func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return EnsureProviderFilesForRuntimeAt(ctx, issuer, dataDir, "", m, runtimeKind)
+}
+
+func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -179,7 +199,15 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -196,7 +224,15 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 }
 
 func ApplicationRegistration(m application.Manifest) (Registration, error) {
-	files, err := ExistingProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Registration{}, err
+	}
+	return ApplicationRegistrationAt(dataDir, "", m)
+}
+
+func ApplicationRegistrationAt(dataDir, namespace string, m application.Manifest) (Registration, error) {
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return Registration{}, err
 	}
