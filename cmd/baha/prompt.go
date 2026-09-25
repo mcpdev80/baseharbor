@@ -388,8 +388,15 @@ end
 function baha_target_deactivate
     set -e BASEHARBOR_TARGET
 end
-function __baha_prompt_segment
-    command baha prompt 2>/dev/null
+if functions -q fish_prompt; and not functions -q __baha_original_fish_prompt
+    functions -c fish_prompt __baha_original_fish_prompt
+    function fish_prompt
+        set -l bh (command baha prompt 2>/dev/null)
+        if test -n "$bh"
+            printf "%s " "$bh"
+        end
+        __baha_original_fish_prompt
+    end
 end
 `
 }
