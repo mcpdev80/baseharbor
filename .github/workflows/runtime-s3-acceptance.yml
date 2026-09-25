@@ -38,8 +38,11 @@ jobs:
           set -euo pipefail
 
           workdir="$(mktemp -d)"
-          export BASEHARBOR_STATE_DIR="$workdir/platform-state"
+          export XDG_CONFIG_HOME="$workdir/xdg-config"
+          export XDG_DATA_HOME="$workdir/xdg-data"
+          export BASEHARBOR_TARGET=ci
           recovery="$workdir/openbao-recovery.json"
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
 
           cleanup() {
             status=$?
@@ -50,7 +53,7 @@ jobs:
               echo "=== runtime acceptance diagnostics ==="
               docker ps -a
 
-              for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor); do
+              for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci); do
                 echo "=== runtime executor logs: $id ==="
                 docker logs "$id"
               done
@@ -104,9 +107,9 @@ jobs:
           /tmp/baha app apply | tee /tmp/runtime-s3-a-apply.out
           grep -q "application and requested infrastructure verified" /tmp/runtime-s3-a-apply.out
 
-          app_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-runtime-s3-a-dev --filter label=com.docker.compose.service=api)"
-          broker_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-runtime-s3-a-dev --filter label=com.docker.compose.service=broker)"
-          executor="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-runtime-executor --filter label=com.docker.compose.service=executor)"
+          app_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-ci-runtime-s3-a-dev --filter label=com.docker.compose.service=api)"
+          broker_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-ci-runtime-s3-a-dev --filter label=com.docker.compose.service=broker)"
+          executor="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci --filter label=com.docker.compose.service=executor)"
           test -n "$app_a"
           test -n "$broker_a"
           test -n "$executor"
@@ -178,8 +181,8 @@ jobs:
               test "$got" = "runtime-s3-acceptance"
             '
 
-          provider_dir="$BASEHARBOR_STATE_DIR/providers/seaweedfs"
-          listed="$(printf 's3.bucket.list\n' | docker compose             --project-name baseharbor-object-storage             --file "$provider_dir/compose.yaml"             --env-file "$provider_dir/runtime.env"             exec -T seaweedfs weed shell)"
+          provider_dir="$XDG_DATA_HOME/baseharbor/targets/ci/providers/seaweedfs"
+          listed="$(printf 's3.bucket.list\n' | docker compose             --project-name baseharbor-object-storage-ci             --file "$provider_dir/compose.yaml"             --env-file "$provider_dir/runtime.env"             exec -T seaweedfs weed shell)"
           test "$(printf '%s\n' "$listed" | grep -c "$bucket")" -eq 1
 
           mkdir -p "$workdir/app-b"
@@ -212,7 +215,7 @@ jobs:
           EOF
 
           /tmp/baha app apply | tee /tmp/runtime-s3-b-apply.out
-          app_b="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-runtime-s3-b-dev --filter label=com.docker.compose.service=api)"
+          app_b="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-ci-runtime-s3-b-dev --filter label=com.docker.compose.service=api)"
           test -n "$app_b"
 
           runtime_call_b() {
@@ -286,5 +289,5 @@ jobs:
           cd "$workdir"
           /tmp/baha destroy --yes
 
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor)"
-          test ! -e "$BASEHARBOR_STATE_DIR/runtime-executor"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci)"
+          test ! -e "$XDG_DATA_HOME/baseharbor/targets/ci/runtime-executor"
