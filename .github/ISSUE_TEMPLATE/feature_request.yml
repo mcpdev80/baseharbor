@@ -1,0 +1,46 @@
+name: Feature or improvement
+description: Propose a focused improvement to BaseHarbor
+title: "[proposal] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        BaseHarbor prefers small, standards-first changes that reuse the existing application, capability, provider and lifecycle model.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or contributor problem should this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+      description: Describe the smallest useful change. Avoid prescribing a new abstraction unless the existing model cannot express the need.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract / compatibility impact
+      description: Does this affect Manifest v1, CLI/JSON/MCP, providers, runtime semantics, security or compatibility?
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional — existing BaseHarbor mechanisms or standards that might already solve part of the problem.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I checked the roadmap and existing issues for overlap.
+          required: true
+        - label: This proposal keeps application intent provider-neutral where applicable.
+          required: true
