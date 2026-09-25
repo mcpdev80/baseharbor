@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -431,6 +432,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return errors.New("verify application destruction: application state still exists")
 		}
 		return fmt.Errorf("verify application destruction: %w", err)
+	}
+	if err := deployment.DeleteDeploymentRecord(resolved.DeploymentIdentity); err != nil {
+		return fmt.Errorf("remove target deployment record after verified destruction: %w", err)
 	}
 	term.Section("Application")
 	term.Result("DELETED", "application", m.Name+" permanently deleted")
