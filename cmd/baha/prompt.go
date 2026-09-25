@@ -30,7 +30,7 @@ func configPromptCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "prompt",
 		Summary: "Configure the optional BaseHarbor shell prompt segment",
-		Usage:   "baha config prompt [--enable|--disable] [--preset minimal|compact|accessible|detailed|none] [--position before-path|after-path|right] [--environment never|critical-only|always] [--label TARGET=LABEL] [--color KEY=VALUE]",
+		Usage:   "baha config prompt [--enable|--disable] [--preset minimal|compact|accessible|detailed|none] [--position before-path|after-path|right] [--environment never|critical-only|always] [--show-application|--hide-application] [--text-only|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]",
 		Long:    "Configures prompt presentation only. Target identity, lifecycle ownership and deployment selection are never changed by prompt labels or colors. With no options, interactive terminals open a compact setup wizard with a live preview.",
 		Run:     runConfigPrompt,
 	}
@@ -71,7 +71,15 @@ func runConfigPrompt(ctx context.Context, args []string, out, errOut io.Writer) 
 			prompt.Enabled = true
 		case "--disable":
 			prompt.Enabled = false
-		case "--preset", "--position", "--environment", "--label", "--color":
+		case "--show-application":
+			prompt.ShowApplication = true
+		case "--hide-application":
+			prompt.ShowApplication = false
+		case "--text-only":
+			prompt.TextOnly = true
+		case "--color-output":
+			prompt.TextOnly = false
+		case "--preset", "--position", "--environment", "--prod-indicator", "--label", "--color":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha config prompt --help' for usage.")
 			}
@@ -96,6 +104,8 @@ func runConfigPrompt(ctx context.Context, args []string, out, errOut io.Writer) 
 					return usageError("unsupported environment display mode "+value, "Use never, critical-only or always.")
 				}
 				prompt.Environment = value
+			case "--prod-indicator":
+				prompt.ProdIndicator = value
 			case "--label":
 				target, label, ok := strings.Cut(value, "=")
 				if !ok || strings.TrimSpace(target) == "" {
@@ -110,7 +120,7 @@ func runConfigPrompt(ctx context.Context, args []string, out, errOut io.Writer) 
 				prompt.Colors[strings.TrimSpace(name)] = strings.TrimSpace(color)
 			}
 		default:
-			return unknownOptionUsage("baha config prompt", args[i], "--enable", "--disable", "--preset", "--position", "--environment", "--label", "--color")
+			return unknownOptionUsage("baha config prompt", args[i], "--enable", "--disable", "--preset", "--position", "--environment", "--show-application", "--hide-application", "--text-only", "--color-output", "--prod-indicator", "--label", "--color")
 		}
 	}
 	cfg.Prompt = prompt
@@ -131,6 +141,19 @@ func runPromptWizard(cfg deployment.Config, prompt deployment.PromptConfig, out 
 	prompt.Preset = askPromptChoice(reader, out, "Preset", prompt.Preset, "minimal", "compact", "accessible", "detailed", "none")
 	prompt.Position = askPromptChoice(reader, out, "Position", prompt.Position, "before-path", "after-path", "right")
 	prompt.Environment = askPromptChoice(reader, out, "Environment display", prompt.Environment, "never", "critical-only", "always")
+	prompt.ShowApplication = askPromptBool(reader, out, "Show application when inside a repository", prompt.ShowApplication)
+	prompt.TextOnly = askPromptBool(reader, out, "Use text-only prompt output", prompt.TextOnly)
+	if target := promptPreviewTarget(cfg); target != "" {
+		currentLabel := prompt.Labels[target]
+		fmt.Fprintf(out, "Prompt label for %s [%s]: ", target, currentLabel)
+		if value, _ := reader.ReadString('\n'); strings.TrimSpace(value) != "" {
+			prompt.Labels[target] = strings.TrimSpace(value)
+		}
+	}
+	fmt.Fprintf(out, "Production indicator [%s]: ", prompt.ProdIndicator)
+	if value, _ := reader.ReadString('\n'); strings.TrimSpace(value) != "" {
+		prompt.ProdIndicator = strings.TrimSpace(value)
+	}
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Preview:")
@@ -221,14 +244,14 @@ func promptCommand() *cli.Command {
 			if err != nil {
 				return nil
 			}
-			environment := repositoryPromptEnvironment()
-			fmt.Fprint(out, renderPromptSegment(cfg.Prompt, target.Name, environment, plain))
+			applicationName, environment := repositoryPromptContext()
+			fmt.Fprint(out, renderPromptSegment(cfg.Prompt, target.Name, applicationName, environment, plain))
 			return nil
 		},
 	}
 }
 
-func promptPreview(cfg deployment.Config, prompt deployment.PromptConfig) string {
+func promptPreviewTarget(cfg deployment.Config) string {
 	target := cfg.DefaultTarget
 	if target == "" {
 		for _, name := range cfg.TargetNames() {
@@ -239,10 +262,14 @@ func promptPreview(cfg deployment.Config, prompt deployment.PromptConfig) string
 	if target == "" {
 		target = "docker-dev"
 	}
-	return "Preview: " + renderPromptSegment(prompt, target, "dev", true)
+	return target
 }
 
-func renderPromptSegment(prompt deployment.PromptConfig, target, environment string, plain bool) string {
+func promptPreview(cfg deployment.Config, prompt deployment.PromptConfig) string {
+	return "Preview: " + renderPromptSegment(prompt, promptPreviewTarget(cfg), "demo", "dev", true)
+}
+
+func renderPromptSegment(prompt deployment.PromptConfig, target, applicationName, environment string, plain bool) string {
 	label := strings.TrimSpace(prompt.Labels[target])
 	if label == "" {
 		label = target
@@ -256,17 +283,23 @@ func renderPromptSegment(prompt deployment.PromptConfig, target, environment str
 		}
 	case "critical-only", "":
 		if env == "prod" || env == "production" {
-			envLabel = "PROD"
+			envLabel = strings.TrimSpace(prompt.ProdIndicator)
+			if envLabel == "" {
+				envLabel = "PROD"
+			}
 		} else if env == "test" || env == "stage" || env == "staging" {
 			envLabel = strings.ToUpper(env)
 		}
 	}
 	text := "[" + label
+	if prompt.ShowApplication && strings.TrimSpace(applicationName) != "" {
+		text += "/" + strings.TrimSpace(applicationName)
+	}
 	if envLabel != "" {
 		text += " " + envLabel
 	}
 	text += "]"
-	if plain {
+	if plain || prompt.TextOnly {
 		return text
 	}
 	color := promptColor(prompt, env, target)
@@ -319,16 +352,16 @@ func ansiColor(value string) string {
 	}
 }
 
-func repositoryPromptEnvironment() string {
+func repositoryPromptContext() (string, string) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	selection, err := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return selection.Manifest.Environment
+	return selection.Manifest.Name, selection.Manifest.Environment
 }
 
 func shellInitCommand() *cli.Command {
