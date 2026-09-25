@@ -43,7 +43,7 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 		if name != "" && name != m.Name {
 			return errors.New("restore target NAME does not match backup application identity")
 		}
-		resolved, err := resolveRestoreTarget(store, m)
+		resolved, err := resolveRestoreTarget(ctx, store, m)
 		if err != nil {
 			return err
 		}
