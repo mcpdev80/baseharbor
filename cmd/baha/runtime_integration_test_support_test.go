@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var (
