@@ -253,7 +253,15 @@ func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeF
 }
 
 func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
-	registration, err := ApplicationRegistration(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", err
+	}
+	return EnsureWorkloadOverrideForRuntimeAt(dataDir, "", m, runtime, services, runtimeKind)
+}
+
+func EnsureWorkloadOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
+	registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
 	if err != nil {
 		return "", err
 	}
@@ -283,11 +291,25 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 }
 
 func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
-	return EnsureRuntimeProjectOverrideForRuntime(
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", false, err
+	}
+	return EnsureProviderSourceOverrideForRuntimeAt(dataDir, "", m, runtime, runtimeKind)
+}
+
+func EnsureProviderSourceOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	project := strings.TrimSpace(runtime.Project)
+	if project == "" {
+		project = application.RuntimeProjectName(m)
+	}
+	return EnsureRuntimeProjectOverrideForRuntimeAt(
+		dataDir,
+		namespace,
 		m,
 		runtime.Dir,
 		providerOverrideName,
-		application.RuntimeProjectName(m),
+		project,
 		runtimeKind,
 		observability.SourceApplicationProvider,
 	)
@@ -301,7 +323,24 @@ func EnsureRuntimeProjectOverrideForRuntime(
 	runtimeKind string,
 	class observability.SourceClass,
 ) (string, bool, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", false, err
+	}
+	return EnsureRuntimeProjectOverrideForRuntimeAt(dataDir, "", m, dir, filename, project, runtimeKind, class)
+}
+
+func EnsureRuntimeProjectOverrideForRuntimeAt(
+	dataDir string,
+	namespace string,
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	runtimeKind string,
+	class observability.SourceClass,
+) (string, bool, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return "", false, err
 	}
@@ -353,7 +392,7 @@ func EnsureRuntimeProjectOverrideForRuntime(
 	if !strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		switch class {
 		case observability.SourceApplicationProvider:
-			registration, err := ApplicationRegistration(m)
+			registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
 			if err != nil {
 				return "", false, err
 			}
@@ -533,7 +572,7 @@ func StopProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace str
 	if err != nil || p.Scope != capability.ScopeApplication {
 		return err
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
