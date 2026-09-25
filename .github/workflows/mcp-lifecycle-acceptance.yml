@@ -9,6 +9,11 @@ on:
         description: Exact Git ref or commit SHA to test
         required: true
         type: string
+      all_runtimes:
+        description: Run Docker and Podman jobs when used as a release gate
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       ref:
@@ -29,7 +34,7 @@ permissions:
 
 jobs:
   docker:
-    if: ${{ github.event_name == 'workflow_call' || !contains(github.ref_name, '/podman/') }}
+    if: ${{ inputs.all_runtimes || !contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 10
     env:
@@ -67,7 +72,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   podman:
-    if: ${{ github.event_name == 'workflow_call' || contains(github.ref_name, '/podman/') }}
+    if: ${{ inputs.all_runtimes || contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 15
     env:
