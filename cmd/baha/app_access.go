@@ -204,7 +204,7 @@ func resolveAccessBinding(store application.Store, appName, kind, instance strin
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
-	files, err := application.ExistingRuntimeFiles(store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
@@ -242,7 +242,7 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	if !resolved.FromRepository {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
 	}
-	files, err := application.ExistingRuntimeFiles(store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
 	}
