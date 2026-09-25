@@ -85,6 +85,7 @@ jobs:
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
+            gofmt -d $files >&2
             exit 1
           }
 
