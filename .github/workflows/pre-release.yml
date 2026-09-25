@@ -98,6 +98,10 @@ jobs:
             exit 1
           }
 
+      - name: Validate source readability
+        id: source_readability
+        run: bash scripts/source-readability-audit.sh
+
       - name: Run release-source tests
         id: source_tests
         run: |

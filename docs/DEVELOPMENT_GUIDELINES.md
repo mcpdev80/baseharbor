@@ -79,7 +79,17 @@ Use local/repository validation first. Use GitHub Actions where required by the 
 
 Do not refactor unrelated code in the same change. Preserve current architecture unless the task demonstrates a missing primitive.
 
-## 12. Delete merged branches
+## 12. Keep source human-readable
+
+Source layout is part of the contributor contract.
+
+- A non-test Go source file MUST stay at or below 800 lines. Split by responsibility before adding more behavior.
+- A Go function or method MUST stay at or below 200 lines. Long orchestration should delegate to named lifecycle phases or domain helpers.
+- Do not split code only to satisfy a number: file names and helper boundaries MUST describe real responsibilities.
+- Tests, generated artifacts, reference documentation and historical release material are not governed by these source-code limits.
+- The normal source-quality workflow and Pre-Release gate enforce these limits with `scripts/source-readability-audit.sh`.
+
+## 13. Delete merged branches
 
 Branches are temporary work surfaces, not long-lived history.
 

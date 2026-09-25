@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,21 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
-	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecretapi"
 	"github.com/mcpdev80/baseharbor/internal/auth"
-	"github.com/mcpdev80/baseharbor/internal/authorization"
-	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
-	"github.com/mcpdev80/baseharbor/internal/database"
-	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
-	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
-	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
-	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
 var (
@@ -153,237 +140,24 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		return err
 	}
 
-	var pool *pgxpool.Pool
-	if strings.TrimSpace(cfg.DatabaseURL) != "" {
-		var err error
-		pool, err = database.Open(ctx, database.Config{DSN: cfg.DatabaseURL, ConnectTimeout: 10 * time.Second})
-		if err != nil {
-			return fmt.Errorf("open control-plane database: %w", err)
-		}
-		defer pool.Close()
-		if err := database.VerifySchemaReady(ctx, pool); err != nil {
-			return fmt.Errorf("verify control-plane schema: %w", err)
-		}
-	}
-
-	operatorSecretService := applicationsecret.New(store)
-	var runtimeSecrets applicationruntimeapi.SecretService = operatorSecretService
-	var runtimeVerifier applicationruntimeapi.RuntimeVerifier = applicationruntimeauth.New(store)
-	var boundRuntimeClient *openbao.ApplicationRuntimeClient
-	var boundExecutorClient *runtimeexecutor.Client
-	if cfg.boundRuntimeEnabled() {
-		verifier, err := applicationruntimeauth.NewStatic(cfg.RuntimeAppName, cfg.RuntimeTokenFile)
-		if err != nil {
-			return err
-		}
-		runtimeVerifier = verifier
-		runtimeSecrets = nil
-		if cfg.RuntimeSecretsEnabled {
-			client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
-			if err != nil {
-				return err
-			}
-			bound, err := applicationsecret.NewBoundRuntimeService(cfg.RuntimeAppName, cfg.RuntimeEnvironment, cfg.RuntimeCredentialsFile, client)
-			if err != nil {
-				return err
-			}
-			boundRuntimeClient = client
-			runtimeSecrets = bound
-		}
-		if strings.TrimSpace(cfg.RuntimeExecutorURL) != "" {
-			client, err := runtimeexecutor.NewClient(runtimeexecutor.ClientConfig{
-				URL:      cfg.RuntimeExecutorURL,
-				CAFile:   cfg.RuntimeExecutorCAFile,
-				CertFile: cfg.RuntimeExecutorCertFile,
-				KeyFile:  cfg.RuntimeExecutorKeyFile,
-			})
-			if err != nil {
-				return err
-			}
-			boundExecutorClient = client
-		}
-	} else if strings.TrimSpace(cfg.RuntimeOpenBaoURL) != "" {
-		client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
-		if err != nil {
-			return fmt.Errorf("create runtime OpenBao client: %w", err)
-		}
-		runtimeSecrets = applicationsecret.NewRuntime(store, client)
-	}
-	var runtimeHandler http.Handler
-	var err error
-	if cfg.boundRuntimeEnabled() {
-		runtimeHandler, err = buildBoundRuntimeHandler(ctx, cfg, runtimeSecrets, runtimeVerifier)
-	} else {
-		runtimeHandler, err = applicationruntimeapi.New(runtimeSecrets, runtimeVerifier)
-	}
+	deps, err := prepareServerDependencies(ctx, cfg, store)
 	if err != nil {
 		return err
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if pool != nil {
-			if err := database.Ping(checkCtx, pool); err != nil {
-				writeNotReady(w)
-				return
-			}
-		}
-		if boundRuntimeClient != nil {
-			if err := boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
-				writeNotReady(w)
-				return
-			}
-		}
-		if boundExecutorClient != nil {
-			if err := boundExecutorClient.Check(checkCtx); err != nil {
-				writeNotReady(w)
-				return
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		response := struct {
-			Status  string `json:"status"`
-			Version string `json:"version,omitempty"`
-			Commit  string `json:"commit,omitempty"`
-		}{Status: "ready"}
-		if cfg.boundRuntimeEnabled() {
-			response.Version = strings.TrimSpace(cfg.RuntimeBuildVersion)
-			response.Commit = strings.TrimSpace(cfg.RuntimeBuildCommit)
-		}
-		_ = json.NewEncoder(w).Encode(response)
-	})
-	mux.Handle("/runtime/", runtimeHandler)
-
-	var serverHandler http.Handler = mux
-	if cfg.boundRuntimeEnabled() {
-		observer, err := runtimeobservability.NewFromEnvironment(runtimeobservability.Config{
-			Component:   "runtime-broker",
-			Application: cfg.RuntimeAppName,
-			Environment: cfg.RuntimeEnvironment,
-		})
-		if err != nil {
-			return fmt.Errorf("configure runtime broker observability: %w", err)
-		}
-		mux.Handle("GET /metrics", observer.MetricsHandler())
-		serverHandler = observer.Wrap(mux)
+	if deps.pool != nil {
+		defer deps.pool.Close()
 	}
 
-	if cfg.operatorAPIEnabled() {
-		if pool == nil {
-			return ErrMissingDatabaseURL
-		}
-		verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.OIDCIssuer, Audiences: cfg.OIDCAudiences})
-		if err != nil {
-			return err
-		}
-		resolver := database.NewIdentityTenantResolver(pool)
-		security, err := httpsecurity.New(verifier, resolver)
-		if err != nil {
-			return err
-		}
-		secretHandler, err := applicationsecretapi.New(
-			operatorSecretService,
-			database.NewApplicationOwnershipStore(pool),
-			authorization.NewService(),
-		)
-		if err != nil {
-			return err
-		}
-		protected, err := controlplaneapi.New(security, secretHandler)
-		if err != nil {
-			return err
-		}
-		mux.Handle("/api/", protected)
-	}
-
-	tlsConfig, err := runtimeTLSConfig(cfg)
+	handler, err := buildServerHandler(ctx, cfg, deps)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{
-		Addr:              cfg.listenAddr(),
-		Handler:           serverHandler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		TLSConfig:         tlsConfig,
-	}
-
-	var docsServer *http.Server
-	var docsErrCh <-chan error
-	if addr := strings.TrimSpace(cfg.RuntimeDocsListenAddr); addr != "" {
-		docsServer = &http.Server{
-			Addr:              addr,
-			Handler:           runtimeapidocs.Handler(),
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       30 * time.Second,
-			WriteTimeout:      30 * time.Second,
-			IdleTimeout:       60 * time.Second,
-			TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
-		}
-		ch := make(chan error, 1)
-		docsErrCh = ch
-		go func() {
-			err := docsServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				ch <- err
-				return
-			}
-			ch <- nil
-		}()
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		err := server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-
-	shutdownDocs := func() error {
-		if docsServer == nil {
-			return nil
-		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
-		defer cancel()
-		return docsServer.Shutdown(shutdownCtx)
-	}
-
-	select {
-	case err := <-errCh:
-		_ = shutdownDocs()
+	server, err := newControlPlaneServer(cfg, handler)
+	if err != nil {
 		return err
-	case err := <-docsErrCh:
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
-		if err != nil {
-			return fmt.Errorf("runtime docs server: %w", err)
-		}
-		return nil
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown control-plane server: %w", err)
-		}
-		if err := shutdownDocs(); err != nil {
-			return fmt.Errorf("shutdown runtime docs server: %w", err)
-		}
-		return <-errCh
 	}
+	docsServer, docsErrCh := startRuntimeDocsServer(cfg)
+	return serveControlPlaneServers(ctx, cfg, server, docsServer, docsErrCh)
 }
 
 func runtimeTLSConfig(cfg Config) (*tls.Config, error) {

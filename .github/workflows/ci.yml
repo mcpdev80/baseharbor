@@ -85,8 +85,13 @@ jobs:
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
+            gofmt -d $files >&2
             exit 1
           }
+
+      - name: Validate source readability
+        id: source_readability
+        run: bash scripts/source-readability-audit.sh
 
       - name: Run unit and package tests
         id: unit_tests
