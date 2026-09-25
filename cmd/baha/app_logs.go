@@ -232,7 +232,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				m,
 				files.Dir,
 				"broker.logging.override.yaml",
-				runtimebroker.ProjectName(m),
+				runtimebroker.ProjectNameForRuntime(m, files),
 				runtime.Engine(),
 				observability.SourceApplicationProvider,
 			)
@@ -244,27 +244,27 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				composeFiles = append(composeFiles, override)
 			}
 			workdir := filepath.Dir(brokerFiles.Compose)
-			if err := runtime.ConfigProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
+			if err := runtime.ConfigProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("validate runtime broker log collection: %w", err)
 			}
 			if found && runtime.Engine() == "docker" {
-				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectName(m), workdir, nil, nil, composeFiles...); err != nil {
+				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, nil, nil, composeFiles...); err != nil {
 					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 				}
-			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectName(m), workdir, composeFiles...); err != nil {
+			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 			}
 		}
 	}
 
-	if executorFiles, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
+	if executorFiles, err := runtimeexecutor.ExistingFilesAt(dataDir, namespace); err == nil {
 		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
 			dataDir,
 			namespace,
 			m,
 			executorFiles.Dir,
 			"observability.logging.override.yaml",
-			runtimeexecutor.ProjectName,
+			executorFiles.Project,
 			runtime.Engine(),
 			observability.SourcePlatformProvider,
 		)
@@ -275,14 +275,14 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 		if found {
 			composeFiles = append(composeFiles, override)
 		}
-		if err := runtime.ConfigProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
+		if err := runtime.ConfigProjectFiles(ctx, executorFiles.Project, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("validate runtime executor log collection: %w", err)
 		}
 		if found && runtime.Engine() == "docker" {
-			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 			}
-		} else if err := runtime.UpProjectFiles(ctx, runtimeexecutor.ProjectName, executorFiles.Dir, composeFiles...); err != nil {
+		} else if err := runtime.UpProjectFiles(ctx, executorFiles.Project, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 		}
 	}
@@ -299,7 +299,7 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		}
 		out, err := runtime.ExecProject(
 			ctx,
-			runtimebroker.ProjectName(m),
+			runtimebroker.ProjectNameForRuntime(m, files),
 			brokerFiles.Compose,
 			files.Env,
 			runtimebroker.ServiceName,
@@ -328,11 +328,11 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		}
 	}
 
-	executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
+	executorFiles, err := runtimeexecutor.ExistingFilesAt(dataDir, files.Namespace)
 	if err == nil {
 		out, execErr := runtime.ExecProject(
 			ctx,
-			runtimeexecutor.ProjectName,
+			executorFiles.Project,
 			executorFiles.Compose,
 			executorFiles.Env,
 			runtimeexecutor.ServiceName,
