@@ -18,7 +18,7 @@ func TestApplicationSecretBackupRestoreRealOpenBao(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime", "baseharbor-openbao-backup-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort}))
+	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime"), "baseharbor-openbao-backup-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
 	if err != nil {
 		t.Fatal(err)
 	}
