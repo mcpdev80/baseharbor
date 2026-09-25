@@ -195,6 +195,13 @@ func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error)
 	return EnsureProviderFilesWithRuntimeCA(ctx, d.issuer, d.app, d.runtimeCA)
 }
 
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace, d.app)
+	}
+	return ExistingProviderFiles(d.app)
+}
+
 func (d *Driver) Descriptor() capability.Provider { return capability.Prometheus }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -279,7 +286,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 	if binding.Metrics == nil {
 		return errors.New("metrics binding is required")
 	}
-	files, err := ExistingProviderFiles(d.app)
+	files, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
@@ -318,7 +325,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	files, err := ExistingProviderFiles(d.app)
+	files, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
