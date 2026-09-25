@@ -7,17 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
-	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 var appApplySecretInput io.Reader = os.Stdin
