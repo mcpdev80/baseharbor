@@ -6,23 +6,6 @@ repo_name: mcpdev80/baseharbor
 docs_dir: docs/de
 site_dir: site/de
 
-exclude_docs: |
-  agent-machine-interface.md
-  application-runtime-broker.md
-  backup-and-restore.md
-  capability-provider-model.md
-  cli.md
-  decisions/**
-  developer-access.md
-  input-resolution.md
-  provider-integration-contract.md
-  releases.md
-  repository-application-workflow.md
-  roadmap.md
-  runtime-compose.md
-  runtime-resource-api.md
-  secrets-and-openbao.md
-
 theme:
   name: material
   language: de
@@ -71,4 +54,5 @@ nav:
       - Architektur: explanation/architecture.md
       - Application Contract: explanation/application-contract.md
       - Provider: explanation/providers.md
+      - Targets und Deployment-Ziele: explanation/targets.md
       - Security: explanation/security.md

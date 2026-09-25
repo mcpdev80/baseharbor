@@ -35,6 +35,7 @@ jobs:
       approval_artifact: ${{ steps.gate.outputs.approval_artifact }}
       legacy_pre_release: ${{ steps.gate.outputs.legacy_pre_release }}
       tested_sha: ${{ steps.gate.outputs.tested_sha }}
+      demo_sha: ${{ steps.gate.outputs.demo_sha }}
     steps:
       - name: Checkout repository metadata
         uses: actions/checkout@v7.0.1
@@ -88,7 +89,7 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml$' || true)"
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/release-audits/v[0-9]+\.[0-9]+\.[0-9]+\.md)$' || true)"
             if [ -n "${unexpected}" ]; then
               return 1
             fi
@@ -120,6 +121,7 @@ jobs:
               echo "  .github/workflows/release.yml" >&2
               echo "  .github/workflows/runtime-image.yml" >&2
               echo "  .github/workflows/supplemental-release-validation.yml" >&2
+              echo "  docs/internal/release-audits/vX.Y.Z.md" >&2
               echo "Actual changed files:" >&2
               git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
               exit 1
@@ -187,12 +189,32 @@ jobs:
             legacy_pre_release="false"
           fi
 
+          if [ "${legacy_pre_release}" = "false" ]; then
+            approval_dir="${RUNNER_TEMP}/pre-release-approval"
+            rm -rf "${approval_dir}"
+            mkdir -p "${approval_dir}"
+            gh run download "${run_id}" -n "${approval_artifact}" -D "${approval_dir}"
+            approval_json="$(find "${approval_dir}" -type f -name release-approved.json -print -quit)"
+            test -n "${approval_json}" || {
+              echo "Pre-Release approval artifact does not contain release-approved.json." >&2
+              exit 1
+            }
+            demo_sha="$(jq -r '.demo_sha // empty' "${approval_json}")"
+            test -n "${demo_sha}" || {
+              echo "Pre-Release approval does not attest an exact baseharbor-demo SHA." >&2
+              exit 1
+            }
+          else
+            demo_sha="legacy-unpinned"
+          fi
+
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "tag_sha=${tag_sha}" >> "${GITHUB_OUTPUT}"
           echo "pre_release_run_id=${run_id}" >> "${GITHUB_OUTPUT}"
           echo "approval_artifact=${approval_artifact}" >> "${GITHUB_OUTPUT}"
           echo "legacy_pre_release=${legacy_pre_release}" >> "${GITHUB_OUTPUT}"
           echo "tested_sha=${tested_sha}" >> "${GITHUB_OUTPUT}"
+          echo "demo_sha=${demo_sha}" >> "${GITHUB_OUTPUT}"
 
   supplemental:
     name: release-only-checks-not-covered-by-pre-release
@@ -363,8 +385,9 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-evidence.tsv"
           cat >"$rows" <<EOF
-          Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}
+          Pre-Release approval	success	run ${{ needs.approval.outputs.pre_release_run_id }}, artifact ${{ needs.approval.outputs.approval_artifact }}; includes Quadlet-only Podman validation
           Pre-Release tested SHA	success	${{ needs.approval.outputs.tested_sha }}
+          Pre-Release demo SHA	success	${{ needs.approval.outputs.demo_sha }}
           Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
           Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}, artifact ${{ needs.supplemental.outputs.validation_artifact || 'fallback' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
@@ -404,7 +427,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/release-gate-evidence.tsv"
           cat >"$rows" <<EOF
-          Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}
+          Pre-Release handoff	${{ needs.approval.result }}	run ${{ needs.approval.outputs.pre_release_run_id }}, tested ${{ needs.approval.outputs.tested_sha }}, demo ${{ needs.approval.outputs.demo_sha }}; guided + deterministic external acceptance already proven
           Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
           Release publish	${{ needs.release.result }}	archives, GitHub release and attestations

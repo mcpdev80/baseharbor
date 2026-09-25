@@ -11,14 +11,15 @@ import (
 // access actions. Callers should prefer these fields over runtime/container
 // names so a later provider can satisfy the same action model.
 type ServiceBinding struct {
-	Kind     string
-	Instance string
-	Host     string
-	Port     string
-	Database string
-	Username string
-	Password string
-	URI      string
+	Kind             string
+	Instance         string
+	Host             string
+	Port             string
+	Database         string
+	Username         string
+	Password         string
+	URI              string
+	CertificatesPath string
 }
 
 // ResolveServiceBinding loads an already-materialized owner-only service
@@ -78,6 +79,12 @@ func ResolveServiceBinding(files RuntimeFiles, kind, instance string) (ServiceBi
 	if err != nil {
 		return ServiceBinding{}, err
 	}
-
-	return ServiceBinding{Kind: kind, Instance: instance, Host: host, Port: port, Database: database, Username: username, Password: password, URI: uri}, nil
+	certificates, err := read("certificates", true)
+	if err != nil {
+		return ServiceBinding{}, err
+	}
+	if strings.TrimSpace(certificates) == "" {
+		return ServiceBinding{}, fmt.Errorf("certificates binding for %s/%s is empty", kind, instance)
+	}
+	return ServiceBinding{Kind: kind, Instance: instance, Host: host, Port: port, Database: database, Username: username, Password: password, URI: uri, CertificatesPath: filepath.Join(dir, "certificates")}, nil
 }

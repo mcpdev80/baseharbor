@@ -8,7 +8,7 @@ import (
 )
 
 func TestApplicationManifestPayloadEntryRoundTrip(t *testing.T) {
-	m := application.WithPostgresInstances(application.New("mailflow", "dev", true, true, true), "primary", "analytics")
+	m := application.WithSQLInstances(application.New("mailflow", "dev", true, true, true), "primary", "analytics")
 	entry, err := ApplicationManifestPayloadEntry(m)
 	if err != nil {
 		t.Fatal(err)

@@ -14,8 +14,11 @@ theme:
   language: en
   features:
     - navigation.instant
+    - navigation.tabs
     - navigation.sections
+    - navigation.path
     - navigation.top
+    - toc.follow
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -52,9 +55,12 @@ extra:
 
 nav:
   - Home: index.md
-  - Tutorial:
-      - Getting started: tutorials/getting-started.md
-  - How-to:
+
+  - Getting Started:
+      - First application: tutorials/getting-started.md
+
+  - Using BaseHarbor:
+      - Targets: explanation/targets.md
       - Environments: how-to/environments.md
       - PostgreSQL: how-to/postgres.md
       - Cache: how-to/cache.md
@@ -64,17 +70,21 @@ nav:
       - Observability: how-to/observability.md
       - Developer access: how-to/developer-access.md
       - Backup & restore: how-to/backup-restore.md
-  - Explanation:
+
+  - CLI & Automation:
+      - CLI reference: reference/cli.md
+      - MCP / agent interface: reference/mcp.md
+      - Errors: reference/errors.md
+
+  - Concepts:
       - Architecture: explanation/architecture.md
       - Application contract: explanation/application-contract.md
       - Providers: explanation/providers.md
       - Security: explanation/security.md
       - Authentication: explanation/authentication.md
+
   - Reference:
-      - CLI: reference/cli.md
       - Manifest: reference/manifest.md
-      - MCP: reference/mcp.md
-      - Errors: reference/errors.md
       - Application secret API: reference/application-secret-api.md
       - Authentication & API errors: reference/authentication-and-api-errors.md
       - Backup & restore: reference/backup-and-restore.md
@@ -83,20 +93,26 @@ nav:
       - Runtime Resource API: reference/runtime-resource-api.md
       - Runtime secret broker: reference/runtime-secret-broker.md
       - Secrets & OpenBao: reference/secrets-and-openbao.md
-      - Releases: reference/releases.md
-  - Specifications:
-      - Overview: spec/README.md
-      - Application Contract v1: spec/application-contract-v1.md
-      - Provider Contract v1: spec/provider-contract-v1.md
-      - Reconciliation v1: spec/reconciliation-v1.md
-      - Machine Interface v1: spec/machine-interface-v1.md
-      - Security invariants: spec/security-invariants.md
-      - Input resolution: spec/input-resolution.md
-      - Control-plane runtime: spec/control-plane-runtime.md
-      - Application Runtime Broker: spec/application-runtime-broker.md
-      - Application runtime identity: spec/application-runtime-identity.md
-      - Runtime broker security: spec/runtime-secret-broker-security.md
-  - Decisions: decisions/index.md
-  - Release notes: releases/index.md
-  - Roadmap: roadmap.md
-  - Documentation style: STYLE_GUIDE.md
+
+  - Developer:
+      - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md
+      - Development guidelines: DEVELOPMENT_GUIDELINES.md
+      - Documentation style: STYLE_GUIDE.md
+      - Architecture decisions: decisions/index.md
+      - Specifications:
+          - Overview: spec/README.md
+          - Application Contract v1: spec/application-contract-v1.md
+          - Provider Contract v1: spec/provider-contract-v1.md
+          - Reconciliation v1: spec/reconciliation-v1.md
+          - Machine Interface v1: spec/machine-interface-v1.md
+          - Security invariants: spec/security-invariants.md
+          - Input resolution: spec/input-resolution.md
+          - Control-plane runtime: spec/control-plane-runtime.md
+          - Application Runtime Broker: spec/application-runtime-broker.md
+          - Application runtime identity: spec/application-runtime-identity.md
+          - Runtime broker security: spec/runtime-secret-broker-security.md
+
+  - Project:
+      - Roadmap: roadmap.md
+      - Release notes: releases/index.md
+      - Release reference: reference/releases.md

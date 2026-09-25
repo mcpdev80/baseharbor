@@ -18,6 +18,12 @@ Realize logical capabilities such as SQL, cache, object storage, secrets, identi
 
 Control how desired runtime state is delivered and reconciled. Direct mutation and delegated/GitOps delivery are separate mechanisms behind the same application contract.
 
+## Bundled and external providers
+
+BaseHarbor currently ships first-party providers in the main repository, but they have their own provider IDs and implementation versions. The BaseHarbor release version, provider implementation version, capability specification version and concrete product version are separate facts.
+
+Bundled providers are resolved through the same provider contract boundary that future external providers use. Moving a provider to its own repository later is therefore a packaging change, not a change to application intent.
+
 ## Placement
 
 Where applicable:

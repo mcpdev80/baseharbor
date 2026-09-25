@@ -32,6 +32,43 @@ message DescribeResponse {
   LifecycleSupport optional_lifecycle = 4;
   JsonSchema configuration_schema = 5;
   ProviderObservability observability = 6;
+  // Stable distribution identity, for example baseharbor/postgresql.
+  string provider_id = 7;
+  // Provider implementation version, independent from BaseHarbor and capability versions.
+  string provider_version = 8;
+  // Provider-neutral service families, for example sql, cache or object-storage.
+  // These are broader than protocol/capability specifications.
+  repeated string service_kinds = 9;
+  // Optional concrete product/engine compatibility metadata.
+  repeated ProductSupport product_support = 10;
+  // Supported artifact platforms where the provider is distributed.
+  repeated Platform platforms = 11;
+  // OCI artifact identity for an externally distributed provider.
+  OCIArtifact artifact = 12;
+  // Standard signature/SBOM/provenance references associated with the artifact.
+  ProviderProvenance provenance = 13;
+}
+
+message ProductSupport {
+  string product = 1;
+  repeated string versions = 2;
+}
+
+message Platform {
+  string os = 1;
+  string arch = 2;
+}
+
+message OCIArtifact {
+  string reference = 1;
+  string digest = 2;
+  string media_type = 3;
+}
+
+message ProviderProvenance {
+  string signature_ref = 1;
+  string sbom_ref = 2;
+  string attestation_ref = 3;
 }
 
 message ProviderObservability {
@@ -44,6 +81,14 @@ message ProviderObservabilitySignal {
   string protocol = 3;
   uint32 port = 4;
   string path = 5;
+  // Audit state: supported, unsupported, not-applicable or requires-adapter.
+  string status = 6;
+  // Standards-based realization: native, runtime, adapter, interaction or combined.
+  string mode = 7;
+  // Optional OpenTelemetry or other standards semantic convention identifier.
+  string semantic_convention = 8;
+  // endpoint, backend-query, span-query or none.
+  string verification = 9;
 }
 
 message LifecycleSupport {
@@ -62,6 +107,8 @@ message JsonSchema {
   // UTF-8 encoded JSON Schema document. Secrets and credential values are
   // forbidden in provider configuration schemas.
   bytes document = 2;
+  // Optional registry-neutral reference to the schema document.
+  string uri = 3;
 }
 
 enum ProviderScope {
@@ -302,11 +349,22 @@ message BindResponse {
   OperationStatus status = 1;
   repeated BindingValue values = 2;
   repeated Diagnostic diagnostics = 3;
+  // "servicebinding.io/v1.1" when values represent a Service Binding 1.1
+  // connection output. BaseHarbor extensions remain namespaced separately.
+  string binding_specification = 4;
 }
 
 // Binding values distinguish explicitly between safe public configuration and
 // an opaque secret reference. Plaintext credentials are forbidden.
+//
+// When a value represents a Service Binding Specification 1.1 well-known entry,
+// name MUST use the standard entry name exactly: type, provider, host, port,
+// uri, username, password, certificates or private-key. BaseHarbor-only output
+// names use the explicit baha.* extension namespace.
 message BindingValue {
+  // Use Service Binding Specification 1.1 well-known names where applicable:
+  // type, provider, host, port, uri, username, password, certificates,
+  // private-key. Non-standard values must be explicitly namespaced.
   string name = 1;
 
   oneof source {

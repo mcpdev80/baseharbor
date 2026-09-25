@@ -33,7 +33,7 @@ func PostgresPayloadEntries(backups []application.PostgresBackup) ([]PayloadEntr
 }
 
 func PostgresBackupsFromPayload(m application.Manifest, payload Payload) ([]application.PostgresBackup, error) {
-	backups := make([]application.PostgresBackup, 0, len(application.PostgresInstanceNames(m)))
+	backups := make([]application.PostgresBackup, 0, len(application.SQLInstanceNames(m)))
 	for _, entry := range payload.Entries {
 		if !strings.HasPrefix(entry.Name, postgresEntryPrefix) {
 			continue

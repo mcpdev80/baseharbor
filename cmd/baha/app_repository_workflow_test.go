@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
+	configureTestTarget(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -56,6 +58,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 }
 
 func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
+	target := configureTestTarget(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -66,15 +69,15 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := application.New("mailflow", "dev", false, false, false)
-	m = application.WithPostgresInstances(m, "primary", "analytics")
+	m = application.WithSQLInstances(m, "primary", "analytics")
 	if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store := application.DefaultStore()
+	store := testDeploymentStore(t, target, m)
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.EnsureRuntime(store, m); err != nil {
+	if _, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err != nil {
 		t.Fatal(err)
 	}
 
@@ -104,7 +107,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "init", "demo", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "init", "demo", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat("baseharbor.yaml")
@@ -118,10 +121,43 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "demo" || len(application.PostgresInstanceNames(m)) != 1 || len(application.RedisInstanceNames(m)) != 1 {
+	if m.Name != "demo" || len(application.SQLInstanceNames(m)) != 1 || len(application.CacheInstanceNames(m)) != 1 {
 		t.Fatalf("unexpected generated manifest: %#v", m)
 	}
 	if err := runWithIO(context.Background(), []string{"app", "init", "demo"}, &out, &out); err == nil {
 		t.Fatal("expected init to refuse overwriting repository manifest")
+	}
+}
+
+func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{
+		"app", "init", "demo",
+		"--sql",
+		"--cache",
+		"--workload-compose", "compose.yaml",
+		"--workload-service", "demo-app",
+	}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	m, err := application.LoadManifestFile("baseharbor.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Workload.Compose != "compose.yaml" {
+		t.Fatalf("workload compose = %q want compose.yaml", m.Workload.Compose)
+	}
+	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "demo-app" {
+		t.Fatalf("unexpected workload services: %#v", m.Workload.Services)
 	}
 }

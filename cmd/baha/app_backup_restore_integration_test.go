@@ -72,7 +72,7 @@ services:
 	}
 
 	store := application.DefaultStore()
-	resolved, err := resolveApplication(store, nil, "backup acceptance")
+	resolved, err := resolveApplication(ctx, store, nil, "backup acceptance")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ services:
 		t.Fatalf("restore did not report READY after verification:\n%s", restoreOutput)
 	}
 
-	resolved, err = resolveApplication(application.DefaultStore(), nil, "backup acceptance verify")
+	resolved, err = resolveApplication(ctx, application.DefaultStore(), nil, "backup acceptance verify")
 	if err != nil {
 		t.Fatal(err)
 	}

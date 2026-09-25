@@ -85,8 +85,13 @@ jobs:
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
+            gofmt -d $files >&2
             exit 1
           }
+
+      - name: Validate source readability
+        id: source_readability
+        run: bash scripts/source-readability-audit.sh
 
       - name: Run unit and package tests
         id: unit_tests
@@ -96,7 +101,7 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
       - name: Run Go vet
         id: vet

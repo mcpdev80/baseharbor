@@ -14,22 +14,26 @@ import (
 var ErrRuntimeDefinitionChanged = errors.New("application runtime definition differs from the BaseHarbor-managed definition")
 
 func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	return ExpectedRuntimeResourcesForProject(m, RuntimeProjectName(m))
+}
+
+func ExpectedRuntimeResourcesForProject(m Manifest, project string) []bhruntime.ProjectResource {
 	if !HasManagedRuntimeServices(m) {
 		return nil
 	}
-	project := RuntimeProjectName(m)
-	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkName(m)}}
-	for _, instance := range PostgresInstanceNames(m) {
+	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(project)}}
+	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + valkeyAccessService(instance) + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
 		)
 	}
@@ -43,8 +47,12 @@ func ExpectedPostgresRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 }
 
 func ExpectedPersistentRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	return ExpectedPersistentRuntimeResourcesForProject(m, RuntimeProjectName(m))
+}
+
+func ExpectedPersistentRuntimeResourcesForProject(m Manifest, project string) []bhruntime.ProjectResource {
 	var resources []bhruntime.ProjectResource
-	for _, resource := range ExpectedRuntimeResources(m) {
+	for _, resource := range ExpectedRuntimeResourcesForProject(m, project) {
 		if resource.Kind == "volume" {
 			resources = append(resources, resource)
 		}
@@ -71,18 +79,11 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 }
 
 func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
-	project := RuntimeProjectName(m)
-	var existing []bhruntime.ProjectResource
-	for _, resource := range ExpectedRuntimeResources(m) {
-		exists, err := compose.InspectProjectResource(ctx, project, resource)
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			existing = append(existing, resource)
-		}
-	}
-	return existing, nil
+	return compose.InspectProjectResources(ctx, RuntimeProjectName(m), ExpectedRuntimeResources(m))
+}
+
+func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
+	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForProject(m, files.Project))
 }
 
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {

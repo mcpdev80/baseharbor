@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/binding/v1/service-binding.schema.json",
+  "title": "BaseHarbor Service Binding 1.1-aligned representation",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      ]
+    },
+    "uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "username": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    },
+    "certificates": {
+      "type": "string"
+    },
+    "private-key": {
+      "type": "string"
+    },
+    "baha": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "identityRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "credentialRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "secretRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "audience": {
+              "type": "string"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "renewable": {
+              "type": "boolean"
+            },
+            "rotatable": {
+              "type": "boolean"
+            },
+            "revocable": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}

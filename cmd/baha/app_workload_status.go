@@ -23,10 +23,11 @@ type workloadServiceStatus struct {
 type workloadExposureStatus = endpoint.ExposureStatus
 
 type repositoryWorkloadStatus struct {
-	Found     bool
-	Workload  application.WorkloadFiles
-	Services  []workloadServiceStatus
-	Exposures []workloadExposureStatus
+	Found      bool
+	Workload   application.WorkloadFiles
+	Services   []workloadServiceStatus
+	Exposures  []workloadExposureStatus
+	BuildDrift []string
 }
 
 func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
@@ -58,11 +59,24 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 		return repositoryWorkloadStatus{Found: true, Workload: workload}, fmt.Errorf("application workload has no active selected Compose services")
 	}
 
+	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expected, composeFiles)
+	if err != nil {
+		return repositoryWorkloadStatus{Found: true, Workload: workload}, fmt.Errorf("resolve workload build identity: %w", err)
+	}
+	buildState, err := loadRepositoryWorkloadBuildState(files)
+	if err != nil {
+		return repositoryWorkloadStatus{Found: true, Workload: workload}, fmt.Errorf("load workload build identity: %w", err)
+	}
+	buildDrift := changedRepositoryWorkloadBuildServices(buildFingerprints, buildState)
+
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
 		exposures := inspectWorkloadExposures(ctx, expected, states, initState.Hostname)
 		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
-		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures}
+		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures, BuildDrift: buildDrift}
+		if len(buildDrift) > 0 {
+			return status, fmt.Errorf("workload source changed since last verified build: %s; run 'baha up' to rebuild", strings.Join(buildDrift, ", "))
+		}
 		if err := workloadExposureReadinessError(status.Exposures); err != nil {
 			return status, err
 		}
@@ -77,7 +91,11 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 	for _, service := range readyServices {
 		fallback = append(fallback, bhruntime.ServiceState{Service: service, State: "running"})
 	}
-	return repositoryWorkloadStatus{Found: true, Workload: workload, Services: buildWorkloadServiceStatuses(expected, fallback)}, nil
+	status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: buildWorkloadServiceStatuses(expected, fallback), BuildDrift: buildDrift}
+	if len(buildDrift) > 0 {
+		return status, fmt.Errorf("workload source changed since last verified build: %s; run 'baha up' to rebuild", strings.Join(buildDrift, ", "))
+	}
+	return status, nil
 }
 
 func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceState) []workloadServiceStatus {
@@ -211,7 +229,7 @@ func normalizedWorkloadState(state string) string {
 }
 
 func (status repositoryWorkloadStatus) Ready() bool {
-	if !status.Found || len(status.Services) == 0 {
+	if !status.Found || len(status.Services) == 0 || len(status.BuildDrift) > 0 {
 		return false
 	}
 	for _, service := range status.Services {

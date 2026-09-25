@@ -1,11 +1,14 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestEnsureFilesCreatesProtectedRuntimeState(t *testing.T) {
@@ -76,6 +79,64 @@ func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
 	}
 	if !strings.Contains(text, "BASEHARBOR_OPENBAO_PORT=18200\n") {
 		t.Fatal("selected OpenBao port was not persisted")
+	}
+}
+
+func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, forbidden := range []string{"openbao-access:", "postgres-access:"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("bootstrap runtime unexpectedly contains %s before issuer readiness", forbidden)
+		}
+	}
+}
+
+func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureServiceAccess(context.Background(), serviceissuer.New(t), files); err != nil {
+		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(compose)
+	for _, wanted := range []string{
+		"openbao-access:",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8443",
+		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("reconciled runtime is missing %q", wanted)
+		}
+	}
+	if strings.Contains(text, "postgres-access:") {
+		t.Fatal("control-plane PostgreSQL must use native TLS instead of a raw TLS proxy")
+	}
+	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wanted := range []string{"hostssl all all 0.0.0.0/0 scram-sha-256", "hostnossl all all 0.0.0.0/0 reject"} {
+		if !strings.Contains(string(hba), wanted) {
+			t.Fatalf("pg_hba.conf missing %q", wanted)
+		}
 	}
 }
 
@@ -172,13 +233,15 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeUsesLoopbackBindings(t *testing.T) {
+func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
 	text := string(composeYAML)
-	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432") {
-		t.Fatal("postgres is not bound to loopback")
-	}
-	if !strings.Contains(text, "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200") {
-		t.Fatal("openbao is not bound to loopback")
+	for _, forbidden := range []string{
+		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("embedded runtime directly publishes plaintext backend %q", forbidden)
+		}
 	}
 	if strings.Contains(text, "-dev") {
 		t.Fatal("openbao must not run in dev mode")

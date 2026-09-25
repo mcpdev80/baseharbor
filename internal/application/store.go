@@ -11,7 +11,8 @@ import (
 var ErrExists = errors.New("application already exists")
 
 type Store struct {
-	Root string
+	Root      string
+	Namespace string
 }
 
 func DefaultStore() Store {

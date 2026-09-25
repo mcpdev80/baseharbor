@@ -47,7 +47,7 @@ func TestCompletionCommandGeneratesSupportedShells(t *testing.T) {
 }
 
 func TestGlobalOutputOptions(t *testing.T) {
-	filtered, opts, showVersion, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
+	filtered, opts, showVersion, _, err := extractGlobalOutputOptions([]string{"--quiet", "--no-color", "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestGlobalOutputOptions(t *testing.T) {
 		t.Fatalf("unexpected forwarded args: %v", filtered)
 	}
 
-	if _, _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
+	if _, _, _, _, err := extractGlobalOutputOptions([]string{"--quiet", "--verbose", "status"}); err == nil {
 		t.Fatal("quiet + verbose must fail")
 	}
 }
@@ -82,7 +82,7 @@ func TestCompletionIncludesConfiguredApplicationsReadOnly(t *testing.T) {
 }
 
 func TestGlobalOutputOptionsIncludePlainNoInputAndVersion(t *testing.T) {
-	filtered, opts, showVersion, err := extractGlobalOutputOptions([]string{"--plain", "--no-input", "--version"})
+	filtered, opts, showVersion, _, err := extractGlobalOutputOptions([]string{"--plain", "--no-input", "--version"})
 	if err != nil {
 		t.Fatal(err)
 	}

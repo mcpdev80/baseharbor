@@ -30,17 +30,25 @@ func TestAgentDescribeJSON(t *testing.T) {
 	if got.MCP.ProtocolVersion != "2026-07-28" || got.MCP.Transport != "stdio" || got.MCP.Remote {
 		t.Fatalf("unexpected MCP discovery: %#v", got.MCP)
 	}
-	if len(got.Operations) != 6 {
-		t.Fatalf("operations = %d, want 6", len(got.Operations))
+	if len(got.Operations) != len(machine.Operations()) {
+		t.Fatalf("operations = %d, want %d", len(got.Operations), len(machine.Operations()))
+	}
+	if len(got.MCP.Tools) != len(machine.MCPTools()) {
+		t.Fatalf("MCP tools = %d, want %d", len(got.MCP.Tools), len(machine.MCPTools()))
+	}
+	destroy, ok := machine.OperationByID("destroy")
+	if !ok || destroy.Safety != machine.SafetyDestructive || !destroy.ConfirmationRequired {
+		t.Fatalf("destroy safety metadata = %#v", destroy)
 	}
 	for _, operation := range got.Operations {
-		if operation.Safety != machine.SafetyReadOnly || operation.ConfirmationRequired {
-			t.Fatalf("unsafe initial operation metadata: %#v", operation)
+		if operation.MCPTool == "" {
+			t.Fatalf("operation missing MCP tool: %#v", operation)
 		}
 	}
 }
 
-func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
+func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyTools(t *testing.T) {
+	target := configureTestTarget(t)
 	root := t.TempDir()
 	manifest := application.Manifest{
 		Version:     application.CurrentVersion,
@@ -65,10 +73,11 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	store := testDeploymentStore(t, target, manifest)
 	if _, err := store.Create(manifest); err != nil {
 		t.Fatal(err)
 	}
+	registerTestDeployment(t, target, manifest, root, filepath.Join(root, application.RepositoryManifestName))
 	server := newMCPServer(store)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
@@ -88,32 +97,31 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{
-		"baseharbor.inspect":        false,
-		"baseharbor.plan":           false,
-		"baseharbor.status":         false,
-		"baseharbor.doctor":         false,
-		"baseharbor.policy.check":   false,
-		"baseharbor.policy.explain": false,
+	want := map[string]machine.Operation{}
+	for _, operation := range machine.Operations() {
+		if operation.MCPTool != "" {
+			want[operation.MCPTool] = operation
+		}
+	}
+	if len(list.Tools) != len(want) {
+		t.Fatalf("MCP tool count = %d, want %d", len(list.Tools), len(want))
 	}
 	for _, tool := range list.Tools {
-		if _, exists := want[tool.Name]; !exists {
+		operation, exists := want[tool.Name]
+		if !exists {
 			t.Fatalf("unexpected MCP tool %q", tool.Name)
 		}
-		want[tool.Name] = true
-		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-			t.Fatalf("tool %q is not explicitly read-only", tool.Name)
+		if tool.Annotations == nil {
+			t.Fatalf("tool %q has no safety annotations", tool.Name)
 		}
-		if tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint {
-			t.Fatalf("tool %q destructive hint is not explicitly false", tool.Name)
+		if tool.Annotations.ReadOnlyHint != (operation.Safety == machine.SafetyReadOnly) {
+			t.Fatalf("tool %q read-only annotation does not match operation %#v", tool.Name, operation)
 		}
-	}
-	for name, seen := range want {
-		if !seen {
-			t.Fatalf("missing MCP tool %q", name)
+		if tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint != (operation.Safety == machine.SafetyDestructive) {
+			t.Fatalf("tool %q destructive annotation does not match operation %#v", tool.Name, operation)
 		}
 	}
-	for _, forbidden := range []string{"exec", "shell", "docker", "compose"} {
+	for _, forbidden := range []string{"exec", "shell", "docker", "compose", "podman"} {
 		for _, tool := range list.Tools {
 			if strings.Contains(strings.ToLower(tool.Name), forbidden) {
 				t.Fatalf("forbidden generic execution primitive exposed: %s", tool.Name)
@@ -125,10 +133,12 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 		name string
 		args map[string]any
 	}{
+		{name: "baseharbor.target", args: map[string]any{}},
 		{name: "baseharbor.inspect", args: map[string]any{"path": root}},
 		{name: "baseharbor.plan", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.status", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.doctor", args: map[string]any{"name": manifest.Name}},
+		{name: "baseharbor.observe", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.policy.check", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.policy.explain", args: map[string]any{"name": manifest.Name}},
 	}
@@ -153,6 +163,49 @@ func TestMCPGenericClientDiscoversAndExercisesReadOnlySurface(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("destroy requires explicit approval", func(t *testing.T) {
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "baseharbor.destroy",
+			Arguments: map[string]any{"name": manifest.Name, "approval": false},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("destroy without approval unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"approval_required"`)) {
+			t.Fatalf("destroy approval error is not typed: %s", encoded)
+		}
+	})
+
+	t.Run("backup rejects inline-or-missing secret input before mutation", func(t *testing.T) {
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "baseharbor.backup",
+			Arguments: map[string]any{"name": manifest.Name},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("backup without password file unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"validation_failed"`)) {
+			t.Fatalf("backup validation error is not typed: %s", encoded)
+		}
+		if bytes.Contains(encoded, []byte(secretMarker)) {
+			t.Fatalf("secret marker leaked from backup validation: %s", encoded)
+		}
+	})
 }
 
 func TestMachineCLIErrorClassification(t *testing.T) {

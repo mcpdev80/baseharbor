@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
 const repositoryAppliedFingerprintName = "applied-desired-state.sha256"
@@ -186,6 +187,12 @@ func repositoryUpCurrentDecision(ctx context.Context, resolved resolvedApplicati
 	}
 
 	runtimeDefinitionOK := application.CheckManagedRuntimeDefinition(files, resolved.Manifest) == nil
+	if application.RequiresRuntimeBroker(resolved.Manifest) && runtimebroker.IsMutableDevelopmentImage(os.Getenv("BASEHARBOR_RUNTIME_IMAGE")) {
+		// A moving development tag cannot be proven current without consulting
+		// the registry. Force the normal convergence path; it performs the pull,
+		// recreation and compatibility verification before reporting READY.
+		return repositoryUpApply, files, nil
+	}
 	fingerprintMatch, err := repositoryFingerprintMatches(ctx, resolved, files)
 	if err != nil {
 		return repositoryUpApply, files, err

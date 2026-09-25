@@ -19,7 +19,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `), 0o644); err != nil {
 		t.Fatal(err)

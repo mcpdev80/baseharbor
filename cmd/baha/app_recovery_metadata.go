@@ -43,7 +43,7 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 		if name != "" && name != m.Name {
 			return errors.New("restore target NAME does not match backup application identity")
 		}
-		resolved, err := resolveRestoreTarget(store, m)
+		resolved, err := resolveRestoreTarget(ctx, store, m)
 		if err != nil {
 			return err
 		}
@@ -78,7 +78,7 @@ func appShowCommandWithRecoveryMetadata(store application.Store) *cli.Command {
 	showRun := command.Run
 	command.Long = "Shows application identity, backend readiness, repository workload state, secret readiness, the last recorded successful backup and the last verified recovery without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		resolved, err := resolveApplication(store, args, "show")
+		resolved, err := resolveApplication(ctx, store, args, "show")
 		if err != nil {
 			return err
 		}

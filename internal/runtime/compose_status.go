@@ -44,6 +44,9 @@ func (s ServiceState) Ready() bool {
 // compatible implementations fall back to the portable running-service query;
 // in that case Health and Publishers remain empty rather than inventing state.
 func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
+	if c.quadlet {
+		return c.serviceStatesFromRuntimeLabels(ctx, project)
+	}
 	out, composeErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
 	if composeErr == nil {
 		states, parseErr := parseComposeServiceStates(out)
@@ -73,22 +76,16 @@ func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project str
 		if container.Project != project {
 			continue
 		}
-		out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`, container.Name)
-		if err != nil {
-			return nil, fmt.Errorf("inspect state for %s: %w", container.Name, err)
-		}
-		runningRaw, healthRaw, _ := strings.Cut(strings.TrimSpace(out), "|")
 		state := "exited"
-		if strings.EqualFold(strings.TrimSpace(runningRaw), "true") {
+		if container.Running {
 			state = "running"
 		}
-		health := strings.TrimSpace(healthRaw)
 		current, exists := byService[container.Service]
 		if !exists || (current.State != "running" && state == "running") {
 			byService[container.Service] = ServiceState{
 				Service: container.Service,
 				State:   state,
-				Health:  health,
+				Health:  container.Health,
 			}
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 
@@ -47,11 +48,25 @@ func clearProjectEnvironment(project string) {
 }
 
 func (c Compose) ConfigProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--quiet")
-	return err
+	return c.ConfigProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
 
 func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project)
+		if err != nil {
+			return err
+		}
+		if err := quadletValidateProject(ctx, q); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		return nil
+	}
 	_, quietErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--quiet")
 	if quietErr != nil {
 		if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config"); err != nil {
@@ -63,6 +78,13 @@ func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir str
 }
 
 func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) (string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return "", err
+		}
+		return RenderComposeProjectFilesJSON(resolved, environment)
+	}
 	rendered, jsonErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--format", "json")
 	if jsonErr == nil {
 		return rendered, nil
@@ -85,8 +107,7 @@ func (c Compose) ConfigJSONProjectFilesEnv(ctx context.Context, project, workdir
 }
 
 func (c Compose) UpProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	_, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "up", "-d")
-	return err
+	return c.UpProjectFilesSelected(ctx, project, workdir, nil, nil, composeFiles...)
 }
 
 func (c Compose) UpProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
@@ -102,7 +123,114 @@ func composeUpArgs(services []string) []string {
 	return args
 }
 
+func composeUpArgsNoBuild(services []string) []string {
+	args := []string{"up", "-d"}
+	if len(services) > 0 {
+		args = append(args, "--no-deps")
+		args = append(args, services...)
+	}
+	return args
+}
+
+func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rebuilding changed Podman Quadlet workload image")
+		}
+		if err := quadletBuildProject(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		return nil
+	}
+	args := []string{"build"}
+	args = append(args, services...)
+	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	return err
+}
+
+func (c Compose) UpProjectFilesSelectedForceRecreateNoBuild(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if err := quadletForceRestartProjectNoBuild(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		return nil
+	}
+	args := []string{"up", "-d", "--force-recreate", "--no-build"}
+	if len(services) > 0 {
+		args = append(args, "--no-deps")
+		args = append(args, services...)
+	}
+	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
+	return err
+}
+
+func (c Compose) UpProjectFilesSelectedNoBuildProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rendered Podman Quadlet workload")
+		}
+		if err := quadletStartProjectNoBuild(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		if onProgress != nil {
+			onProgress("started Podman Quadlet workload")
+		}
+		return nil
+	}
+	args := composeUpArgsNoBuild(services)
+	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	return err
+}
+
 func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rendered Podman Quadlet workload")
+		}
+		if err := quadletStartProject(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		if onProgress != nil {
+			onProgress("started Podman Quadlet workload")
+		}
+		return nil
+	}
 	args := composeUpArgs(services)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
@@ -114,6 +242,17 @@ func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, 
 
 func (c Compose) DownProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
 	defer clearProjectEnvironment(project)
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project)
+		if err != nil {
+			return err
+		}
+		return quadletRemoveProject(ctx, q, false)
+	}
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "down")
 	return err
 }
@@ -121,6 +260,17 @@ func (c Compose) DownProjectFilesEnv(ctx context.Context, project, workdir strin
 func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
 	if len(services) == 0 {
 		return nil
+	}
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project)
+		if err != nil {
+			return err
+		}
+		return quadletStopProject(ctx, q, services)
 	}
 
 	selected := make(map[string]struct{}, len(services))
@@ -167,23 +317,73 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 }
 
 func (c Compose) StatusProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) (string, error) {
+	if c.quadlet {
+		return c.StatusProject(ctx, project, "", "")
+	}
 	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "ps")
 }
 
 func (c Compose) ExecProjectFiles(ctx context.Context, project, workdir, service string, composeFiles []string, args ...string) (string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return "", err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", nil, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, nil, args...)
+	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, cmdArgs...)
 }
 
-func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
-	out, err := c.outputProjectFilesEnv(ctx, project, workdir, nil, composeFiles, "config", "--services")
-	if err != nil {
-		return nil, err
+func (c Compose) ExecProjectFilesInput(ctx context.Context, project, workdir, service string, composeFiles []string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return "", err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", nil, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, input, args...)
 	}
-	return nonEmptyLines(out), nil
+	cmdArgs := append([]string{"exec", "-T", service}, args...)
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, nil, composeFiles, input, cmdArgs...)
+}
+
+func (c Compose) ServicesProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) ([]string, error) {
+	return c.ServicesProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 }
 
 func (c Compose) ServicesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]string, error) {
+	if c.quadlet {
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return nil, err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project)
+		if err != nil {
+			return nil, err
+		}
+		services := make([]string, 0, len(q.ServiceUnits))
+		for service := range q.ServiceUnits {
+			services = append(services, service)
+		}
+		sort.Strings(services)
+		return services, nil
+	}
 	out, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "config", "--services")
 	if err != nil {
 		return nil, err
@@ -245,6 +445,9 @@ func mergeProcessEnvironment(overrides map[string]string) ([]string, error) {
 }
 
 func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, onProgress func(string), args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -291,7 +494,10 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 	return stdout.String(), nil
 }
 
-func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, input []byte, args ...string) (string, error) {
+	if c.quadlet {
+		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose file execution")
+	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -321,6 +527,7 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 	if err != nil {
 		return "", err
 	}
+	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -332,4 +539,8 @@ func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir str
 		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
 	}
 	return stdout.String(), nil
+}
+
+func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
+	return c.outputProjectFilesInputEnv(ctx, project, workdir, environment, composeFiles, nil, args...)
 }

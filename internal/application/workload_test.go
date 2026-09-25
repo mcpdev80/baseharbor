@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestWorkloadManifestRoundTrip(t *testing.T) {
@@ -96,7 +98,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
 	m := New("demo", "dev", true, true, false)
 	m = WithWorkload(m, "docker-compose.yml", "api")
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +118,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 		t.Fatal(err)
 	}
 	text := string(override)
-	for _, want := range []string{"@postgres:5432/", "@valkey:6379/0", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
+	for _, want := range []string{"@postgres:5432/", "@valkey-access:6379/0", "DATABASE_CA_FILE", "REDIS_CA_FILE", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("override missing %q:\n%s", want, text)
 		}
@@ -131,7 +133,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 
 func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api", "web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 	got, err := workloadOverrideYAML(m, []string{"api", "web"}, map[string]string{})
@@ -159,7 +161,7 @@ func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing
 
 func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
@@ -193,7 +195,7 @@ func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *te
 func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
@@ -247,7 +249,7 @@ func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
 	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderPrometheus), "metrics-prod")
 
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 
 	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
@@ -264,7 +266,7 @@ func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *test
 	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
 
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 
 	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})

@@ -31,11 +31,17 @@ func LogsPolicy(m Manifest) (LogsDeploymentPolicy, error) {
 		return LogsDeploymentPolicy{}, err
 	}
 	collect := map[LogsSourceClass]bool{}
+	if enabled {
+		collect[LogsSourceApplication] = true
+		collect[LogsSourceApplicationProvider] = true
+		collect[LogsSourcePlatformProvider] = true
+	}
 	for _, raw := range m.Logs.Collect {
 		class := LogsSourceClass(strings.TrimSpace(strings.ToLower(raw)))
 		switch class {
 		case LogsSourceApplication:
-			collect[class] = true
+			// Portable intent selects logs. Deployment/placement policy decides
+			// which owned source classes are eligible; it is not a provider list.
 		case "":
 		default:
 			return LogsDeploymentPolicy{}, fmt.Errorf("manifest logs.collect contains unsupported source class %q", raw)

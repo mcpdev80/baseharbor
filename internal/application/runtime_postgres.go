@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
@@ -22,10 +23,20 @@ type RuntimeFiles struct {
 	Env            string
 	ApplicationEnv string
 	Bindings       string
+	Project        string
+	Namespace      string
 }
 
 func RuntimeProjectName(m Manifest) string {
 	return "baseharbor-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeProjectNameForStore(store Store, m Manifest) string {
+	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
+	if namespace == "" {
+		return RuntimeProjectName(m)
+	}
+	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
@@ -49,10 +60,12 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 		Env:            filepath.Join(dir, "runtime.env"),
 		ApplicationEnv: filepath.Join(dir, "application.env"),
 		Bindings:       filepath.Join(dir, "bindings"),
+		Project:        RuntimeProjectNameForStore(store, m),
+		Namespace:      strings.TrimSpace(store.Namespace),
 	}
 }
 
-func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
+func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
 	if err := m.Validate(); err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -67,6 +80,9 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 
 	compose, err := RuntimeComposeYAML(m)
 	if err != nil {
@@ -74,6 +90,9 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 	}
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
+	}
+	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
 	}
 	contract, err := EnsureRuntimeContract(m, files)
 	if err != nil {
@@ -85,14 +104,15 @@ func EnsureRuntime(store Store, m Manifest) (RuntimeFiles, error) {
 }
 
 // EnsurePostgresRuntime is kept for callers from the first runtime milestone.
-func EnsurePostgresRuntime(store Store, m Manifest) (RuntimeFiles, error) {
-	return EnsureRuntime(store, m)
+func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
+	return EnsureRuntime(ctx, issuer, store, m)
 }
 
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", postgresDatabaseName(m, instance), "-tAc", "SELECT 1")
+		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
 		}
@@ -104,9 +124,10 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 }
 
 func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", `VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli ping`)
+		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
 		}
@@ -126,17 +147,18 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		writePostgresComposeService(&b, instance)
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		writeValkeyComposeService(&b, instance)
+		b.WriteString(valkeyGatewayCompose(instance))
 	}
 	b.WriteString("\nvolumes:\n")
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("postgres", instance))
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
 	}
 	return b.String(), nil
@@ -148,6 +170,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	userKey := postgresRuntimeKey(instance, "USER")
 	passwordKey := postgresRuntimeKey(instance, "PASSWORD")
 	portKey := postgresRuntimeKey(instance, "HOST_PORT")
+	tlsRoot := "./" + filepath.ToSlash(filepath.Join("providers", "postgresql", instance, "runtime"))
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
@@ -155,6 +178,14 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /var/run/postgresql:rw,noexec,nosuid,nodev
@@ -166,20 +197,23 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       - "127.0.0.1:${%s}:5432"
     volumes:
       - %s-data:/var/lib/postgresql
+      - ./bindings/postgres/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
+      - "%s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro"
+      - "%s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro"
+      - "%s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${%s} -d ${%s}"]
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql \"host=127.0.0.1 port=5432 user=$${POSTGRES_USER} dbname=$${POSTGRES_DB} sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1' | grep -q '^1$'"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 5s
 
-`, service, dbKey, userKey, passwordKey, portKey, service, userKey, dbKey)
+`, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot, tlsRoot)
 }
 
 func writeValkeyComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("valkey", instance)
 	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
-	portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 	fmt.Fprintf(b, `  %s:
     image: docker.io/valkey/valkey:9.1.2-alpine
     restart: unless-stopped
@@ -197,10 +231,9 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       - |
         printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
         exec valkey-server /tmp/valkey.conf
-    ports:
-      - "127.0.0.1:${%s}:6379"
     volumes:
       - %s-data:/data
+      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
       interval: 5s
@@ -208,7 +241,7 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 5s
 
-`, service, passwordKey, portKey, service)
+`, service, passwordKey, service, instance)
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
@@ -253,7 +286,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 		excluded[port] = struct{}{}
 	}
 
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		dbKey := postgresRuntimeKey(instance, "DB")
 		userKey := postgresRuntimeKey(instance, "USER")
 		passwordKey := postgresRuntimeKey(instance, "PASSWORD")
@@ -280,7 +313,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if values[passwordKey] == "" {
@@ -329,17 +362,20 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
-	for _, instance := range PostgresInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
+	for _, instance := range SQLInstanceNames(m) {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
 			key := postgresRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
+	for _, instance := range CacheInstanceNames(m) {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
+	}
+	if values[S3TLSHostCAEnv] != "" {
+		fmt.Fprintf(&b, "%s=%s\n", S3TLSHostCAEnv, values[S3TLSHostCAEnv])
 	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
@@ -354,13 +390,17 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	if HasOTLPTelemetry(m) {
-		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT"} {
+		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT", OTLPTLSHostCAEnv, OTLPTLSHostClientCertEnv, OTLPTLSHostClientKeyEnv} {
 			if values[key] != "" {
 				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 			}
 		}
 	}
 	return b.String()
+}
+
+func RuntimeEnvironment(files RuntimeFiles) (map[string]string, error) {
+	return readRuntimeEnv(files.Env)
 }
 
 func validateRuntimeEnv(path string, m Manifest) error {
@@ -372,7 +412,7 @@ func validateRuntimeEnv(path string, m Manifest) error {
 }
 
 func validateRuntimeValues(values map[string]string, m Manifest) error {
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT"} {
 			key := postgresRuntimeKey(instance, suffix)
 			if values[key] == "" {
@@ -384,7 +424,7 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			if values[key] == "" {

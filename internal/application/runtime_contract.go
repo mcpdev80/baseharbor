@@ -57,7 +57,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	fmt.Fprintf(&env, "BASEHARBOR_ENVIRONMENT=%s\n", m.Environment)
 	fmt.Fprintf(&env, "BASEHARBOR_BINDINGS=%s\n", bindingsAbs)
 
-	postgresInstances := PostgresInstanceNames(m)
+	postgresInstances := SQLInstanceNames(m)
 	preferredPostgres := preferredServiceInstance(postgresInstances)
 	for _, instance := range postgresInstances {
 		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "postgres", instance, len(postgresInstances))
@@ -68,19 +68,26 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		if err != nil {
 			return RuntimeContract{}, err
 		}
+		certificates, err := backendCertificates(values[postgresTLSCAKey(instance)])
+		if err != nil {
+			return RuntimeContract{}, err
+		}
 		entries := map[string]string{
-			"host":     loopbackHost,
-			"port":     values[postgresRuntimeKey(instance, "HOST_PORT")],
-			"database": values[postgresRuntimeKey(instance, "DB")],
-			"username": values[postgresRuntimeKey(instance, "USER")],
-			"password": values[postgresRuntimeKey(instance, "PASSWORD")],
-			"uri":      uri,
+			"type":         "postgresql",
+			"host":         loopbackHost,
+			"port":         values[postgresRuntimeKey(instance, "HOST_PORT")],
+			"database":     values[postgresRuntimeKey(instance, "DB")],
+			"username":     values[postgresRuntimeKey(instance, "USER")],
+			"password":     values[postgresRuntimeKey(instance, "PASSWORD")],
+			"uri":          uri,
+			"certificates": certificates,
 		}
 		if err := writeBinding(binding, entries); err != nil {
 			return RuntimeContract{}, err
 		}
 		if instance == preferredPostgres {
 			fmt.Fprintf(&env, "DATABASE_URL=%s\n", uri)
+			fmt.Fprintf(&env, "DATABASE_CA_FILE=%s\n", values[postgresTLSCAKey(instance)])
 		}
 		if instance != defaultServiceInstance {
 			fmt.Fprintf(&env, "DATABASE_%s_URL=%s\n", envInstanceToken(instance), uri)
@@ -88,7 +95,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("postgres", instance, len(postgresInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
-	redisInstances := RedisInstanceNames(m)
+	redisInstances := CacheInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redisInstances)
 	for _, instance := range redisInstances {
 		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "valkey", instance, len(redisInstances))
@@ -99,11 +106,17 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		if err != nil {
 			return RuntimeContract{}, err
 		}
+		certificates, err := backendCertificates(values[valkeyTLSCAKey(instance)])
+		if err != nil {
+			return RuntimeContract{}, err
+		}
 		entries := map[string]string{
-			"host":     loopbackHost,
-			"port":     values[valkeyRuntimeKey(instance, "HOST_PORT")],
-			"password": values[valkeyRuntimeKey(instance, "PASSWORD")],
-			"uri":      uri,
+			"type":         "redis",
+			"host":         loopbackHost,
+			"port":         values[valkeyRuntimeKey(instance, "HOST_PORT")],
+			"password":     values[valkeyRuntimeKey(instance, "PASSWORD")],
+			"uri":          uri,
+			"certificates": certificates,
 		}
 		if err := writeBinding(binding, entries); err != nil {
 			return RuntimeContract{}, err
@@ -111,6 +124,8 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		if instance == preferredRedis {
 			fmt.Fprintf(&env, "REDIS_URL=%s\n", uri)
 			fmt.Fprintf(&env, "VALKEY_URL=%s\n", uri)
+			fmt.Fprintf(&env, "REDIS_CA_FILE=%s\n", values[valkeyTLSCAKey(instance)])
+			fmt.Fprintf(&env, "VALKEY_CA_FILE=%s\n", values[valkeyTLSCAKey(instance)])
 		}
 		if instance != defaultServiceInstance {
 			token := envInstanceToken(instance)
@@ -211,12 +226,19 @@ func postgresConnectionURL(values map[string]string, instance string) (string, e
 	if err != nil {
 		return "", err
 	}
+	ca, err := requireRuntimeValue(values, postgresTLSCAKey(instance))
+	if err != nil {
+		return "", err
+	}
+	query := url.Values{}
+	query.Set("sslmode", "verify-ca")
+	query.Set("sslrootcert", ca)
 	u := &url.URL{
 		Scheme:   "postgresql",
 		User:     url.UserPassword(username, password),
 		Host:     net.JoinHostPort(loopbackHost, port),
 		Path:     "/" + database,
-		RawQuery: "sslmode=disable",
+		RawQuery: query.Encode(),
 	}
 	return u.String(), nil
 }
@@ -231,7 +253,7 @@ func valkeyConnectionURL(values map[string]string, instance string) (string, err
 		return "", err
 	}
 	u := &url.URL{
-		Scheme: "redis",
+		Scheme: "rediss",
 		User:   url.UserPassword("", password),
 		Host:   net.JoinHostPort(loopbackHost, port),
 		Path:   "/0",
@@ -283,7 +305,7 @@ func readRuntimeEnvBytes(data []byte) (map[string]string, error) {
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+		if !ok || strings.TrimSpace(key) == "" {
 			return nil, fmt.Errorf("application runtime environment contains an invalid entry")
 		}
 		values[key] = value

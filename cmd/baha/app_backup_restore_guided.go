@@ -51,7 +51,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		if name != "" {
 			appArgs = []string{name}
 		}
-		resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
+		resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
 		if err != nil {
 			return err
 		}
@@ -217,7 +217,7 @@ func formatBackupPreview(out io.Writer, m application.Manifest, outputPath strin
 	fmt.Fprintf(out, "  Application: %s\n", m.Name)
 	fmt.Fprintf(out, "  Environment: %s\n", m.Environment)
 	fmt.Fprintf(out, "  Output: %s\n", outputPath)
-	postgres := application.PostgresInstanceNames(m)
+	postgres := application.SQLInstanceNames(m)
 	if len(postgres) == 0 {
 		fmt.Fprintln(out, "  PostgreSQL: none")
 	} else {
@@ -243,7 +243,7 @@ func formatRestorePreview(out io.Writer, backupPath string, m application.Manife
 	fmt.Fprintf(out, "  Environment: %s\n", m.Environment)
 	fmt.Fprintf(out, "  Backup: %s\n", absolutePath)
 	fmt.Fprintf(out, "  Created: %s\n", createdAt.UTC().Format(time.RFC3339))
-	postgres := application.PostgresInstanceNames(m)
+	postgres := application.SQLInstanceNames(m)
 	sort.Strings(postgres)
 	if len(postgres) == 0 {
 		fmt.Fprintln(out, "  PostgreSQL: none")

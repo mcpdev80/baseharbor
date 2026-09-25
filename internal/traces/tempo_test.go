@@ -30,7 +30,7 @@ func TestTempoComposeIsHardenedAndLoopbackPublished(t *testing.T) {
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",
 		"no-new-privileges:true",
-		"127.0.0.1:${BASEHARBOR_TEMPO_PORT}:3200",
+		"127.0.0.1:${BASEHARBOR_TEMPO_PORT}:8443",
 		"name: \"baseharbor-traces\"",
 	} {
 		if !strings.Contains(rendered, want) {

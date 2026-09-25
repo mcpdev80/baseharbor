@@ -16,12 +16,22 @@ import (
 )
 
 func TestParseRuntimeUpOptions(t *testing.T) {
-	opts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only", "-e", "test", "--postgres-port", "15432", "--openbao-port", "18200", "--recovery-file", "/secure/recovery.json"})
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only", "--trust-host-ca", "-e", "test", "--postgres-port", "15432", "--openbao-port", "18200", "--recovery-file", "/secure/recovery.json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Yes || !opts.ControlPlaneOnly || opts.Environment != "test" || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 || opts.RecoveryFile != "/secure/recovery.json" {
+	if !opts.Yes || !opts.ControlPlaneOnly || !opts.TrustHostCA || opts.Environment != "test" || opts.PostgresPort != 15432 || opts.OpenBaoPort != 18200 || opts.RecoveryFile != "/secure/recovery.json" {
 		t.Fatalf("unexpected options: %+v", opts)
+	}
+}
+
+func TestRuntimeUpYesDoesNotImplicitlyTrustHostCA(t *testing.T) {
+	opts, err := parseRuntimeUpOptions([]string{"--yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.TrustHostCA {
+		t.Fatal("--yes must not implicitly consent to host trust mutation")
 	}
 }
 

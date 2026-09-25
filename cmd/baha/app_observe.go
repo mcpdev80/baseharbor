@@ -11,13 +11,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
-	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
-	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 const (
@@ -27,210 +22,27 @@ const (
 	applicationBrokerStatusTimeout   = 10 * time.Second
 	applicationPostgresStatusTimeout = 15 * time.Second
 	applicationValkeyStatusTimeout   = 10 * time.Second
+	applicationLogsStatusTimeout     = 10 * time.Second
 )
 
 func collectApplicationStatus(ctx context.Context, store application.Store, args []string) (application.StatusResult, error) {
 	statusCtx, cancelStatus := context.WithTimeout(ctx, applicationStatusTimeout)
 	defer cancelStatus()
-	ctx = statusCtx
 
-	resolved, err := resolveApplication(store, args, "status")
-	if err != nil {
-		return application.StatusResult{}, err
+	collection, done, err := newApplicationStatusCollection(statusCtx, store, args)
+	if err != nil || done {
+		return collection.result, err
 	}
-	m := resolved.Manifest
-	if err := application.CheckSupportedRuntimeServices(m); err != nil {
-		return application.StatusResult{}, err
+	if collection.componentsStopped(statusCtx) {
+		collection.result.State = "stopped"
+		collection.result.Ready = false
+		return collection.result, nil
 	}
-	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
-	if errors.Is(err, application.ErrRuntimeNotApplied) {
-		result := application.StatusResult{
-			ContractVersion: "v1",
-			Application:     m.Name,
-			Environment:     m.Environment,
-			Project:         application.RuntimeProjectName(m),
-			State:           "not_applied",
-			Ready:           false,
-			Checks:          []application.StatusCheck{},
-		}
-		if resolved.FromRepository {
-			result.Manifest = resolved.ManifestPath
-		}
-		return result, nil
-	}
-	if err != nil {
-		return application.StatusResult{}, err
-	}
-	compose, err := bhruntime.DetectCompose(ctx)
-	if err != nil {
-		return application.StatusResult{}, err
-	}
-	project := application.RuntimeProjectName(m)
-	services, err := compose.RunningServicesProject(ctx, project, files.Compose, files.Env)
-	if err != nil {
-		return application.StatusResult{}, err
-	}
-	result := application.StatusResult{
-		ContractVersion: "v1",
-		Application:     m.Name,
-		Environment:     m.Environment,
-		Project:         project,
-		State:           "running",
-		Ready:           true,
-		Checks:          []application.StatusCheck{},
-	}
-	if resolved.FromRepository {
-		result.Manifest = resolved.ManifestPath
-	}
-
-	workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
-	workloadRunning := make([]string, 0, len(workloadStatus.Services))
-	for _, service := range workloadStatus.Services {
-		if service.State == "running" {
-			workloadRunning = append(workloadRunning, service.Service)
-		}
-	}
-	workloadFound := workloadStatus.Found
-	brokerRunning := false
-	if application.RequiresRuntimeBroker(m) {
-		if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
-			if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
-				brokerRunning = len(running) > 0
-			}
-		}
-	}
-	exposureRunning := managedExposureRunning(ctx, compose, m, files)
-	if applicationComponentsStopped(services, workloadRunning, workloadFound, brokerRunning, exposureRunning) && !application.HasObjectStorage(m) {
-		result.State = "stopped"
-		result.Ready = false
-		return result, nil
-	}
-
-	if application.HasObjectStorage(m) {
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := objectstorage.VerifyApplicationBuckets(checkCtx, compose, m, files)
-		cancel()
-		if err != nil {
-			result.AddCheck("object-storage", false, err.Error())
-		} else {
-			result.AddCheck("object-storage", true, fmt.Sprintf("%d bucket(s) passed authenticated S3 Put/Get", len(application.ObjectStorageBucketNames(m))))
-		}
-	}
-	if application.HasOTLPTelemetry(m) {
-		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		err := telemetry.VerifyApplication(checkCtx, m, files)
-		cancel()
-		if err != nil {
-			result.AddCheck("telemetry/otlp", false, err.Error())
-		} else {
-			result.AddCheck("telemetry/otlp", true, "real OTLP HTTP/protobuf export accepted")
-		}
-	}
-	if m.Services.Postgres {
-		if !containsString(services, "postgres") {
-			result.AddCheck("postgres", false, "not running")
-		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
-			err := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
-			cancel()
-			if err != nil {
-				result.AddCheck("postgres", false, "one or more instances failed readiness")
-			} else {
-				result.AddCheck("postgres", true, fmt.Sprintf("%d instance(s) running and authenticated SELECT 1 succeeded", len(application.PostgresInstanceNames(m))))
-			}
-		}
-	}
-	if m.Services.Redis {
-		if !containsString(services, "valkey") {
-			result.AddCheck("valkey", false, "not running")
-		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
-			err := application.VerifyValkeyRuntime(checkCtx, compose, m, files)
-			cancel()
-			if err != nil {
-				result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
-			} else {
-				result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.RedisInstanceNames(m))))
-			}
-		}
-	}
-	if m.Services.Secrets {
-		platformFiles, platformErr := bhruntime.ExistingFiles("")
-		if platformErr != nil {
-			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
-		} else {
-			scopeCtx, scopeCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
-			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-			err := openbao.InspectApplicationScope(scopeCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-			scopeCancel()
-			if err != nil {
-				result.AddCheck("secrets", false, "isolated OpenBao application scope is not ready")
-			} else {
-				result.AddCheck("secrets", true, "isolated OpenBao AppRole authentication succeeded")
-				if len(application.RequiredSecretNames(m)) > 0 {
-					secretCtx, secretCancel := context.WithTimeout(ctx, applicationRequiredSecretTimeout)
-					statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, compose, platformFiles, m, files)
-					secretCancel()
-					if statusErr != nil {
-						result.AddCheck("required-secrets", false, "readiness inspection failed")
-					} else {
-						for _, status := range statuses {
-							result.AddCheck("required-secret/"+status.Name, status.Present && status.Usable, map[bool]string{true: "present and usable", false: "missing or unusable"}[status.Present && status.Usable])
-						}
-					}
-				}
-			}
-		}
-		brokerCtx, brokerCancel := context.WithTimeout(ctx, applicationBrokerStatusTimeout)
-		brokerErr := verifyRuntimeBrokerRunning(brokerCtx, compose, m, files)
-		brokerCancel()
-		if brokerErr != nil {
-			result.AddCheck("runtime-broker", false, brokerErr.Error())
-		} else {
-			result.AddCheck("runtime-broker", true, "mTLS identity and app-scoped OpenBao readiness succeeded")
-		}
-	}
-
-	if workloadStatus.Found {
-		for _, service := range workloadStatus.Services {
-			result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
-		}
-		if workloadErr != nil {
-			result.AddCheck("workload", false, workloadErr.Error())
-		} else {
-			result.AddCheck("workload", workloadStatus.Ready(), fmt.Sprintf("%d/%d selected Compose service(s) ready", workloadStatus.ReadyCount(), len(workloadStatus.Services)))
-		}
-	} else if workloadErr != nil {
-		result.AddCheck("workload", false, "repository Compose integration could not be resolved: "+workloadErr.Error())
-	}
-
-	if application.HasLogsCollection(m) {
-		if policy, policyErr := application.LogsPolicy(m); policyErr != nil {
-			result.AddCheck("logs", false, policyErr.Error())
-		} else if policy.Enabled && policy.Collect[application.LogsSourceApplication] && workloadStatus.Found {
-			logServices := make([]string, 0, len(workloadStatus.Services))
-			for _, service := range workloadStatus.Services {
-				logServices = append(logServices, service.Service)
-			}
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			err := logsprovider.VerifyApplication(checkCtx, m, logServices)
-			cancel()
-			if err != nil {
-				result.AddCheck("logs", false, err.Error())
-			} else {
-				result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
-			}
-		}
-	}
-	if len(m.Exposures) > 0 {
-		_, exposureErr := inspectManagedExposure(ctx, compose, m, files)
-		if exposureErr != nil {
-			result.AddCheck("managed-exposure", false, exposureErr.Error())
-		} else {
-			result.AddCheck("managed-exposure", true, "configured exposure endpoints are ready")
-		}
-	}
-	return result, nil
+	collection.collectManagedServiceChecks(statusCtx)
+	collection.collectWorkloadChecks()
+	collection.collectLogsCheck(statusCtx)
+	collection.collectExposureCheck(statusCtx)
+	return collection.result, nil
 }
 
 func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result application.StatusResult) {
@@ -385,7 +197,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 		Name:    "doctor",
 		Summary: "Diagnose an application's runtime",
 		Usage:   "baha app doctor [NAME] [-o json|--output json]",
-		Long:    "Checks desired state, local runtime files, Compose configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health, per-application mTLS broker readiness and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
+		Long:    "Checks desired state, local runtime files, runtime configuration, backend service state, repository workload state, authenticated protocol readiness, managed OpenBao secret scope health, per-application mTLS broker readiness and required-secret presence/usability. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "app doctor")
 			if err != nil {
@@ -399,29 +211,8 @@ func appDoctorCommand(store application.Store) *cli.Command {
 				if err := writeJSON(out, result); err != nil {
 					return err
 				}
-			} else if result.State == "not_applied" {
-				term := cli.NewTerminal(ctx, out, errOut)
-				term.Header(result.Application, result.Environment)
-				term.Section("Application")
-				term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
-				fmt.Fprintln(out, "\nNext:")
-				fmt.Fprintln(out, "  baha up")
-				fmt.Fprintln(out, "  baha app apply")
-				fmt.Fprintln(out, "\nNOT APPLIED")
 			} else {
-				renderApplicationDoctor(
-					ctx,
-					out,
-					errOut,
-					result.manifest,
-					result.Checks,
-					result.workloadStatus,
-					result.requiredSecretStatuses,
-					result.workloadSecurity,
-					result.Healthy,
-					result.tlsStatus,
-					result.tlsErr,
-				)
+				renderCollectedApplicationDoctor(ctx, out, errOut, result)
 			}
 			if result.State == "not_applied" {
 				return nil
@@ -434,6 +225,35 @@ func appDoctorCommand(store application.Store) *cli.Command {
 	}
 }
 
+func renderCollectedApplicationDoctor(ctx context.Context, out, errOut io.Writer, result applicationDoctorResult) {
+	if result.State == "not_applied" {
+		term := cli.NewTerminal(ctx, out, errOut)
+		term.Header(result.Application, result.Environment)
+		term.Section("Application")
+		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+		fmt.Fprintln(out, "\nNext:")
+		fmt.Fprintln(out, "  baha up")
+		fmt.Fprintln(out, "  baha app apply")
+		fmt.Fprintln(out, "\nNOT APPLIED")
+		return
+	}
+	renderApplicationDoctor(
+		ctx,
+		out,
+		errOut,
+		result.manifest,
+		result.Checks,
+		result.workloadStatus,
+		result.requiredSecretStatuses,
+		result.workloadSecurity,
+		result.Healthy,
+		result.ServiceTLS,
+		result.serviceTLSErr,
+		result.tlsStatus,
+		result.tlsErr,
+	)
+}
+
 func renderApplicationDoctor(
 	ctx context.Context,
 	out io.Writer,
@@ -444,6 +264,8 @@ func renderApplicationDoctor(
 	requiredSecrets []openbao.RequiredSecretStatus,
 	workloadSecurity application.WorkloadSecurityReport,
 	healthy bool,
+	serviceTLS []application.BackendTLSLifecycleObservation,
+	serviceTLSErr error,
 	tlsStatus *applicationTLSStatus,
 	tlsErr error,
 ) {
@@ -504,6 +326,12 @@ func renderApplicationDoctor(
 	if term.Verbose() {
 		printWorkloadSecurityFindings(out, workloadSecurity)
 	}
+	if serviceTLSErr != nil {
+		term.Section("Service TLS")
+		term.Result("FAILED", "lifecycle", serviceTLSErr.Error())
+	} else {
+		renderServiceTLSLifecycle(term, serviceTLS)
+	}
 	if tlsStatus != nil || tlsErr != nil {
 		term.Section("TLS")
 		if tlsErr != nil {
@@ -513,7 +341,7 @@ func renderApplicationDoctor(
 		}
 	}
 
-	if healthy && tlsErr == nil {
+	if healthy && serviceTLSErr == nil && tlsErr == nil {
 		fmt.Fprintln(out, "\nREADY")
 		return
 	}

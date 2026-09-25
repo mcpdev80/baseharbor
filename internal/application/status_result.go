@@ -12,6 +12,7 @@ type StatusCheck struct {
 // contains operational state only and never credential or secret values.
 type StatusResult struct {
 	ContractVersion string        `json:"contract_version"`
+	Target          string        `json:"target"`
 	Application     string        `json:"application"`
 	Environment     string        `json:"environment"`
 	Manifest        string        `json:"manifest,omitempty"`

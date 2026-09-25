@@ -35,6 +35,13 @@ type Executor interface {
 	ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error)
 }
 
+func projectNameForFiles(files bhruntime.Files) string {
+	if strings.TrimSpace(files.Project) != "" {
+		return files.Project
+	}
+	return projectName
+}
+
 type State struct {
 	Initialized bool   `json:"initialized"`
 	Sealed      bool   `json:"sealed"`
@@ -60,7 +67,7 @@ if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
   exit 0
 fi
 exit "$code"`
-	out, err := executor.ExecProject(ctx, projectName, files.Compose, files.Env, serviceName, "sh", "-c", script)
+	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
 	if err != nil {
 		return State{}, fmt.Errorf("inspect OpenBao status: %w", err)
 	}
@@ -107,7 +114,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		}
 	}()
 
-	out, err := executor.ExecProject(ctx, projectName, files.Compose, files.Env, serviceName,
+	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName,
 		"bao", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json")
 	if err != nil {
 		return fmt.Errorf("initialize OpenBao: %w", err)
@@ -326,7 +333,7 @@ func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files
 	if err != nil {
 		return errors.New("encode OpenBao unseal request")
 	}
-	if _, err := executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, payload, serviceName,
+	if _, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
 		"bao", "write", "-format=json", "sys/unseal", "-"); err != nil {
 		return fmt.Errorf("unseal OpenBao: %w", err)
 	}
@@ -342,8 +349,10 @@ func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files
 
 func configureManager(ctx context.Context, executor Executor, files bhruntime.Files, rootToken string) error {
 	commands := []string{
-		`exec bao secrets enable -path=baseharbor -version=2 kv`,
-		`exec bao auth enable approle`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor/"'; then bao secrets enable -path=baseharbor -version=2 kv >/dev/null; fi`,
+		`if ! bao secrets list -format=json | grep -q '"baseharbor-pki/"'; then bao secrets enable -path=baseharbor-pki pki >/dev/null; fi`,
+		`bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null`,
+		`if ! bao auth list -format=json | grep -q '"approle/"'; then bao auth enable approle >/dev/null; fi`,
 	}
 	for _, command := range commands {
 		if _, err := execWithToken(ctx, executor, files, rootToken, command); err != nil {
@@ -357,6 +366,10 @@ cat >"$tmp"
 bao policy write baseharbor-manager "$tmp" >/dev/null`
 	if _, err := execWithTokenPayload(ctx, executor, files, rootToken, policyScript, managerPolicy); err != nil {
 		return fmt.Errorf("configure OpenBao manager policy: %w", err)
+	}
+
+	if err := configureServicePKI(ctx, executor, files, rootToken); err != nil {
+		return err
 	}
 
 	const roleCommand = `exec bao write auth/approle/role/baseharbor-manager token_policies=baseharbor-manager token_no_default_policy=true secret_id_ttl=0 secret_id_num_uses=0 token_ttl=15m token_max_ttl=1h`
@@ -426,7 +439,7 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 	if err != nil {
 		return "", errors.New("encode OpenBao AppRole login request")
 	}
-	out, err := executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, payload, serviceName,
+	out, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
 		"bao", "write", "-format=json", "auth/approle/login", "-")
 	if err != nil {
 		return "", errors.New("OpenBao AppRole login failed")
@@ -465,7 +478,7 @@ func execWithTokenPayload(ctx context.Context, executor Executor, files bhruntim
 export BAO_TOKEN
 `
 	input := []byte(token + "\n" + payload)
-	return executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
+	return executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
 }
 
 const managerPolicy = `path "baseharbor/data/apps/*" {
@@ -494,5 +507,21 @@ path "sys/policies/acl/baseharbor-app-*" {
 
 path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
+}
+
+path "baseharbor-pki/issue/baseharbor-services" {
+  capabilities = ["create", "update"]
+}
+
+path "baseharbor-pki/cert/ca" {
+  capabilities = ["read"]
+}
+
+path "baseharbor-pki/cert/*" {
+  capabilities = ["read"]
+}
+
+path "baseharbor-pki/revoke" {
+  capabilities = ["create", "update"]
 }
 `

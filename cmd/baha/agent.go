@@ -75,22 +75,15 @@ func currentAgentDescription() agentDescription {
 		MCP: agentMCPDescription{
 			Transport:       "stdio",
 			ProtocolVersion: "2026-07-28",
-			Tools: []string{
-				"baseharbor.inspect",
-				"baseharbor.plan",
-				"baseharbor.status",
-				"baseharbor.doctor",
-				"baseharbor.policy.check",
-				"baseharbor.policy.explain",
-			},
-			Remote: false,
+			Tools:           machine.MCPTools(),
+			Remote:          false,
 		},
 	}
 }
 
-func resolveMachineApplication(store application.Store, name string, command string) (resolvedApplication, error) {
+func resolveMachineApplication(ctx context.Context, store application.Store, name string, command string) (resolvedApplication, error) {
 	if name == "" {
-		return resolveApplication(store, nil, command)
+		return resolveApplication(ctx, store, nil, command)
 	}
-	return resolveApplication(store, []string{name}, command)
+	return resolveApplication(ctx, store, []string{name}, command)
 }

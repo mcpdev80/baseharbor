@@ -275,9 +275,9 @@ app:
   name: mailflow
   environment: production
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: true
   secrets:
     enabled: true
@@ -330,7 +330,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 	writeTestFile(t, root, ".env.example", "REDIS_URL=\nOTEL_EXPORTER_OTLP_ENDPOINT=\n")
@@ -375,7 +375,7 @@ app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
 `)
 
@@ -389,7 +389,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "postgres:") {
+	if !strings.Contains(string(data), "sql:") {
 		t.Fatalf("inspection removed declared capability: %s", data)
 	}
 }
@@ -405,4 +405,133 @@ func assertReconciliationState(t *testing.T, result Result, capability string, w
 		}
 	}
 	t.Fatalf("reconciliation item %s missing: %#v", capability, result.Reconciliation)
+}
+
+func TestInspectClassifiesMixedComposeObjectStorageAsInfrastructure(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+  database:
+    image: postgres:18
+  cache:
+    image: valkey/valkey:8
+  object-storage:
+    image: quay.io/minio/minio:latest
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "api" {
+		t.Fatalf("WorkloadServices = %q, want api", got)
+	}
+	if got := strings.Join(result.InfrastructureServices, ","); got != "cache,database,object-storage" {
+		t.Fatalf("InfrastructureServices = %q", got)
+	}
+	assertFindingConfidence(t, result, "database.sql", ConfidenceDetected)
+	assertFindingConfidence(t, result, "cache.key-value", ConfidenceDetected)
+	assertFindingConfidence(t, result, "object-storage.s3", ConfidenceDetected)
+}
+
+func TestInspectDetectsRuntimeAPIAndSuggestsWorkloadLogs(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "client.go", `package client
+const resources = "/runtime/v1/resources"
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFindingConfidence(t, result, "runtime-api", ConfidenceDetected)
+	assertFindingConfidence(t, result, "logs", ConfidenceSuggested)
+}
+
+func TestInspectDetectsRuntimeObjectStorageCreateThroughRuntimeAPI(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "client.go", `package client
+
+import (
+    "bytes"
+    "net/http"
+)
+
+func createRuntimeResource() {
+    payload := []byte("{\"capability\":\"object-storage.s3/v1\",\"name\":\"uploads\"}")
+    req, _ := http.NewRequest(http.MethodPost, "https://runtime.local/runtime/v1/resources", bytes.NewReader(payload))
+    _ = req
+}
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertFindingConfidence(t, result, "runtime-api", ConfidenceDetected)
+	for _, finding := range result.Findings {
+		if finding.Capability != "object-storage.s3" {
+			continue
+		}
+		if finding.Confidence != ConfidenceDetected {
+			t.Fatalf("S3 confidence = %q", finding.Confidence)
+		}
+		if len(finding.Operations) != 1 || finding.Operations[0] != RuntimeCreate {
+			t.Fatalf("S3 runtime operations = %#v", finding.Operations)
+		}
+		return
+	}
+	t.Fatal("runtime S3 capability finding missing")
+}
+
+func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, ".env.example", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=\n")
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range result.Findings {
+		if finding.Capability == "telemetry.otlp" && finding.Name == "traces" {
+			if finding.Confidence != ConfidenceDetected {
+				t.Fatalf("trace OTLP confidence = %q", finding.Confidence)
+			}
+			return
+		}
+	}
+	t.Fatalf("explicit OTLP traces finding missing: %#v", result.Findings)
+}
+
+func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+  database:
+    image: company/custom-database
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "api" {
+		t.Fatalf("WorkloadServices = %q, want api", got)
+	}
+	if got := strings.Join(result.AmbiguousServices, ","); got != "database" {
+		t.Fatalf("AmbiguousServices = %q, want database", got)
+	}
 }

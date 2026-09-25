@@ -10,6 +10,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 type noopRuntime struct{}
@@ -33,7 +35,7 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 	defer server.Close()
 	t.Setenv(application.OTLPEndpointEnv, server.URL)
 	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
-	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
+	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
 	if err := d.Verify(context.Background(), resource, capability.Binding{}); err != nil {
 		t.Fatal(err)
@@ -50,7 +52,7 @@ func TestExternalOTLPPreflightRejectsInvalidEndpoint(t *testing.T) {
 	_ = os.Setenv(application.OTLPEndpointEnv, "ftp://bad.example")
 	defer os.Unsetenv(application.OTLPEndpointEnv)
 	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
-	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
+	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
 	binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: []string{"traces"}}}
 	if err := d.Preflight(context.Background(), resource, binding); err == nil {
@@ -80,7 +82,7 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 		Version: 1, Name: "demo", Environment: "test",
 		Workload: application.WorkloadConfig{Services: []string{"api"}},
 	}, "traces")
-	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{})
+	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	if d.Descriptor().Kind != capability.ProviderExternalOTLP {
 		t.Fatalf("descriptor = %#v", d.Descriptor())
 	}
@@ -93,7 +95,7 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 
 func TestEnsureProviderFilesKeepsRuntimeStatePrivateButCollectorConfigReadable(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
-	files, err := EnsureProviderFiles()
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,5 +162,44 @@ func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Fatalf("collector config missing %q:\n%s", want, config)
 		}
+	}
+}
+
+func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
+	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
+	source := observability.SignalSource{
+		ID:                 "postgresql:demo:postgres",
+		Kind:               observability.SignalTraces,
+		Provider:           capability.ProviderPostgreSQL,
+		Class:              observability.SourceApplicationProvider,
+		Scope:              capability.ScopeApplication,
+		OwnerApplication:   "demo",
+		Target:             observability.RuntimeTarget("baseharbor-demo-dev", "postgres"),
+		Protocol:           "interaction",
+		Mode:               capability.ObservabilityInteraction,
+		SemanticConvention: "database",
+		Verification:       capability.ObservabilityVerifySpan,
+	}
+
+	first, firstID := providerInteractionTracePayload(m, source)
+	second, secondID := providerInteractionTracePayload(m, source)
+	if firstID == secondID {
+		t.Fatalf("provider verification trace ids are not unique: %s", firstID)
+	}
+	for _, want := range []string{
+		"baseharbor.provider.interaction.verify",
+		"postgresql",
+		"postgresql:demo:postgres",
+		"baseharbor-demo-dev/postgres",
+		"database",
+		"demo",
+		"dev",
+	} {
+		if !strings.Contains(string(first), want) {
+			t.Fatalf("provider interaction trace missing %q", want)
+		}
+	}
+	if len(first) == 0 || len(second) == 0 {
+		t.Fatal("provider interaction trace payload is empty")
 	}
 }

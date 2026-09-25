@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestManagedCollectorRealOTLPExport(t *testing.T) {
@@ -48,12 +49,13 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 		Workload:    application.WorkloadConfig{Services: []string{"api"}},
 	}, "traces", "metrics", "logs")
 	store := application.Store{Root: filepath.Join(state, "apps")}
-	files, err := application.EnsureRuntime(store, m)
+	files, err := application.EnsureRuntime(ctx, serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatalf("materialize application runtime: %v", err)
 	}
 
-	driver := NewDriver(compose, m, files)
+	issuer := serviceissuer.New(t)
+	driver := NewDriver(compose, m, files, issuer)
 	binding := capability.Binding{
 		Resource: capability.Resource{
 			Application: m.Name,

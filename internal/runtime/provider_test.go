@@ -58,11 +58,26 @@ func TestParseProviderKindDefaultsToCompose(t *testing.T) {
 	}
 }
 
-func TestParseProviderKindRejectsUnavailableProvider(t *testing.T) {
-	for _, input := range []string{"kubernetes", "openshift", "docker"} {
-		if _, err := ParseProviderKind(input); err == nil {
-			t.Fatalf("ParseProviderKind(%q) unexpectedly succeeded", input)
+func TestParseProviderKindAcceptsKnownFutureProviders(t *testing.T) {
+	for input, want := range map[string]ProviderKind{
+		"docker":     ProviderDocker,
+		"podman":     ProviderPodman,
+		"kubernetes": ProviderKubernetes,
+		"openshift":  ProviderOpenShift,
+	} {
+		got, err := ParseProviderKind(input)
+		if err != nil {
+			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
 		}
+		if got != want {
+			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestParseProviderKindRejectsUnknownProvider(t *testing.T) {
+	if _, err := ParseProviderKind("future-runtime"); err == nil {
+		t.Fatal("unknown runtime provider unexpectedly accepted")
 	}
 }
 

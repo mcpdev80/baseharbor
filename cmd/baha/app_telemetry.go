@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
@@ -18,19 +19,19 @@ type managedTelemetryExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution) (*managedTelemetryExecution, error) {
+func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution, issuer serviceaccess.Issuer) (*managedTelemetryExecution, error) {
 	m := resolved.Manifest
 	if !application.HasOTLPTelemetry(m) {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
-	driver := telemetry.NewDriver(compose, m, files)
+	driver := telemetry.NewDriverAt(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	if traces != nil && traces.enabled {
 		driver.SetTraceBackend("http://tempo:4318", traces.placement.Network)
 	} else if enabled, policyErr := application.TracesCollectionEnabled(m); policyErr != nil {
 		return nil, policyErr
 	} else if enabled {
-		if _, placement, stateErr := tracesprovider.ExistingProviderFiles(m); stateErr == nil {
+		if _, placement, stateErr := tracesprovider.ExistingProviderFilesAt(resolved.TargetStateRoot, resolved.Target.Name, m); stateErr == nil {
 			driver.SetTraceBackend("http://tempo:4318", placement.Network)
 		}
 	}

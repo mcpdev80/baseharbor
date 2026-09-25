@@ -178,4 +178,4 @@ Future contract evolution under issues such as #97 and #102 must preserve migrat
 
 This ADR does not require BaseHarbor to implement multiple providers immediately.
 
-Compose remains the current focus. PostgreSQL, Valkey and OpenBao remain the current concrete managed implementations. Provider-neutral ingress/TLS, object storage, Kubernetes/OpenShift, identity and broader observability work should follow this boundary from the start.
+Compose remains the current repository/runtime compatibility model. Docker executes it through Docker Compose; Podman translates it into native Quadlets. PostgreSQL, Valkey and OpenBao remain current concrete managed implementations. Provider-neutral ingress/TLS, object storage, Kubernetes/OpenShift, identity and broader observability work should follow this boundary from the start.

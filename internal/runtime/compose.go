@@ -1,18 +1,16 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
-var ErrRuntimeNotFound = errors.New("docker compose or podman compose not found")
+var ErrRuntimeNotFound = errors.New("container runtime orchestration not found")
 var ErrResourceOwnership = errors.New("runtime resource ownership does not match the application project")
 
 type ProjectResource struct {
@@ -24,14 +22,24 @@ type ComposeContainer struct {
 	Name    string
 	Project string
 	Service string
+	Running bool
+	Health  string
+}
+
+type ImageIdentity struct {
+	Reference string
+	ImageID   string
+	Digest    string
 }
 
 // Compose provides the small lifecycle surface BaseHarbor needs from a
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
 type Compose struct {
-	command string
-	prefix  []string
+	command  string
+	prefix   []string
+	quadlet  bool
+	provider ProviderKind
 }
 
 func (c Compose) Engine() string {
@@ -62,21 +70,40 @@ func DetectCompose(ctx context.Context) (Compose, error) {
 }
 
 func detectCompose(ctx context.Context) (Compose, error) {
-	if path, err := exec.LookPath("docker"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "compose", "version")
-		if err := cmd.Run(); err == nil {
-			return Compose{command: path, prefix: []string{"compose"}}, nil
-		}
+	if docker, err := detectDockerCompose(ctx); err == nil {
+		return docker, nil
 	}
-
-	if path, err := exec.LookPath("podman"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "compose", "version")
-		if err := cmd.Run(); err == nil {
-			return Compose{command: path, prefix: []string{"compose"}}, nil
-		}
+	if podman, err := detectPodmanCompose(ctx); err == nil {
+		return podman, nil
 	}
-
 	return Compose{}, ErrRuntimeNotFound
+}
+
+func detectDockerCompose(ctx context.Context) (Compose, error) {
+	path, err := exec.LookPath("docker")
+	if err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	cmd := exec.CommandContext(ctx, path, "compose", "version")
+	if err := cmd.Run(); err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderDocker}, nil
+}
+
+func detectPodmanCompose(ctx context.Context) (Compose, error) {
+	path, err := exec.LookPath("podman")
+	if err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	if QuadletAvailable(ctx) {
+		return Compose{command: path, quadlet: true, provider: ProviderPodman}, nil
+	}
+	cmd := exec.CommandContext(ctx, path, "compose", "version")
+	if err := cmd.Run(); err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderPodman}, nil
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
@@ -100,35 +127,99 @@ func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile st
 }
 
 func (c Compose) UpProjectProgress(ctx context.Context, project, composeFile, envFile string, onProgress func(string)) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("rendered Podman Quadlet runtime")
+		}
+		if err := quadletStartProject(ctx, q, nil); err != nil {
+			return err
+		}
+		if onProgress != nil {
+			onProgress("started Podman Quadlet services")
+		}
+		return nil
+	}
 	_, err := c.outputProjectInputProgress(ctx, project, composeFile, envFile, nil, onProgress, "up", "-d")
 	return err
 }
 
 func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletRemoveProject(ctx, q, false)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
 func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletStopProject(ctx, q, nil)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "stop")
 }
 
 func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		return c.DownProject(ctx, project, composeFile, envFile)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
 }
 
 func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletRemoveProject(ctx, q, true)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes")
 }
 
 func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		return c.DestroyProject(ctx, project, composeFile, envFile)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
 }
 
 func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
+	if c.quadlet {
+		containers, err := c.ListComposeContainers(ctx)
+		if err != nil {
+			return "", err
+		}
+		var lines []string
+		for _, container := range containers {
+			if container.Project == project {
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%t", container.Service, container.Name, container.Running))
+			}
+		}
+		sort.Strings(lines)
+		return strings.Join(lines, "\n"), nil
+	}
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
 func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		return quadletLogs(ctx, c.command, q, services)
+	}
 	args := []string{"logs", "--no-color", "--tail", "120"}
 	args = append(args, services...)
 	return c.outputProject(ctx, project, composeFile, envFile, args...)
@@ -137,6 +228,39 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // DiagnosticsProject captures stopped/restarting containers and recent logs
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
+	if c.quadlet {
+		q, renderErr := quadletRenderProject(composeFile, envFile, project)
+		status, statusErr := c.StatusProject(ctx, project, composeFile, envFile)
+		logs, logsErr := c.LogsProject(ctx, project, composeFile, envFile)
+		var b strings.Builder
+		if renderErr != nil {
+			fmt.Fprintf(&b, "Quadlet render failed: %v\n", renderErr)
+		}
+		if statusErr != nil {
+			fmt.Fprintf(&b, "Quadlet status failed: %v\n", statusErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet status:\n%s\n", status)
+		}
+		if renderErr == nil {
+			units := make([]string, 0, len(q.ServiceUnits))
+			for _, unit := range q.ServiceUnits {
+				units = append(units, unit)
+			}
+			sort.Strings(units)
+			for _, unit := range units {
+				unitStatus, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
+				if strings.TrimSpace(unitStatus) != "" {
+					fmt.Fprintf(&b, "Quadlet unit %s:\n%s\n", unit, strings.TrimSpace(unitStatus))
+				}
+			}
+		}
+		if logsErr != nil {
+			fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)
+		} else {
+			fmt.Fprintf(&b, "Quadlet logs:\n%s\n", logs)
+		}
+		return strings.TrimSpace(b.String())
+	}
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
 	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
 
@@ -161,10 +285,28 @@ func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, e
 }
 
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return err
+		}
+		return quadletValidateProject(ctx, q)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }
 
 func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, nil, args...)
+	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
 }
@@ -173,397 +315,17 @@ func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile,
 // stdin without placing that input in the host process argument list. It is
 // intended for sensitive operator flows such as OpenBao unseal/authentication.
 func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {
+	if c.quadlet {
+		q, err := quadletRenderProject(composeFile, envFile, project)
+		if err != nil {
+			return "", err
+		}
+		container, ok := q.Containers[service]
+		if !ok {
+			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
+		}
+		return quadletExec(ctx, c.command, container, input, args...)
+	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
-}
-
-func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ string) ([]string, error) {
-	if c.command == "" {
-		return nil, ErrRuntimeNotFound
-	}
-	project = strings.TrimSpace(project)
-	if project == "" {
-		return nil, errors.New("compose project name is required")
-	}
-
-	containers, err := c.ListComposeContainers(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := map[string]struct{}{}
-	var services []string
-	for _, container := range containers {
-		if container.Project != project {
-			continue
-		}
-		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.State.Running}}", container.Name)
-		if err != nil {
-			return nil, fmt.Errorf("inspect running state for %s: %w", container.Name, err)
-		}
-		if strings.TrimSpace(out) != "true" {
-			continue
-		}
-		if _, ok := seen[container.Service]; ok {
-			continue
-		}
-		seen[container.Service] = struct{}{}
-		services = append(services, container.Service)
-	}
-	sort.Strings(services)
-	return services, nil
-}
-
-// InspectProjectResource verifies an exact runtime resource name before a
-// destructive operation. A resource with the expected name but a different
-// Compose project label is an ownership conflict, never an implicit match.
-func (c Compose) InspectProjectResource(ctx context.Context, project string, resource ProjectResource) (bool, error) {
-	if c.command == "" {
-		return false, ErrRuntimeNotFound
-	}
-	if strings.TrimSpace(project) == "" || strings.TrimSpace(resource.Name) == "" {
-		return false, errors.New("project and resource name are required")
-	}
-
-	listArgs, inspectArgs, err := resourceCommands(resource)
-	if err != nil {
-		return false, err
-	}
-	out, err := c.directOutput(ctx, listArgs...)
-	if err != nil {
-		return false, err
-	}
-	exists := false
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == resource.Name {
-			exists = true
-			break
-		}
-	}
-	if !exists {
-		return false, nil
-	}
-
-	label, err := c.directOutput(ctx, inspectArgs...)
-	if err != nil {
-		return true, fmt.Errorf("inspect %s %s ownership: %w", resource.Kind, resource.Name, err)
-	}
-	if strings.TrimSpace(label) != project {
-		return true, fmt.Errorf("%w: %s %s is not owned by project %s", ErrResourceOwnership, resource.Kind, resource.Name, project)
-	}
-	return true, nil
-}
-
-func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
-	if c.command == "" {
-		return ErrRuntimeNotFound
-	}
-	project = strings.TrimSpace(project)
-	if project == "" {
-		return errors.New("project is required")
-	}
-	var existing []ProjectResource
-	for _, resource := range resources {
-		found, err := c.InspectProjectResource(ctx, project, resource)
-		if err != nil {
-			return err
-		}
-		if found {
-			existing = append(existing, resource)
-		}
-	}
-	removeKind := func(kind string) error {
-		for _, resource := range existing {
-			if resource.Kind != kind {
-				continue
-			}
-			var args []string
-			switch resource.Kind {
-			case "container":
-				args = []string{"container", "rm", "-f", resource.Name}
-			case "network":
-				args = []string{"network", "rm", resource.Name}
-			case "volume":
-				args = []string{"volume", "rm", resource.Name}
-			default:
-				return fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
-			}
-			if _, err := c.directOutput(ctx, args...); err != nil {
-				return fmt.Errorf("remove owned %s %s: %w", resource.Kind, resource.Name, err)
-			}
-		}
-		return nil
-	}
-	if err := removeKind("container"); err != nil {
-		return err
-	}
-	if err := removeKind("network"); err != nil {
-		return err
-	}
-	if err := removeKind("volume"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func resourceCommands(resource ProjectResource) ([]string, []string, error) {
-	switch resource.Kind {
-	case "container":
-		return []string{"container", "ls", "-a", "--format", "{{.Names}}"}, []string{"container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	case "network":
-		return []string{"network", "ls", "--format", "{{.Name}}"}, []string{"network", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	case "volume":
-		return []string{"volume", "ls", "--format", "{{.Name}}"}, []string{"volume", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, resource.Name}, nil
-	default:
-		return nil, nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
-	}
-}
-
-func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer, error) {
-	out, err := c.directOutput(ctx, "container", "ls", "-a", "--format", "{{.Names}}")
-	if err != nil {
-		return nil, err
-	}
-	var result []ComposeContainer
-	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if name == "" {
-			continue
-		}
-		labels, err := c.directOutput(ctx, "container", "inspect", "--format", `{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}`, name)
-		if err != nil {
-			return nil, err
-		}
-		project, service, ok := strings.Cut(strings.TrimSpace(labels), "|")
-		if !ok || strings.TrimSpace(project) == "" || strings.TrimSpace(service) == "" {
-			continue
-		}
-		result = append(result, ComposeContainer{Name: name, Project: strings.TrimSpace(project), Service: strings.TrimSpace(service)})
-	}
-	return result, nil
-}
-
-func (c Compose) ContainerHealthStatus(ctx context.Context, container string) (string, error) {
-	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}`, strings.TrimSpace(container))
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-func (c Compose) ContainerNetworks(ctx context.Context, container string) ([]string, error) {
-	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}`, strings.TrimSpace(container))
-	if err != nil {
-		return nil, err
-	}
-	var result []string
-	for _, line := range strings.Split(out, "\n") {
-		if value := strings.TrimSpace(line); value != "" {
-			result = append(result, value)
-		}
-	}
-	return result, nil
-}
-
-func (c Compose) NetworkProjectOwner(ctx context.Context, network string) (string, error) {
-	out, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "com.docker.compose.project" }}`, strings.TrimSpace(network))
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-func (c Compose) ContainerExposedTCPPorts(ctx context.Context, container string) ([]int, error) {
-	out, err := c.directOutput(ctx, "container", "inspect", "--format", `{{range $port, $_ := .Config.ExposedPorts}}{{$port}}{{"\n"}}{{end}}`, strings.TrimSpace(container))
-	if err != nil {
-		return nil, err
-	}
-	var ports []int
-	seen := map[int]struct{}{}
-	for _, line := range strings.Split(out, "\n") {
-		value := strings.TrimSpace(line)
-		if value == "" || !strings.HasSuffix(value, "/tcp") {
-			continue
-		}
-		raw := strings.TrimSuffix(value, "/tcp")
-		port, err := strconv.Atoi(raw)
-		if err != nil || port < 1 || port > 65535 {
-			continue
-		}
-		if _, ok := seen[port]; ok {
-			continue
-		}
-		seen[port] = struct{}{}
-		ports = append(ports, port)
-	}
-	sort.Ints(ports)
-	return ports, nil
-}
-
-func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return errors.New("managed network name is required")
-	}
-	out, err := c.directOutput(ctx, "network", "ls", "--format", "{{.Name}}")
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) != name {
-			continue
-		}
-		label, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "io.baseharbor.managed" }}`, name)
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(label) != "connectivity" {
-			return fmt.Errorf("runtime network %s already exists but is not BaseHarbor connectivity-owned", name)
-		}
-		return nil
-	}
-	_, err = c.directOutput(ctx, "network", "create", "--label", "io.baseharbor.managed=connectivity", name)
-	return err
-}
-
-func (c Compose) ConnectManagedNetwork(ctx context.Context, network, container, alias string) error {
-	args := []string{"network", "connect"}
-	if alias = strings.TrimSpace(alias); alias != "" {
-		args = append(args, "--alias", alias)
-	}
-	args = append(args, strings.TrimSpace(network), strings.TrimSpace(container))
-	_, err := c.directOutput(ctx, args...)
-	if err != nil {
-		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "already exists") || strings.Contains(message, "already connected") {
-			return nil
-		}
-	}
-	return err
-}
-
-func (c Compose) DisconnectManagedNetwork(ctx context.Context, network, container string) error {
-	_, err := c.directOutput(ctx, "network", "disconnect", strings.TrimSpace(network), strings.TrimSpace(container))
-	if err != nil {
-		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "not connected") || strings.Contains(message, "is not connected") {
-			return nil
-		}
-	}
-	return err
-}
-
-func (c Compose) RemoveManagedNetwork(ctx context.Context, name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return errors.New("managed network name is required")
-	}
-	out, err := c.directOutput(ctx, "network", "ls", "--format", "{{.Name}}")
-	if err != nil {
-		return err
-	}
-	found := false
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == name {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return nil
-	}
-	label, err := c.directOutput(ctx, "network", "inspect", "--format", `{{ index .Labels "io.baseharbor.managed" }}`, name)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(label) != "connectivity" {
-		return fmt.Errorf("refusing to remove runtime network %s because it is not BaseHarbor connectivity-owned", name)
-	}
-	_, err = c.directOutput(ctx, "network", "rm", name)
-	return err
-}
-
-func (c Compose) directOutput(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, c.command, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return stdout.String(), fmt.Errorf("runtime %s: %s", strings.Join(args, " "), message)
-	}
-	return stdout.String(), nil
-}
-
-func (c Compose) runProject(ctx context.Context, project, composeFile, envFile string, args ...string) error {
-	_, err := c.outputProject(ctx, project, composeFile, envFile, args...)
-	return err
-}
-
-func (c Compose) outputProject(ctx context.Context, project, composeFile, envFile string, args ...string) (string, error) {
-	return c.outputProjectInput(ctx, project, composeFile, envFile, nil, args...)
-}
-
-func (c Compose) outputProjectInputProgress(ctx context.Context, project, composeFile, envFile string, input []byte, onProgress func(string), args ...string) (string, error) {
-	if c.command == "" {
-		return "", ErrRuntimeNotFound
-	}
-	if strings.TrimSpace(project) == "" {
-		return "", errors.New("compose project name is required")
-	}
-
-	fullArgs := append([]string{}, c.prefix...)
-	fullArgs = append(fullArgs, "--project-name", project, "--file", composeFile, "--env-file", envFile)
-	fullArgs = append(fullArgs, args...)
-
-	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-	if input != nil {
-		cmd.Stdin = bytes.NewReader(input)
-	}
-	var stdout bytes.Buffer
-	progress := newComposeProgressCapture(onProgress)
-	cmd.Stdout = &stdout
-	cmd.Stderr = progress
-	err := cmd.Run()
-	progress.Flush()
-	if err != nil {
-		message := strings.TrimSpace(progress.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
-	}
-	return stdout.String(), nil
-}
-
-func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
-	if c.command == "" {
-		return "", ErrRuntimeNotFound
-	}
-	if strings.TrimSpace(project) == "" {
-		return "", errors.New("compose project name is required")
-	}
-
-	fullArgs := append([]string{}, c.prefix...)
-	fullArgs = append(fullArgs, "--project-name", project, "--file", composeFile, "--env-file", envFile)
-	fullArgs = append(fullArgs, args...)
-
-	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-	if input != nil {
-		cmd.Stdin = bytes.NewReader(input)
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
-	}
-	return stdout.String(), nil
 }

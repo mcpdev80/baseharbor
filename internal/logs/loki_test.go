@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/providerconformance"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 type fakeRuntime struct {
@@ -62,7 +64,10 @@ func (r *fakeRuntime) UpProject(_ context.Context, _ string, _ string, envFile s
 	})
 	r.listener = listener
 	r.server = &http.Server{Handler: mux}
-	go func() { _ = r.server.Serve(listener) }()
+	providerDir := filepath.Dir(envFile)
+	certFile := filepath.Join(providerDir, "service-access", "runtime", "server.pem")
+	keyFile := filepath.Join(providerDir, "service-access", "runtime", "server-key.pem")
+	go func() { _ = r.server.ServeTLS(listener, certFile, keyFile) }()
 	return nil
 }
 
@@ -87,7 +92,7 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	defer runtime.Close()
 	m := application.New("demo", "dev", false, false, false)
 	m.Logs = application.LogsRequirements{Collect: []string{"application"}}
-	driver := logs.NewDriver(runtime, m)
+	driver := logs.NewDriver(runtime, m, serviceissuer.New(t))
 	target := providerconformance.Target{
 		Descriptor:       capability.LokiIntegration,
 		Application:      m.Name,
@@ -105,10 +110,43 @@ func TestLokiDriverConsumesProviderConformanceHarness(t *testing.T) {
 	}
 }
 
+func TestVerifyApplicationUsesServiceAccessTLS(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(application.LogsEnabledEnv, "true")
+	runtime := &fakeRuntime{}
+	defer runtime.Close()
+
+	m := application.New("demo", "dev", false, false, false)
+	m.Logs = application.LogsRequirements{Collect: []string{"application"}}
+	driver := logs.NewDriver(runtime, m, serviceissuer.New(t))
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.Logs,
+		Name:        "api",
+		Provider:    capability.ProviderLoki,
+	}
+	binding := capability.Binding{
+		Logs: &capability.LogsBinding{
+			Direction: "collect",
+			Format:    "syslog-rfc5424",
+			Service:   "api",
+		},
+	}
+	if err := driver.Preflight(context.Background(), resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Provision(context.Background(), resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := logs.VerifyApplication(context.Background(), m, []string{"api"}); err != nil {
+		t.Fatalf("verify application through managed service access: %v", err)
+	}
+}
+
 func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +155,7 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := string(data)
-	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user: \"0:0\"", "cap_add:", "provider-volume-init:"} {
+	for _, forbidden := range []string{"docker.sock", "podman.sock", "privileged: true", "network_mode: host", "user: \"0:0\"", "provider-volume-init:"} {
 		if strings.Contains(compose, forbidden) {
 			t.Fatalf("provider runtime contains forbidden isolation bypass %q:\n%s", forbidden, compose)
 		}
@@ -126,6 +164,10 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("provider runtime missing hardening %q:\n%s", required, compose)
 		}
+	}
+
+	if strings.Contains(compose, "cap_add:") {
+		t.Fatalf("provider runtime must not add capabilities for the unprivileged TLS gateway port:\n%s", compose)
 	}
 
 	for path, want := range map[string]os.FileMode{
@@ -149,7 +191,7 @@ func TestLokiProviderRuntimeDoesNotMountContainerSocket(t *testing.T) {
 func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +201,7 @@ func TestLokiProviderSeparatesInternalTrafficFromHostPublishing(t *testing.T) {
 	}
 	compose := string(data)
 	for _, required := range []string{
-		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:3100",
+		"127.0.0.1:${BASEHARBOR_LOKI_PORT}:8443",
 		"networks: [logs-internal, logs-publish]",
 		"logs-internal:",
 		"internal: true",
@@ -179,7 +221,7 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 	m := application.New("demo", "dev", false, false, false)
-	if _, err := logs.EnsureProviderFiles(m); err != nil {
+	if _, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m); err != nil {
 		t.Fatal(err)
 	}
 	runtime := application.RuntimeFiles{Dir: t.TempDir()}
@@ -202,7 +244,7 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +266,7 @@ func TestLokiConfigKeepsWALOnWritablePersistentVolume(t *testing.T) {
 func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFiles(m)
+	files, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,5 +277,46 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 	cfg := string(data)
 	if !strings.Contains(cfg, "http_listen_address: 0.0.0.0") {
 		t.Fatalf("Loki config must bind IPv4 for host loopback publishing:\n%s", cfg)
+	}
+}
+
+func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	m := application.New("demo", "dev", false, false, false)
+	files, err := logs.EnsureProviderFilesForRuntime(context.Background(), serviceissuer.New(t), m, "podman")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(files.AlloyConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(data)
+	for _, want := range []string{
+		`^baseharbor-workload-demo-dev(?:_(.+)_[0-9]+|-(.+))$`,
+		`replacement   = "$1$2"`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("Podman Alloy journal config missing %q:\n%s", want, config)
+		}
+	}
+}
+
+func TestUnregisterApplicationWithoutRegistrationDoesNotRequireIssuer(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	runtime := &fakeRuntime{}
+	defer runtime.Close()
+
+	registered := application.New("registered", "dev", false, false, false)
+	if _, err := logs.EnsureProviderFiles(context.Background(), serviceissuer.New(t), registered); err != nil {
+		t.Fatal(err)
+	}
+
+	unregistered := application.New("unregistered", "dev", false, false, false)
+	if err := logs.UnregisterApplication(context.Background(), runtime, nil, unregistered); err != nil {
+		t.Fatalf("unregister absent application: %v", err)
+	}
+	if runtime.server != nil {
+		t.Fatal("absent registration unexpectedly mutated Loki runtime")
 	}
 }

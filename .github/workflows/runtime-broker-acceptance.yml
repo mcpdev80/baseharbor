@@ -12,6 +12,9 @@ jobs:
     timeout-minutes: 30
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
+      XDG_CONFIG_HOME: /tmp/baseharbor-broker-xdg/config
+      XDG_DATA_HOME: /tmp/baseharbor-broker-xdg/data
+      BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
@@ -32,17 +35,9 @@ jobs:
           workdir=$(mktemp -d)
           printf '%s\n' "$workdir" > /tmp/baseharbor-broker-workdir
           cd "$workdir"
-          mkdir -p .baseharbor/runtime
-          chmod 700 .baseharbor .baseharbor/runtime
-          cat > .baseharbor/runtime/runtime.env <<'EOF'
-          BASEHARBOR_POSTGRES_DB=baseharbor
-          BASEHARBOR_POSTGRES_USER=baseharbor
-          BASEHARBOR_POSTGRES_PASSWORD=broker-ci-control-plane
-          BASEHARBOR_POSTGRES_PORT=15432
-          BASEHARBOR_OPENBAO_PORT=18200
-          EOF
-          chmod 600 .baseharbor/runtime/runtime.env
-          /tmp/baha up
+          rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
+          /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
           /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
@@ -51,7 +46,7 @@ jobs:
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
 
-          /tmp/baha app create broker-demo --postgres --require-secret BOOTSTRAP_SECRET
+          /tmp/baha app create broker-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply broker-demo >/tmp/broker-demo-required.out 2>&1
           code=$?
@@ -61,10 +56,20 @@ jobs:
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
           /tmp/baha app apply broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
-          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
+          docs_url="$(sed -n 's/.*Swagger\/OpenAPI: \(https:\/\/127\.0\.0\.1:[0-9][0-9]*\/\).*/\1/p' /tmp/broker-demo-apply.out | tail -n1)"
+          test -n "$docs_url"
+          curl --fail --silent --show-error \
+            --cacert $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/ca.pem \
+            "$docs_url" >/tmp/broker-demo-docs.html
+          /tmp/baha app status broker-demo | tee /tmp/broker-demo-status.out
+          grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-demo-status.out
+          grep -Fq "Swagger/OpenAPI: $docs_url" /tmp/broker-demo-status.out
+          /tmp/baha app status broker-demo --verbose | tee /tmp/broker-demo-status-verbose.out
+          grep -q "Runtime artifact" /tmp/broker-demo-status-verbose.out
+          grep -q "image id" /tmp/broker-demo-status-verbose.out
           /tmp/baha app doctor broker-demo | grep -q "^READY$"
 
-          /tmp/baha app create other-demo --postgres --require-secret BOOTSTRAP_SECRET
+          /tmp/baha app create other-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply other-demo >/tmp/other-demo-required.out 2>&1
           code=$?
@@ -78,7 +83,7 @@ jobs:
         run: |
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
-          project=baseharbor-broker-broker-demo-dev
+          project=baseharbor-broker-ci-broker-demo-dev
           broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
 
@@ -125,8 +130,8 @@ jobs:
 
       - name: Prove cross-app mTLS identity is rejected before authorization
         run: |
-          target_project=baseharbor-broker-broker-demo-dev
-          other_project=baseharbor-broker-other-demo-dev
+          target_project=baseharbor-broker-ci-broker-demo-dev
+          other_project=baseharbor-broker-ci-other-demo-dev
           target_id=$(docker ps --filter "label=com.docker.compose.project=$target_project" --filter 'label=com.docker.compose.service=broker' -q)
           other_id=$(docker ps --filter "label=com.docker.compose.project=$other_project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$target_id"
@@ -151,17 +156,17 @@ jobs:
           ref=$(cat /tmp/broker-demo-secret-ref)
           test -n "$ref"
 
-          client_before=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
+          client_before=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
           /tmp/baha app down broker-demo | tee /tmp/broker-down.out
           grep -q "runtime-broker.*stopped" /tmp/broker-down.out
-          test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-broker-demo-dev)"
+          test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev)"
 
           /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
           /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
-          client_after=$(sha256sum .baseharbor/apps/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
+          client_after=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
           test "$client_before" = "$client_after"
 
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
@@ -178,7 +183,7 @@ jobs:
       - name: Prove delete is permanent for the same ref
         run: |
           ref=$(cat /tmp/broker-demo-secret-ref)
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
@@ -201,5 +206,5 @@ jobs:
             cd "$workdir"
             /tmp/baha app destroy broker-demo --yes || true
             /tmp/baha app destroy other-demo --yes || true
-            docker compose --project-name baseharbor --file .baseharbor/runtime/compose.yaml --env-file .baseharbor/runtime/runtime.env down -v || true
+            docker compose --project-name baseharbor-ci --file "$XDG_DATA_HOME/baseharbor/targets/ci/runtime/compose.yaml" --env-file "$XDG_DATA_HOME/baseharbor/targets/ci/runtime/runtime.env" down -v || true
           fi

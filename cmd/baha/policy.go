@@ -54,7 +54,7 @@ func policyCommand(store application.Store) *cli.Command {
 					if err != nil {
 						return err
 					}
-					result, err := explainApplicationPolicy(store, appArgs, environment)
+					result, err := explainApplicationPolicy(ctx, store, appArgs, environment)
 					if err != nil {
 						return err
 					}
@@ -101,7 +101,7 @@ func parsePolicyArgs(args []string, command string) ([]string, string, cliOutput
 }
 
 func collectApplicationPolicy(ctx context.Context, store application.Store, appArgs []string, environment string) (policy.Result, error) {
-	resolved, err := resolveApplicationEnvironment(store, appArgs, "policy check", environment)
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "policy check", environment)
 	if err != nil {
 		return policy.Result{}, err
 	}
@@ -148,8 +148,8 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 	return result, nil
 }
 
-func explainApplicationPolicy(store application.Store, appArgs []string, environment string) (policy.Result, error) {
-	resolved, err := resolveApplicationEnvironment(store, appArgs, "policy explain", environment)
+func explainApplicationPolicy(ctx context.Context, store application.Store, appArgs []string, environment string) (policy.Result, error) {
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "policy explain", environment)
 	if err != nil {
 		return policy.Result{}, err
 	}

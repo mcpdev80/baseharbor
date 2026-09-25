@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -30,10 +31,13 @@ type Runtime interface {
 }
 
 type Driver struct {
-	runtime Runtime
-	engine  string
-	app     application.Manifest
-	client  *http.Client
+	runtime   Runtime
+	engine    string
+	app       application.Manifest
+	issuer    serviceaccess.Issuer
+	client    *http.Client
+	dataDir   string
+	namespace string
 }
 
 type runtimeEngine interface {
@@ -52,8 +56,59 @@ func runtimeKind(runtime Runtime) string {
 	return "docker"
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, client: &http.Client{Timeout: 10 * time.Second}}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{
+		runtime:   runtime,
+		engine:    runtimeKind(runtime),
+		app:       app,
+		issuer:    issuer,
+		dataDir:   filepath.Clean(dataDir),
+		namespace: strings.TrimSpace(namespace),
+	}
+}
+
+func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(m.Environment, "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load Loki service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+}
+
+func (d *Driver) placement() (Placement, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return PlacementForAt(d.dataDir, d.namespace, d.app)
+	}
+	return PlacementFor(d.app)
+}
+
+func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureProviderFilesForRuntimeAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.engine)
+	}
+	return EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
+}
+
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace, d.app)
+	}
+	return ExistingProviderFiles(d.app)
+}
+
+func (d *Driver) applicationRegistration() (Registration, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ApplicationRegistrationAt(d.dataDir, d.namespace, d.app)
+	}
+	return ApplicationRegistration(d.app)
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Loki }
@@ -86,11 +141,11 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	files, err := EnsureProviderFilesForRuntime(d.app, d.engine)
+	files, err := d.ensureProviderFiles(ctx)
 	if err != nil {
 		return err
 	}
-	placement, err := PlacementFor(d.app)
+	placement, err := d.placement()
 	if err != nil {
 		return err
 	}
@@ -104,6 +159,10 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if err != nil {
 		return err
 	}
+	d.client, err = lokiHTTPClient(d.app, files)
+	if err != nil {
+		return err
+	}
 	if err := waitLokiReady(ctx, d.client, endpoint); err != nil {
 		return err
 	}
@@ -111,16 +170,32 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	if placement.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	return observability.Update(observability.MetricsSource{
+	metricsPolicy, err := application.MetricsPolicy(d.app)
+	if err != nil {
+		return err
+	}
+	metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["loki-metrics"] = observability.ProviderSignalRuntime{
+			Network: placement.Network,
+			Target:  "loki:3100",
+		}
+	}
+	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
 		ID:               "loki:" + placement.Project,
-		Provider:         capability.ProviderLoki,
+		Descriptor:       capability.LokiIntegration,
 		Class:            class,
 		Scope:            placement.Scope,
 		SharingBoundary:  placement.SharingBoundary,
 		OwnerApplication: placement.OwnerApplication,
-		Network:          placement.Network,
-		Target:           "loki:3100",
-		Path:             "/metrics",
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	})
 }
 
@@ -128,7 +203,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding c
 	if binding.Logs == nil || binding.Logs.Service != resource.Name {
 		return errors.New("logs binding does not match logical log source")
 	}
-	_, err := ApplicationRegistration(d.app)
+	_, err := d.applicationRegistration()
 	return err
 }
 
@@ -136,13 +211,19 @@ func (d *Driver) Verify(ctx context.Context, _ capability.Resource, binding capa
 	if binding.Logs == nil {
 		return errors.New("logs binding is required")
 	}
-	files, err := ExistingProviderFiles(d.app)
+	files, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
 	endpoint, err := ProviderEndpoint(files)
 	if err != nil {
 		return err
+	}
+	if d.client == nil {
+		d.client, err = lokiHTTPClient(d.app, files)
+		if err != nil {
+			return err
+		}
 	}
 	return waitForStream(ctx, d.client, endpoint, d.app, binding.Logs.Service)
 }

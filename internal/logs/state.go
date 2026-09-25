@@ -2,25 +2,21 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
-
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 const (
 	providerProject      = "baseharbor-logs"
 	workloadOverrideName = "workload.logging.override.yaml"
+	providerOverrideName = "provider.logging.override.yaml"
 )
 
 type Placement struct {
@@ -35,9 +31,11 @@ type Placement struct {
 }
 
 type Registration struct {
-	Application string `json:"application"`
-	Environment string `json:"environment"`
-	SyslogPort  int    `json:"syslog_port"`
+	Application        string `json:"application"`
+	Environment        string `json:"environment"`
+	Namespace          string `json:"namespace,omitempty"`
+	SyslogPort         int    `json:"syslog_port"`
+	ProviderSyslogPort int    `json:"provider_syslog_port"`
 }
 
 type ProviderFiles struct {
@@ -50,18 +48,30 @@ type ProviderFiles struct {
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
-	if err != nil {
-		return Placement{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
 	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
+	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+	if err != nil {
+		return Placement{}, err
+	}
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
 		project := providerProject
-		dir := filepath.Join(dataDir, "providers", "loki", "shared")
+		if prefix != "" {
+			project = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
+		}
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
 		if p.SharingBoundary != "" {
@@ -74,13 +84,13 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 		network := project + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
+		suffix := prefix + m.Name + "-" + m.Environment
 		project := providerProject + "-" + suffix
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
 			Network:          project + "-internal",
-			Dir:              filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
+			Dir:              filepath.Join(filepath.Clean(dataDir), "providers", "loki", "applications", m.Name, m.Environment),
 			LokiVolume:       "baseharbor-loki-data-" + suffix,
 			AlloyVolume:      "baseharbor-alloy-data-" + suffix,
 			OwnerApplication: m.Name,
@@ -103,12 +113,20 @@ func providerFiles(p Placement) ProviderFiles {
 	}
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	return EnsureProviderFilesForRuntime(m, "docker")
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
+	return EnsureProviderFilesForRuntime(ctx, issuer, m, "docker")
 }
 
-func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return EnsureProviderFilesForRuntimeAt(ctx, issuer, dataDir, "", m, runtimeKind)
+}
+
+func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -122,7 +140,11 @@ func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (
 		return ProviderFiles{}, err
 	}
 	files := providerFiles(p)
-	registrations, err := reconcileRegistration(files.Registrations, m, true)
+	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, true)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	providerSources, err := providerLogSources(p, registrations)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -130,7 +152,19 @@ func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_LOKI_PORT="+strconv.Itoa(lokiPort)+"\n"), 0o600); err != nil {
+	platformSyslogPort := 0
+	if strings.EqualFold(strings.TrimSpace(runtimeKind), "docker") && hasPlatformProviderLogs(providerSources) {
+		platformSyslogPort, err = persistedOrAllocatedUDPPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+	var env strings.Builder
+	fmt.Fprintf(&env, "BASEHARBOR_LOKI_PORT=%d\n", lokiPort)
+	if platformSyslogPort > 0 {
+		fmt.Fprintf(&env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT=%d\n", platformSyslogPort)
+	}
+	if err := os.WriteFile(files.Env, []byte(env.String()), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.WriteFile(files.LokiConfig, []byte(lokiConfig()), 0o644); err != nil {
@@ -139,20 +173,36 @@ func EnsureProviderFilesForRuntime(m application.Manifest, runtimeKind string) (
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind, platformSyslogPort)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(lokiAccessEnvironment(m, registrations), "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, lokiAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind, accessFiles, platformSyslogPort)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -166,261 +216,4 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 		}
 	}
 	return files, nil
-}
-
-func ApplicationRegistration(m application.Manifest) (Registration, error) {
-	files, err := ExistingProviderFiles(m)
-	if err != nil {
-		return Registration{}, err
-	}
-	registrations, err := readRegistrations(files.Registrations)
-	if err != nil {
-		return Registration{}, err
-	}
-	for _, r := range registrations {
-		if r.Application == m.Name && r.Environment == m.Environment {
-			return r, nil
-		}
-	}
-	return Registration{}, fmt.Errorf("Loki collector registration for %s/%s is missing", m.Name, m.Environment)
-}
-
-func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeFiles, services []string) (string, error) {
-	return EnsureWorkloadOverrideForRuntime(m, runtime, services, "docker")
-}
-
-func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
-	registration, err := ApplicationRegistration(m)
-	if err != nil {
-		return "", err
-	}
-	if len(services) == 0 {
-		return "", errors.New("at least one workload service is required for log collection")
-	}
-	path := filepath.Join(runtime.Dir, workloadOverrideName)
-	var b strings.Builder
-	b.WriteString("services:\n")
-	for _, service := range services {
-		fmt.Fprintf(&b, "  %s:\n", service)
-		b.WriteString("    logging:\n")
-		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
-			b.WriteString("      driver: journald\n")
-			continue
-		}
-		b.WriteString("      driver: syslog\n")
-		b.WriteString("      options:\n")
-		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.SyslogPort)))
-		b.WriteString("        syslog-format: rfc5424\n")
-		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(service))
-	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func ExistingWorkloadOverride(runtime application.RuntimeFiles) (string, bool, error) {
-	path := filepath.Join(runtime.Dir, workloadOverrideName)
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	if !info.Mode().IsRegular() {
-		return "", false, errors.New("logging workload override is not a regular file")
-	}
-	return path, true, nil
-}
-
-func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
-	path := filepath.Join(runtime.Dir, workloadOverrideName)
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-func UnregisterApplication(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
-	if err != nil || p.Scope == capability.ScopeExternal {
-		return err
-	}
-	files := providerFiles(p)
-	registrations, err := reconcileRegistration(files.Registrations, m, false)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
-		return DestroyProvider(ctx, runtime, m)
-	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntime(registrations, runtimeKind(runtime))), 0o644); err != nil {
-		return err
-	}
-	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntime(p, registrations, runtimeKind(runtime))), 0o600); err != nil {
-		return err
-	}
-	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {
-		return err
-	}
-	return runtime.UpProject(ctx, p.Project, files.Compose, files.Env)
-}
-
-func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
-	if err != nil || p.Scope != capability.ScopeApplication {
-		return err
-	}
-	files, err := ExistingProviderFiles(m)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return runtime.StopProject(ctx, p.Project, files.Compose, files.Env)
-}
-
-func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
-	if err != nil || p.Scope == capability.ScopeExternal {
-		return err
-	}
-	files := providerFiles(p)
-	if _, err := os.Stat(files.Compose); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	if err := runtime.DestroyProject(ctx, p.Project, files.Compose, files.Env); err != nil {
-		return err
-	}
-	_ = observability.Remove("loki:" + p.Project)
-	return os.RemoveAll(p.Dir)
-}
-
-func ProviderEndpoint(files ProviderFiles) (string, error) {
-	data, err := os.ReadFile(files.Env)
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok && key == "BASEHARBOR_LOKI_PORT" {
-			port, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil || port < 1 || port > 65535 {
-				return "", errors.New("invalid Loki API port")
-			}
-			return fmt.Sprintf("http://127.0.0.1:%d", port), nil
-		}
-	}
-	return "", errors.New("Loki API port is missing")
-}
-
-func reconcileRegistration(path string, m application.Manifest, present bool) ([]Registration, error) {
-	registrations, err := readRegistrations(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	result := make([]Registration, 0, len(registrations)+1)
-	var existing *Registration
-	for _, registration := range registrations {
-		if registration.Application == m.Name && registration.Environment == m.Environment {
-			copy := registration
-			existing = &copy
-			continue
-		}
-		result = append(result, registration)
-	}
-	if present {
-		r := Registration{Application: m.Name, Environment: m.Environment}
-		if existing != nil {
-			r.SyslogPort = existing.SyslogPort
-		} else {
-			r.SyslogPort, err = allocatePort("udp")
-			if err != nil {
-				return nil, err
-			}
-		}
-		result = append(result, r)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Application == result[j].Application {
-			return result[i].Environment < result[j].Environment
-		}
-		return result[i].Application < result[j].Application
-	})
-	if !present && errors.Is(err, os.ErrNotExist) {
-		return result, os.ErrNotExist
-	}
-	data, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func readRegistrations(path string) ([]Registration, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var registrations []Registration
-	if err := json.Unmarshal(data, &registrations); err != nil {
-		return nil, fmt.Errorf("decode Loki registrations: %w", err)
-	}
-	for _, r := range registrations {
-		if strings.TrimSpace(r.Application) == "" || strings.TrimSpace(r.Environment) == "" || r.SyslogPort < 1 || r.SyslogPort > 65535 {
-			return nil, errors.New("invalid Loki registration state")
-		}
-	}
-	return registrations, nil
-}
-
-func persistedOrAllocatedPort(path, key string) (int, error) {
-	if data, err := os.ReadFile(path); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
-			if ok && k == key {
-				port, err := strconv.Atoi(strings.TrimSpace(v))
-				if err == nil && port > 0 && port <= 65535 {
-					return port, nil
-				}
-			}
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return 0, err
-	}
-	return allocatePort("tcp")
-}
-
-func allocatePort(network string) (int, error) {
-	if network == "tcp" {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return 0, err
-		}
-		defer listener.Close()
-		return listener.Addr().(*net.TCPAddr).Port, nil
-	}
-	if network == "udp" {
-		listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-		if err != nil {
-			return 0, err
-		}
-		defer listener.Close()
-		return listener.LocalAddr().(*net.UDPAddr).Port, nil
-	}
-	return 0, fmt.Errorf("unsupported port allocation network %q", network)
 }

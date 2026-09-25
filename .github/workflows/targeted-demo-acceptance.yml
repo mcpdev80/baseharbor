@@ -101,6 +101,36 @@ jobs:
         shell: bash
         run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
 
+      - name: Verify Podman Quadlet runtime
+        id: quadlet
+        if: steps.target.outputs.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/targeted-podman-info.txt
+
+          generator=""
+          for candidate in \
+            "$(command -v podman-system-generator 2>/dev/null || true)" \
+            /usr/lib/systemd/system-generators/podman-system-generator \
+            /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          "$generator" --user --dryrun >/tmp/targeted-podman-quadlet-generator.txt
+
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Podman Quadlet targeted validation" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
       - name: Run selected demo gate
         id: demo
         shell: bash
@@ -144,6 +174,7 @@ jobs:
           cat >"$rows" <<EOF
           Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
           Runtime reset	${{ steps.reset.outcome }}	Clean ${{ steps.target.outputs.runtime }} state
+          Podman Quadlet runtime	${{ steps.quadlet.outcome }}	Required for Podman; Compose provider blocked
           Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Single targeted acceptance gate
           Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF

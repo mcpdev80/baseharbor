@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
@@ -8,6 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const (
@@ -27,6 +31,7 @@ var composeYAML []byte
 type Files struct {
 	Compose string
 	Env     string
+	Project string
 }
 
 type Ports struct {
@@ -35,10 +40,18 @@ type Ports struct {
 }
 
 func EnsureFiles(stateDir string) (Files, error) {
-	return EnsureFilesWithPorts(stateDir, Ports{Postgres: DefaultPostgresPort, OpenBao: DefaultOpenBaoPort})
+	return EnsureFilesForProject(stateDir, "baseharbor", Ports{Postgres: DefaultPostgresPort, OpenBao: DefaultOpenBaoPort})
 }
 
 func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
+	return EnsureFilesForProject(stateDir, "baseharbor", ports)
+}
+
+func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return Files{}, errors.New("runtime project is required")
+	}
 	resolved, err := resolveStateDir(stateDir)
 	if err != nil {
 		return Files{}, err
@@ -57,8 +70,9 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
 	}
 
+	rendered := renderComposeForProject(project)
 	composePath := filepath.Join(stateDir, composeName)
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
 	}
 
@@ -76,16 +90,173 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
-	return Files{Compose: composePath, Env: envPath}, nil
+	return Files{Compose: composePath, Env: envPath, Project: project}, nil
+}
+
+func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
+	if issuer == nil {
+		return errors.New("control-plane service access requires an issuer")
+	}
+	stateDir := filepath.Dir(files.Compose)
+
+	openBaoPolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	openBaoAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, openBaoPolicy, filepath.Join(stateDir, "providers", "openbao"), serviceaccess.HTTPGatewaySpec{
+		ServiceName:      "openbao-access",
+		Upstream:         "http://openbao:8200",
+		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT",
+		ContainerPort:    8443,
+		Networks:         []string{"default"},
+		RequireClient:    false,
+	})
+	if err != nil {
+		return fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
+	}
+
+	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postgresRoot := filepath.Join(stateDir, "providers", "postgresql")
+	postgresMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		postgresPolicy,
+		filepath.Join(postgresRoot, "service-access", "pki"),
+		"postgres",
+		"127.0.0.1",
+	)
+	if err != nil {
+		return fmt.Errorf("prepare control-plane PostgreSQL native TLS: %w", err)
+	}
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
+	}
+
+	rendered := renderComposeForProject(files.Project)
+	rendered, err = renderSecureControlPlanePostgres(rendered)
+	if err != nil {
+		return err
+	}
+	accessService := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
+		ServiceName: "openbao-access", Upstream: "http://openbao:8200",
+		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT", ContainerPort: 8443,
+		Networks: []string{"default"}, RequireClient: false,
+	})
+	if marker := strings.Index(rendered, "\nvolumes:\n"); marker >= 0 {
+		rendered = rendered[:marker] + "\n" + accessService + rendered[marker:]
+	} else {
+		return errors.New("embedded runtime compose is missing volumes section")
+	}
+	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
+		return fmt.Errorf("write control-plane service access compose: %w", err)
+	}
+	return nil
+}
+
+func renderComposeForProject(project string) string {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		project = "baseharbor"
+	}
+	return strings.ReplaceAll(string(composeYAML), "name: baseharbor-secrets", "name: "+project+"-secrets")
+}
+
+func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{
+		material.CA:                "ca.pem",
+		material.ServerCertificate: "server-cert.pem",
+		material.ServerKey:         "server-key.pem",
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("control-plane PostgreSQL TLS material %s is empty", name)
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	const hba = `local all all trust
+hostssl all all 0.0.0.0/0 scram-sha-256
+hostssl all all ::/0 scram-sha-256
+hostnossl all all 0.0.0.0/0 reject
+hostnossl all all ::/0 reject
+`
+	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
+}
+
+func renderSecureControlPlanePostgres(rendered string) (string, error) {
+	start := strings.Index(rendered, "  postgres:\n")
+	end := strings.Index(rendered, "\n  openbao:\n")
+	if start < 0 || end <= start {
+		return "", errors.New("embedded runtime compose is missing the PostgreSQL service")
+	}
+	const service = `  postgres:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    user: "postgres"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    environment:
+      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+`
+	return rendered[:start] + service + rendered[end:], nil
 }
 
 func ExistingFiles(stateDir string) (Files, error) {
+	return ExistingFilesForProject(stateDir, "baseharbor")
+}
+
+func ExistingFilesForProject(stateDir, project string) (Files, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return Files{}, errors.New("runtime project is required")
+	}
 	resolved, err := resolveStateDir(stateDir)
 	if err != nil {
 		return Files{}, err
 	}
 	stateDir = resolved
-	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName)}
+	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName), Project: project}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return Files{}, err

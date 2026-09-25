@@ -3,6 +3,7 @@ package applicationsecret
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -24,10 +25,28 @@ const applicationSecretOperationTimeout = 60 * time.Second
 type Service struct {
 	store         application.Store
 	runtimeClient *openbao.ApplicationRuntimeClient
+	compose       *bhruntime.Compose
+	platformFiles *bhruntime.Files
+	manifest      *application.Manifest
+	runtimeFiles  *application.RuntimeFiles
 }
 
 func New(store application.Store) *Service {
 	return &Service{store: store}
+}
+
+func NewForRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files) *Service {
+	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
+}
+
+func NewForApplicationRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
+	return &Service{
+		store:         store,
+		compose:       &compose,
+		platformFiles: &platformFiles,
+		manifest:      &manifest,
+		runtimeFiles:  &runtimeFiles,
+	}
 }
 
 // NewRuntime creates the narrow data-plane service used by the managed runtime
@@ -51,7 +70,7 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	}
 
 	required := make(map[string]struct{}, len(resolved.manifest.Secrets.Required))
-	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required))
+	names := make(map[string]struct{}, len(keys)+len(resolved.manifest.Secrets.Required)+len(resolved.manifest.Secrets.Optional))
 	for _, key := range keys {
 		if strings.HasPrefix(key, dynamicKeyPrefix) {
 			continue
@@ -60,6 +79,9 @@ func (s *Service) List(ctx context.Context, name string) ([]Metadata, error) {
 	}
 	for _, requirement := range resolved.manifest.Secrets.Required {
 		required[requirement.Name] = struct{}{}
+		names[requirement.Name] = struct{}{}
+	}
+	for _, requirement := range resolved.manifest.Secrets.Optional {
 		names[requirement.Name] = struct{}{}
 	}
 	ordered := make([]string, 0, len(names))
@@ -161,9 +183,26 @@ type runtimeResolvedApplication struct {
 }
 
 func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication, error) {
-	m, _, err := s.store.Load(name)
-	if err != nil {
-		return resolvedApplication{}, err
+	var (
+		m     application.Manifest
+		files application.RuntimeFiles
+		err   error
+	)
+	if s.manifest != nil && s.runtimeFiles != nil {
+		m = *s.manifest
+		files = *s.runtimeFiles
+		if strings.TrimSpace(name) != "" && name != m.Name {
+			return resolvedApplication{}, fmt.Errorf("application %q does not match resolved secret scope %q", name, m.Name)
+		}
+	} else {
+		m, _, err = s.store.Load(name)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+		files, err = application.ExistingRuntimeFiles(s.store, m)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
 	if !m.Services.Secrets {
 		return resolvedApplication{}, errors.New("application does not enable managed secrets")
@@ -171,20 +210,26 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return resolvedApplication{}, err
 	}
-	files, err := application.ExistingRuntimeFiles(s.store, m)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
 	if err := application.CheckRuntimePermissions(files); err != nil {
 		return resolvedApplication{}, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
-	if err != nil {
-		return resolvedApplication{}, err
+	var compose bhruntime.Compose
+	if s.compose != nil {
+		compose = *s.compose
+	} else {
+		compose, err = bhruntime.DetectCompose(ctx)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
-	platformFiles, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
+	var platformFiles bhruntime.Files
+	if s.platformFiles != nil {
+		platformFiles = *s.platformFiles
+	} else {
+		platformFiles, err = bhruntime.ExistingFiles("")
+		if err != nil {
+			return resolvedApplication{}, errors.New("BaseHarbor OpenBao runtime is not materialized")
+		}
 	}
 	return resolvedApplication{manifest: m, compose: compose, platformFiles: platformFiles, identity: openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}, credentialsPath: openbao.ApplicationCredentialsPath(files.Dir)}, nil
 }

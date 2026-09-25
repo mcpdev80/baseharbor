@@ -11,6 +11,7 @@ import (
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
@@ -27,9 +28,9 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New(fmt.Sprintf("multi-ci-%d", os.Getpid()), "dev", false, false, false)
-	m = WithPostgresInstances(m, "primary", "analytics")
-	m = WithRedisInstances(m, "cache", "sessions")
-	files, err := EnsureRuntime(store, m)
+	m = WithSQLInstances(m, "primary", "analytics")
+	m = WithCacheInstances(m, "cache", "sessions")
+	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +42,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		t.Fatalf("start multi-instance runtime: %v", err)
 	}
 	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		if err := compose.DestroyProject(cleanupCtx, project, files.Compose, files.Env); err != nil {
 			t.Errorf("destroy multi-instance runtime: %v", err)
@@ -81,7 +82,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	sort.Strings(running)
-	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-sessions"}
+	want := []string{"postgres-analytics", "postgres-primary", "valkey-cache", "valkey-cache-access", "valkey-sessions", "valkey-sessions-access"}
 	if len(running) != len(want) {
 		t.Fatalf("unexpected running services: got %#v want %#v", running, want)
 	}

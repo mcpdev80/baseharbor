@@ -42,6 +42,22 @@ func WorkloadProjectName(m Manifest) string {
 	return "baseharbor-workload-" + m.Name + "-" + m.Environment
 }
 
+func WorkloadProjectNameForNamespace(m Manifest, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return WorkloadProjectName(m)
+	}
+	return "baseharbor-workload-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
+func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
+	project := strings.TrimSpace(strings.TrimPrefix(runtime.Project, "baseharbor-"))
+	if project == "" {
+		return WorkloadProjectName(m)
+	}
+	return "baseharbor-workload-" + project
+}
+
 func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, error) {
 	if strings.TrimSpace(repositoryRoot) == "" {
 		return "", false, nil
@@ -105,7 +121,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	override, err := workloadOverrideYAML(m, selected, values)
+	override, err := workloadOverrideYAMLForFiles(m, selected, values, runtime)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -118,7 +134,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 		Compose:        composePath,
 		Override:       overridePath,
 		Services:       selected,
-		Project:        WorkloadProjectName(m),
+		Project:        WorkloadProjectNameForRuntime(m, runtime),
 		Partial:        len(selected) != len(services),
 	}, true, nil
 }
@@ -200,10 +216,10 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 	}
 
 	shadowed := map[string]struct{}{}
-	if len(PostgresInstanceNames(m)) > 0 {
+	if len(SQLInstanceNames(m)) > 0 {
 		shadowed["postgres"] = struct{}{}
 	}
-	if len(RedisInstanceNames(m)) > 0 {
+	if len(CacheInstanceNames(m)) > 0 {
 		shadowed["redis"] = struct{}{}
 		shadowed["valkey"] = struct{}{}
 	}
@@ -222,6 +238,18 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 }
 
 func workloadOverrideYAML(m Manifest, services []string, values map[string]string) (string, error) {
+	return workloadOverrideYAMLForRuntime(m, services, values, "")
+}
+
+func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[string]string, runtimeProject string) (string, error) {
+	return workloadOverrideYAMLForFiles(m, services, values, RuntimeFiles{Project: runtimeProject})
+}
+
+func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[string]string, runtime RuntimeFiles) (string, error) {
+	runtimeProject := runtime.Project
+	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
+	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
+	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
@@ -266,7 +294,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 						metricsServices[service] = struct{}{}
 					}
 				}
-				metricsNetworkName = MetricsProviderNetworkName(m)
+				metricsNetworkName = MetricsProviderNetworkNameForNamespace(m, namespace)
 			}
 		}
 	}
@@ -283,6 +311,9 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
 		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
+		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
+		hasBackendTLS := managedRuntime
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -307,6 +338,31 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 			sort.Strings(keys)
 			for _, key := range keys {
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
+			}
+		}
+		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS {
+			b.WriteString("    volumes:\n")
+			if hasTelemetryTLS {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
+				if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+					fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientCertEnv]+":"+OTLPTLSContainerClientCert+":ro"))
+					fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientKeyEnv]+":"+OTLPTLSContainerClientKey+":ro"))
+				}
+			}
+			if hasObjectStorageTLS {
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[S3TLSHostCAEnv]+":"+S3TLSContainerCA+":ro"))
+			}
+			if hasBackendTLS {
+				for _, instance := range SQLInstanceNames(m) {
+					if ca := strings.TrimSpace(values[postgresTLSCAKey(instance)]); ca != "" {
+						fmt.Fprintf(&b, "      - %s\n", strconv.Quote(ca+":"+postgresTLSCAContainerPath(instance)+":ro"))
+					}
+				}
+				for _, instance := range CacheInstanceNames(m) {
+					if ca := strings.TrimSpace(values[valkeyTLSCAKey(instance)]); ca != "" {
+						fmt.Fprintf(&b, "      - %s\n", strconv.Quote(ca+":"+valkeyTLSCAContainerPath(instance)+":ro"))
+					}
+				}
 			}
 		}
 		if hasNetworks {
@@ -348,15 +404,15 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		b.WriteString("networks:\n")
 		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
-			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+			fmt.Fprintf(&b, "    name: %s\n", applicationBackendNetworkForRuntime(m, runtimeProject))
 		}
 		if objectStorage || hasRuntimeObjectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
-			b.WriteString("    name: baseharbor-object-storage\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(objectStorageNetworkName))
 		}
 		if telemetryManaged {
 			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
-			b.WriteString("    name: baseharbor-telemetry\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetworkName))
 		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
@@ -364,15 +420,37 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		}
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
-			fmt.Fprintf(&b, "    name: %s\n", ApplicationExposureNetworkName(m))
+			fmt.Fprintf(&b, "    name: %s\n", applicationExposureNetworkForRuntime(m, runtimeProject))
 		}
 	}
 	return b.String(), nil
 }
 
+func scopedWorkloadNetworkName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
+}
+
+func applicationBackendNetworkForRuntime(m Manifest, runtimeProject string) string {
+	if name := ApplicationBackendNetworkNameForProject(runtimeProject); name != "" {
+		return name
+	}
+	return ApplicationBackendNetworkName(m)
+}
+
+func applicationExposureNetworkForRuntime(m Manifest, runtimeProject string) string {
+	if name := ApplicationExposureNetworkNameForProject(runtimeProject); name != "" {
+		return name
+	}
+	return ApplicationExposureNetworkName(m)
+}
+
 func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[string]string, error) {
 	env := map[string]string{}
-	postgres := PostgresInstanceNames(m)
+	postgres := SQLInstanceNames(m)
 	preferredPostgres := preferredServiceInstance(postgres)
 	for _, instance := range postgres {
 		uri, err := postgresContainerConnectionURL(values, instance)
@@ -381,6 +459,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 		if instance == preferredPostgres {
 			env["DATABASE_URL"] = uri
+			env["DATABASE_CA_FILE"] = postgresTLSCAContainerPath(instance)
 		}
 		if instance != defaultServiceInstance {
 			env["DATABASE_"+envInstanceToken(instance)+"_URL"] = uri
@@ -411,6 +490,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["S3_BUCKET"] = physical
 			env["S3_REGION"] = "us-east-1"
 			env["AWS_ENDPOINT_URL"] = endpoint
+			if strings.TrimSpace(values[S3TLSHostCAEnv]) != "" {
+				env["AWS_CA_BUNDLE"] = S3TLSContainerCA
+			}
 			env["AWS_REGION"] = "us-east-1"
 			env["AWS_ACCESS_KEY_ID"] = access
 			env["AWS_SECRET_ACCESS_KEY"] = secret
@@ -419,6 +501,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			env["S3_"+token+"_ENDPOINT"] = endpoint
 			env["S3_"+token+"_BUCKET"] = physical
 			env["S3_"+token+"_REGION"] = "us-east-1"
+			if strings.TrimSpace(values[S3TLSHostCAEnv]) != "" {
+				env["S3_"+token+"_CA_FILE"] = S3TLSContainerCA
+			}
 			env["S3_"+token+"_ACCESS_KEY_ID"] = access
 			env["S3_"+token+"_SECRET_ACCESS_KEY"] = secret
 		}
@@ -432,6 +517,13 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
+		if strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" {
+			env["OTEL_EXPORTER_OTLP_CERTIFICATE"] = OTLPTLSContainerCA
+			if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+				env["OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"] = OTLPTLSContainerClientCert
+				env["OTEL_EXPORTER_OTLP_CLIENT_KEY"] = OTLPTLSContainerClientKey
+			}
+		}
 		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
 			if headers := strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS")); headers != "" {
 				env["OTEL_EXPORTER_OTLP_HEADERS"] = headers
@@ -439,7 +531,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 	}
 
-	redis := RedisInstanceNames(m)
+	redis := CacheInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redis)
 	for _, instance := range redis {
 		uri, err := valkeyContainerConnectionURL(values, instance)
@@ -449,6 +541,8 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		if instance == preferredRedis {
 			env["REDIS_URL"] = uri
 			env["VALKEY_URL"] = uri
+			env["REDIS_CA_FILE"] = valkeyTLSCAContainerPath(instance)
+			env["VALKEY_CA_FILE"] = valkeyTLSCAContainerPath(instance)
 		}
 		if instance != defaultServiceInstance {
 			token := envInstanceToken(instance)
@@ -472,11 +566,15 @@ func postgresContainerConnectionURL(values map[string]string, instance string) (
 	if err != nil {
 		return "", err
 	}
+	query := url.Values{}
+	query.Set("sslmode", "verify-ca")
+	query.Set("sslrootcert", postgresTLSCAContainerPath(instance))
 	u := &url.URL{
-		Scheme: "postgresql",
-		User:   url.UserPassword(username, password),
-		Host:   net.JoinHostPort(runtimeServiceName("postgres", instance), "5432"),
-		Path:   "/" + database,
+		Scheme:   "postgresql",
+		User:     url.UserPassword(username, password),
+		Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+		Path:     "/" + database,
+		RawQuery: query.Encode(),
 	}
 	return u.String(), nil
 }
@@ -487,9 +585,9 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 		return "", err
 	}
 	u := &url.URL{
-		Scheme: "redis",
+		Scheme: "rediss",
 		User:   url.UserPassword("default", password),
-		Host:   net.JoinHostPort(runtimeServiceName("valkey", instance), "6379"),
+		Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
 		Path:   "/0",
 	}
 	return u.String(), nil

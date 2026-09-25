@@ -47,84 +47,90 @@ func appUpdateCommand(store application.Store) *cli.Command {
 		Usage:   "baha app update [--check] [--backup-password-file FILE | --no-backup]",
 		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. For applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted pre-update recovery point through --backup-password-file FILE or an explicit --no-backup acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision, followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, environment, err := extractApplicationEnvironment(args, "update")
-			if err != nil {
-				return err
-			}
-			opts, err := parseAppUpdateOptions(filtered)
-			if err != nil {
-				return err
-			}
-			resolved, err := resolveApplicationEnvironment(store, nil, "update", environment)
-			if err != nil {
-				return err
-			}
-			if !resolved.FromRepository {
-				return errors.New("application update requires a repository-owned baseharbor.yaml")
-			}
-			state, err := inspectGitApplicationUpdate(ctx, resolved.repositoryRoot(), true)
-			if err != nil {
-				return err
-			}
-			formatGitApplicationUpdateCheck(out, resolved.Manifest.Name, resolved.Manifest.Environment, state)
-			if opts.Check {
-				return nil
-			}
-			if state.Dirty {
-				return errors.New("automatic application update is blocked because the Git working tree is dirty; commit or otherwise resolve local changes yourself")
-			}
-			switch state.Relation {
-			case "up-to-date":
-				fmt.Fprintf(out, "Application %s is already up to date.\n", resolved.Manifest.Name)
-				return nil
-			case "ahead":
-				return errors.New("automatic application update is blocked because the local branch is ahead of its upstream")
-			case "diverged":
-				return errors.New("automatic application update is blocked because the local branch has diverged from its upstream")
-			case "update-available":
-			default:
-				return fmt.Errorf("automatic application update is blocked for unsupported Git relation %q", state.Relation)
-			}
-
-			var backup application.BackupMetadata
-			if applicationUpdateHasDurableState(resolved.Manifest) {
-				switch {
-				case opts.BackupPasswordFile != "":
-					backup, err = createApplicationUpdateRecoveryPoint(ctx, store, resolved, environment, opts.BackupPasswordFile, out, errOut)
-					if err != nil {
-						return fmt.Errorf("create pre-update recovery point: %w", err)
-					}
-				case opts.NoBackup:
-					fmt.Fprintln(out, "WARNING: proceeding without a pre-update recovery point by explicit --no-backup request.")
-				default:
-					return usageError("application has durable managed state; automatic update requires a pre-update recovery choice", "Use --backup-password-file FILE to create an encrypted recovery point, or explicitly acknowledge the risk with --no-backup.")
-				}
-			}
-
-			if err := fastForwardGitApplicationUpdate(ctx, state); err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "Source fast-forwarded: %s -> %s\n", state.Current, state.Target)
-			fmt.Fprintln(out, "Re-reading application contract and reconciling runtime...")
-			applyArgs := []string(nil)
-			if environment != "" {
-				applyArgs = []string{"--environment", environment}
-			}
-			if err := appApplyCommand(store).Run(ctx, applyArgs, out, errOut); err != nil {
-				metadata := newApplicationUpdateMetadata(resolved, state, "runtime-verification-failed", backup)
-				if metadataErr := resolved.Store.RecordLastUpdate(metadata); metadataErr != nil {
-					return errors.Join(fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err), fmt.Errorf("record failed application update metadata: %w", metadataErr))
-				}
-				return fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err)
-			}
-			metadata := newApplicationUpdateMetadata(resolved, state, "ready", backup)
-			if err := resolved.Store.RecordLastUpdate(metadata); err != nil {
-				return fmt.Errorf("application reached READY after update but recording update metadata failed: %w", err)
-			}
-			fmt.Fprintf(out, "Application %s updated successfully: %s -> %s\n", resolved.Manifest.Name, state.Current, state.Target)
-			return nil
+			return executeApplicationUpdateLifecycle(ctx, store, args, out, errOut)
 		},
 	}
+}
+
+func executeApplicationUpdateLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	filtered, environment, err := extractApplicationEnvironment(args, "update")
+	if err != nil {
+		return err
+	}
+	opts, err := parseAppUpdateOptions(filtered)
+	if err != nil {
+		return err
+	}
+	resolved, err := resolveApplicationEnvironment(ctx, store, nil, "update", environment)
+	if err != nil {
+		return err
+	}
+	if !resolved.FromRepository {
+		return errors.New("application update requires a repository-owned baseharbor.yaml")
+	}
+	state, err := inspectGitApplicationUpdate(ctx, resolved.repositoryRoot(), true)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Target: %s\n", resolved.Target.Name)
+	formatGitApplicationUpdateCheck(out, resolved.Manifest.Name, resolved.Manifest.Environment, state)
+	if opts.Check {
+		return nil
+	}
+	if state.Dirty {
+		return errors.New("automatic application update is blocked because the Git working tree is dirty; commit or otherwise resolve local changes yourself")
+	}
+	switch state.Relation {
+	case "up-to-date":
+		fmt.Fprintf(out, "Application %s / %s / %s is already up to date.\n", resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment)
+		return nil
+	case "ahead":
+		return errors.New("automatic application update is blocked because the local branch is ahead of its upstream")
+	case "diverged":
+		return errors.New("automatic application update is blocked because the local branch has diverged from its upstream")
+	case "update-available":
+	default:
+		return fmt.Errorf("automatic application update is blocked for unsupported Git relation %q", state.Relation)
+	}
+
+	var backup application.BackupMetadata
+	if applicationUpdateHasDurableState(resolved.Manifest) {
+		switch {
+		case opts.BackupPasswordFile != "":
+			backup, err = createApplicationUpdateRecoveryPoint(ctx, store, resolved, environment, opts.BackupPasswordFile, out, errOut)
+			if err != nil {
+				return fmt.Errorf("create pre-update recovery point: %w", err)
+			}
+		case opts.NoBackup:
+			fmt.Fprintln(out, "WARNING: proceeding without a pre-update recovery point by explicit --no-backup request.")
+		default:
+			return usageError("application has durable managed state; automatic update requires a pre-update recovery choice", "Use --backup-password-file FILE to create an encrypted recovery point, or explicitly acknowledge the risk with --no-backup.")
+		}
+	}
+
+	if err := fastForwardGitApplicationUpdate(ctx, state); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Source fast-forwarded: %s -> %s\n", state.Current, state.Target)
+	fmt.Fprintln(out, "Re-reading application contract and reconciling runtime...")
+	applyArgs := []string(nil)
+	if environment != "" {
+		applyArgs = []string{"--environment", environment}
+	}
+	if err := executeApplicationApplyLifecycle(ctx, store, applyArgs, out, errOut); err != nil {
+		metadata := newApplicationUpdateMetadata(resolved, state, "runtime-verification-failed", backup)
+		if metadataErr := resolved.Store.RecordLastUpdate(metadata); metadataErr != nil {
+			return errors.Join(fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err), fmt.Errorf("record failed application update metadata: %w", metadataErr))
+		}
+		return fmt.Errorf("application source advanced to %s but runtime reconciliation/verification failed: %w", state.Target, err)
+	}
+	metadata := newApplicationUpdateMetadata(resolved, state, "ready", backup)
+	if err := resolved.Store.RecordLastUpdate(metadata); err != nil {
+		return fmt.Errorf("application reached READY after update but recording update metadata failed: %w", err)
+	}
+	fmt.Fprintf(out, "Application %s / %s / %s updated successfully: %s -> %s\n", resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, state.Current, state.Target)
+	return nil
+
 }
 
 func parseAppUpdateOptions(args []string) (appUpdateOptions, error) {
@@ -155,7 +161,7 @@ func parseAppUpdateOptions(args []string) (appUpdateOptions, error) {
 }
 
 func applicationUpdateHasDurableState(m application.Manifest) bool {
-	return len(application.PostgresInstanceNames(m)) > 0 || m.Services.Secrets
+	return len(application.SQLInstanceNames(m)) > 0 || m.Services.Secrets
 }
 
 func createApplicationUpdateRecoveryPoint(ctx context.Context, store application.Store, resolved resolvedApplication, environment, passwordFile string, out, errOut io.Writer) (application.BackupMetadata, error) {
@@ -171,7 +177,7 @@ func createApplicationUpdateRecoveryPoint(ctx context.Context, store application
 	if environment != "" {
 		backupArgs = append(backupArgs, "--environment", environment)
 	}
-	if err := appBackupCommandWithMetadata(store).Run(ctx, backupArgs, out, errOut); err != nil {
+	if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, backupArgs, out, errOut); err != nil {
 		return application.BackupMetadata{}, err
 	}
 	metadata, err := resolved.Store.LastBackup(resolved.Manifest.Name)
