@@ -102,7 +102,7 @@ func appListCommand() *cli.Command {
 	}
 }
 
-func appShowCommand(store application.Store) *cli.Command {
+func appManifestShowCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "show",
 		Summary: "Show the resolved application manifest",
