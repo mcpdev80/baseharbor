@@ -34,15 +34,15 @@ func connectCommand() *cli.Command {
 			if len(args) != 2 {
 				return usageError("baha connect requires SOURCE and TARGET", "Example: baha connect app-a/api app-b/sql")
 			}
-			target, err := effectiveTarget(ctx)
+			selectedTarget, err := effectiveTarget(ctx)
 			if err != nil {
 				return err
 			}
-			compose, err := detectComposeForTarget(ctx, target)
+			compose, err := detectComposeForTarget(ctx, selectedTarget)
 			if err != nil {
 				return err
 			}
-			dataDir, err := targetDataRoot(target)
+			dataDir, err := targetDataRoot(selectedTarget)
 			if err != nil {
 				return err
 			}
@@ -90,13 +90,13 @@ func connectCommand() *cli.Command {
 			fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
 			fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
 
-			if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
-				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, target.Name, rule, containers)
+			if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
+				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
 				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
 				return err
 			}
 			if err := application.AddConnectivityRuleAt(dataDir, rule); err != nil {
-				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, target.Name, rule, containers)
+				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
 				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
 				return fmt.Errorf("persist connectivity policy after verified convergence: %w", err)
 			}
@@ -220,7 +220,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
