@@ -19,6 +19,7 @@ baha agent describe -o json
 The current surface is intentionally small:
 
 ```text
+baseharbor.target
 baseharbor.inspect
 baseharbor.plan
 baseharbor.apply
@@ -33,6 +34,8 @@ baseharbor.destroy
 baseharbor.policy.check
 baseharbor.policy.explain
 ```
+
+`baseharbor.target` reports the effective Target plus repository-resolved application/environment context. It accepts an optional target selector and returns the same target semantics as `baha target -o json`.
 
 These are BaseHarbor lifecycle operations, not wrappers around CLI commands.
 
