@@ -13,6 +13,7 @@ import (
 )
 
 func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
+	target := configureTestTarget(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -23,11 +24,12 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := application.DefaultStore()
 	m := application.New("demo", "dev", true, true, false)
+	store := testDeploymentStore(t, target, m)
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)
 	}
+	registerTestDeployment(t, target, m, "", "")
 	files, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
