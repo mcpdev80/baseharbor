@@ -72,7 +72,7 @@ services:
 	}
 
 	store := application.DefaultStore()
-	resolved, err := resolveApplication(store, nil, "backup acceptance")
+	resolved, err := resolveApplication(ctx, store, nil, "backup acceptance")
 	if err != nil {
 		t.Fatal(err)
 	}
