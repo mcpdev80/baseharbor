@@ -23,10 +23,19 @@ type RuntimeFiles struct {
 	Env            string
 	ApplicationEnv string
 	Bindings       string
+	Project        string
 }
 
 func RuntimeProjectName(m Manifest) string {
 	return "baseharbor-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeProjectNameForStore(store Store, m Manifest) string {
+	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
+	if namespace == "" {
+		return RuntimeProjectName(m)
+	}
+	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
@@ -50,6 +59,7 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 		Env:            filepath.Join(dir, "runtime.env"),
 		ApplicationEnv: filepath.Join(dir, "application.env"),
 		Bindings:       filepath.Join(dir, "bindings"),
+		Project:        RuntimeProjectNameForStore(store, m),
 	}
 }
 
@@ -100,7 +110,7 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", command)
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
 		}
@@ -115,7 +125,7 @@ func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manif
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
-		out, err := compose.ExecProject(ctx, RuntimeProjectName(m), files.Compose, files.Env, service, "sh", "-ec", command)
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
 		}
