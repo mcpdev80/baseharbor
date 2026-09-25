@@ -17,7 +17,7 @@ on:
       demo_ref:
         description: Exact baseharbor-demo ref or commit SHA to validate
         required: true
-        default: db98e54050009686ea887a3c7f6b2e88b12345ed
+        default: 92eff5ca71336fa4dbe8cc4d1caf665c83370535
         type: string
   push:
     branches:
