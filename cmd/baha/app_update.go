@@ -61,7 +61,7 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 	if err != nil {
 		return err
 	}
-	resolved, err := resolveApplicationEnvironment(store, nil, "update", environment)
+	resolved, err := resolveApplicationEnvironment(ctx, store, nil, "update", environment)
 	if err != nil {
 		return err
 	}
