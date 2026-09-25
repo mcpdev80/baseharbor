@@ -31,6 +31,7 @@ var composeYAML []byte
 type Files struct {
 	Compose string
 	Env     string
+	Project string
 }
 
 type Ports struct {
@@ -39,10 +40,18 @@ type Ports struct {
 }
 
 func EnsureFiles(stateDir string) (Files, error) {
-	return EnsureFilesWithPorts(stateDir, Ports{Postgres: DefaultPostgresPort, OpenBao: DefaultOpenBaoPort})
+	return EnsureFilesForProject(stateDir, "baseharbor", Ports{Postgres: DefaultPostgresPort, OpenBao: DefaultOpenBaoPort})
 }
 
 func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
+	return EnsureFilesForProject(stateDir, "baseharbor", ports)
+}
+
+func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return Files{}, errors.New("runtime project is required")
+	}
 	resolved, err := resolveStateDir(stateDir)
 	if err != nil {
 		return Files{}, err
@@ -81,7 +90,7 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
-	return Files{Compose: composePath, Env: envPath}, nil
+	return Files{Compose: composePath, Env: envPath, Project: project}, nil
 }
 
 func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
@@ -226,12 +235,20 @@ func renderSecureControlPlanePostgres(rendered string) (string, error) {
 }
 
 func ExistingFiles(stateDir string) (Files, error) {
+	return ExistingFilesForProject(stateDir, "baseharbor")
+}
+
+func ExistingFilesForProject(stateDir, project string) (Files, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return Files{}, errors.New("runtime project is required")
+	}
 	resolved, err := resolveStateDir(stateDir)
 	if err != nil {
 		return Files{}, err
 	}
 	stateDir = resolved
-	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName)}
+	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName), Project: project}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return Files{}, err
