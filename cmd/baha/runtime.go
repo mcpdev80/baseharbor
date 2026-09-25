@@ -332,7 +332,6 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 		}
 	}
 
-
 	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
