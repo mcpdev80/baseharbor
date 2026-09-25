@@ -120,4 +120,4 @@ Weitere Themen:
 - [Application Contract](../explanation/application-contract.md)
 - [Provider](../explanation/providers.md)
 - [Security](../explanation/security.md)
-- [CLI-Referenz](../cli.md)
+- [CLI-Referenz](https://mcpdev80.github.io/baseharbor/reference/cli/)
