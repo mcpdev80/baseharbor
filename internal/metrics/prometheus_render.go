@@ -3,13 +3,13 @@ package metrics
 import (
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
-	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/observability"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
