@@ -31,6 +31,7 @@ type applicationDoctorSecretResult struct {
 
 type applicationDoctorResult struct {
 	ContractVersion string                                       `json:"contract_version"`
+	Target          string                                       `json:"target"`
 	Application     string                                       `json:"application"`
 	Environment     string                                       `json:"environment"`
 	State           string                                       `json:"state"`
@@ -58,6 +59,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 	m := resolved.Manifest
 	result := applicationDoctorResult{
 		ContractVersion: machine.ContractVersion,
+		Target:          resolved.Target.Name,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		State:           "ready",
