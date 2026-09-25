@@ -121,7 +121,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, "", false); err != nil {
 			return err
 		}
-		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
+		if err := logsprovider.UnregisterApplicationAt(ctx, prepared.runtime, prepared.issuer, prepared.dataDir, prepared.namespace, prepared.manifest); err != nil {
 			return err
 		}
 		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
@@ -168,13 +168,13 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	}
 
 	if prepared.workloadEnabled {
-		if _, err := logsprovider.EnsureWorkloadOverrideForRuntime(prepared.manifest, files, prepared.services, prepared.runtime.Engine()); err != nil {
+		if _, err := logsprovider.EnsureWorkloadOverrideForRuntimeAt(prepared.dataDir, prepared.namespace, prepared.manifest, files, prepared.services, prepared.runtime.Engine()); err != nil {
 			return err
 		}
 	} else if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 		return err
 	}
-	providerOverride, providerOverrideFound, err := logsprovider.EnsureProviderSourceOverrideForRuntime(prepared.manifest, files, prepared.runtime.Engine())
+	providerOverride, providerOverrideFound, err := logsprovider.EnsureProviderSourceOverrideForRuntimeAt(prepared.dataDir, prepared.namespace, prepared.manifest, files, prepared.runtime.Engine())
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,9 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
-			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntime(
+			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+				dataDir,
+				"",
 				m,
 				files.Dir,
 				"broker.logging.override.yaml",
