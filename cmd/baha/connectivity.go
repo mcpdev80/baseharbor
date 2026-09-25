@@ -90,13 +90,13 @@ func connectCommand() *cli.Command {
 			fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
 			fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
 
-			if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
-				_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
+			if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
+				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, target.Name, rule, containers)
 				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
 				return err
 			}
 			if err := application.AddConnectivityRuleAt(dataDir, rule); err != nil {
-				_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
+				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, target.Name, rule, containers)
 				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
 				return fmt.Errorf("persist connectivity policy after verified convergence: %w", err)
 			}
@@ -144,7 +144,7 @@ func disconnectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := suspendConnectivityRule(ctx, compose, rule, containers); err != nil {
+			if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
 				return err
 			}
 			if err := application.RemoveConnectivityRuleAt(dataDir, rule); err != nil {
@@ -220,7 +220,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
@@ -245,14 +245,14 @@ func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.Compo
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		if err := suspendConnectivityRule(ctx, compose, rule, containers); err != nil {
+		if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
+func convergeConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
 	network := application.ConnectivityNetworkName(rule)
 	if err := compose.EnsureManagedNetwork(ctx, network); err != nil {
 		return fmt.Errorf("create connectivity network: %w", err)
@@ -268,7 +268,7 @@ func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, ru
 		connected = append(connected, container)
 	}
 
-	files, err := connectivityrelay.EnsureFilesAt(dataDir, target.Name, connectivityrelay.RuntimeSpec{
+	files, err := connectivityrelay.EnsureFilesAt(dataDir, namespace, connectivityrelay.RuntimeSpec{
 		ID:            application.ConnectivityRuleID(rule),
 		SourceNetwork: network,
 		SourceAlias:   application.ConnectivityTargetAlias(rule),
@@ -289,6 +289,14 @@ func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, ru
 		return err
 	}
 	return nil
+}
+
+func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return convergeConnectivityRuleAt(ctx, compose, dataDir, "", rule, sourceContainers, targetNetwork)
 }
 
 func waitConnectivityRelayReady(ctx context.Context, compose bhruntime.Compose, project string) error {
@@ -347,6 +355,14 @@ func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, d
 		return fmt.Errorf("remove connectivity network: %w", err)
 	}
 	return nil
+}
+
+func suspendConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, containers []bhruntime.ComposeContainer) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return suspendConnectivityRuleAt(ctx, compose, dataDir, "", rule, containers)
 }
 
 func connectivityEndpointMatchesManifest(endpoint application.ConnectivityEndpoint, m application.Manifest) bool {
