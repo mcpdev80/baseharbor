@@ -98,7 +98,7 @@ func appUpCommand(store application.Store) *cli.Command {
 					return err
 				}},
 				{Name: "provider registry", Run: func(context.Context) error {
-					return application.CheckReferenceProviderRegistry(m)
+					return application.CheckReferenceProviderRegistryAt(resolved.TargetStateRoot, m)
 				}},
 
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
@@ -266,7 +266,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(providers.logs)...); err != nil {
+			if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m, managedLogsRegistryResources(providers.logs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
 			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
