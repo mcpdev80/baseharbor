@@ -46,6 +46,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
 			ContractVersion: "v1",
+			Target:          resolved.Target.Name,
 			Application:     m.Name,
 			Environment:     m.Environment,
 			Project:         application.RuntimeProjectNameForStore(resolved.Store, m),
@@ -72,6 +73,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	}
 	result := application.StatusResult{
 		ContractVersion: "v1",
+		Target:          resolved.Target.Name,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		Project:         project,
