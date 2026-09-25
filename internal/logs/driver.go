@@ -62,17 +62,13 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 
 func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{
-		runtime: runtime,
-		engine: runtimeKind(runtime),
-		app: app,
-		issuer: issuer,
-		dataDir: filepath.Clean(dataDir),
+		runtime:   runtime,
+		engine:    runtimeKind(runtime),
+		app:       app,
+		issuer:    issuer,
+		dataDir:   filepath.Clean(dataDir),
 		namespace: strings.TrimSpace(namespace),
 	}
-}
-
-func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
-	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
 func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
