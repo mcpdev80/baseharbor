@@ -72,6 +72,7 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(out, "Target: %s\n", resolved.Target.Name)
 	formatGitApplicationUpdateCheck(out, resolved.Manifest.Name, resolved.Manifest.Environment, state)
 	if opts.Check {
 		return nil
@@ -81,7 +82,7 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 	}
 	switch state.Relation {
 	case "up-to-date":
-		fmt.Fprintf(out, "Application %s is already up to date.\n", resolved.Manifest.Name)
+		fmt.Fprintf(out, "Application %s / %s / %s is already up to date.\n", resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment)
 		return nil
 	case "ahead":
 		return errors.New("automatic application update is blocked because the local branch is ahead of its upstream")
@@ -127,7 +128,7 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 	if err := resolved.Store.RecordLastUpdate(metadata); err != nil {
 		return fmt.Errorf("application reached READY after update but recording update metadata failed: %w", err)
 	}
-	fmt.Fprintf(out, "Application %s updated successfully: %s -> %s\n", resolved.Manifest.Name, state.Current, state.Target)
+	fmt.Fprintf(out, "Application %s / %s / %s updated successfully: %s -> %s\n", resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, state.Current, state.Target)
 	return nil
 
 }
