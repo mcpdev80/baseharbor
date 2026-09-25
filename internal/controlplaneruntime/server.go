@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,21 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
-	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecretapi"
 	"github.com/mcpdev80/baseharbor/internal/auth"
-	"github.com/mcpdev80/baseharbor/internal/authorization"
-	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
-	"github.com/mcpdev80/baseharbor/internal/database"
-	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
-	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
-	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
-	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
 var (
