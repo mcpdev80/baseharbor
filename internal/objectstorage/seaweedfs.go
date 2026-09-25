@@ -321,7 +321,14 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func VerifyApplicationBuckets(ctx context.Context, runtime Runtime, app application.Manifest, files application.RuntimeFiles) error {
+	return VerifyApplicationBucketsAt(ctx, runtime, app, files, "", "")
+}
+
+func VerifyApplicationBucketsAt(ctx context.Context, runtime Runtime, app application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	driver := NewDriver(runtime, app, files, nil)
+	if strings.TrimSpace(dataDir) != "" {
+		driver = NewDriverAt(runtime, app, files, nil, dataDir, namespace)
+	}
 	for _, bucket := range application.ObjectStorageBucketNames(app) {
 		resource := capability.Resource{
 			Application: app.Name,
