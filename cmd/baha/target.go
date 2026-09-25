@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type targetOverrideContextKey struct{}
@@ -300,4 +301,24 @@ func targetRuntimeStateRoot(target deployment.ResolvedTarget) (string, error) {
 
 func targetDataRoot(target deployment.ResolvedTarget) (string, error) {
 	return deployment.TargetStateRoot(target.Name)
+}
+
+func targetRuntimeProjectName(target deployment.ResolvedTarget) string {
+	return "baseharbor-" + strings.ReplaceAll(target.Name, ".", "-")
+}
+
+func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhruntime.Files, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	files, err := bhruntime.ExistingFilesForProject(root, targetRuntimeProjectName(target))
+	if err != nil {
+		return target, bhruntime.Files{}, err
+	}
+	return target, files, nil
 }
