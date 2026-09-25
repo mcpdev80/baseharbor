@@ -610,9 +610,9 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		Registrations:       filepath.Join(dir, "registrations.json"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
-	registrations := []sourceRegistration{registrationFor(m)}
+	registrations := []sourceRegistration{registrationForAt(m, namespace)}
 	if placement.Scope == capability.ScopeShared {
-		registrations, err = reconcileSharedRegistration(files.Registrations, m, true)
+		registrations, err = reconcileSharedRegistrationAt(files.Registrations, m, namespace, true)
 		if err != nil {
 			return ProviderFiles{}, err
 		}
@@ -778,7 +778,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	if err != nil {
 		return err
 	}
-	registrations, err := reconcileSharedRegistration(files.Registrations, m, false)
+	registrations, err := reconcileSharedRegistrationAt(files.Registrations, m, namespace, false)
 	if err != nil {
 		return err
 	}
@@ -1046,13 +1046,17 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 }
 
 func registrationFor(m application.Manifest) sourceRegistration {
+	return registrationForAt(m, "")
+}
+
+func registrationForAt(m application.Manifest, namespace string) sourceRegistration {
 	registration := sourceRegistration{
 		Application: m.Name,
 		Environment: m.Environment,
-		Network:     application.MetricsProviderNetworkName(m),
+		Network:     application.MetricsProviderNetworkNameForNamespace(m, namespace),
 	}
 	if application.HasRuntimeMetricsPermissions(m) {
-		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeName(m)
+		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeNameForNamespace(m, namespace)
 	}
 	return registration
 }
@@ -1070,6 +1074,10 @@ func readRegistrations(path string) ([]sourceRegistration, error) {
 }
 
 func reconcileSharedRegistration(path string, m application.Manifest, present bool) ([]sourceRegistration, error) {
+	return reconcileSharedRegistrationAt(path, m, "", present)
+}
+
+func reconcileSharedRegistrationAt(path string, m application.Manifest, namespace string, present bool) ([]sourceRegistration, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -1099,7 +1107,7 @@ func reconcileSharedRegistration(path string, m application.Manifest, present bo
 	}
 	registrations = filtered
 	if present {
-		registrations = append(registrations, registrationFor(m))
+		registrations = append(registrations, registrationForAt(m, namespace))
 	}
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
