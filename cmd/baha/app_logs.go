@@ -30,6 +30,8 @@ type managedLogsExecution struct {
 	workloadEnabled             bool
 	includeApplicationProviders bool
 	includePlatformProviders    bool
+	dataDir                     string
+	namespace                   string
 }
 
 func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
@@ -43,6 +45,8 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 		manifest:                    resolved.Manifest,
 		includeApplicationProviders: policy.Enabled && policy.Collect[application.LogsSourceApplicationProvider],
 		includePlatformProviders:    policy.Enabled && policy.Collect[application.LogsSourcePlatformProvider],
+		dataDir:                     resolved.TargetStateRoot,
+		namespace:                   resolved.Target.Name,
 	}
 	if resolved.FromRepository {
 		repositoryRoot := resolved.repositoryRoot()
@@ -120,7 +124,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := logsprovider.UnregisterApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest); err != nil {
 			return err
 		}
-		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[SKIPPED] logs             log collection disabled by deployment policy for %s\n", prepared.manifest.Name)
@@ -177,10 +181,10 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, providerOverride, providerOverrideFound); err != nil {
 		return err
 	}
-	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
 		return err
 	}
-	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files); err != nil {
+	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(providerSources))
@@ -215,7 +219,7 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	return nil
 }
 
-func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir string) error {
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
@@ -285,7 +289,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	return nil
 }
 
-func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir string) error {
 	const wantStatus = "404"
 
 	if application.RequiresRuntimeBroker(m) {
@@ -364,10 +368,6 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		}
 	}
 	return nil
-}
-
-func preparedTargetStateRoot(files application.RuntimeFiles) string {
-	return filepath.Dir(filepath.Dir(files.Dir))
 }
 
 func managedLogsRegistryResources(prepared *managedLogsExecution) []capability.Resource {
