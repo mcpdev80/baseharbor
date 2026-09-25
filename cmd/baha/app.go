@@ -176,7 +176,7 @@ func appCommand(store application.Store) *cli.Command {
 					}},
 					{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 						var err error
-						compose, err = bhruntime.DetectCompose(ctx)
+						compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 						return err
 					}},
 					{Name: "desired-state plan", Run: func(context.Context) error {
