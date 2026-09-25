@@ -135,14 +135,14 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			if runtimeErr != nil {
 				return runtimeErr
 			}
-			return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+			return compose.ConfigProject(ctx, files.Project, files.Compose, files.Env)
 		}},
 		{Name: "running services", Run: func(ctx context.Context) error {
 			if runtimeErr != nil {
 				return runtimeErr
 			}
 			var err error
-			running, err = compose.RunningServicesProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+			running, err = compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 			return err
 		}},
 		{Name: "repository workload", Run: func(ctx context.Context) error {
