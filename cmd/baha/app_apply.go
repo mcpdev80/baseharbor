@@ -92,7 +92,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 			return err
 		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
-			_, err := application.LoadConnectivityRules()
+			_, err := application.LoadConnectivityRulesAt(resolved.TargetStateRoot)
 			return err
 		}},
 		{Name: "provider registry", Run: func(context.Context) error {
@@ -271,7 +271,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		}
 		return classifyOperationalFailure(err, resource)
 	}
-	if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+	if err := reconcileConnectivityForManifest(ctx, out, compose, resolved); err != nil {
 		return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 	}
 	if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
