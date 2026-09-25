@@ -44,7 +44,7 @@ func appShowCommand(store application.Store) *cli.Command {
 		Usage:   "baha app show [NAME]",
 		Long:    "Shows application identity, backend readiness, repository workload state, secret readiness and the last recorded successful backup without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor. Applications that have not been applied yet are shown as NOT READY instead of failing the inspection.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "show")
+			resolved, err := resolveApplication(ctx, store, args, "show")
 			if err != nil {
 				return err
 			}
