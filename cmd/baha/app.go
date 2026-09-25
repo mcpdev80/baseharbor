@@ -115,7 +115,7 @@ func appCommand(store application.Store) *cli.Command {
 			Summary: "Show the resolved application manifest",
 			Usage:   "baha app show [NAME]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "show")
+				resolved, err := resolveApplication(ctx, store, args, "show")
 				if err != nil {
 					return err
 				}
@@ -133,7 +133,7 @@ func appCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveApplication(store, filtered, "plan")
+				resolved, err := resolveApplication(ctx, store, filtered, "plan")
 				if err != nil {
 					return err
 				}
@@ -158,7 +158,7 @@ func appCommand(store application.Store) *cli.Command {
 			Usage:   "baha app preflight [NAME]",
 			Long:    "Checks manifest integrity, supported desired services, local state, the container runtime, OpenBao application-provisioning prerequisites and required-secret readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "preflight")
+				resolved, err := resolveApplication(ctx, store, args, "preflight")
 				if err != nil {
 					return err
 				}
