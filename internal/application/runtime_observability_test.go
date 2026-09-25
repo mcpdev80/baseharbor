@@ -44,11 +44,11 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 		for _, source := range sources {
 			got[source.Provider] = source.Target
 		}
-		if target := got[capability.ProviderPostgreSQL]; target != project+"/postgres" {
-			t.Fatalf("%s PostgreSQL target = %q, want target-scoped %q", kind, target, project+"/postgres")
+		if target := got[capability.ProviderPostgreSQL]; target != "runtime://"+project+"/postgres" {
+			t.Fatalf("%s PostgreSQL target = %q, want target-scoped %q", kind, target, "runtime://"+project+"/postgres")
 		}
-		if target := got[capability.ProviderValkey]; target != project+"/valkey" {
-			t.Fatalf("%s Valkey target = %q, want target-scoped %q", kind, target, project+"/valkey")
+		if target := got[capability.ProviderValkey]; target != "runtime://"+project+"/valkey" {
+			t.Fatalf("%s Valkey target = %q, want target-scoped %q", kind, target, "runtime://"+project+"/valkey")
 		}
 	}
 
