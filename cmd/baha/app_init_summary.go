@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"io"
 	"strings"
-	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func printProjectDetection(out io.Writer, d appProjectDetection) {
