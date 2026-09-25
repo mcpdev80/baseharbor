@@ -23,6 +23,7 @@ Use a task guide:
 Read the short explanations:
 
 - [Architecture](explanation/architecture.md)
+- [Targets and deployment destinations](explanation/targets.md)
 - [Application contract](explanation/application-contract.md)
 - [Providers](explanation/providers.md)
 - [Security](explanation/security.md)

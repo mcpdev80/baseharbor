@@ -42,6 +42,8 @@ zeigt Version, Commit und Build-Zeit.
 
 Jeder Release wird auf `develop` vorbereitet und erst nach erfolgreicher Release-Pruefung nach `main` promoted.
 
+Die verbindliche End-to-End-Checkliste ist [`docs/pre-release-documentation-audit.md`](../pre-release-documentation-audit.md). Trotz des historischen Dateinamens ist sie der kanonische **vollstaendige Pre-Release-Audit** und umfasst Release-Scope/Issues, BaseHarbor-Implementierung, Contracts, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release Notes, `baseharbor-demo`, GitHub Pages, Evidence fuer den exakten Candidate, Promotion, Publishing und Post-Release-Verifikation. Ein Release darf keine dieser Pruefungen ueberspringen, nur weil Feature-Code oder normale CI bereits gruen sind.
+
 1. Der finale Stand auf `develop` wird gegen `docs/DEVELOPMENT_GUIDELINES.md` geprueft, inklusive Ownership, Isolation, Secret-Sicherheit, Fail-closed-Verhalten, Tests und Doku-Konsistenz.
 2. Alle betroffenen kanonischen Dokumente werden aktualisiert, inklusive EN/DE-Varianten. Veraltete Versionsnummern, Statusaussagen, Beispiele und Future-Work-Hinweise werden gezielt gesucht.
 3. Der Changelog erhaelt einen datierten Versionsabschnitt.

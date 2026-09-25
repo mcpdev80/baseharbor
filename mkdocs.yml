@@ -66,6 +66,7 @@ nav:
       - Backup & restore: how-to/backup-restore.md
   - Explanation:
       - Architecture: explanation/architecture.md
+      - Targets and deployment destinations: explanation/targets.md
       - Application contract: explanation/application-contract.md
       - Providers: explanation/providers.md
       - Security: explanation/security.md
