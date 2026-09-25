@@ -3,10 +3,9 @@ package application
 import (
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"path/filepath"
 	"strings"
-
-	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func (m Manifest) Validate() error {
