@@ -42,7 +42,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 		t.Fatalf("start multi-instance runtime: %v", err)
 	}
 	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		if err := compose.DestroyProject(cleanupCtx, project, files.Compose, files.Env); err != nil {
 			t.Errorf("destroy multi-instance runtime: %v", err)
