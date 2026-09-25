@@ -205,7 +205,7 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, _, _, err := EnsureSharedProvider(ctx, d.runtime, d.issuer)
+	providerFiles, _, _, err := d.EnsureSharedProvider(ctx)
 	if err != nil {
 		return err
 	}
