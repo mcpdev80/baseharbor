@@ -47,8 +47,8 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		manifest:     m,
 		enabled:      enabled,
 		runtimeFiles: application.RuntimeFilesFor(resolved.Store, m),
-		dataDir: resolved.TargetStateRoot,
-		namespace: resolved.Target.Name,
+		dataDir:      resolved.TargetStateRoot,
+		namespace:    resolved.Target.Name,
 	}
 	if !enabled {
 		return prepared, nil
