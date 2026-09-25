@@ -24,7 +24,7 @@ func appPSQLCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, binding, err := resolveAccessBinding(store, appName, "postgres", instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, "postgres", instance)
 			if err != nil {
 				return err
 			}
@@ -59,7 +59,7 @@ func appRedisCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, binding, err := resolveAccessBinding(store, appName, "valkey", instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, "valkey", instance)
 			if err != nil {
 				return err
 			}
@@ -89,7 +89,7 @@ func appCredsCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, binding, err := resolveAccessBinding(store, appName, kind, instance)
+			_, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
 			if err != nil {
 				return err
 			}
@@ -187,7 +187,7 @@ func appExecCommand(store application.Store) *cli.Command {
 	}
 }
 
-func resolveAccessBinding(store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
+func resolveAccessBinding(ctx context.Context, store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
 	var appArgs []string
 	if appName != "" {
 		appArgs = []string{appName}
