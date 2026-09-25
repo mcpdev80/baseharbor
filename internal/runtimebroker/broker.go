@@ -571,7 +571,7 @@ func composeYAMLForRuntime(m application.Manifest, appFiles application.RuntimeF
 			b.WriteString("\nvolumes:\n")
 		}
 		b.WriteString("  runtime-metrics:\n")
-		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(application.MetricsRuntimeTargetVolumeName(m)))
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(application.MetricsRuntimeTargetVolumeNameForNamespace(m, appFiles.Namespace)))
 	}
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
