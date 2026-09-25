@@ -166,7 +166,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 			})
 		}
 		result := machineLifecycleStatusResult{
-			Result: applicationlifecycle.NewResult("apply", status.Application, status.Environment, status.State, true),
+			Result: applicationlifecycle.NewResult("apply", status.Application, status.Environment, status.State, true).WithTarget(status.Target),
 			Status: status,
 		}
 		return nil, result, nil
@@ -246,7 +246,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 			return machineMCPFailure(err)
 		}
 		result := machineLifecycleStatusResult{
-			Result: applicationlifecycle.NewResult("update", status.Application, status.Environment, status.State, status.Ready),
+			Result: applicationlifecycle.NewResult("update", status.Application, status.Environment, status.State, status.Ready).WithTarget(status.Target),
 			Status: status,
 		}
 		return nil, result, nil
@@ -266,7 +266,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 			return machineMCPFailure(err)
 		}
 		result := machineLifecycleDoctorResult{
-			Result: applicationlifecycle.NewResult("repair", doctor.Application, doctor.Environment, doctor.State, doctor.Healthy),
+			Result: applicationlifecycle.NewResult("repair", doctor.Application, doctor.Environment, doctor.State, doctor.Healthy).WithTarget(doctor.Target),
 			Doctor: doctor,
 		}
 		return nil, result, nil
@@ -296,7 +296,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 			return machineMCPFailure(err)
 		}
 		result := machineBackupResult{
-			Result: applicationlifecycle.NewResult("backup", resolved.Manifest.Name, resolved.Manifest.Environment, "backed_up", true),
+			Result: applicationlifecycle.NewResult("backup", resolved.Manifest.Name, resolved.Manifest.Environment, "backed_up", true).WithTarget(resolved.Target.Name),
 			Backup: metadata,
 		}
 		return nil, result, nil
@@ -325,12 +325,15 @@ func newMCPServer(store application.Store) *mcp.Server {
 		status, err := collectApplicationStatusResult(ctx, store, statusArgs)
 		if err == nil {
 			result := machineLifecycleStatusResult{
-				Result: applicationlifecycle.NewResult("restore", status.Application, status.Environment, status.State, status.Ready),
+				Result: applicationlifecycle.NewResult("restore", status.Application, status.Environment, status.State, status.Ready).WithTarget(status.Target),
 				Status: status,
 			}
 			return nil, result, nil
 		}
 		result := applicationlifecycle.NewResult("restore", strings.TrimSpace(input.Name), strings.TrimSpace(input.Environment), "restored", true)
+		if target, targetErr := effectiveTarget(ctx); targetErr == nil {
+			result = result.WithTarget(target.Name)
+		}
 		result.Detail = "Recovery unit restored and verified by the restore lifecycle; application identity can be discovered with baseharbor.status in repository context."
 		return nil, result, nil
 	})
@@ -353,7 +356,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true)
+		result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
 		return nil, result, nil
 	})
 
