@@ -244,7 +244,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao control-plane runtime", Run: func(ctx context.Context) error {
 				var err error
-				platformFiles, err = bhruntime.ExistingFiles("")
+				platformFiles, err = existingTargetRuntimeFiles(ctx)
 				if err != nil {
 					return err
 				}
