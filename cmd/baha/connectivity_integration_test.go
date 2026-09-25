@@ -31,18 +31,22 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
+	selectedTarget, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	targetStore := application.Store{Root: filepath.Join(t.TempDir(), "apps")}
+	targetStore := application.Store{Root: filepath.Join(t.TempDir(), "apps"), Namespace: selectedTarget.Name}
 	target := application.New("connect-target-ci", "dev", true, false, false)
 	targetFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), targetStore, target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := compose.UpProject(ctx, application.RuntimeProjectName(target), targetFiles.Compose, targetFiles.Env); err != nil {
+	if err := compose.UpProject(ctx, targetFiles.Project, targetFiles.Compose, targetFiles.Env); err != nil {
 		t.Fatalf("start target PostgreSQL: %v", err)
 	}
 	defer func() {
-		_ = compose.DestroyProject(context.Background(), application.RuntimeProjectName(target), targetFiles.Compose, targetFiles.Env)
+		_ = compose.DestroyProject(context.Background(), targetFiles.Project, targetFiles.Compose, targetFiles.Env)
 	}()
 
 	sourceRoot := t.TempDir()
@@ -65,7 +69,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceStore := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps")}
+	sourceStore := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps"), Namespace: selectedTarget.Name}
 	sourceFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), sourceStore, source)
 	if err != nil {
 		t.Fatal(err)
@@ -114,8 +118,8 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceNames := containersForResolvedEndpoint(rule.Source, sourceContainers)
-	targetNames := containersForResolvedEndpoint(rule.Target, sourceContainers)
+	sourceNames := containersForResolvedEndpoint(rule.Source, sourceContainers, selectedTarget.Name)
+	targetNames := containersForResolvedEndpoint(rule.Target, sourceContainers, selectedTarget.Name)
 	if len(sourceNames) != 1 || len(targetNames) != 1 {
 		t.Fatalf("unexpected resolved containers source=%#v target=%#v", sourceNames, targetNames)
 	}
@@ -157,10 +161,6 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
 	assertNoReverseConnectivity(t, ctx, compose, target, targetFiles)
 
-	selectedTarget, err := effectiveTarget(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	targetDataDir, err := targetDataRoot(selectedTarget)
 	if err != nil {
 		t.Fatal(err)
