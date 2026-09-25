@@ -28,6 +28,8 @@ type managedTracesExecution struct {
 	resources       []capability.Resource
 	providerSources []observability.SignalSource
 	runtimeFiles    application.RuntimeFiles
+	dataDir         string
+	namespace       string
 }
 
 func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
@@ -45,16 +47,18 @@ func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolv
 		manifest:     m,
 		enabled:      enabled,
 		runtimeFiles: application.RuntimeFilesFor(resolved.Store, m),
+		dataDir: resolved.TargetStateRoot,
+		namespace: resolved.Target.Name,
 	}
 	if !enabled {
 		return prepared, nil
 	}
-	placement, err := tracesprovider.PlacementFor(m)
+	placement, err := tracesprovider.PlacementForAt(resolved.TargetStateRoot, resolved.Target.Name, m)
 	if err != nil {
 		return nil, err
 	}
 	prepared.placement = placement
-	driver := tracesprovider.NewDriver(compose, m, issuer)
+	driver := tracesprovider.NewDriverAt(compose, m, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	resource := capability.Resource{
 		Application: m.Name,
 		Kind:        capability.Traces,
@@ -130,7 +134,7 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 		if err != nil {
 			return err
 		}
-		if err := tracesprovider.VerifyTrace(ctx, prepared.manifest, traceID); err != nil {
+		if err := tracesprovider.VerifyTraceAt(ctx, prepared.manifest, traceID, prepared.dataDir, prepared.namespace); err != nil {
 			return fmt.Errorf("verify provider trace %s: %w", source.ID, err)
 		}
 	}
@@ -163,11 +167,7 @@ func runtimeComponentTraceProbe(ctx context.Context, prepared *managedTracesExec
 		}
 		return traceIDFromHTTPResponse(raw)
 	case capability.ProviderRuntimeExecutor:
-		dataDir, err := bhruntime.DataDir("")
-		if err != nil {
-			return "", err
-		}
-		executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
+		executorFiles, err := runtimeexecutor.ExistingFiles(prepared.dataDir)
 		if err != nil {
 			return "", fmt.Errorf("load runtime executor for trace verification: %w", err)
 		}
