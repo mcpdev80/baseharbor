@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -55,23 +56,56 @@ func appCommand(store application.Store) *cli.Command {
 		},
 		{
 			Name:    "list",
-			Summary: "List configured applications",
-			Usage:   "baha app list",
+			Summary: "List registered deployments for the effective target",
+			Usage:   "baha app list [--all-targets]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 0 {
-					return usageError("baha app list does not accept arguments", "Run 'baha app list --help' for usage.")
+				allTargets := false
+				for _, arg := range args {
+					switch arg {
+					case "--all-targets":
+						allTargets = true
+					default:
+						return unknownOptionUsage("baha app list", arg, "--all-targets")
+					}
 				}
-				items, err := store.List()
+				var (
+					items []deployment.DeploymentRecord
+					err error
+				)
+				if allTargets {
+					items, err = deployment.ListAllDeployments()
+				} else {
+					target, resolveErr := effectiveTarget()
+					if resolveErr != nil {
+						return resolveErr
+					}
+					items, err = deployment.ListDeployments(target.Name)
+				}
 				if err != nil {
 					return err
 				}
 				if len(items) == 0 {
-					fmt.Fprintln(out, "No applications configured.")
+					fmt.Fprintln(out, "No deployments registered.")
 					return nil
 				}
-				fmt.Fprintf(out, "  %-20s %-12s %s\n", "NAME", "ENVIRONMENT", "SERVICES")
+				if allTargets {
+					fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", "TARGET", "APPLICATION", "ENVIRONMENT", "RUNTIME", "STATE", "SOURCE")
+					for _, item := range items {
+						source := "MISSING"
+						if deployment.SourceAvailable(item.Source) {
+							source = "OK"
+						}
+						fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", item.Identity.Target, item.Identity.Application, item.Identity.Environment, item.Applied.RuntimeProvider, item.Observed.State, source)
+					}
+					return nil
+				}
+				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
 				for _, item := range items {
-					fmt.Fprintf(out, "  %-20s %-12s %s\n", item.Name, item.Environment, serviceNames(item))
+					source := "MISSING"
+					if deployment.SourceAvailable(item.Source) {
+						source = "OK"
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Identity.Application, item.Identity.Environment, item.Observed.State, source)
 				}
 				return nil
 			},
