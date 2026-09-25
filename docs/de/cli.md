@@ -15,6 +15,9 @@ baha
 ├── connections
 ├── update
 ├── completion bash|zsh|fish
+├── target [list|show|create|delete|activate|deactivate]
+├── config prompt
+├── shell-init bash|zsh|fish
 ├── tui
 ├── app
 │   ├── init / create / list / show
@@ -95,6 +98,40 @@ baha completion fish
 
 Die generierte Completion ist read-only und kennt Befehle, Optionen sowie sinnvolle feste Werte wie `dev|test|prod`.
 
+## Targets und Shell-Kontext
+
+Das Deployment-Ziel ist eine eigene Achse neben Application und Environment. Die effektive Identitaet lautet:
+
+```text
+target + application + environment
+```
+
+Target-Konfiguration liegt unter `$XDG_CONFIG_HOME/baseharbor/config.yaml` bzw. `~/.config/baseharbor/config.yaml`. Veraenderlicher Runtime-/Deployment-State liegt Target-scoped unter `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
+
+```bash
+baha target
+baha target -o json
+baha target list
+baha target show docker-dev
+baha target create docker-dev --provider docker --access local-docker --reference local --scope default --default
+eval "$(baha target activate docker-dev)"
+baha app list
+baha app list --all-targets
+```
+
+Die Aufloesung ist `--target` vor `BASEHARBOR_TARGET` vor konfiguriertem Default vor dem impliziten `local`-Kompatibilitaets-Target.
+
+Optionale Prompt-Integration:
+
+```bash
+baha config prompt
+baha shell-init bash
+baha shell-init zsh
+baha shell-init fish
+```
+
+Production wird in der Prompt-Anzeige explizit textuell markiert und nicht nur ueber Farbe dargestellt.
+
 ## Repository-Shortcuts und strukturierte Ausgabe
 
 In einem Repository mit `baseharbor.yaml` verwenden die kurzen Befehle denselben Application-Core:
@@ -149,7 +186,7 @@ Lokaler MCP-Server:
 baha mcp serve
 ```
 
-Der MCP-Server verwendet ausschliesslich stdio und exponiert sechs read-only semantische Tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`, `baseharbor.policy.check` und `baseharbor.policy.explain`.
+Der MCP-Server verwendet ausschliesslich stdio und exponiert read-only semantische Tools fuer Target-, Inspect-, Plan-, Status-, Doctor- und Policy-Sichten. Dazu gehoert `baseharbor.target`; die Target-Sicht verwendet denselben Collector wie `baha target -o json`.
 
 Es gibt kein generisches Shell-, Exec-, Docker- oder Compose-Tool. MCP verwendet dieselben typisierten Result-Collector wie CLI/TUI und behaelt dadurch BaseHarbor-Ownership-, Isolation- und Verification-Semantik bei.
 
@@ -222,7 +259,7 @@ baha up --postgres-port 15432 --openbao-port 18200
 
 Beim ersten Start werden Ports geprueft. Belegte Standardports werden nicht blind verwendet.
 
-Der globale Control Plane kann nach dem Entfernen aller Application-Bindings explizit geloescht werden:
+Der Control Plane des effektiven Targets kann nach dem Entfernen aller Application-Bindings explizit geloescht werden:
 
 ```bash
 baha destroy

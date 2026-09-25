@@ -37,9 +37,13 @@ Least privilege · scoped credentials · explicit trust boundaries · fail-close
 **Built for humans and AI agents**  
 Structured, secret-safe JSON · bounded MCP · no generic shell · no Docker access
 
+**Explicit deployment destinations**  
+Target + Application + Environment · target-scoped state · Docker/Podman today · Kubernetes/OpenShift later
+
 ```bash
 baha app inspect .
 baha app init
+baha target
 baha up
 baha status
 baha doctor
@@ -75,7 +79,8 @@ Kubernetes / OpenShift planned
 - Repository inspection with **Detected / Suggested / Possible** evidence.
 - Portable application intent with provider-neutral capability boundaries.
 - PostgreSQL, Valkey/Redis, S3, secrets, HTTP exposure, metrics, logs, traces and OTLP.
-- A canonical guided developer path: `baha app init` -> `baha up` -> verified READY.
+- A canonical guided developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
+- First-class deployment Targets with XDG-backed configuration and target-scoped runtime/deployment state.
 - Plan, preflight, policy and explicit apply remain available for automation and troubleshooting.
 - Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
 - Provider placement for application-scoped, shared or externally managed infrastructure.
@@ -159,6 +164,7 @@ baha version
 - [Architecture](docs/explanation/architecture.md)
 - [Application contract](docs/explanation/application-contract.md)
 - [Providers](docs/explanation/providers.md)
+- [Targets and deployment destinations](docs/explanation/targets.md)
 - [CLI reference](docs/reference/cli.md)
 - [Normative specifications](docs/spec/README.md)
 - [Roadmap](docs/roadmap.md)

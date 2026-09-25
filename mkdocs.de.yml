@@ -71,4 +71,5 @@ nav:
       - Architektur: explanation/architecture.md
       - Application Contract: explanation/application-contract.md
       - Provider: explanation/providers.md
+      - Targets und Deployment-Ziele: explanation/targets.md
       - Security: explanation/security.md

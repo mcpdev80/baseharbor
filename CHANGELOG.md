@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- First-class deployment Targets separate deployment destination from Application and Environment; concrete deployment identity is now `target + application + environment`.
+- Target configuration lives in XDG user config while mutable runtime/deployment state is isolated below `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
+- `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective target identity across human and machine interfaces.
+
 ### Changed
+
+- Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
+- `baha app list` now reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
 
 - Podman runtime execution now uses native Quadlets instead of the external `podman-compose` provider. BaseHarbor keeps Compose-based workload/provider definitions as the compatibility input, translates them into Quadlet units, and manages the Podman lifecycle through rootless `systemd --user`; Docker continues to use Docker Compose.
 - Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
