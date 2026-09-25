@@ -156,7 +156,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return err
 	}
 	if application.HasManagedRuntimeServices(m) {
-		project := application.RuntimeProjectName(m)
+		project := files.Project
 		if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 			return err
 		}
@@ -401,7 +401,7 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 		return nil
 	}
 	const maxAttempts = 3
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 
 	providerOverride, providerLogging, err := logsprovider.ExistingProviderSourceOverride(files)
 	if err != nil {
