@@ -137,7 +137,7 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 	controlNetwork := scopedName(ControlNetworkName, namespace)
 	objectStorageNetwork := scopedName("baseharbor-object-storage", namespace)
 	telemetryNetwork := scopedName("baseharbor-telemetry", namespace)
-	content := composeYAML(image, identity, adminProjection, s3Endpoint, s3TrustProjection, controlNetwork, objectStorageNetwork, telemetryNetwork, observer)
+	content := composeYAMLForNetworks(image, identity, adminProjection, s3Endpoint, s3TrustProjection, controlNetwork, objectStorageNetwork, telemetryNetwork, observer)
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime executor compose file: %w", err)
 	}
@@ -243,7 +243,11 @@ func DestroySharedAt(ctx context.Context, runtime Runtime, dataDir, namespace st
 	return os.RemoveAll(files.Dir)
 }
 
-func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath, controlNetwork, objectStorageNetwork, telemetryNetwork string, observability ...ObservabilityBinding) string {
+func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string, observability ...ObservabilityBinding) string {
+	return composeYAMLForNetworks(image, identity, adminCredentialsPath, s3Endpoint, s3TrustPath, ControlNetworkName, "baseharbor-object-storage", "baseharbor-telemetry", observability...)
+}
+
+func composeYAMLForNetworks(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath, controlNetwork, objectStorageNetwork, telemetryNetwork string, observability ...ObservabilityBinding) string {
 	var observer ObservabilityBinding
 	if len(observability) > 0 {
 		observer = observability[0]
