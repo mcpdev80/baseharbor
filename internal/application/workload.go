@@ -113,7 +113,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	override, err := workloadOverrideYAMLForRuntime(m, selected, values, runtime.Project)
+	override, err := workloadOverrideYAMLForFiles(m, selected, values, runtime)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -234,6 +234,14 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 }
 
 func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[string]string, runtimeProject string) (string, error) {
+	return workloadOverrideYAMLForFiles(m, services, values, RuntimeFiles{Project: runtimeProject})
+}
+
+func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[string]string, runtime RuntimeFiles) (string, error) {
+	runtimeProject := runtime.Project
+	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
+	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
+	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
@@ -278,7 +286,7 @@ func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[st
 						metricsServices[service] = struct{}{}
 					}
 				}
-				metricsNetworkName = MetricsProviderNetworkName(m)
+				metricsNetworkName = MetricsProviderNetworkNameForNamespace(m, namespace)
 			}
 		}
 	}
@@ -392,11 +400,11 @@ func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[st
 		}
 		if objectStorage || hasRuntimeObjectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
-			b.WriteString("    name: baseharbor-object-storage\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(objectStorageNetworkName))
 		}
 		if telemetryManaged {
 			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
-			b.WriteString("    name: baseharbor-telemetry\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetworkName))
 		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
@@ -408,6 +416,14 @@ func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[st
 		}
 	}
 	return b.String(), nil
+}
+
+func scopedWorkloadNetworkName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
 }
 
 func applicationBackendNetworkForRuntime(m Manifest, runtimeProject string) string {
