@@ -18,7 +18,7 @@ func TestApplicationSecretBackupRestoreRealOpenBao(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	files, err := bhruntime.EnsureFiles(filepath.Join(root, ".baseharbor", "runtime"))
+	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime", "baseharbor-openbao-backup-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,13 +32,13 @@ func TestApplicationSecretBackupRestoreRealOpenBao(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := compose.UpProject(ctx, projectName, files.Compose, files.Env); err != nil {
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
-		_ = compose.DestroyProject(cleanupCtx, projectName, files.Compose, files.Env)
+		_ = compose.DestroyProject(cleanupCtx, files.Project, files.Compose, files.Env)
 	}()
 
 	var state State
