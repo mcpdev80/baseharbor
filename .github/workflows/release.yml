@@ -121,7 +121,7 @@ jobs:
               echo "  .github/workflows/release.yml" >&2
               echo "  .github/workflows/runtime-image.yml" >&2
               echo "  .github/workflows/supplemental-release-validation.yml" >&2
-              echo "  docs/release-audits/vX.Y.Z.md" >&2
+              echo "  docs/internal/release-audits/vX.Y.Z.md" >&2
               echo "Actual changed files:" >&2
               git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
               exit 1
