@@ -12,6 +12,9 @@ jobs:
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
+      XDG_CONFIG_HOME: /tmp/baseharbor-perf-xdg/config
+      XDG_DATA_HOME: /tmp/baseharbor-perf-xdg/data
+      BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
@@ -92,3 +95,4 @@ jobs:
             /tmp/baha app destroy perf-demo --yes || true
             docker compose --project-name baseharbor-ci --file "$XDG_DATA_HOME/baseharbor/targets/ci/runtime/compose.yaml" --env-file "$XDG_DATA_HOME/baseharbor/targets/ci/runtime/runtime.env" down -v || true
           fi
+          rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
