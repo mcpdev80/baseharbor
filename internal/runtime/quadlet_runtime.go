@@ -41,9 +41,6 @@ func QuadletAvailable(ctx context.Context) bool {
 }
 
 func quadletUserUnitDir() (string, error) {
-	if config := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); config != "" {
-		return filepath.Join(config, "containers", "systemd"), nil
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
