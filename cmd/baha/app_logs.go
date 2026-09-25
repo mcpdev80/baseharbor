@@ -66,7 +66,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 	if placement.Scope == capability.ScopeExternal {
 		return nil, fmt.Errorf("external Loki placement is selected but no external Compose log collector adapter is configured")
 	}
-	prepared.driver = logsprovider.NewDriver(compose, resolved.Manifest, issuer)
+	prepared.driver = logsprovider.NewDriverAt(compose, resolved.Manifest, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	if !prepared.workloadEnabled {
 		return prepared, nil
 	}
@@ -248,9 +248,12 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 		}
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
+	dataDir := filepath.Clean(files.Dir)
+	for filepath.Base(dataDir) != "deployments" && filepath.Dir(dataDir) != dataDir {
+		dataDir = filepath.Dir(dataDir)
+	}
+	if filepath.Base(dataDir) == "deployments" {
+		dataDir = filepath.Dir(dataDir)
 	}
 	if executorFiles, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
 		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntime(
@@ -321,9 +324,12 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		}
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
+	dataDir := filepath.Clean(files.Dir)
+	for filepath.Base(dataDir) != "deployments" && filepath.Dir(dataDir) != dataDir {
+		dataDir = filepath.Dir(dataDir)
+	}
+	if filepath.Base(dataDir) == "deployments" {
+		dataDir = filepath.Dir(dataDir)
 	}
 	executorFiles, err := runtimeexecutor.ExistingFiles(dataDir)
 	if err == nil {
