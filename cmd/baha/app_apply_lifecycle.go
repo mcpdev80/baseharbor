@@ -66,8 +66,7 @@ func newApplicationApplyExecution(ctx context.Context, store application.Store, 
 		term:          term,
 		out:           out,
 		errOut:        errOut,
-		secretService: applicationsecret.New(store),
-		providers:     &managedProviderPreflightState{},
+		providers: &managedProviderPreflightState{},
 	}, nil
 }
 
@@ -209,6 +208,7 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 	for _, name := range generated {
 		fmt.Fprintf(e.out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
 	}
+	e.secretService = applicationsecret.NewForRuntime(e.resolved.Store, e.compose, e.platformFiles)
 	if err := resolveMissingRequiredSecretsInteractive(ctx, e.secretService, e.compose, e.platformFiles, e.manifest, e.files, e.out); err != nil {
 		return err
 	}
