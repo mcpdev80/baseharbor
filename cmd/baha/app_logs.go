@@ -366,6 +366,10 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 	return nil
 }
 
+func preparedTargetStateRoot(files application.RuntimeFiles) string {
+	return filepath.Dir(filepath.Dir(files.Dir))
+}
+
 func managedLogsRegistryResources(prepared *managedLogsExecution) []capability.Resource {
 	if prepared == nil || !prepared.enabled {
 		return nil
