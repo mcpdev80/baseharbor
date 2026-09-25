@@ -118,6 +118,7 @@ func ResultError(err error) ErrorResult {
 
 func Operations() []Operation {
 	return []Operation{
+		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
