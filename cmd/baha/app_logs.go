@@ -184,7 +184,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
-	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir); err != nil {
+	if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[READY] logs-provider   Loki/Alloy collector state converged for %s (%d provider source(s) authorized)\n", prepared.manifest.Name, len(providerSources))
@@ -289,7 +289,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	return nil
 }
 
-func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir string) error {
+func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	const wantStatus = "404"
 
 	if application.RequiresRuntimeBroker(m) {
