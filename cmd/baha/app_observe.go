@@ -49,7 +49,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 			ContractVersion: "v1",
 			Application:     m.Name,
 			Environment:     m.Environment,
-			Project:         application.RuntimeProjectName(m),
+			Project:         application.RuntimeProjectNameForStore(resolved.Store, m),
 			State:           "not_applied",
 			Ready:           false,
 			Checks:          []application.StatusCheck{},
@@ -62,11 +62,11 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if err != nil {
 		return application.StatusResult{}, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForTarget(ctx, resolved.Target)
 	if err != nil {
 		return application.StatusResult{}, err
 	}
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 	services, err := compose.RunningServicesProject(ctx, project, files.Compose, files.Env)
 	if err != nil {
 		return application.StatusResult{}, err
