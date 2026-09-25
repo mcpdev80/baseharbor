@@ -3,6 +3,12 @@ name: "Acceptance · MCP Lifecycle"
 run-name: "Acceptance · MCP Lifecycle · ${{ inputs.ref || github.ref_name }}"
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact Git ref or commit SHA to test
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       ref:
@@ -15,7 +21,7 @@ on:
       - 'runtime-validation/mcp/**'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: mcp-lifecycle-${{ github.ref }}-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -23,7 +29,7 @@ permissions:
 
 jobs:
   docker:
-    if: ${{ !contains(github.ref_name, '/podman/') }}
+    if: ${{ github.event_name == 'workflow_call' || !contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 10
     env:
@@ -61,7 +67,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   podman:
-    if: ${{ contains(github.ref_name, '/podman/') }}
+    if: ${{ github.event_name == 'workflow_call' || contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 15
     env:
