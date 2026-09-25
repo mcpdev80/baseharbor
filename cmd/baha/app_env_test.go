@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
+	target := configureTestTarget(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -22,12 +24,13 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := application.DefaultStore()
 	m := application.New("demo", "dev", true, true, false)
+	store := testDeploymentStore(t, target, m)
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.EnsureRuntime(store, m)
+	registerTestDeployment(t, target, m, "", "")
+	files, err := application.EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +43,7 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	if !strings.Contains(text, "DATABASE_URL=<masked>") || !strings.Contains(text, "REDIS_URL=<masked>") {
 		t.Fatalf("default output did not mask service credentials: %s", text)
 	}
-	if strings.Contains(text, "postgresql://") || strings.Contains(text, "redis://") {
+	if strings.Contains(text, "postgresql://") || strings.Contains(text, "redis://") || strings.Contains(text, "rediss://") {
 		t.Fatalf("default output leaked service URLs: %s", text)
 	}
 
@@ -48,7 +51,7 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "env", "demo", "--reveal", "--format", "json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "postgresql://") || !strings.Contains(out.String(), "redis://") {
+	if !strings.Contains(out.String(), "postgresql://") || !strings.Contains(out.String(), "rediss://") {
 		t.Fatalf("explicit reveal did not return native service URLs: %s", out.String())
 	}
 

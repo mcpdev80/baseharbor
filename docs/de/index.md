@@ -4,6 +4,9 @@ Die englische Dokumentation ist die kanonische Quelle für technische Referenzen
 
 Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche menschliche Erklärungen.
 
+> **KI-generiert, menschlich spezifiziert, maschinell verifiziert.**  
+> Menschliche Entscheidungen definieren Ziel, Architektur, Grenzen und Akzeptanzkriterien. KI kann die Umsetzung beschleunigen; als korrekt gilt das Ergebnis erst durch deterministische maschinelle Verifikation.
+
 ## Neu bei BaseHarbor?
 
 [Einstieg](tutorials/getting-started.md)
@@ -11,6 +14,7 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 ## Verstehen
 
 - [Architektur](explanation/architecture.md)
+- [Kontexte und Deployment-Ziele](explanation/targets.md)
 - [Application Contract](explanation/application-contract.md)
 - [Provider](explanation/providers.md)
 - [Security](explanation/security.md)

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/sql.schema.json",
+  "title": "BaseHarbor SQL Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "sql"
+    },
+    "contractVersion": {
+      "const": "v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transactions": {
+          "type": "boolean"
+        },
+        "readWrite": {
+          "type": "boolean"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
+}

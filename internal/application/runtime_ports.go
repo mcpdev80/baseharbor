@@ -31,7 +31,7 @@ func ReallocateRuntimePorts(m Manifest, files RuntimeFiles) error {
 		excluded[port] = struct{}{}
 	}
 
-	for _, instance := range PostgresInstanceNames(m) {
+	for _, instance := range SQLInstanceNames(m) {
 		port, err := allocateLoopbackPort(excluded)
 		if err != nil {
 			return err
@@ -39,7 +39,7 @@ func ReallocateRuntimePorts(m Manifest, files RuntimeFiles) error {
 		values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
 		excluded[port] = struct{}{}
 	}
-	for _, instance := range RedisInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		port, err := allocateLoopbackPort(excluded)
 		if err != nil {
 			return err

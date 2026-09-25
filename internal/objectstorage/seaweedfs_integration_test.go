@@ -8,6 +8,7 @@ import (
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestManagedSeaweedFSRunsUnprivileged(t *testing.T) {
@@ -31,7 +32,7 @@ func TestManagedSeaweedFSRunsUnprivileged(t *testing.T) {
 		}
 	}()
 
-	if _, _, _, err := EnsureSharedProvider(ctx, compose); err != nil {
+	if _, _, _, err := EnsureSharedProvider(ctx, compose, serviceissuer.New(t)); err != nil {
 		t.Fatalf("provision SeaweedFS: %v", err)
 	}
 	if err := containersecurity.VerifyComposeService(ctx, ProviderProject, ProviderService, containersecurity.Requirements{

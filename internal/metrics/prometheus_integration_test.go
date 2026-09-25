@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
@@ -52,11 +53,11 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	apps := []string{"metrics-alpha", "metrics-beta"}
 	for _, name := range apps {
 		m := application.New(name, "dev", false, false, false)
-		m.Services.Postgres = false
+		m.Services.SQL = false
 		m = application.WithWorkload(m, "compose.yaml", "api")
 		m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
-		driver := NewDriver(compose, m)
+		driver := NewDriver(compose, m, serviceissuer.New(t))
 		resource := capability.Resource{
 			Application: m.Name,
 			Kind:        capability.Metrics,

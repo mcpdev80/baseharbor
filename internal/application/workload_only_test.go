@@ -1,10 +1,13 @@
 package application
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func workloadOnlyManifest() Manifest {
@@ -13,9 +16,9 @@ func workloadOnlyManifest() Manifest {
 		Name:        "awc",
 		Environment: "production",
 		Services: Services{
-			Postgres: false,
-			Redis:    false,
-			Secrets:  false,
+			SQL:     false,
+			Cache:   false,
+			Secrets: false,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "docker-compose.yml",
@@ -68,7 +71,7 @@ func TestWorkloadOnlyRuntimeMaterializationDoesNotInventBackend(t *testing.T) {
 	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
 	m := workloadOnlyManifest()
 
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatalf("EnsureRuntime() error = %v", err)
 	}
@@ -177,7 +180,7 @@ func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
 		Name:        "portable-networks",
 		Environment: "dev",
 		Services: Services{
-			Postgres: true,
+			SQL: true,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "compose.yaml",

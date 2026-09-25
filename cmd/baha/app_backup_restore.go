@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 const maxBackupPasswordFileBytes = 64 << 10
@@ -26,133 +27,7 @@ func appBackupCommand(store application.Store) *cli.Command {
 		Usage:   "baha app backup [NAME] --password-file FILE [--output FILE]",
 		Long:    "Quiesces the repository workload and per-application secret broker, captures desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope, encrypts the complete recovery unit, then restarts the quiesced application components.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, environment, err := extractApplicationEnvironment(args, "backup")
-			if err != nil {
-				return err
-			}
-			name, outputPath, passwordPath, err := parseAppBackupArgs(filtered)
-			if err != nil {
-				return err
-			}
-			var appArgs []string
-			if name != "" {
-				appArgs = []string{name}
-			}
-			resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
-			if err != nil {
-				return err
-			}
-			m := resolved.Manifest
-			if application.HasObjectStorage(m) {
-				return errors.New("application backup does not yet include object-storage contents; refusing to create an incomplete recovery unit")
-			}
-			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
-			if err != nil {
-				return err
-			}
-			password, err := readBackupPasswordFile(passwordPath)
-			if err != nil {
-				return err
-			}
-			defer zeroBytes(password)
-			if outputPath == "" {
-				outputPath = fmt.Sprintf("%s-%s-%s.bhbackup", m.Name, m.Environment, time.Now().UTC().Format("20060102T150405Z"))
-			}
-
-			compose, err := bhruntime.DetectCompose(ctx)
-			if err != nil {
-				return err
-			}
-			if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
-				return fmt.Errorf("backup preflight runtime verification: %w", err)
-			}
-			var platformFiles bhruntime.Files
-			if m.Services.Secrets {
-				platformFiles, err = bhruntime.ExistingFiles("")
-				if err != nil {
-					return err
-				}
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir)); err != nil {
-					return fmt.Errorf("backup preflight OpenBao verification: %w", err)
-				}
-			}
-			exposureStopped := false
-			if len(m.Exposures) > 0 {
-				if _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
-					return fmt.Errorf("backup preflight managed exposure verification: %w", err)
-				}
-				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
-					return err
-				}
-				exposureStopped = true
-			}
-
-			workloadStopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
-			if err != nil {
-				if exposureStopped {
-					if prepared, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
-						_ = convergeManagedExposure(ctx, io.Discard, prepared)
-					}
-				}
-				return err
-			}
-			brokerStopped := false
-			if application.RequiresRuntimeBroker(m) {
-				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
-					if workloadStopped {
-						_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
-					}
-					return err
-				}
-				brokerStopped = true
-			}
-
-			captureErr := func() error {
-				entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.PostgresInstanceNames(m)))
-				metadata, err := applicationbackup.ApplicationManifestPayloadEntry(m)
-				if err != nil {
-					return err
-				}
-				entries = append(entries, metadata)
-				dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
-				if err != nil {
-					return err
-				}
-				postgresEntries, err := applicationbackup.PostgresPayloadEntries(dumps)
-				if err != nil {
-					return err
-				}
-				entries = append(entries, postgresEntries...)
-				if m.Services.Secrets {
-					identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-					secretBackup, err := openbao.ExportApplicationSecrets(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-					if err != nil {
-						return err
-					}
-					secretEntry, err := applicationbackup.OpenBaoPayloadEntry(secretBackup)
-					if err != nil {
-						return err
-					}
-					entries = append(entries, secretEntry)
-				}
-				archive, err := applicationbackup.Build(m.Name, m.Environment, time.Now().UTC(), entries, password)
-				if err != nil {
-					return err
-				}
-				defer zeroBytes(archive)
-				if err := writeBackupArchive(outputPath, archive); err != nil {
-					return err
-				}
-				return nil
-			}()
-
-			restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
-			if captureErr != nil || restartErr != nil {
-				return errors.Join(captureErr, restartErr)
-			}
-			fmt.Fprintf(out, "Backup for %s (%s) written to %s.\n", m.Name, m.Environment, outputPath)
-			return nil
+			return executeApplicationBackupLifecycle(ctx, store, args, out, errOut)
 		},
 	}
 }
@@ -164,154 +39,243 @@ func appRestoreCommand(store application.Store) *cli.Command {
 		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
 		Long:    "Validates and decrypts the complete archive before mutation, rebuilds protected BaseHarbor application state, restores PostgreSQL and the matching OpenBao secret scope while the workload remains stopped, regenerates runtime identities, then starts and verifies the broker and repository workload.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, environment, err := extractApplicationEnvironment(args, "restore")
-			if err != nil {
-				return err
-			}
-			backupPath, name, passwordPath, err := parseAppRestoreArgs(filtered)
-			if err != nil {
-				return err
-			}
-			password, err := readBackupPasswordFile(passwordPath)
-			if err != nil {
-				return err
-			}
-			defer zeroBytes(password)
-			archive, err := os.ReadFile(backupPath)
-			if err != nil {
-				return fmt.Errorf("read application backup: %w", err)
-			}
-			defer zeroBytes(archive)
-			payload, err := applicationbackup.Open(archive, password)
-			if err != nil {
-				return fmt.Errorf("validate application backup before mutation: %w", err)
-			}
-			m, err := applicationbackup.ApplicationManifestFromPayload(payload)
-			if err != nil {
-				return fmt.Errorf("validate application metadata before mutation: %w", err)
-			}
-			if name != "" && name != m.Name {
-				return errors.New("restore target NAME does not match backup application identity")
-			}
-			if environment != "" && environment != m.Environment {
-				return fmt.Errorf("restore target environment %q does not match backup environment %q", environment, m.Environment)
-			}
-			if application.HasObjectStorage(m) {
-				return errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
-			}
-			postgresBackups, err := applicationbackup.PostgresBackupsFromPayload(m, payload)
-			if err != nil {
-				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
-			}
-			var secretBackup openbao.ApplicationSecretBackup
-			if m.Services.Secrets {
-				secretBackup, err = applicationbackup.OpenBaoBackupFromPayload(m.Name, m.Environment, payload)
-				if err != nil {
-					return fmt.Errorf("validate OpenBao backup before mutation: %w", err)
-				}
-			}
-
-			resolved, err := resolveRestoreTarget(store, m)
-			if err != nil {
-				return err
-			}
-			compose, err := bhruntime.DetectCompose(ctx)
-			if err != nil {
-				return err
-			}
-			var platformFiles bhruntime.Files
-			if m.Services.Secrets {
-				platformFiles, err = bhruntime.ExistingFiles("")
-				if err != nil {
-					return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
-				}
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				if err := openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity); err != nil {
-					return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
-				}
-			}
-			if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
-				return fmt.Errorf("restore preflight workload security: %w", err)
-			}
-			preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
-			if err != nil {
-				return fmt.Errorf("restore preflight managed exposure: %w", err)
-			}
-
-			if err := resetRestoreTarget(ctx, compose, platformFiles, resolved); err != nil {
-				return err
-			}
-			manifestPath, err := resolved.Store.Sync(m)
-			if err != nil {
-				return fmt.Errorf("recreate application state: %w", err)
-			}
-			if !resolved.FromRepository {
-				resolved.ManifestPath = manifestPath
-			}
-			files, err := application.EnsureRuntime(resolved.Store, m)
-			if err != nil {
-				return err
-			}
-			project := application.RuntimeProjectName(m)
-			if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
-				return err
-			}
-			if m.Services.Secrets {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
-				if err := openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
-					return fmt.Errorf("recreate OpenBao application scope: %w", err)
-				}
-				keys, err := openbao.ListApplicationSecretKeys(ctx, compose, platformFiles, identity, credentialsPath)
-				if err != nil {
-					return err
-				}
-				if len(keys) != 0 {
-					return errors.New("restore target OpenBao scope is not empty; refusing PostgreSQL mutation")
-				}
-			}
-			if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
-				return err
-			}
-			if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
-				return err
-			}
-			if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
-				return err
-			}
-			if m.Services.Secrets {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
-				if err := openbao.RestoreApplicationSecrets(ctx, compose, platformFiles, identity, credentialsPath, secretBackup); err != nil {
-					return err
-				}
-				if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
-					return fmt.Errorf("verify restored OpenBao scope: %w", err)
-				}
-			}
-			if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
-				return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
-			}
-			if application.RequiresRuntimeBroker(m) {
-				if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, m, files); err != nil {
-					return err
-				}
-			}
-			if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
-				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
-				return fmt.Errorf("start restored application workload: %w", err)
-			}
-			if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
-				_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
-				return fmt.Errorf("restore managed HTTP exposure: %w", err)
-			}
-			if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
-				return fmt.Errorf("record provider registry after restore: %w", err)
-			}
-			fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
-			return nil
+			return executeApplicationRestoreLifecycle(ctx, store, args, out, errOut)
 		},
 	}
+}
+
+func executeApplicationBackupLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	filtered, environment, err := extractApplicationEnvironment(args, "backup")
+	if err != nil {
+		return err
+	}
+	name, outputPath, passwordPath, err := parseAppBackupArgs(filtered)
+	if err != nil {
+		return err
+	}
+	var appArgs []string
+	if name != "" {
+		appArgs = []string{name}
+	}
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
+	if err != nil {
+		return err
+	}
+	m := resolved.Manifest
+	if application.HasObjectStorage(m) {
+		return errors.New("application backup does not yet include object-storage contents; refusing to create an incomplete recovery unit")
+	}
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		return err
+	}
+	password, err := readBackupPasswordFile(passwordPath)
+	if err != nil {
+		return err
+	}
+	defer zeroBytes(password)
+	if outputPath == "" {
+		outputPath = fmt.Sprintf("%s-%s-%s.bhbackup", m.Name, m.Environment, time.Now().UTC().Format("20060102T150405Z"))
+	}
+
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
+	if err != nil {
+		return err
+	}
+	if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
+		return fmt.Errorf("backup preflight runtime verification: %w", err)
+	}
+	var platformFiles bhruntime.Files
+	if m.Services.Secrets {
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
+		if err != nil {
+			return err
+		}
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir)); err != nil {
+			return fmt.Errorf("backup preflight OpenBao verification: %w", err)
+		}
+	}
+	exposureStopped := false
+	if len(m.Exposures) > 0 {
+		if _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
+			return fmt.Errorf("backup preflight managed exposure verification: %w", err)
+		}
+		if err := stopManagedExposure(ctx, compose, m, files); err != nil {
+			return err
+		}
+		exposureStopped = true
+	}
+
+	workloadStopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
+	if err != nil {
+		if exposureStopped {
+			if prepared, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
+				_ = convergeManagedExposure(ctx, io.Discard, prepared)
+			}
+		}
+		return err
+	}
+	brokerStopped := false
+	if application.RequiresRuntimeBroker(m) {
+		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+			if workloadStopped {
+				_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
+			}
+			return err
+		}
+		brokerStopped = true
+	}
+
+	captureErr := captureApplicationBackup(ctx, compose, platformFiles, m, files, password, outputPath)
+
+	restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
+	if captureErr != nil || restartErr != nil {
+		return errors.Join(captureErr, restartErr)
+	}
+	fmt.Fprintf(out, "Backup for %s / %s / %s written to %s.\n", resolved.Target.Name, m.Name, m.Environment, outputPath)
+	return nil
+
+}
+
+func executeApplicationRestoreLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	filtered, environment, err := extractApplicationEnvironment(args, "restore")
+	if err != nil {
+		return err
+	}
+	backupPath, name, passwordPath, err := parseAppRestoreArgs(filtered)
+	if err != nil {
+		return err
+	}
+	password, err := readBackupPasswordFile(passwordPath)
+	if err != nil {
+		return err
+	}
+	defer zeroBytes(password)
+	restoreData, err := loadApplicationRestoreData(backupPath, password, name, environment)
+	if err != nil {
+		return err
+	}
+	m := restoreData.manifest
+	postgresBackups := restoreData.postgresBackups
+	secretBackup := restoreData.secretBackup
+
+	resolved, err := resolveRestoreTarget(ctx, store, m)
+	if err != nil {
+		return err
+	}
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
+	if err != nil {
+		return err
+	}
+	var platformFiles bhruntime.Files
+	var issuer serviceaccess.Issuer
+	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
+		if err != nil {
+			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
+		}
+	}
+	if requiresManagedServiceIssuer(m) {
+		issuer = openbao.NewServiceIssuer(compose, platformFiles)
+		status, err := issuer.Status(ctx)
+		if err != nil || !status.Ready {
+			if err != nil {
+				return fmt.Errorf("restore preflight managed service PKI: %w", err)
+			}
+			return errors.New("restore preflight managed service PKI is not ready")
+		}
+	}
+	if m.Services.Secrets {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		if err := openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity); err != nil {
+			return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
+		}
+	}
+	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
+		return fmt.Errorf("restore preflight workload security: %w", err)
+	}
+	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
+	if err != nil {
+		return fmt.Errorf("restore preflight managed exposure: %w", err)
+	}
+
+	if err := resetRestoreTarget(ctx, compose, platformFiles, resolved); err != nil {
+		return err
+	}
+	manifestPath, err := resolved.Store.Sync(m)
+	if err != nil {
+		return fmt.Errorf("recreate application state: %w", err)
+	}
+	if !resolved.FromRepository {
+		resolved.ManifestPath = manifestPath
+	}
+	files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, m)
+	if err != nil {
+		return err
+	}
+	project := files.Project
+	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if m.Services.Secrets {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
+		if err := openbao.EnsureApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
+			return fmt.Errorf("recreate OpenBao application scope: %w", err)
+		}
+		keys, err := openbao.ListApplicationSecretKeys(ctx, compose, platformFiles, identity, credentialsPath)
+		if err != nil {
+			return err
+		}
+		if len(keys) != 0 {
+			return errors.New("restore target OpenBao scope is not empty; refusing PostgreSQL mutation")
+		}
+	}
+	if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
+		return err
+	}
+	if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
+		return err
+	}
+	if m.Services.Secrets {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
+		if err := openbao.RestoreApplicationSecrets(ctx, compose, platformFiles, identity, credentialsPath, secretBackup); err != nil {
+			return err
+		}
+		if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
+			return fmt.Errorf("verify restored OpenBao scope: %w", err)
+		}
+	}
+	if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
+		return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
+	}
+	if application.RequiresRuntimeBroker(m) {
+		if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, m, files); err != nil {
+			return err
+		}
+	}
+	if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
+		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+		return fmt.Errorf("start restored application workload: %w", err)
+	}
+	if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
+		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+		return fmt.Errorf("restore managed HTTP exposure: %w", err)
+	}
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
+		return fmt.Errorf("record provider registry after restore: %w", err)
+	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		return fmt.Errorf("record restored deployment: %w", err)
+	}
+	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
+	return nil
+
 }
 
 func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
@@ -337,8 +301,33 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 	return result
 }
 
-func resolveRestoreTarget(store application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
-	resolved := resolvedApplication{Manifest: backupManifest, Store: store}
+func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	id := deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: backupManifest.Name,
+		Environment: backupManifest.Environment,
+	}
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	resolved := resolvedApplication{
+		Target:              target,
+		DeploymentIdentity:  id,
+		Manifest:            backupManifest,
+		TargetStateRoot:     targetRoot,
+		DeploymentStateRoot: deploymentRoot,
+		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return resolved, err
@@ -357,11 +346,9 @@ func resolveRestoreTarget(store application.Store, backupManifest application.Ma
 	if selection.Manifest.YAML() != backupManifest.YAML() {
 		return resolved, errors.New("selected repository environment manifest does not match backup desired state")
 	}
-	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
-	resolved.Store = application.Store{Root: filepath.Join(stateRoot, "apps")}
 	resolved.ManifestPath = selection.ManifestPath
 	resolved.RepositoryRoot = selection.RepositoryRoot
-	resolved.StateRoot = stateRoot
+	resolved.SourceAvailable = true
 	resolved.FromRepository = true
 	return resolved, nil
 }
@@ -386,7 +373,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 			return err
 		}
 	}
-	if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy previous managed backend before restore: %w", err)
 	}
 	if m.Services.Secrets {

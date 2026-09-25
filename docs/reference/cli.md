@@ -26,9 +26,20 @@ baha
 ├── init
 ├── up
 ├── down
+├── destroy
 ├── plan
 ├── status
 ├── doctor
+├── target
+│   ├── list
+│   ├── show
+│   ├── create
+│   ├── delete
+│   ├── activate
+│   └── deactivate
+├── config
+│   └── prompt
+├── shell-init bash|zsh|fish
 ├── agent
 │   └── describe
 ├── mcp
@@ -121,7 +132,7 @@ baha openbao --help
 
 Human output uses a shared semantic layout. Mutations describe their resulting state (`CREATED`, `UPDATED`, `DELETED`, `STARTED`, `STOPPED`), readiness uses `READY`, protocol/data-path verification uses `VERIFIED`, and `OK` is reserved for checks that have no more precise state verb.
 
-Potentially slow lifecycle work emits delayed contextual activity so fast commands do not flash a spinner and slow commands never appear hung. Non-TTY output is stable and line-oriented.
+Potentially slow lifecycle work emits delayed targetual activity so fast commands do not flash a spinner and slow commands never appear hung. Non-TTY output is stable and line-oriented.
 
 Global controls:
 
@@ -170,6 +181,46 @@ baha completion fish
 
 Generated completion is read-only and includes commands, options and useful fixed values such as `dev|test|prod`.
 
+## Targets and effective deployment destination
+
+BaseHarbor v0.4.15 introduces a first-class Target/Deployment Target foundation. Target, application and environment are independent axes, and one concrete deployment is identified by `target + application + environment`.
+
+Target selection is designed to support local Docker/Podman targets and later Kubernetes/OpenShift targets without adding runtime-specific fields to portable application intent.
+
+The effective target resolves in this order:
+
+```text
+explicit --target
+  > activated BASEHARBOR_TARGET
+  > configured default target
+  > local
+```
+
+Repository detection may select the current application/environment, but never defines the global deployment registry. `baha app list` is therefore CWD-independent.
+
+Shell-local activation is the preferred interactive model so separate terminals can safely target different targets at the same time.
+
+```bash
+eval "$(baha target activate docker-dev)"
+eval "$(baha target deactivate)"
+```
+
+For Fish, source the generated shell integration instead of evaluating POSIX syntax:
+
+```fish
+baha shell-init fish | source
+```
+
+Bash and Zsh shell integration can likewise be loaded with `source <(baha shell-init bash)` or `source <(baha shell-init zsh)`. The optional prompt integration is configured through `baha config prompt` and can render before/after the normal prompt or as a right prompt where the shell supports it.
+
+Structured target inspection is available through:
+
+```bash
+baha target -o json
+```
+
+See [Targets and deployment destinations](../explanation/targets.md).
+
 ## Repository-aware shortcuts and structured output
 
 Inside a repository containing `baseharbor.yaml`, the root shortcuts use the same application lifecycle core:
@@ -191,7 +242,7 @@ baha doctor -o json
 
 The compatibility alias `baha app inspect --json` remains supported. Structured output contains no ANSI rendering and no secret values. `doctor --fix` is intentionally human-only.
 
-Repository-aware lifecycle/read commands accept `-e ENV` / `--environment ENV` as deployment-context selection without rewriting portable intent. A repository may use one root `baseharbor.yaml` or complete `envs/<environment>/baseharbor.yaml` contracts. Multiple environment manifests require explicit selection.
+Repository-aware lifecycle/read commands accept `-e ENV` / `--environment ENV` as deployment-target selection without rewriting portable intent. A repository may use one root `baseharbor.yaml` or complete `envs/<environment>/baseharbor.yaml` contracts. Multiple environment manifests require explicit selection.
 
 Policy inspection:
 
@@ -224,7 +275,7 @@ Local MCP server:
 baha mcp serve
 ```
 
-The MCP server uses stdio only and exposes six read-only semantic tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`, `baseharbor.policy.check` and `baseharbor.policy.explain`.
+The MCP server uses stdio only and includes the read-only `baseharbor.target` operation plus the lifecycle and policy tools documented in the MCP reference. Target selection uses the same explicit target / activated shell target / configured default precedence as the CLI.
 
 There is no generic shell, exec, Docker or Compose tool. MCP calls route into the same typed result collectors used by the CLI/TUI and therefore preserve BaseHarbor ownership, isolation and verification semantics.
 
@@ -252,12 +303,39 @@ baha up --postgres-port 15432 --openbao-port 18200
 
 The default ports are checked before first initialization. An occupied default port is not blindly bound.
 
-Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/runtime` or `~/.local/share/baseharbor/runtime` when XDG is unset. `BASEHARBOR_STATE_DIR` is the explicit override.
+Control-plane and provider state is owned by the effective Target under `$XDG_DATA_HOME/baseharbor/targets/<target>/` or `~/.local/share/baseharbor/targets/<target>/` when XDG is unset. This keeps runtime state, generated artifacts, provider registries, networks and deployment records isolated across Targets.
+
+## Destroy and uninstall cleanup
+
+The normal global destroy remains Target-scoped and fail-closed:
+
+```bash
+baha destroy
+baha destroy --yes
+```
+
+It refuses to remove the effective Target while application bindings or unresolved ownership constraints remain.
+
+For an intentional complete BaseHarbor cleanup across the installation:
+
+```bash
+baha destroy --all
+baha destroy --all --yes
+```
+
+`--all` enumerates registered deployments and every configured or BaseHarbor state-backed Target, releases BaseHarbor-managed connectivity, destroys applications through the existing ownership-aware lifecycle, then removes shared runtime/provider resources, control-plane state and BaseHarbor XDG data/config. Cleanup is best-effort across damaged or partially missing state and ends with a `REMOVED` / `SKIPPED` / `NOT FOUND` / `FAILED` report.
+
+The full cleanup is intentionally aggressive only toward resources that BaseHarbor can identify as its own. It never deletes application source repositories or foreign/external application-owned resources. If runtime ownership cannot be established safely, the external resource is left untouched and reported instead of guessed.
+
+Without `--yes`, an interactive terminal requires explicit confirmation; non-interactive use only prints the destructive scope and makes no changes.
+
+After successful full cleanup, remove the `baha` binary separately from the directory where it was installed. The release installer defaults to `~/.local/bin/baha`.
 
 ## Read-only repository inspection
 
 ```bash
 baha app inspect .
+baha app inspect . --verbose
 baha app inspect . -o json
 ```
 
@@ -275,12 +353,42 @@ The JSON form is the canonical machine-readable result intended for reuse by fut
 
 When an existing `baseharbor.yaml` is present, `baha app inspect` also compares repository evidence with the declared contract. Human and JSON output can distinguish `satisfied`, `new`, `ambiguous` and `stale` capability state.
 
-Current semantic detectors include PostgreSQL/Redis consumption plus S3-compatible usage, likely S3 runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export. Findings include capability direction and may include runtime-operation hints such as `runtime.create`.
+Current semantic detectors include SQL/cache product evidence, S3-compatible object-storage usage, likely runtime bucket creation, OpenMetrics `/metrics` endpoints, explicit OTLP signal evidence, application log-collection proposals and BaseHarbor Runtime API usage. Product evidence is normalized to generic service families such as `sql`, `cache`, `object-storage` and `observability`; protocol compatibility such as RESP, S3, OpenMetrics and OTLP stays separate.
+
+Normal human output collapses repeated evidence into one capability summary and classifies Compose services as workload, replaceable infrastructure or ambiguous. Infrastructure-shaped services whose role cannot be determined safely are never silently selected as workload: `app init --quick` fails closed and interactive init asks for explicit classification. `--verbose` shows the underlying evidence; JSON always preserves the complete machine-readable evidence.
 
 Inspection remains strictly read-only. `stale` never removes contract state, and a detected runtime operation never grants permission or provisions a resource.
 
 Repository-first `baha up` reuses the same reconciliation core before convergence. It surfaces newly detected or ambiguous capabilities and runtime-operation hints, but does not rewrite `baseharbor.yaml` or grant runtime permissions.
 
+## Application observability contract
+
+Application instrumentation stays provider-neutral. BaseHarbor owns collector/backend selection, placement, trust and lifecycle.
+
+```text
+Metrics:
+  expose an OpenMetrics-compatible HTTP endpoint
+  recommended path: /metrics
+  BaseHarbor collects workload + supported managed-provider metrics
+  do not configure Prometheus in application code
+
+Logs:
+  write logs to stdout/stderr
+  structured records such as JSON are recommended where practical
+  BaseHarbor collects workload + supported managed-provider logs
+  do not configure Loki or Alloy in application code
+
+Traces:
+  use standard OpenTelemetry SDKs/exporters
+  emit OTLP through the BaseHarbor-provided binding
+  BaseHarbor injects endpoint/protocol/trust/auth material
+  BaseHarbor collects workload + supported managed-provider traces
+  do not configure Tempo or an OpenTelemetry Collector in application code
+```
+
+Metrics, logs and traces remain independent opt-in signal classes. Enabling metrics or logs does not invent trace intent. When a signal class is enabled, collection follows the generic source classes `application`, `application-provider` and, where placement/operator policy permits it, `platform-provider`.
+
+The same application instrumentation is expected to move unchanged between dev/test/prod. Environment-specific TLS, mTLS, external PKI, tokens and backend/provider placement remain protected BaseHarbor deployment state.
 ## Metrics collection policy
 
 A repository may declare one or more provider-neutral `metrics/v1` sources:
@@ -333,19 +441,22 @@ baha app init
 
 Before asking setup questions, `baha` analyzes the repository read-only and detects as much as it can safely derive, including:
 
-- common Compose files in the repository root and supported conventional subdirectories;
-- PostgreSQL and Redis/Valkey usage;
-- likely application workload services;
-- infrastructure variables from common example/template env files;
+- common Compose files and application workload services;
+- replaceable PostgreSQL, Redis/Valkey and supported S3-compatible infrastructure without editing Compose;
+- generic SQL, cache and object-storage intent from product/protocol evidence;
+- OpenMetrics `/metrics`, explicit OTLP signal usage and application log-collection intent;
+- explicit BaseHarbor Runtime API usage and concrete runtime-operation evidence;
 - likely required application secret names.
 
-Secret values are never copied into the manifest. The interactive rule is **detect first, ask only what is unclear**.
+Secret values are never copied into the manifest. The canonical human repository path is `baha app init` followed by `baha up`; `status` and `doctor` verify the result. `plan`, `preflight` and explicit `app apply` remain advanced/automation interfaces rather than required happy-path steps.
+
+The interactive rule is **detect first, ask only what is unclear**. Potential application secret names are handled individually: the developer may skip or rename them, mark them required or optional, and choose generate, secure first-apply input, or configure-later behavior. Provider/runtime credentials remain BaseHarbor-managed and are not requested from the developer.
 
 The wizard shows a compact capability selection with detected choices preselected. Developers may override them. If several Compose files are plausible, BaseHarbor asks explicitly instead of guessing.
 
 When more than one PostgreSQL or Redis/Valkey backend is visible, the wizard proposes logical instance names automatically. A single detected backend stays the simple `default` instance.
 
-Before writing anything, the generated `baseharbor.yaml` is shown as a preview. An existing manifest is never silently overwritten.
+Before writing anything, interactive init shows a concise adoption summary covering the application, workload, managed services, observability, application-secret policy and runtime permissions that are actually selected. Generic service intent is shown first; concrete default/provider compatibility is shown separately. Raw generated YAML is secondary detail shown with `--verbose`. An existing manifest is never silently overwritten.
 
 For a non-interactive detection-based path:
 
@@ -360,8 +471,8 @@ The explicit flag-based path remains available and deterministic for CI, scripts
 ```bash
 baha app init mailflow \
   --environment production \
-  --postgres \
-  --redis \
+  --sql \
+  --cache \
   --require-secret SECRET_KEY
 ```
 
@@ -396,20 +507,20 @@ Multiple independent logical buckets use repeated `--s3-bucket`; `--s3` requests
 
 Application backup/restore currently fails closed when managed object storage is declared because bucket contents are not yet part of the recovery unit.
 
-## Multiple PostgreSQL and Valkey instances
+## Multiple SQL and cache instances
 
 ```bash
-baha app init demo --postgres --redis
+baha app init demo --sql --cache
 ```
 
 Named logical instances:
 
 ```bash
 baha app init demo \
-  --postgres-instance primary \
-  --postgres-instance analytics \
-  --redis-instance cache \
-  --redis-instance sessions
+  --sql-instance primary \
+  --sql-instance analytics \
+  --cache-instance cache \
+  --cache-instance sessions
 ```
 
 Each logical instance receives independent credentials, persistent state and stable bindings. Multiple instances are not HA replicas; HA is a separate topology concern behind one logical service contract.
@@ -423,6 +534,22 @@ plan -> preflight -> apply -> verify
 `plan` and `preflight` are read-only. `apply` validates desired state, materializes owned runtime state, converges managed services, secret scope, runtime identity/broker and repository workload where applicable, then returns success only after verification.
 
 Required secrets are a startup gate. Missing or unusable required secrets prevent the workload from starting.
+
+Interactive `baha app apply` and repository `baha up` resolve missing non-generated required application secrets in the same flow when a terminal is available. Values are entered with terminal echo disabled and are written directly to managed secret storage; they are never written to the manifest or normal output. Generated requirements are created automatically. Non-interactive mode remains fail-closed and points to the explicit automation command.
+
+Normal human entry:
+
+```bash
+baha app secret set API_TOKEN
+```
+
+Automation:
+
+```bash
+printf '%s' "$API_TOKEN" | baha app secret set API_TOKEN --stdin
+```
+
+Optional application secrets may be declared without gating startup. When configured, they are projected to the workload like other application-owned secret bindings; when absent, startup continues.
 
 Repository workload readiness is service-level and health-aware. When conventional HTTP/HTTPS publishers exist, BaseHarbor also probes the locally published endpoint. Redirects count as reachable exposure; 5xx/unreachable endpoints do not. For hostname-bound HTTPS, the local socket is probed using the configured public FQDN as HTTP Host/TLS ServerName.
 
@@ -494,7 +621,7 @@ baha app tls update
 
 `baha app status` reports TLS mode, expiry, source/update information when deployment TLS state exists. `baha app doctor` adds certificate/key/FQDN/expiry diagnostics.
 
-ACME automation, OpenBao PKI issuance and provider-neutral certificate lifecycle contracts are future work; v0.4 does not claim them.
+Public-ingress ACME automation remains future work. Managed service-access certificate lifecycle is implemented behind the provider-neutral issuer boundary: OpenBao PKI is the managed-local reference issuer, BYOC/static external material remains operator-owned, and issuer-backed external PKI can renew through the same service-access contract.
 
 ## Dynamic runtime identity
 
@@ -675,3 +802,21 @@ The current Compose adapter collects selected repository workload services. Prov
 `app apply` and `app up` provision/reuse the selected Loki/Alloy provider before workload start, generate a BaseHarbor-owned logging override, start the workload and require a successful Loki query before reporting the logs path ready. `status` and `doctor` re-query Loki.
 
 Repository workload mutation also passes the v0.4.9 security preflight. `privileged: true`, container-runtime sockets, host network/PID/IPC, dangerous capabilities and critical host mounts are denied in managed environments. Development-only explicit acknowledgements use `BASEHARBOR_WORKLOAD_SECURITY_ALLOW=<comma-separated-codes>`; `BASEHARBOR_WORKLOAD_SECURITY_MODE=development|managed` is an operator policy override. Managed mode never accepts development-only acknowledgement bypasses.
+
+## Guided repository adoption
+
+`baha app init` uses the same read-only inspection result as `baha app inspect`.
+
+The guided flow is capability-first:
+
+- SQL Database; PostgreSQL may be shown as detected provider/product evidence.
+- Cache; Redis/Valkey may be shown as compatibility/provider evidence.
+- Object Storage with S3 API compatibility.
+- Metrics from an unambiguous `/metrics` endpoint.
+- Observability through OTLP when signal evidence is available.
+- Application log collection as an explicit opt-in proposal.
+- Runtime API permissions only from concrete runtime-operation evidence.
+
+Repository Compose files are never rewritten. Supported backend services discovered in a mixed Compose file are classified as replaceable infrastructure and excluded from BaseHarbor `workload.services`; the original Compose file remains usable independently.
+
+`baha app init --quick` is deterministic and fail-closed. It refuses ambiguous Compose selection, metrics service/port mapping, OTLP signal mapping, or Runtime API service scope instead of guessing.

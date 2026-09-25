@@ -11,10 +11,10 @@ app:
   name: my-app
 
 services:
-  postgres:
+  sql:
     enabled: true
 
-  redis:
+  cache:
     enabled: true
 
 secrets:

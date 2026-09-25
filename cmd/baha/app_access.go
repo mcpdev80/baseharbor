@@ -24,7 +24,7 @@ func appPSQLCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, binding, err := resolveAccessBinding(store, appName, "postgres", instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, "postgres", instance)
 			if err != nil {
 				return err
 			}
@@ -37,7 +37,10 @@ func appPSQLCommand(store application.Store) *cli.Command {
 				user = "baseharbor"
 			}
 			cmd := exec.CommandContext(ctx, path, "-h", binding.Host, "-p", binding.Port, "-U", user, "-d", binding.Database)
-			cmd.Env = replaceProcessEnv("PGPASSWORD", binding.Password)
+			env := replaceProcessEnv("PGPASSWORD", binding.Password)
+			env = replaceEnvIn(env, "PGSSLMODE", "verify-ca")
+			env = replaceEnvIn(env, "PGSSLROOTCERT", binding.CertificatesPath)
+			cmd.Env = env
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
 			fmt.Fprintf(errOut, "Connecting to %s PostgreSQL instance %s...\n", resolved.Manifest.Name, binding.Instance)
 			return cmd.Run()
@@ -56,7 +59,7 @@ func appRedisCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, binding, err := resolveAccessBinding(store, appName, "valkey", instance)
+			resolved, binding, err := resolveAccessBinding(ctx, store, appName, "valkey", instance)
 			if err != nil {
 				return err
 			}
@@ -67,7 +70,7 @@ func appRedisCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return fmt.Errorf("valkey-cli or redis-cli client not found in PATH")
 			}
-			cmd := exec.CommandContext(ctx, path, "-h", binding.Host, "-p", binding.Port)
+			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
 			fmt.Fprintf(errOut, "Connecting to %s Valkey instance %s...\n", resolved.Manifest.Name, binding.Instance)
@@ -86,7 +89,7 @@ func appCredsCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, binding, err := resolveAccessBinding(store, appName, kind, instance)
+			_, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
 			if err != nil {
 				return err
 			}
@@ -184,24 +187,24 @@ func appExecCommand(store application.Store) *cli.Command {
 	}
 }
 
-func resolveAccessBinding(store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
+func resolveAccessBinding(ctx context.Context, store application.Store, appName, kind, instance string) (resolvedApplication, application.ServiceBinding, error) {
 	var appArgs []string
 	if appName != "" {
 		appArgs = []string{appName}
 	}
-	resolved, err := resolveApplication(store, appArgs, kind)
+	resolved, err := resolveApplication(ctx, store, appArgs, kind)
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
-	instances := application.RedisInstanceNames(resolved.Manifest)
+	instances := application.CacheInstanceNames(resolved.Manifest)
 	if kind == "postgres" {
-		instances = application.PostgresInstanceNames(resolved.Manifest)
+		instances = application.SQLInstanceNames(resolved.Manifest)
 	}
 	selected, err := selectAccessInstance(instances, instance, kind)
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
-	files, err := application.ExistingRuntimeFiles(store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
@@ -232,18 +235,18 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	if appName != "" {
 		appArgs = []string{appName}
 	}
-	resolved, err := resolveApplication(store, appArgs, "workload access")
+	resolved, err := resolveApplication(ctx, store, appArgs, "workload access")
 	if err != nil {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
 	}
 	if !resolved.FromRepository {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
 	}
-	files, err := application.ExistingRuntimeFiles(store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
 	if err != nil {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
 	}
@@ -383,6 +386,17 @@ func parseExecArgs(args []string) (appName, service string, command []string, er
 		return "", "", nil, usageError("SERVICE and COMMAND are required", "Example: baha app exec api env")
 	}
 	return appName, positional[0], positional[1:], nil
+}
+
+func replaceEnvIn(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			out = append(out, item)
+		}
+	}
+	return append(out, prefix+value)
 }
 
 func replaceProcessEnv(key, value string) []string {

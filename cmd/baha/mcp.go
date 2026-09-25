@@ -9,17 +9,54 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
+
+type machineTargetInput struct {
+	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+}
 
 type machineInspectInput struct {
 	Path string `json:"path,omitempty" jsonschema:"local repository path or Git URL; defaults to the current directory"`
 }
 
 type machineApplicationInput struct {
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+}
+
+type machineUpdateInput struct {
+	Target             string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Environment        string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	BackupPasswordFile string `json:"backup_password_file,omitempty" jsonschema:"owner-only local file containing the backup password used for the pre-update recovery point"`
+	NoBackup           bool   `json:"no_backup,omitempty" jsonschema:"explicitly acknowledge updating durable state without a pre-update recovery point"`
+}
+
+type machineBackupInput struct {
+	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Name         string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment  string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	OutputPath   string `json:"output_path,omitempty" jsonschema:"optional local path for the encrypted BaseHarbor recovery archive"`
+	PasswordFile string `json:"password_file,omitempty" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+}
+
+type machineRestoreInput struct {
+	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	BackupPath   string `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
+	Name         string `json:"name,omitempty" jsonschema:"optional expected application identity"`
+	Environment  string `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
+	PasswordFile string `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+}
+
+type machineDestroyInput struct {
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
+	FullReset   bool   `json:"full_reset,omitempty" jsonschema:"also remove BaseHarbor-owned repository deployment and normalized TLS state"`
 }
 
 type machineToolError struct {
@@ -27,12 +64,36 @@ type machineToolError struct {
 	Error           *machine.Error `json:"error"`
 }
 
+type machineLifecycleStatusResult struct {
+	applicationlifecycle.Result
+	Status applicationStatusResult `json:"status"`
+}
+
+type machineLifecycleDoctorResult struct {
+	applicationlifecycle.Result
+	Doctor applicationDoctorResult `json:"doctor"`
+}
+
+type machineObserveResult struct {
+	ContractVersion string                  `json:"contract_version"`
+	Target          string                  `json:"target"`
+	Application     string                  `json:"application"`
+	Environment     string                  `json:"environment"`
+	Status          applicationStatusResult `json:"status"`
+	Doctor          applicationDoctorResult `json:"doctor"`
+}
+
+type machineBackupResult struct {
+	applicationlifecycle.Result
+	Backup application.BackupMetadata `json:"backup"`
+}
+
 func mcpCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "mcp",
 		Summary: "Expose BaseHarbor semantic operations over MCP",
 		Usage:   "baha mcp serve",
-		Long:    "Runs a local stdio Model Context Protocol server exposing a deliberately small BaseHarbor semantic tool surface. It never exposes generic shell, Docker or Compose execution.",
+		Long:    "Runs a local stdio Model Context Protocol server exposing a deliberately small BaseHarbor semantic tool surface. It never exposes generic shell, Docker, Compose or Podman execution.",
 		Children: []*cli.Command{
 			{
 				Name:    "serve",
@@ -63,107 +124,50 @@ func newMCPServer(store application.Store) *mcp.Server {
 		Capabilities:              &mcp.ServerCapabilities{},
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.inspect",
-		Description: "Read-only repository inspection. Returns deterministic, secret-safe evidence and capability findings without changing repository or runtime state.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(true)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineInspectInput) (*mcp.CallToolResult, any, error) {
-		path := strings.TrimSpace(input.Path)
-		if path == "" {
-			path = "."
-		}
-		result, err := inspectRepositorySource(ctx, path)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.plan",
-		Description: "Read-only deterministic desired-state plan for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		resolved, err := resolveMachineApplication(store, strings.TrimSpace(input.Name), "plan")
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		result, err := application.BuildPlan(resolved.Manifest)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.status",
-		Description: "Read-only runtime and readiness observation for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		var args []string
-		if name := strings.TrimSpace(input.Name); name != "" {
-			args = []string{name}
-		}
-		result, err := collectApplicationStatusResult(ctx, store, args)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.doctor",
-		Description: "Read-only diagnostic verification for the current repository or named application.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		var args []string
-		if name := strings.TrimSpace(input.Name); name != "" {
-			args = []string{name}
-		}
-		result, err := collectApplicationDoctor(ctx, store, args)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.policy.check",
-		Description: "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		var args []string
-		if name := strings.TrimSpace(input.Name); name != "" {
-			args = []string{name}
-		}
-		result, err := collectApplicationPolicy(ctx, store, args, strings.TrimSpace(input.Environment))
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "baseharbor.policy.explain",
-		Description: "Read-only explanation of effective environment policy defaults, rules and bounded operator overrides.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPointer(false), OpenWorldHint: boolPointer(false)},
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		var args []string
-		if name := strings.TrimSpace(input.Name); name != "" {
-			args = []string{name}
-		}
-		result, err := explainApplicationPolicy(store, args, strings.TrimSpace(input.Environment))
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		return nil, result, nil
-	})
-
+	registerMCPReadTools(server, store)
+	registerMCPLifecycleTools(server, store)
 	return server
 }
 
+func machineMCPTool(operationID, description string, openWorld bool) *mcp.Tool {
+	operation, ok := machine.OperationByID(operationID)
+	if !ok || operation.MCPTool == "" {
+		panic("BaseHarbor machine operation is not registered for MCP: " + operationID)
+	}
+	readOnly := operation.Safety == machine.SafetyReadOnly
+	destructive := operation.Safety == machine.SafetyDestructive
+	return &mcp.Tool{
+		Name:        operation.MCPTool,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    readOnly,
+			DestructiveHint: boolPointer(destructive),
+			OpenWorldHint:   boolPointer(openWorld),
+		},
+	}
+}
+
+func machineApplicationArgs(name, environment string) []string {
+	args := make([]string, 0, 3)
+	if name = strings.TrimSpace(name); name != "" {
+		args = append(args, name)
+	}
+	if environment = strings.TrimSpace(environment); environment != "" {
+		args = append(args, "--environment", environment)
+	}
+	return args
+}
+
+func machineLifecycleContext(ctx context.Context) context.Context {
+	opts := cli.OutputOptionsFromContext(ctx)
+	opts.NonInteractive = true
+	opts.Quiet = true
+	opts.Plain = true
+	return cli.WithOutputOptions(ctx, opts)
+}
+
 func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
-	classified := machine.Classify(err)
+	classified := machine.Classify(classifyMachineCLIError(err))
 	payload := machineToolError{ContractVersion: machine.ContractVersion, Error: classified}
 	data, marshalErr := json.Marshal(payload)
 	if marshalErr != nil {

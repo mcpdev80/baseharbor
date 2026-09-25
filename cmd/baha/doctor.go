@@ -113,7 +113,9 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
-			finding.Action = "enable the Compose integration for the selected container runtime"
+			finding.Action = "enable the Compose integration for Docker"
+		case "quadlet":
+			finding.Action = "install or enable Podman Quadlet and the user systemd session"
 		case "runtime-config":
 			finding.Action = "repair or deliberately recreate the local BaseHarbor runtime configuration"
 		case "postgres":
@@ -166,7 +168,7 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
-	files, err := bhruntime.ExistingFiles("")
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}

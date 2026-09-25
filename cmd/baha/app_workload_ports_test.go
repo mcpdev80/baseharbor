@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func TestWorkloadPublishedPortVariables(t *testing.T) {
@@ -108,18 +109,20 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 	}
 
 	m := application.New("demo", "dev", false, false, false)
+	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:       m,
-		ManifestPath:   manifestPath,
-		Store:          application.Store{Root: filepath.Join(repo, ".baseharbor", "apps")},
-		FromRepository: true,
+		Manifest:            m,
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
 	}
 	var out bytes.Buffer
 	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader("\n"), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
 
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repo))
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,17 +158,19 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	if err := os.WriteFile(manifestPath, []byte("version: 1\\nname: demo\\nenvironment: dev\\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:       application.New("demo", "dev", false, false, false),
-		ManifestPath:   manifestPath,
-		Store:          application.Store{Root: filepath.Join(repo, ".baseharbor", "apps")},
-		FromRepository: true,
+		Manifest:            application.New("demo", "dev", false, false, false),
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
 	}
 	var out bytes.Buffer
 	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader(""), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repo))
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +196,67 @@ func TestUpdateRepositoryInitValuesPreservesDeploymentInputs(t *testing.T) {
 	}
 	if values["BASEHARBOR_HOSTNAME"] != "demo.example.com" || values["BASEHARBOR_TLS_MODE"] != "existing" || values["HTTP_PORT"] != "8080" {
 		t.Fatalf("deployment values were not preserved: %#v", values)
+	}
+}
+
+func TestFixedComposeHostPort(t *testing.T) {
+	cases := []struct {
+		value string
+		port  int
+		fixed bool
+	}{
+		{value: "8080:80", port: 8080, fixed: true},
+		{value: "127.0.0.1:8443:443", port: 8443, fixed: true},
+		{value: "[::1]:9443:443", port: 9443, fixed: true},
+		{value: "${HTTP_PORT:-8080}:80", fixed: false},
+		{value: "80", fixed: false},
+	}
+	for _, tc := range cases {
+		got, fixed := fixedComposeHostPort(tc.value)
+		if got != tc.port || fixed != tc.fixed {
+			t.Fatalf("%q => (%d,%v), want (%d,%v)", tc.value, got, fixed, tc.port, tc.fixed)
+		}
+	}
+}
+
+func TestPreflightRepositoryWorkloadPublishedPortsRejectsOccupiedFixedPort(t *testing.T) {
+	root := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	composePath := filepath.Join(root, "compose.yaml")
+	compose := fmt.Sprintf("services:\n  api:\n    image: example/api\n    ports:\n      - \"127.0.0.1:%d:8080\"\n", port)
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = preflightRepositoryWorkloadPublishedPorts(
+		context.Background(),
+		strings.NewReader(""),
+		&bytes.Buffer{},
+		application.WorkloadFiles{
+			RepositoryRoot: root,
+			Compose:        composePath,
+			Services:       []string{"api"},
+		},
+		application.RuntimeFiles{Dir: t.TempDir()},
+		map[string]string{},
+	)
+	if err == nil {
+		t.Fatal("expected occupied fixed port to fail before workload start")
+	}
+	var typed *machine.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected typed machine error, got %T: %v", err, err)
+	}
+	if typed.Code != machine.ErrorPortConflict || typed.Resource != "api" {
+		t.Fatalf("typed error = %#v", typed)
+	}
+	if !strings.Contains(typed.Next, "configurable") {
+		t.Fatalf("remediation = %q", typed.Next)
 	}
 }

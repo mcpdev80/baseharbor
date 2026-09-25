@@ -50,7 +50,7 @@ A create request is provider-neutral:
 }
 ```
 
-The application does not request SeaweedFS, AWS S3, Ceph RGW or another concrete product. For `object-storage.s3/v1`, the current Compose reference path resolves to SeaweedFS behind the provider boundary.
+The application does not request SeaweedFS, AWS S3, Ceph RGW or another concrete product. For `object-storage.s3/v1`, the current local reference path resolves to SeaweedFS behind the provider boundary. Docker uses Docker Compose; Podman renders the same definition as Quadlet.
 
 ## Authorization
 

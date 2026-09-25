@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -21,6 +22,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if _, err := bhruntime.DetectCompose(ctx); err != nil {
 		t.Skipf("compose runtime unavailable: %v", err)
 	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -33,7 +35,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
@@ -47,8 +49,16 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("unexpected apply output: %s", out.String())
 	}
-	if _, err := os.Stat(filepath.Join(root, ".baseharbor", ".gitignore")); err != nil {
-		t.Fatalf("generated state is not protected from Git: %v", err)
+	if _, err := os.Stat(filepath.Join(root, ".baseharbor")); !os.IsNotExist(err) {
+		t.Fatalf("deployment state must not be repository-local: %v", err)
+	}
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "repository integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deploymentRoot := resolved.DeploymentStateRoot
+	if deploymentRoot == "" {
+		t.Fatal("resolved deployment state root is empty")
 	}
 
 	nested := filepath.Join(root, "frontend", "src")
@@ -70,8 +80,11 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	envPath := strings.TrimSpace(out.String())
-	if !strings.HasPrefix(envPath, filepath.Join(root, ".baseharbor")) {
-		t.Fatalf("environment path is not anchored to repository root: %s", envPath)
+	if !strings.HasPrefix(envPath, deploymentRoot) {
+		t.Fatalf("environment path is not anchored to target deployment state: %s", envPath)
+	}
+	if strings.HasPrefix(envPath, root) {
+		t.Fatalf("environment path leaked into repository-local state: %s", envPath)
 	}
 	if _, err := os.Stat(filepath.Join(nested, ".baseharbor")); !os.IsNotExist(err) {
 		t.Fatalf("nested command created nested BaseHarbor state: %v", err)
@@ -84,7 +97,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest was not preserved: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".baseharbor", "apps", "repo-e2e")); !os.IsNotExist(err) {
-		t.Fatalf("managed application state remains after destroy: %v", err)
+	if _, err := os.Stat(deploymentRoot); !os.IsNotExist(err) {
+		t.Fatalf("target deployment state remains after destroy: %v", err)
 	}
 }

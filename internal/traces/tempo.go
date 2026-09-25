@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
@@ -50,12 +51,19 @@ type ProviderFiles struct {
 }
 
 type Driver struct {
-	runtime Runtime
-	app     application.Manifest
+	runtime   Runtime
+	app       application.Manifest
+	issuer    serviceaccess.Issuer
+	dataDir   string
+	namespace string
 }
 
-func NewDriver(runtime Runtime, app application.Manifest) *Driver {
-	return &Driver{runtime: runtime, app: app}
+func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
+	return &Driver{runtime: runtime, app: app, issuer: issuer}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{runtime: runtime, app: app, issuer: issuer, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
@@ -88,31 +96,40 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ ca
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	_, err := Provision(ctx, d.runtime, d.app)
+	_, err := ProvisionAt(ctx, d.runtime, d.issuer, d.app, d.dataDir, d.namespace)
 	return err
 }
 
 func (d *Driver) Bind(context.Context, capability.Resource, capability.Binding) error { return nil }
 
 func (d *Driver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	return VerifyTrace(ctx, d.app, telemetry.ProbeTraceIDHex)
+	return VerifyTraceAt(ctx, d.app, telemetry.ProbeTraceIDHex, d.dataDir, d.namespace)
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	p, err := application.ResolveProviderPlacement(m, capability.ProviderTempo)
-	if err != nil {
-		return Placement{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
 	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
+	p, err := application.ResolveProviderPlacement(m, capability.ProviderTempo)
+	if err != nil {
+		return Placement{}, err
+	}
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
-		project := "baseharbor-traces"
-		network := "baseharbor-traces"
-		volume := "baseharbor-tempo-data"
-		dir := filepath.Join(dataDir, "providers", "tempo", "shared")
+		project := "baseharbor-" + prefix + "traces"
+		network := "baseharbor-" + prefix + "traces"
+		volume := "baseharbor-" + prefix + "tempo-data"
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
 		if p.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(p.SharingBoundary)
 			project += "-" + token
@@ -122,8 +139,8 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 		}
 		return Placement{Scope: p.Scope, Project: project, Network: network, Volume: volume, Dir: dir, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
-		return Placement{Scope: p.Scope, Project: "baseharbor-traces-" + suffix, Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(dataDir, "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
+		suffix := prefix + m.Name + "-" + m.Environment
+		return Placement{Scope: p.Scope, Project: "baseharbor-traces-" + suffix, Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: p.Scope}, nil
 	default:
@@ -131,8 +148,16 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 	}
 }
 
-func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
-	p, err := PlacementFor(m)
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, Placement, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	return EnsureProviderFilesAt(ctx, issuer, dataDir, "", m)
+}
+
+func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) (ProviderFiles, Placement, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
 	}
@@ -165,14 +190,30 @@ func EnsureProviderFiles(m application.Manifest) (ProviderFiles, Placement, erro
 	if err := os.WriteFile(files.Config, []byte(configYAML()), 0o644); err != nil {
 		return ProviderFiles{}, p, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(composeYAML(p)), 0o600); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, p, err
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, tempoAccessSpec())
+	if err != nil {
+		return ProviderFiles{}, p, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(composeYAMLWithAccess(p, accessFiles)), 0o600); err != nil {
 		return ProviderFiles{}, p, err
 	}
 	return files, p, nil
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, Placement, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
 	}
@@ -188,8 +229,16 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, er
 	return files, p, nil
 }
 
-func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Placement, error) {
-	files, p, err := EnsureProviderFiles(m)
+func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) (Placement, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Placement{}, err
+	}
+	return ProvisionAt(ctx, runtime, issuer, m, dataDir, "")
+}
+
+func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest, dataDir, namespace string) (Placement, error) {
+	files, p, err := EnsureProviderFilesAt(ctx, issuer, dataDir, namespace, m)
 	if err != nil {
 		return Placement{}, err
 	}
@@ -203,17 +252,43 @@ func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Pl
 	if err != nil {
 		return Placement{}, err
 	}
-	if err := waitReady(ctx, endpoint); err != nil {
+	client, err := tempoHTTPClient(m, files)
+	if err != nil {
+		return Placement{}, err
+	}
+	if err := waitReady(ctx, client, endpoint); err != nil {
 		return Placement{}, err
 	}
 	class := observability.SourcePlatformProvider
 	if p.Scope == capability.ScopeApplication {
 		class = observability.SourceApplicationProvider
 	}
-	if err := observability.Update(observability.MetricsSource{
-		ID: "tempo:" + p.Project, Provider: capability.ProviderTempo, Class: class, Scope: p.Scope,
-		SharingBoundary: p.SharingBoundary, OwnerApplication: p.OwnerApplication,
-		Network: p.Network, Target: "tempo:3200", Path: "/metrics",
+	metricsPolicy, err := application.MetricsPolicy(m)
+	if err != nil {
+		return Placement{}, err
+	}
+	metricsEnabled := (application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m)) && metricsPolicy.Enabled
+	if class == observability.SourceApplicationProvider {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourceApplicationProvider]
+	} else {
+		metricsEnabled = metricsEnabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
+	}
+	signals := map[string]observability.ProviderSignalRuntime{}
+	if metricsEnabled {
+		signals["tempo-metrics"] = observability.ProviderSignalRuntime{
+			Network: p.Network,
+			Target:  "tempo:3200",
+		}
+	}
+	if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
+		ID:               "tempo:" + p.Project,
+		Descriptor:       capability.TempoIntegration,
+		Class:            class,
+		Scope:            p.Scope,
+		SharingBoundary:  p.SharingBoundary,
+		OwnerApplication: p.OwnerApplication,
+		Enabled:          map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
+		Signals:          signals,
 	}); err != nil {
 		return Placement{}, err
 	}
@@ -221,7 +296,15 @@ func Provision(ctx context.Context, runtime Runtime, m application.Manifest) (Pl
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, m, dataDir, "")
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, m application.Manifest, dataDir, namespace string) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope != capability.ScopeApplication {
 		return err
 	}
@@ -233,7 +316,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, m, dataDir, "")
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, m application.Manifest, dataDir, namespace string) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}
@@ -253,7 +344,16 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Join(dataDir, "providers", "tempo", "shared")
+	return DestroyAllSharedProvidersAt(ctx, runtime, dataDir, "")
+}
+
+func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -274,14 +374,14 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 		_ = observability.Remove("tempo:" + project)
 		return nil
 	}
-	if err := destroyAt(root, "baseharbor-traces"); err != nil {
+	if err := destroyAt(root, "baseharbor-"+prefix+"traces"); err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-traces-"+entry.Name()); err != nil {
+		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-"+prefix+"traces-"+entry.Name()); err != nil {
 			return err
 		}
 	}
@@ -301,14 +401,45 @@ func ProviderEndpoint(files ProviderFiles) (string, error) {
 			if err != nil || port < 1 || port > 65535 {
 				return "", errors.New("invalid Tempo port")
 			}
-			return fmt.Sprintf("http://127.0.0.1:%d", port), nil
+			return fmt.Sprintf("https://127.0.0.1:%d", port), nil
 		}
 	}
 	return "", errors.New("Tempo port is missing")
 }
 
+func tempoAccessSpec() serviceaccess.HTTPGatewaySpec {
+	return serviceaccess.HTTPGatewaySpec{
+		ServiceName:      "tempo-access",
+		Upstream:         "http://tempo:3200",
+		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
+		ContainerPort:    8443,
+		Networks:         []string{"traces"},
+		RequireClient:    true,
+	}
+}
+
+func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load Tempo service access identity: %w", err)
+	}
+	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+}
+
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {
-	files, _, err := EnsureProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return VerifyTraceAt(ctx, m, traceID, dataDir, "")
+}
+
+func VerifyTraceAt(ctx context.Context, m application.Manifest, traceID, dataDir, namespace string) error {
+	files, _, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
@@ -316,7 +447,10 @@ func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) er
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client, err := tempoHTTPClient(m, files)
+	if err != nil {
+		return err
+	}
 	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
@@ -339,8 +473,7 @@ func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) er
 	}
 }
 
-func waitReady(ctx context.Context, endpoint string) error {
-	client := &http.Client{Timeout: 5 * time.Second}
+func waitReady(ctx context.Context, client *http.Client, endpoint string) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -383,7 +516,13 @@ usage_report:
 }
 
 func composeYAML(p Placement) string {
-	return fmt.Sprintf(`services:
+	access := serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile", Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"}}
+	return composeYAMLWithAccess(p, access)
+}
+
+func composeYAMLWithAccess(p Placement, access serviceaccess.HTTPGatewayFiles) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`services:
   tempo:
     image: %s
     restart: unless-stopped
@@ -408,5 +547,10 @@ networks:
 volumes:
   tempo-data:
     name: %q
-`, ProviderImage, p.Network, p.Volume)
+`, ProviderImage, p.Network, p.Volume))
+	text := b.String()
+	text = strings.Replace(text, "    ports:\n      - \"127.0.0.1:$"+"{BASEHARBOR_TEMPO_PORT}:3200\"\n", "", 1)
+	insert := serviceaccess.HTTPGatewayComposeService(access, tempoAccessSpec())
+	text = strings.Replace(text, "networks:\n  traces:\n", insert+"networks:\n  traces:\n", 1)
+	return text
 }

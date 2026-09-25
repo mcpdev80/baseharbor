@@ -14,8 +14,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
+var appSecretInput io.Reader = os.Stdin
+var appSecretReadHidden = readApplicationSecretFromTerminal
+var appSecretIsTerminal = appInitReaderIsTerminal
+
 func appSecretCommand(store application.Store) *cli.Command {
-	service := applicationsecret.New(store)
 	command := &cli.Command{
 		Name:    "secret",
 		Summary: "Manage application secret values without printing them",
@@ -26,21 +29,26 @@ func appSecretCommand(store application.Store) *cli.Command {
 		{
 			Name:    "set",
 			Summary: "Create or replace one secret value from stdin or a file",
-			Usage:   "baha app secret set [NAME] KEY (--stdin | --file PATH)",
-			Long:    "Reads one secret value from stdin or directly from a file. In a repository use 'baha app secret set KEY --stdin' or 'baha app secret set TLS_KEY_FILE --file ./key.pem'. Secret values are never accepted as command-line arguments or printed.",
+			Usage:   "baha app secret set [NAME] KEY [--stdin | --file PATH]",
+			Long:    "In an interactive terminal, omitting an input option securely prompts with terminal echo disabled. --stdin and --file remain deterministic automation paths. Secret values are never accepted as command-line arguments or printed.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				name, key, err := parseSecretSetArgs(args)
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret set")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret set")
 				if err != nil {
 					return err
 				}
-				value, err := readSecretSetValue(args, os.Stdin)
+				service, err := resolvedApplicationSecretService(ctx, resolved)
 				if err != nil {
 					return err
 				}
+				value, err := readSecretSetValueInteractive(ctx, args, appSecretInput, out, key)
+				if err != nil {
+					return err
+				}
+				defer zeroBytes(value)
 				if err := service.Set(ctx, resolved.Manifest.Name, key, value); err != nil {
 					return err
 				}
@@ -64,7 +72,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if len(args) == 1 {
 					name = args[0]
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret list")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret list")
+				if err != nil {
+					return err
+				}
+				service, err := resolvedApplicationSecretService(ctx, resolved)
 				if err != nil {
 					return err
 				}
@@ -99,7 +111,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret delete")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret delete")
+				if err != nil {
+					return err
+				}
+				service, err := resolvedApplicationSecretService(ctx, resolved)
 				if err != nil {
 					return err
 				}
@@ -134,15 +150,15 @@ func appSecretCommand(store application.Store) *cli.Command {
 			},
 		},
 	}
-	command.Children = append(command.Children, appSecretTLSSetCommand(store, service))
+	command.Children = append(command.Children, appSecretTLSSetCommand(store))
 	return command
 }
 
-func resolveSecretApplication(store application.Store, name, command string) (resolvedApplication, error) {
+func resolveSecretApplication(ctx context.Context, store application.Store, name, command string) (resolvedApplication, error) {
 	if name == "" {
-		return resolveApplication(store, nil, command)
+		return resolveApplication(ctx, store, nil, command)
 	}
-	return resolveApplication(store, []string{name}, command)
+	return resolveApplication(ctx, store, []string{name}, command)
 }
 
 func parseSecretSetArgs(args []string) (string, string, error) {
@@ -171,8 +187,8 @@ func parseSecretSetArgs(args []string) (string, string, error) {
 	if len(positional) < 1 || len(positional) > 2 {
 		return "", "", usageError("baha app secret set requires KEY and accepts optional NAME", "Inside a repository: baha app secret set API_TOKEN --stdin")
 	}
-	if stdin == (filePath != "") {
-		return "", "", usageError("baha app secret set requires exactly one input source", "Use either --stdin or --file PATH.")
+	if stdin && filePath != "" {
+		return "", "", usageError("baha app secret set accepts only one explicit input source", "Use either --stdin or --file PATH.")
 	}
 	if filePath != "" && strings.TrimSpace(filePath) == "" {
 		return "", "", usageError("--file path is empty", "Provide a readable file path.")
@@ -193,6 +209,41 @@ func secretSetFilePath(args []string) string {
 		}
 	}
 	return ""
+}
+
+func readSecretSetValueInteractive(ctx context.Context, args []string, stdin io.Reader, out io.Writer, key string) ([]byte, error) {
+	if path := secretSetFilePath(args); path != "" {
+		return readSecretSetValue(args, stdin)
+	}
+	if hasOption(args, "--stdin") {
+		return readSecretSetValue(args, stdin)
+	}
+	if noInput(ctx) {
+		return nil, usageError("secret value input is required in --no-input mode", "Use 'baha app secret set "+key+" --stdin' or --file PATH.")
+	}
+	if !appSecretIsTerminal(stdin) {
+		return nil, usageError("interactive secret entry requires a terminal", "Use 'baha app secret set "+key+" --stdin' for scripts/CI.")
+	}
+	return appSecretReadHidden(stdin, out, key)
+}
+
+func readApplicationSecretFromTerminal(input io.Reader, out io.Writer, key string) ([]byte, error) {
+	file, ok := input.(*os.File)
+	if !ok {
+		return nil, errors.New("secure application secret entry requires a terminal")
+	}
+	value, err := readHiddenTerminalLine(file, out, key+" value: ")
+	if err != nil {
+		return nil, err
+	}
+	if len(value) == 0 {
+		return nil, errors.New("application secret value is empty")
+	}
+	if len(value) > 1<<20 {
+		zeroBytes(value)
+		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	return value, nil
 }
 
 func readSecretSetValue(args []string, stdin io.Reader) ([]byte, error) {

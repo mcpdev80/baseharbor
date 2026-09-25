@@ -13,7 +13,7 @@ func TestResolveServiceBindingDefaultPostgres(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, value := range map[string]string{"host": "127.0.0.1\n", "port": "15432\n", "database": "demo_dev\n", "username": "baseharbor\n", "password": "secret\n", "uri": "postgresql://baseharbor:secret@127.0.0.1:15432/demo_dev\n"} {
+	for name, value := range map[string]string{"host": "127.0.0.1\n", "port": "15432\n", "database": "demo_dev\n", "username": "baseharbor\n", "password": "secret\n", "uri": "postgresql://baseharbor:secret@127.0.0.1:15432/demo_dev\n", "certificates": "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -34,7 +34,7 @@ func TestResolveServiceBindingNamedValkey(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, value := range map[string]string{"host": "127.0.0.1", "port": "16379", "password": "secret", "uri": "redis://:secret@127.0.0.1:16379/0"} {
+	for name, value := range map[string]string{"host": "127.0.0.1", "port": "16379", "password": "secret", "uri": "rediss://:secret@127.0.0.1:16379/0", "certificates": "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
 			t.Fatal(err)
 		}

@@ -67,7 +67,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err := applyInjectedRepositoryInputs(&opts, injected); err != nil {
 			return err
 		}
-		resolved, err := resolveApplication(store, nil, "init")
+		resolved, err := resolveApplication(ctx, store, nil, "init")
 		if err != nil {
 			return err
 		}
@@ -265,7 +265,7 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 	if !found {
 		return nil
 	}
-	resolved, err := resolveApplicationEnvironment(application.DefaultStore(), nil, "up", opts.Environment)
+	resolved, err := resolveApplicationEnvironment(ctx, application.DefaultStore(), nil, "up", opts.Environment)
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return nil
+		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -337,7 +337,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if !initialized {
-			return nil
+			return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
 		}
 	}
 	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {

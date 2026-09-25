@@ -123,7 +123,7 @@ func appTLSCommand(store application.Store) *cli.Command {
 						return usageError("unknown app tls update option "+arg, "Run 'baha app tls update --help' for usage.")
 					}
 				}
-				resolved, err := resolveApplication(store, nil, "tls update")
+				resolved, err := resolveApplication(ctx, store, nil, "tls update")
 				if err != nil {
 					return err
 				}
@@ -179,9 +179,9 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	if err != nil {
 		return fmt.Errorf("certificate update preflight: application runtime state is unavailable: %w", err)
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
-		return fmt.Errorf("certificate update preflight: Compose is unavailable: %w", err)
+		return fmt.Errorf("certificate update preflight: runtime orchestration is unavailable: %w", err)
 	}
 	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
@@ -258,6 +258,32 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 			}
 		} else {
 			renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+				if result.RuntimeDocsURL != "" {
+					term.Section("Runtime")
+					term.Info("Swagger/OpenAPI", result.RuntimeDocsURL)
+				}
+				if result.serviceTLSErr != nil {
+					term.Section("Service TLS")
+					term.Result("FAILED", "lifecycle", result.serviceTLSErr.Error())
+				} else {
+					renderServiceTLSLifecycle(term, result.ServiceTLS)
+				}
+				if term.Verbose() && result.RuntimeArtifact != nil {
+					term.Section("Runtime artifact")
+					term.Info("reference", result.RuntimeArtifact.Reference)
+					if result.RuntimeArtifact.ExpectedVersion != "" {
+						term.Info("expected version", result.RuntimeArtifact.ExpectedVersion)
+					}
+					if result.RuntimeArtifact.ImageID != "" {
+						term.Info("image id", result.RuntimeArtifact.ImageID)
+					}
+					if result.RuntimeArtifact.Digest != "" {
+						term.Info("digest", result.RuntimeArtifact.Digest)
+					}
+					if result.RuntimeArtifact.Detail != "" {
+						term.Info("provenance", result.RuntimeArtifact.Detail)
+					}
+				}
 				if result.tlsStatus == nil && result.tlsErr == nil {
 					return
 				}

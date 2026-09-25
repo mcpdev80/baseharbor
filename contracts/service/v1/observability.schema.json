@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/observability.schema.json",
+  "title": "BaseHarbor Observability Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "observability"
+    },
+    "contractVersion": {
+      "const": "v1"
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "traces",
+          "metrics",
+          "logs"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {
+          "enum": [
+            "otlp"
+          ]
+        },
+        "otlpTransport": {
+          "enum": [
+            "http/protobuf",
+            "grpc"
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "signals"
+  ]
+}

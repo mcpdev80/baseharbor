@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 )
 
 type Config struct {
@@ -20,6 +22,7 @@ type Config struct {
 	TLSKeyFile       string
 	TLSClientCAFile  string
 	S3Endpoint       string
+	S3CAFile         string
 	AdminCredentials string
 	StateDir         string
 	ShutdownTimeout  time.Duration
@@ -31,6 +34,7 @@ func (c Config) Validate() error {
 		"TLS private key":            c.TLSKeyFile,
 		"TLS client CA":              c.TLSClientCAFile,
 		"S3 endpoint":                c.S3Endpoint,
+		"S3 trust bundle":            c.S3CAFile,
 		"S3 admin credentials":       c.AdminCredentials,
 		"runtime resource state dir": c.StateDir,
 	} {
@@ -43,6 +47,9 @@ func (c Config) Validate() error {
 	}
 	if _, err := loadCAPool(c.TLSClientCAFile); err != nil {
 		return err
+	}
+	if _, err := loadCAPool(c.S3CAFile); err != nil {
+		return fmt.Errorf("load runtime executor S3 trust bundle: %w", err)
 	}
 	if _, err := objectstorage.LoadContainerAdminCredentials(c.AdminCredentials); err != nil {
 		return fmt.Errorf("load runtime executor S3 admin credentials: %w", err)
@@ -72,7 +79,13 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	s3Roots, err := loadCAPool(cfg.S3CAFile)
+	if err != nil {
+		return err
+	}
+	s3Transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: s3Roots}}
+	defer s3Transport.CloseIdleConnections()
+	client := &http.Client{Transport: s3Transport, Timeout: 30 * time.Second}
 	resources, err := objectstorage.NewRuntimeResourceManager(cfg.StateDir, cfg.S3Endpoint, client, admin)
 	if err != nil {
 		return err
@@ -97,13 +110,21 @@ func Run(ctx context.Context, cfg Config) error {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	observer, err := runtimeobservability.NewFromEnvironment(runtimeobservability.Config{
+		Component: "runtime-executor",
+	})
+	if err != nil {
+		return fmt.Errorf("configure runtime executor observability: %w", err)
+	}
+	mux.Handle("GET /metrics", observer.MetricsHandler())
+
 	pool, err := loadCAPool(cfg.TLSClientCAFile)
 	if err != nil {
 		return err
 	}
 	server := &http.Server{
 		Addr:              cfg.listenAddr(),
-		Handler:           mux,
+		Handler:           observer.Wrap(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -147,8 +168,11 @@ func verifyRuntimeClientIdentity(state tls.ConnectionState) error {
 		if _, _, ok := parseWorkloadURI(identity); ok {
 			return nil
 		}
+		if identity != nil && identity.String() == openbao.RuntimeExecutorObserverSPIFFE {
+			return nil
+		}
 	}
-	return errors.New("runtime executor client certificate must carry a BaseHarbor workload SPIFFE identity")
+	return errors.New("runtime executor client certificate must carry a BaseHarbor workload or observer SPIFFE identity")
 }
 
 func loadCAPool(path string) (*x509.CertPool, error) {

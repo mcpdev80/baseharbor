@@ -41,7 +41,7 @@ func TestInitializeRepositoryManifestForUpQuickCreatesDetectedContract(t *testin
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{"postgres:", "redis:", "compose.yaml", "api"} {
+	for _, want := range []string{"sql:", "cache:", "compose.yaml", "api"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated manifest missing %q:\n%s", want, text)
 		}

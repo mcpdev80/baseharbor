@@ -281,5 +281,5 @@ export BAO_TOKEN
 	input = append(input, token...)
 	input = append(input, '\n')
 	input = append(input, payload...)
-	return executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
+	return executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
 }

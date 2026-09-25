@@ -43,7 +43,7 @@ func main() {
 		_ = writeJSON(os.Stderr, machine.ResultError(classifyMachineCLIError(err)))
 		os.Exit(cli.ExitCode(err))
 	}
-	formatCLIError(os.Stderr, err)
+	formatCLIErrorVerbose(os.Stderr, err, hasVerboseArgument(os.Args[1:]))
 	os.Exit(cli.ExitCode(err))
 }
 
@@ -104,7 +104,7 @@ func run(args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
-	filtered, opts, showVersion, err := extractGlobalOutputOptions(args)
+	filtered, opts, showVersion, target, err := extractGlobalOutputOptions(args)
 	if err != nil {
 		return err
 	}
@@ -115,16 +115,19 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 		fmt.Fprintf(out, "BaseHarbor %s\ncommit %s\nbuilt %s\n", version, commit, date)
 		return nil
 	}
+	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 
-func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, error) {
+func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, string, error) {
 	opts := cli.OutputOptions{}
 	filtered := make([]string, 0, len(args))
 	showVersion := false
+	target := ""
 	passthrough := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if passthrough {
 			filtered = append(filtered, arg)
 			continue
@@ -147,24 +150,63 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, boo
 			opts.NonInteractive = true
 		case "--version":
 			showVersion = true
+		case "--target":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target docker-dev status")
+			}
+			i++
+			target = strings.TrimSpace(args[i])
 		default:
+			if strings.HasPrefix(arg, "--target=") {
+				target = strings.TrimSpace(strings.TrimPrefix(arg, "--target="))
+				if target == "" {
+					return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target=docker-dev status")
+				}
+				continue
+			}
 			filtered = append(filtered, arg)
 		}
 	}
 	if opts.Quiet && opts.Verbose {
-		return nil, opts, showVersion, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
+		return nil, opts, showVersion, target, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
 	}
 	if value := strings.TrimSpace(os.Getenv("BASEHARBOR_REDUCED_MOTION")); value != "" && value != "0" && !strings.EqualFold(value, "false") {
 		opts.ReducedMotion = true
 	}
-	return filtered, opts, showVersion, nil
+	return filtered, opts, showVersion, target, nil
 }
 
 func formatCLIError(w io.Writer, err error) {
+	formatCLIErrorVerbose(w, err, false)
+}
+
+func formatCLIErrorVerbose(w io.Writer, err error, verbose bool) {
 	if errors.Is(err, syscall.EPIPE) {
 		return
 	}
 	if cli.IsPresented(err) {
+		return
+	}
+	var operational *machine.Error
+	if errors.As(err, &operational) {
+		fmt.Fprintln(w, "Error")
+		fmt.Fprintf(w, "  %s\n", operational.Message)
+		if operational.Resource != "" {
+			fmt.Fprintln(w, "\nAffected")
+			fmt.Fprintf(w, "  %s\n", operational.Resource)
+		}
+		if operational.Remediation != "" {
+			fmt.Fprintln(w, "\nResolution")
+			fmt.Fprintf(w, "  %s\n", operational.Remediation)
+		}
+		if strings.TrimSpace(operational.Next) != "" {
+			fmt.Fprintln(w, "\nWhat to do")
+			fmt.Fprintf(w, "  %s\n", operational.Next)
+		}
+		if verbose && operational.Cause != nil {
+			fmt.Fprintln(w, "\nDetails")
+			fmt.Fprintf(w, "  %v\n", operational.Cause)
+		}
 		return
 	}
 	fmt.Fprintf(w, "Error: %v\n", err)
@@ -179,6 +221,15 @@ func formatCLIError(w io.Writer, err error) {
 	fmt.Fprintln(w, "\nNext:")
 	fmt.Fprintln(w, "  baha doctor")
 	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
+}
+
+func hasVerboseArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "-v" || arg == "--verbose" {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyMachineCLIError(err error) error {

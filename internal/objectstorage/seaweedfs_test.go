@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestPhysicalBucketNameIsStableAndBounded(t *testing.T) {
@@ -35,7 +36,7 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 
-	files, err := EnsureProviderFiles()
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t))
 	if err != nil {
 		t.Fatal(err)
 	}

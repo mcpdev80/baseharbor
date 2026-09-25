@@ -38,6 +38,9 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if pg.OwnerApplication != "alpha" {
 		t.Fatalf("postgres=%#v", pg)
 	}
+	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
+		t.Fatalf("postgres provider distribution identity=%#v", pg)
+	}
 	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, "beta", ""); err == nil {
 		t.Fatal("beta unexpectedly resolved alpha dedicated PostgreSQL")
 	}
@@ -121,7 +124,7 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 
 func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
 	m := New("demo", "production", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
@@ -151,7 +154,7 @@ func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T)
 func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("runtime-metrics", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithRuntimePermission(m, string(capability.MetricsV1.ID), []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
@@ -180,7 +183,7 @@ func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) 
 	t.Setenv(MetricsEnabledEnv, "true")
 
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/messaging.schema.json",
+  "title": "BaseHarbor Messaging Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "messaging"
+    },
+    "contractVersion": {
+      "const": "v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "patterns": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "queue",
+              "pubsub",
+              "stream"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "amqp",
+              "mqtt",
+              "kafka"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "asyncapi": {
+          "type": "boolean"
+        },
+        "cloudevents": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "contractVersion",
+    "name"
+  ]
+}

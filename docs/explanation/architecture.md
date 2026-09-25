@@ -34,7 +34,7 @@ runtime != capability != delivery
 - Capability Provider: how a logical dependency is realized.
 - Delivery Provider: how desired runtime state reaches and reconciles with the runtime.
 
-Compose is the current complete runtime. Kubernetes and OpenShift are later runtime providers.
+The current local runtime path supports Docker through Docker Compose and Podman through native Quadlets generated from the same Compose-based workload/runtime model. Kubernetes and OpenShift are later runtime providers.
 
 ## Environment and policy
 

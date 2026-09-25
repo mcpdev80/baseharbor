@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func requiresRuntimeObjectStorageExecutor(m application.Manifest) bool {
@@ -26,14 +27,14 @@ type managedObjectStorageExecution struct {
 	runtimeEnabled bool
 }
 
-func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedObjectStorageExecution, error) {
+func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedObjectStorageExecution, error) {
 	m := resolved.Manifest
 	runtimeEnabled := application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
 	if !application.HasObjectStorage(m) && !runtimeEnabled {
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
-	driver := objectstorage.NewDriver(compose, m, files)
+	driver := objectstorage.NewDriverAt(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	requests := make([]capability.Request, 0, len(application.ObjectStorageBucketNames(m)))
 	for _, bucket := range application.ObjectStorageBucketNames(m) {
 		security := application.ObjectStorageSecureBinding(m, bucket)

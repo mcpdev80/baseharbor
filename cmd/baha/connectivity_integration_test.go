@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
@@ -30,18 +31,22 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
-
-	targetStore := application.Store{Root: filepath.Join(t.TempDir(), "apps")}
-	target := application.New("connect-target-ci", "dev", true, false, false)
-	targetFiles, err := application.EnsureRuntime(targetStore, target)
+	selectedTarget, err := effectiveTarget(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := compose.UpProject(ctx, application.RuntimeProjectName(target), targetFiles.Compose, targetFiles.Env); err != nil {
+
+	targetStore := application.Store{Root: filepath.Join(t.TempDir(), "apps"), Namespace: selectedTarget.Name}
+	target := application.New("connect-target-ci", "dev", true, false, false)
+	targetFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), targetStore, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compose.UpProject(ctx, targetFiles.Project, targetFiles.Compose, targetFiles.Env); err != nil {
 		t.Fatalf("start target PostgreSQL: %v", err)
 	}
 	defer func() {
-		_ = compose.DestroyProject(context.Background(), application.RuntimeProjectName(target), targetFiles.Compose, targetFiles.Env)
+		_ = compose.DestroyProject(context.Background(), targetFiles.Project, targetFiles.Compose, targetFiles.Env)
 	}()
 
 	sourceRoot := t.TempDir()
@@ -64,8 +69,8 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceStore := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps")}
-	sourceFiles, err := application.EnsureRuntime(sourceStore, source)
+	sourceStore := application.Store{Root: filepath.Join(sourceRoot, ".baseharbor", "apps"), Namespace: selectedTarget.Name}
+	sourceFiles, err := application.EnsureRuntime(ctx, serviceissuer.New(t), sourceStore, source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,8 +118,8 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceNames := containersForResolvedEndpoint(rule.Source, sourceContainers)
-	targetNames := containersForResolvedEndpoint(rule.Target, sourceContainers)
+	sourceNames := containersForResolvedEndpoint(rule.Source, sourceContainers, selectedTarget.Name)
+	targetNames := containersForResolvedEndpoint(rule.Target, sourceContainers, selectedTarget.Name)
 	if len(sourceNames) != 1 || len(targetNames) != 1 {
 		t.Fatalf("unexpected resolved containers source=%#v target=%#v", sourceNames, targetNames)
 	}
@@ -156,7 +161,13 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)
 	assertNoReverseConnectivity(t, ctx, compose, target, targetFiles)
 
-	if err := suspendConnectivityForManifest(ctx, compose, target); err != nil {
+	targetDataDir, err := targetDataRoot(selectedTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedTarget := resolvedApplication{Manifest: target, Target: selectedTarget, TargetStateRoot: targetDataDir}
+
+	if err := suspendConnectivityForManifest(ctx, compose, resolvedTarget); err != nil {
 		t.Fatalf("suspend target connectivity: %v", err)
 	}
 	rules, err = application.LoadConnectivityRules()
@@ -167,7 +178,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		t.Fatalf("relay definition should remain available for reconciliation: %v", err)
 	}
 
-	if err := reconcileConnectivityForManifest(ctx, io.Discard, compose, target); err != nil {
+	if err := reconcileConnectivityForManifest(ctx, io.Discard, compose, resolvedTarget); err != nil {
 		t.Fatalf("reconcile target connectivity: %v", err)
 	}
 	waitForSourceProbe(t, ctx, compose, sourceWorkload, sourceComposeFiles, probe, rule.Target.Port)

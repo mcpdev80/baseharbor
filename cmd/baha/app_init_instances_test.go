@@ -12,21 +12,21 @@ import (
 
 func TestManifestFromDetectedProjectPreservesMultipleLogicalInstances(t *testing.T) {
 	d := appProjectDetection{
-		Name:              "mailflow",
-		Postgres:          true,
-		PostgresInstances: []string{"primary", "analytics"},
-		Redis:             true,
-		RedisInstances:    []string{"cache", "sessions"},
+		Name:           "mailflow",
+		SQL:            true,
+		SQLInstances:   []string{"primary", "analytics"},
+		Cache:          true,
+		CacheInstances: []string{"cache", "sessions"},
 	}
 	m, err := manifestFromDetectedProject(d, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(application.PostgresInstanceNames(m), ","); got != "analytics,primary" {
-		t.Fatalf("postgres instances = %q", got)
+	if got := strings.Join(application.SQLInstanceNames(m), ","); got != "analytics,primary" {
+		t.Fatalf("sql instances = %q", got)
 	}
-	if got := strings.Join(application.RedisInstanceNames(m), ","); got != "cache,sessions" {
-		t.Fatalf("redis instances = %q", got)
+	if got := strings.Join(application.CacheInstanceNames(m), ","); got != "cache,sessions" {
+		t.Fatalf("cache instances = %q", got)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestRequiredSecretStatusIsActionable(t *testing.T) {
 	for _, want := range []string{
 		"No application secrets have been configured yet.",
 		"missing - user input required",
-		"baha app secret set OPENAI_API_KEY --stdin",
+		"baha app secret set OPENAI_API_KEY",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output missing %q:\n%s", want, text)

@@ -2,13 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
-func TestParseSecretSetArgsRequiresOneInputSource(t *testing.T) {
+func TestParseSecretSetArgsSupportsInteractiveOrExplicitInput(t *testing.T) {
 	name, key, err := parseSecretSetArgs([]string{"demo", "API_TOKEN", "--stdin"})
 	if err != nil {
 		t.Fatal(err)
@@ -16,8 +22,12 @@ func TestParseSecretSetArgsRequiresOneInputSource(t *testing.T) {
 	if name != "demo" || key != "API_TOKEN" {
 		t.Fatalf("unexpected parsed values %q %q", name, key)
 	}
-	if _, _, err := parseSecretSetArgs([]string{"demo", "API_TOKEN"}); err == nil {
-		t.Fatal("expected missing input source to fail")
+	name, key, err = parseSecretSetArgs([]string{"demo", "API_TOKEN"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "demo" || key != "API_TOKEN" {
+		t.Fatalf("unexpected interactive parsed values %q %q", name, key)
 	}
 	if _, _, err := parseSecretSetArgs([]string{"demo", "API_TOKEN", "--stdin", "--file", "secret.txt"}); err == nil {
 		t.Fatal("expected multiple input sources to fail")
@@ -110,5 +120,50 @@ func TestReadSecretValueRejectsEmptyAndOversizedInput(t *testing.T) {
 	}
 	if _, err := readSecretValue(strings.NewReader(strings.Repeat("x", (1<<20)+1))); err == nil {
 		t.Fatal("expected oversized input to fail")
+	}
+}
+
+func TestReadSecretSetValueInteractiveUsesHiddenPromptWithoutPrintingValue(t *testing.T) {
+	oldInput := appSecretInput
+	oldHidden := appSecretReadHidden
+	oldTerminal := appSecretIsTerminal
+	appSecretInput = os.Stdin
+	appSecretIsTerminal = func(io.Reader) bool { return true }
+	appSecretReadHidden = func(input io.Reader, out io.Writer, key string) ([]byte, error) {
+		if key != "API_TOKEN" {
+			t.Fatalf("key = %q", key)
+		}
+		fmt.Fprint(out, "API_TOKEN value: ")
+		return []byte("super-secret"), nil
+	}
+	t.Cleanup(func() {
+		appSecretInput = oldInput
+		appSecretReadHidden = oldHidden
+		appSecretIsTerminal = oldTerminal
+	})
+
+	var out bytes.Buffer
+	value, err := readSecretSetValueInteractive(context.Background(), []string{"API_TOKEN"}, appSecretInput, &out, "API_TOKEN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zeroBytes(value)
+	if string(value) != "super-secret" {
+		t.Fatal("hidden prompt did not return expected value")
+	}
+	if strings.Contains(out.String(), "super-secret") {
+		t.Fatalf("secret value leaked to output: %s", out.String())
+	}
+}
+
+func TestReadSecretSetValueInteractiveNoInputRequiresExplicitSource(t *testing.T) {
+	ctx := cli.WithOutputOptions(context.Background(), cli.OutputOptions{NonInteractive: true})
+	_, err := readSecretSetValueInteractive(ctx, []string{"API_TOKEN"}, strings.NewReader("secret"), &bytes.Buffer{}, "API_TOKEN")
+	if err == nil {
+		t.Fatal("expected deterministic no-input remediation")
+	}
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) || !strings.Contains(usage.Hint, "--stdin") {
+		t.Fatalf("expected --stdin remediation hint, got %#v", err)
 	}
 }

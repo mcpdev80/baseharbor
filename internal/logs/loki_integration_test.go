@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
@@ -32,7 +33,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	t.Setenv(application.LogsEnabledEnv, "true")
 
 	m := application.WithLogsCollection(application.New("logs-acceptance", "dev", false, false, false), "application")
-	driver := logs.NewDriver(compose, m)
+	driver := logs.NewDriver(compose, m, serviceissuer.New(t))
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
 	binding := capability.Binding{
 		Resource: resource,

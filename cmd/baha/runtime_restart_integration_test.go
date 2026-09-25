@@ -55,8 +55,12 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}); err != nil {
 		t.Fatalf("initial control-plane start: %v\n%s", err, out.String())
 	}
+	runtimeFiles, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, service := range []string{"postgres", "openbao"} {
-		if err := containersecurity.VerifyComposeService(ctx, "baseharbor", service, containersecurity.Requirements{
+		if err := containersecurity.VerifyComposeService(ctx, runtimeFiles.Project, service, containersecurity.Requirements{
 			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 		}); err != nil {
 			t.Fatalf("%s runtime security: %v", service, err)
@@ -67,10 +71,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := runtimeFiles
 	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
 	if err := platformopenbao.Bootstrap(ctx, compose, files, recovery); err != nil {
 		t.Fatalf("bootstrap OpenBao: %v", err)

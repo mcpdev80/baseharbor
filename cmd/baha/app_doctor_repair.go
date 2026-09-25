@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
 
@@ -39,58 +38,75 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 		Usage:   "baha app doctor [NAME] [--fix]",
 		Long:    "Runs the existing application doctor, including required-secret presence/usability checks, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if requestsJSONOutput(args) {
-				for _, arg := range args {
-					if arg == "--fix" {
-						return usageError("--fix cannot be combined with structured output", "Run doctor in human mode for guarded repair, or remove --fix for read-only JSON.")
-					}
-				}
-				return appDoctorCommand(store).Run(ctx, args, out, errOut)
-			}
-			nameArgs, fix, err := parseAppDoctorRepairArgs(args)
-			if err != nil {
-				return err
-			}
-
-			var diagnostic bytes.Buffer
-			diagnosticErr := appDoctorCommand(store).Run(ctx, nameArgs, &diagnostic, errOut)
-			fmt.Fprint(out, diagnostic.String())
-			if diagnosticErr == nil {
-				return nil
-			}
-
-			if !fix {
-				return diagnosticErr
-			}
-
-			structured, structuredErr := collectStructuredAppDoctor(ctx, store, nameArgs)
-			if structuredErr != nil {
-				return fmt.Errorf("classify application doctor findings: %w", structuredErr)
-			}
-			findings := classifyStructuredAppDoctor(structured)
-			printAppDoctorFindings(out, findings)
-			if len(findings) == 0 {
-				return errors.New("application doctor reported failure but no structured findings were available for safe repair")
-			}
-			if !allAppDoctorFindingsAutoFixable(findings) {
-				return errors.New("application doctor found findings that require developer or manual action before safe repair")
-			}
-
-			fmt.Fprintln(out, "Applying safe repair through the normal application lifecycle...")
-			if findingsNeedControlPlaneRepair(findings) {
-				fmt.Fprintln(out, "Restoring existing BaseHarbor control-plane runtime...")
-				if err := runtimeUpExisting(ctx, out, ""); err != nil {
-					return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
-				}
-			}
-			if err := appApplyCommand(store).Run(ctx, nameArgs, out, errOut); err != nil {
-				return fmt.Errorf("safe application repair failed: %w", err)
-			}
-
-			fmt.Fprintln(out, "After repair:")
-			return appDoctorCommand(store).Run(ctx, nameArgs, out, errOut)
+			return executeApplicationRepairLifecycle(ctx, store, args, out, errOut)
 		},
 	}
+}
+
+func executeApplicationRepairLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	if requestsJSONOutput(args) {
+		for _, arg := range args {
+			if arg == "--fix" {
+				return usageError("--fix cannot be combined with structured output", "Run doctor in human mode for guarded repair, or remove --fix for read-only JSON.")
+			}
+		}
+		return appDoctorCommand(store).Run(ctx, args, out, errOut)
+	}
+	nameArgs, fix, err := parseAppDoctorRepairArgs(args)
+	if err != nil {
+		return err
+	}
+
+	doctor, err := collectApplicationDoctor(ctx, store, nameArgs)
+	if err != nil {
+		return err
+	}
+	renderCollectedApplicationDoctor(ctx, out, errOut, doctor)
+	if doctor.Healthy || doctor.State == "not_applied" {
+		return nil
+	}
+
+	if !fix {
+		return cli.Presented(errors.New("application doctor found one or more failures"))
+	}
+
+	findings := classifyApplicationDoctor(doctor)
+	printAppDoctorFindings(out, findings)
+	if len(findings) == 0 {
+		return errors.New("application doctor reported failure but no structured findings were available for safe repair")
+	}
+	if !allAppDoctorFindingsAutoFixable(findings) {
+		return errors.New("application doctor found findings that require developer or manual action before safe repair")
+	}
+
+	fmt.Fprintln(out, "Applying safe repair through the normal application lifecycle...")
+	if findingsNeedControlPlaneRepair(findings) {
+		fmt.Fprintln(out, "Restoring existing BaseHarbor control-plane runtime...")
+		if err := runtimeUpExisting(ctx, out, ""); err != nil {
+			return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
+		}
+	}
+	if err := executeApplicationApplyLifecycle(ctx, store, nameArgs, out, errOut); err != nil {
+		return fmt.Errorf("safe application repair failed: %w", err)
+	}
+
+	fmt.Fprintln(out, "After repair:")
+	after, err := collectApplicationDoctor(ctx, store, nameArgs)
+	if err != nil {
+		return err
+	}
+	renderCollectedApplicationDoctor(ctx, out, errOut, after)
+	if !after.Healthy {
+		return &machine.Error{
+			Code:        machine.ErrorVerificationFailed,
+			CauseCode:   "repair_verification_failed",
+			Message:     "Application repair completed but verification is still degraded.",
+			Resource:    after.Application,
+			Remediation: "manual/admin action required",
+			Next:        "Inspect baseharbor.doctor findings and resolve the remaining non-repairable condition.",
+		}
+	}
+	return nil
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
@@ -116,24 +132,30 @@ func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
 	return nameArgs, fix, nil
 }
 
-func collectStructuredAppDoctor(ctx context.Context, store application.Store, nameArgs []string) (appDoctorStructuredResult, error) {
-	args := append(append([]string{}, nameArgs...), "-o", "json")
-	var out bytes.Buffer
-	err := appDoctorCommand(store).Run(ctx, args, &out, io.Discard)
-	var result appDoctorStructuredResult
-	if decodeErr := json.Unmarshal(out.Bytes(), &result); decodeErr != nil {
-		if err != nil {
-			return appDoctorStructuredResult{}, errors.Join(err, decodeErr)
-		}
-		return appDoctorStructuredResult{}, decodeErr
+func classifyStructuredAppDoctor(result appDoctorStructuredResult) []appDoctorFinding {
+	findings := make([]appDoctorFinding, 0)
+	requiredByName := make(map[string]struct {
+		present   bool
+		usable    bool
+		generated bool
+	}, len(result.RequiredSecrets))
+	for _, secret := range result.RequiredSecrets {
+		requiredByName[secret.Name] = struct {
+			present   bool
+			usable    bool
+			generated bool
+		}{present: secret.Present, usable: secret.Usable, generated: secret.Generated}
 	}
-	// A degraded doctor intentionally returns a presented error. The structured
-	// payload is authoritative for classification, so a successfully decoded
-	// payload is sufficient here.
-	return result, nil
+	for _, check := range result.Checks {
+		if check.OK {
+			continue
+		}
+		findings = append(findings, classifyAppDoctorFinding(check.Name, check.Detail, requiredByName))
+	}
+	return findings
 }
 
-func classifyStructuredAppDoctor(result appDoctorStructuredResult) []appDoctorFinding {
+func classifyApplicationDoctor(result applicationDoctorResult) []appDoctorFinding {
 	findings := make([]appDoctorFinding, 0)
 	requiredByName := make(map[string]struct {
 		present   bool
@@ -217,7 +239,7 @@ func classifyAppDoctorFinding(name, detail string, required map[string]struct {
 	case "OpenBao control-plane runtime":
 		finding.Class = doctorNeedsInput
 		finding.Action = "repair the BaseHarbor control plane first with 'baha doctor' or operator-held OpenBao recovery material"
-	case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "container runtime + compose", "compose configuration":
+	case "manifest", "supported desired services", "manifest permissions", "workload discovery", "runtime permissions", "runtime orchestration", "runtime configuration":
 		finding.Class = doctorManualAction
 	}
 	return finding

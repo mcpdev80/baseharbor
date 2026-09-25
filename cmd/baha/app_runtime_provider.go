@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -12,17 +11,11 @@ import (
 // Named/legacy applications keep the Compose default until deployment metadata
 // exists for those invocation paths as well.
 func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.ProviderKind, error) {
-	if !resolved.FromRepository || strings.TrimSpace(resolved.ManifestPath) == "" {
-		return bhruntime.ProviderCompose, nil
+	provider := bhruntime.ProviderKind(resolved.Target.RuntimeProvider)
+	if provider == "" {
+		return "", fmt.Errorf("target %q has no runtime provider", resolved.Target.Name)
 	}
-	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
-	if err != nil {
-		return "", fmt.Errorf("load deployment runtime provider: %w", err)
-	}
-	if state.RuntimeProvider == "" {
-		return bhruntime.ProviderCompose, nil
-	}
-	return state.RuntimeProvider, nil
+	return bhruntime.ParseProviderKind(string(provider))
 }
 
 // detectComposeForApplication is the transitional adapter used while v0.4

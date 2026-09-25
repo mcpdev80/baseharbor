@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 func TestInitCreatesConfig(t *testing.T) {
@@ -49,6 +51,7 @@ func TestRootAndNestedHelp(t *testing.T) {
 }
 
 func TestAppCreateListShowPlan(t *testing.T) {
+	target := configureTestTarget(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -60,19 +63,24 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--postgres", "--redis"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
-	manifest := filepath.Join(dir, ".baseharbor", "apps", "demo", "baseharbor.yaml")
-	if _, err := os.Stat(manifest); err != nil {
-		t.Fatalf("manifest missing: %v", err)
+	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "test"}
+	record, err := deployment.LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("deployment record missing: %v", err)
+	}
+	m, err := application.LoadManifestFile(record.Source.Manifest)
+	if err != nil {
+		t.Fatalf("managed target manifest missing: %v", err)
 	}
 
 	out.Reset()
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "postgres,redis") {
+	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "test") {
 		t.Fatalf("unexpected list: %s", out.String())
 	}
 
@@ -87,8 +95,11 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		}
 	}
 
+	if err := os.WriteFile(filepath.Join(dir, "baseharbor.yaml"), []byte(m.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "plan", "demo"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ensure postgres") || !strings.Contains(out.String(), "No changes were made") {

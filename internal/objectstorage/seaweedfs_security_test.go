@@ -33,7 +33,7 @@ func (f *stdinCaptureRuntime) ExecProjectInput(_ context.Context, _, _, _ string
 
 func TestSeaweedShellKeepsSensitiveCommandOutOfArgumentsAndErrors(t *testing.T) {
 	runtime := &stdinCaptureRuntime{err: errors.New("runtime failed")}
-	driver := NewDriver(runtime, application.Manifest{}, application.RuntimeFiles{})
+	driver := NewDriver(runtime, application.Manifest{}, application.RuntimeFiles{}, nil)
 	files := ProviderFiles{Compose: "/provider/compose.yaml", Env: "/provider/runtime.env"}
 	command := "s3.configure -access_key=TESTACCESS -secret_key=TESTSECRET -user=test -apply"
 

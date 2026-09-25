@@ -1,10 +1,13 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestExistingRuntimeFilesRequiresAppliedState(t *testing.T) {
@@ -24,7 +27,7 @@ func TestCheckRuntimePermissionsRejectsBroadAccess(t *testing.T) {
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsurePostgresRuntime(store, m)
+	files, err := EnsurePostgresRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +45,7 @@ func TestCheckRuntimePermissionsRejectsBroadAccess(t *testing.T) {
 func TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, true)
-	files, err := EnsureRuntime(store, m)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
 	}

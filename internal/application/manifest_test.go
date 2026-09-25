@@ -26,18 +26,18 @@ func TestManifestRoundTrip(t *testing.T) {
 
 func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 	want := New("mailflow", "prod", false, false, false)
-	want.Services.Postgres = false
-	want = WithPostgresInstances(want, "primary", "analytics")
-	want = WithRedisInstances(want, "cache", "sessions")
+	want.Services.SQL = false
+	want = WithSQLInstances(want, "primary", "analytics")
+	want = WithCacheInstances(want, "cache", "sessions")
 	got, err := ParseYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(PostgresInstanceNames(got), []string{"analytics", "primary"}) {
-		t.Fatalf("unexpected PostgreSQL instances: %#v", PostgresInstanceNames(got))
+	if !reflect.DeepEqual(SQLInstanceNames(got), []string{"analytics", "primary"}) {
+		t.Fatalf("unexpected SQL instances: %#v", SQLInstanceNames(got))
 	}
-	if !reflect.DeepEqual(RedisInstanceNames(got), []string{"cache", "sessions"}) {
-		t.Fatalf("unexpected Redis instances: %#v", RedisInstanceNames(got))
+	if !reflect.DeepEqual(CacheInstanceNames(got), []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected cache instances: %#v", CacheInstanceNames(got))
 	}
 	for _, expected := range []string{"    instances:\n", "      primary: {}\n", "      analytics: {}\n", "      cache: {}\n", "      sessions: {}\n"} {
 		if !strings.Contains(got.YAML(), expected) {
@@ -48,26 +48,26 @@ func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 
 func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
-	if got := PostgresInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
-		t.Fatalf("unexpected default PostgreSQL instances: %#v", got)
+	if got := SQLInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default SQL instances: %#v", got)
 	}
-	if got := RedisInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
-		t.Fatalf("unexpected default Redis instances: %#v", got)
+	if got := CacheInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default cache instances: %#v", got)
 	}
 	if strings.Contains(m.YAML(), "instances:") {
 		t.Fatalf("simple manifest should stay compact:\n%s", m.YAML())
 	}
 }
 
-func TestManifestParsesLegacyScalarRequiredSecrets(t *testing.T) {
+func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
   name: demo
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: true
@@ -80,13 +80,13 @@ secrets:
 		t.Fatal(err)
 	}
 	if got := RequiredSecretNames(m); !reflect.DeepEqual(got, []string{"API_TOKEN"}) {
-		t.Fatalf("unexpected legacy required secrets %#v", got)
+		t.Fatalf("unexpected required secrets %#v", got)
 	}
 }
 
-func TestManifestDefaultsToPostgres(t *testing.T) {
+func TestManifestDefaultsToSQL(t *testing.T) {
 	m := New("demo", "", false, false, false)
-	if m.Environment != "dev" || !m.Services.Postgres {
+	if m.Environment != "dev" || !m.Services.SQL {
 		t.Fatalf("unexpected defaults: %#v", m)
 	}
 }
@@ -101,12 +101,12 @@ func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
 func TestManifestValidationFailsClosed(t *testing.T) {
 	cases := []Manifest{
 		New("UPPER", "dev", true, false, false),
-		{Version: 99, Name: "demo", Environment: "dev", Services: Services{Postgres: true}},
+		{Version: 99, Name: "demo", Environment: "dev", Services: Services{SQL: true}},
 		{Version: 1, Name: "demo", Environment: "dev"},
-		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
 		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
-		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Postgres: true, PostgresInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true, SQLInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
 	}
 	for _, tc := range cases {
 		if err := tc.Validate(); err == nil {
@@ -148,6 +148,15 @@ func TestStoreCreateLoadList(t *testing.T) {
 	}
 }
 
+func TestParserRejectsProviderSpecificServiceNames(t *testing.T) {
+	for _, service := range []string{"postgres", "redis"} {
+		input := "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  " + service + ":\n    enabled: true\n"
+		if _, err := ParseYAML(input); err == nil {
+			t.Fatalf("expected provider-specific service %q to be rejected", service)
+		}
+	}
+}
+
 func TestParserRejectsUnknownFields(t *testing.T) {
 	_, err := ParseYAML(strings.Replace(New("demo", "dev", true, false, false).YAML(), "app:\n", "app:\n  surprise: yes\n", 1))
 	if err == nil {
@@ -157,7 +166,7 @@ func TestParserRejectsUnknownFields(t *testing.T) {
 
 func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "web")
 	m = WithHTTPExposure(m, "public", "web", 8080, "http")
 
@@ -177,7 +186,7 @@ func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 
 func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml"}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.services") {
@@ -192,7 +201,7 @@ func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 
 func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "private-ish"}}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "visibility must be public or internal") {
@@ -203,39 +212,19 @@ func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
 	m := New("demo", "dev", true, false, false)
 	yaml := m.YAML()
-	if !strings.Contains(yaml, "  postgres:\n    enabled: true\n") {
-		t.Fatalf("enabled PostgreSQL missing from sparse YAML:\n%s", yaml)
+	if !strings.Contains(yaml, "  sql:\n    enabled: true\n") {
+		t.Fatalf("enabled SQL capability missing from sparse YAML:\n%s", yaml)
 	}
-	for _, unwanted := range []string{"redis:", "secrets:", "object_storage:", "enabled: false"} {
+	for _, unwanted := range []string{"cache:", "secrets:", "object_storage:", "enabled: false", "postgres:", "redis:"} {
 		if strings.Contains(yaml, unwanted) {
 			t.Fatalf("sparse YAML contains disabled capability %q:\n%s", unwanted, yaml)
 		}
-	}
-
-	legacy := `version: 1
-app:
-  name: demo
-  environment: dev
-services:
-  postgres:
-    enabled: true
-  redis:
-    enabled: false
-  secrets:
-    enabled: false
-`
-	parsed, err := ParseYAML(legacy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !parsed.Services.Postgres || parsed.Services.Redis || parsed.Services.Secrets {
-		t.Fatalf("legacy explicit false flags changed semantics: %#v", parsed.Services)
 	}
 }
 
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
@@ -285,7 +274,7 @@ func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
 
 func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
@@ -313,7 +302,7 @@ func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 
 func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 	base := New("demo", "dev", false, false, false)
-	base.Services.Postgres = false
+	base.Services.SQL = false
 	base = WithWorkload(base, "compose.yaml", "api")
 
 	cases := []MetricsSourceRequirement{
@@ -342,7 +331,7 @@ func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 
 func TestManifestLogsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithLogsCollection(m, "application")
 
@@ -362,7 +351,7 @@ func TestManifestLogsRoundTrip(t *testing.T) {
 
 func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml")
 	m = WithLogsCollection(m, "application")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.services") {
@@ -372,7 +361,7 @@ func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
 
 func TestManifestLogsRejectUnknownSource(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.Postgres = false
+	m.Services.SQL = false
 	m = WithWorkload(m, "compose.yaml", "api")
 	m = WithLogsCollection(m, "everything")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {

@@ -12,7 +12,13 @@ import (
 type ProviderKind string
 
 const (
-	ProviderCompose ProviderKind = "compose"
+	// ProviderCompose is retained only as the legacy auto-detect compatibility
+	// value. New target-owned runtime selections use concrete provider identities.
+	ProviderCompose    ProviderKind = "compose"
+	ProviderDocker     ProviderKind = "docker"
+	ProviderPodman     ProviderKind = "podman"
+	ProviderKubernetes ProviderKind = "kubernetes"
+	ProviderOpenShift  ProviderKind = "openshift"
 )
 
 // RuntimeCapability names portable runtime behavior that orchestration may
@@ -67,7 +73,7 @@ func ParseProviderKind(value string) (ProviderKind, error) {
 		kind = ProviderCompose
 	}
 	switch kind {
-	case ProviderCompose:
+	case ProviderCompose, ProviderDocker, ProviderPodman, ProviderKubernetes, ProviderOpenShift:
 		return kind, nil
 	default:
 		return "", fmt.Errorf("unsupported runtime provider %q", value)
@@ -93,7 +99,10 @@ func RequireCapabilities(provider Provider, required ...RuntimeCapability) error
 	return nil
 }
 
-func (Compose) Kind() ProviderKind {
+func (c Compose) Kind() ProviderKind {
+	if c.provider != "" {
+		return c.provider
+	}
 	return ProviderCompose
 }
 
@@ -117,6 +126,12 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 	switch normalized {
 	case ProviderCompose:
 		return detectCompose(ctx)
+	case ProviderDocker:
+		return detectDockerCompose(ctx)
+	case ProviderPodman:
+		return detectPodmanCompose(ctx)
+	case ProviderKubernetes, ProviderOpenShift:
+		return nil, fmt.Errorf("runtime provider %q is not executable in v0.4.15", normalized)
 	default:
 		return nil, fmt.Errorf("runtime provider %q is not implemented", normalized)
 	}

@@ -1,0 +1,144 @@
+name: "Acceptance · MCP Lifecycle"
+
+run-name: "Acceptance · MCP Lifecycle · ${{ inputs.ref || github.ref_name }}"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact Git ref or commit SHA to test
+        required: true
+        type: string
+      all_runtimes:
+        description: Run Docker and Podman jobs when used as a release gate
+        required: false
+        default: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: develop
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/mcp/**'
+
+concurrency:
+  group: mcp-lifecycle-${{ github.ref }}-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    if: ${{ inputs.all_runtimes || !contains(github.ref_name, '/podman/') }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 10
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_MCP_LIFECYCLE_ACCEPTANCE: "true"
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset persistent runner state
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Run generic-client lifecycle acceptance
+        run: go test -p 1 ./cmd/baha -run '^TestMCPGenericClientRealApplicationLifecycle$' -count=1 -v
+
+      - name: Show runtime diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a || true
+          for id in $(docker ps -aq); do
+            docker logs "$id" || true
+          done
+
+      - name: Cleanup persistent runner state
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  podman:
+    if: ${{ inputs.all_runtimes || contains(github.ref_name, '/podman/') }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 15
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_MCP_LIFECYCLE_ACCEPTANCE: "true"
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset persistent runner state
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Verify Quadlet-only runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/dev/null
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          "$generator" --user --dryrun >/dev/null
+
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet MCP lifecycle acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Run generic-client lifecycle acceptance
+        run: go test -p 1 ./cmd/baha -run '^TestMCPGenericClientRealApplicationLifecycle$' -count=1 -v
+
+      - name: Show Quadlet diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+          systemctl --user --failed --no-pager || true
+          systemctl --user list-units 'baseharbor*' --all --no-pager || true
+          podman ps -a || true
+
+      - name: Cleanup persistent runner state
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman

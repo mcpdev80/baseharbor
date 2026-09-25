@@ -35,6 +35,8 @@ func TestDoctorHumanOutputHidesRuntimeInternalsByDefault(t *testing.T) {
 		false,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 	got := out.String()
 	for _, forbidden := range []string{"compose exec", "curl --fail", "bao status"} {
@@ -76,6 +78,8 @@ func TestDoctorVerboseKeepsRuntimeDiagnostics(t *testing.T) {
 		false,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 	if !strings.Contains(out.String(), "compose exec -T broker") {
 		t.Fatalf("verbose doctor hid diagnostic detail:\n%s", out.String())
@@ -105,6 +109,8 @@ func TestDoctorTLSRendersBeforeFinalState(t *testing.T) {
 		nil,
 		application.WorkloadSecurityReport{},
 		false,
+		nil,
+		nil,
 		status,
 		nil,
 	)

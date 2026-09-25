@@ -66,3 +66,4 @@ install -m 0755 "$tmp/extract/baha" "$INSTALL_DIR/baha"
 
 printf 'Installed BaseHarbor to %s\n' "$INSTALL_DIR/baha"
 "$INSTALL_DIR/baha" version
+printf 'To uninstall later: run "baha destroy --all" first, then remove %s\n' "$INSTALL_DIR/baha"

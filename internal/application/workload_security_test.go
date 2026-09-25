@@ -123,3 +123,18 @@ func TestComposeSecurityAllowsOrdinaryWorkload(t *testing.T) {
 		t.Fatalf("ordinary workload unexpectedly flagged: %#v", report)
 	}
 }
+
+func TestComposeSecurityAcceptsShortSyntaxMounts(t *testing.T) {
+	m := New("demo", "production", false, false, false)
+	rendered := []byte(`{"services":{"api":{"volumes":["data:/data","/var/run/docker.sock:/var/run/docker.sock:ro"]}}}`)
+	report, err := AnalyzeRenderedComposeSecurity(m, rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 1 {
+		t.Fatalf("findings=%#v", report.Findings)
+	}
+	if got := report.Findings[0]; got.Code != "runtime-socket" || got.Decision != WorkloadSecurityDeny {
+		t.Fatalf("unexpected finding: %#v", got)
+	}
+}
