@@ -19,7 +19,6 @@ var appSecretReadHidden = readApplicationSecretFromTerminal
 var appSecretIsTerminal = appInitReaderIsTerminal
 
 func appSecretCommand(store application.Store) *cli.Command {
-	service := applicationsecret.New(store)
 	command := &cli.Command{
 		Name:    "secret",
 		Summary: "Manage application secret values without printing them",
@@ -38,6 +37,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 					return err
 				}
 				resolved, err := resolveSecretApplication(ctx, store, name, "secret set")
+				if err != nil {
+					return err
+				}
+				service, err := resolvedApplicationSecretService(ctx, resolved)
 				if err != nil {
 					return err
 				}
@@ -70,6 +73,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 					name = args[0]
 				}
 				resolved, err := resolveSecretApplication(ctx, store, name, "secret list")
+				if err != nil {
+					return err
+				}
+				service, err := resolvedApplicationSecretService(ctx, resolved)
 				if err != nil {
 					return err
 				}
@@ -108,6 +115,10 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
+				service, err := resolvedApplicationSecretService(ctx, resolved)
+				if err != nil {
+					return err
+				}
 				appName := resolved.Manifest.Name
 				items, err := service.List(ctx, appName)
 				if err != nil {
@@ -139,7 +150,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 			},
 		},
 	}
-	command.Children = append(command.Children, appSecretTLSSetCommand(store, service))
+	command.Children = append(command.Children, appSecretTLSSetCommand(store))
 	return command
 }
 
