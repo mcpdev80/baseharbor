@@ -162,7 +162,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	if m.Services.Secrets {
 		overview.SecretsState = "not ready"
 		overview.BrokerState = "not ready"
-		platformFiles, platformErr := bhruntime.ExistingFiles("")
+		platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
 		if platformErr == nil {
 			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
