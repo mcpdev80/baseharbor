@@ -143,6 +143,11 @@ jobs:
           printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
           cd "$workdir"
 
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha up --control-plane-only --yes
+          /tmp/baha openbao bootstrap --recovery-file "$recovery"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
           /tmp/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
           /tmp/baha app plan podman-ci | tee /tmp/podman-plan.txt
           grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
