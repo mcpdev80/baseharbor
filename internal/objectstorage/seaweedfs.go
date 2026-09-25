@@ -56,29 +56,41 @@ type Driver struct {
 	issuer         serviceaccess.Issuer
 	client         *http.Client
 	createdBuckets map[string]struct{}
+	dataDir        string
+	namespace      string
 }
 
 type ProviderFiles struct {
 	Dir     string
 	Compose string
 	Env     string
+	Project string
+	Network string
 }
 
 func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer) (ProviderFiles, AdminCredentials, string, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	return EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, "")
+}
+
+func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, AdminCredentials, string, error) {
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
 	}
 	reconcileCtx, cancel := context.WithTimeout(ctx, sharedProviderReconcileTimeout)
 	defer cancel()
 
-	files, err := EnsureProviderFiles(reconcileCtx, issuer)
+	files, err := EnsureProviderFilesAt(reconcileCtx, issuer, dataDir, namespace)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
-	if err := runtime.ConfigProject(reconcileCtx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.ConfigProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
 	}
-	if err := runtime.UpProject(reconcileCtx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.UpProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
 	endpoint, err := providerEndpoint(files)
@@ -94,7 +106,7 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	if err := waitS3(readinessCtx, client, endpoint); err != nil {
 		if diagnostics, ok := runtime.(runtimeDiagnostics); ok {
 			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			detail := diagnostics.DiagnosticsProject(diagnosticCtx, ProviderProject, files.Compose, files.Env)
+			detail := diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)
 			diagnosticCancel()
 			if strings.TrimSpace(detail) != "" {
 				return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w\n%s", err, detail)
@@ -112,7 +124,7 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 		credentials.SecretAccessKey,
 	)
 	input := []byte(command + "\n")
-	if _, err := runtime.ExecProjectInput(reconcileCtx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
+	if _, err := runtime.ExecProjectInput(reconcileCtx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("configure SeaweedFS runtime admin identity failed")
 	}
 	return files, credentials, credentialPath, nil
@@ -148,9 +160,23 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 	return &Driver{runtime: runtime, app: app, files: files, issuer: issuer, createdBuckets: map[string]struct{}{}}
 }
 
+func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{runtime: runtime, app: app, files: files, issuer: issuer, createdBuckets: map[string]struct{}{}, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
+}
+
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace)
+	}
+	return ExistingProviderFiles()
+}
+
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
 
 func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, d.dataDir, d.namespace)
+	}
 	return EnsureSharedProvider(ctx, d.runtime, d.issuer)
 }
 
@@ -210,7 +236,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 }
 
 func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, err := ExistingProviderFiles()
+	providerFiles, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
@@ -238,7 +264,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	providerFiles, err := ExistingProviderFiles()
+	providerFiles, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
@@ -309,7 +335,7 @@ func (d *Driver) Rollback(ctx context.Context) {
 }
 
 func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error {
-	providerFiles, err := ExistingProviderFiles()
+	providerFiles, err := d.existingProviderFiles()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -335,7 +361,7 @@ func (d *Driver) runSeaweedShell(ctx context.Context, files ProviderFiles, comma
 
 func (d *Driver) runSeaweedShellOutput(ctx context.Context, files ProviderFiles, command string) (string, error) {
 	input := []byte(command + "\n")
-	out, err := d.runtime.ExecProjectInput(ctx, ProviderProject, files.Compose, files.Env, input, ProviderService, "weed", "shell")
+	out, err := d.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell")
 	if err != nil {
 		return "", errors.New("SeaweedFS administrative command failed")
 	}
@@ -371,11 +397,17 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (Prov
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "seaweedfs")
+	return EnsureProviderFilesAt(ctx, issuer, dataDir, "")
+}
+
+func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "seaweedfs")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create SeaweedFS provider state: %w", err)
 	}
-	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}
+	project := scopedProviderName(ProviderProject, namespace)
+	network := scopedProviderName(ProviderNetwork, namespace)
+	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: project, Network: network}
 	values := map[string]string{}
 	if data, err := os.ReadFile(files.Env); err == nil {
 		values, err = parseEnv(data)
@@ -403,7 +435,7 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (Prov
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithAccess(accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)), 0o600); err != nil {
 		return ProviderFiles{}, fmt.Errorf("write SeaweedFS provider compose: %w", err)
 	}
 	if err := os.Chmod(files.Compose, 0o600); err != nil {
@@ -417,8 +449,12 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "seaweedfs")
-	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}
+	return ExistingProviderFilesAt(dataDir, "")
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "seaweedfs")
+	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: scopedProviderName(ProviderProject, namespace), Network: scopedProviderName(ProviderNetwork, namespace)}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return ProviderFiles{}, err
@@ -428,17 +464,33 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 }
 
 func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
-	files, err := ExistingProviderFiles()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroySharedProviderAt(ctx, runtime, dataDir, "")
+}
+
+func DestroySharedProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if err := runtime.DestroyProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	return os.RemoveAll(files.Dir)
+}
+
+func scopedProviderName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
 }
 
 func providerComposeYAML() string {
@@ -447,6 +499,10 @@ func providerComposeYAML() string {
 }
 
 func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string {
+	return providerComposeYAMLWithAccessAndNetwork(access, ProviderNetwork)
+}
+
+func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(`services:
   seaweedfs:
@@ -471,8 +527,8 @@ volumes:
 
 networks:
   object-storage:
-    name: baseharbor-object-storage
-`, ProviderImage))
+    name: %s
+`, ProviderImage, network))
 	text := b.String()
 	text = strings.Replace(text, "volumes:\n  seaweedfs-data:\n", serviceaccess.HTTPGatewayComposeService(access, s3AccessSpec())+"volumes:\n  seaweedfs-data:\n", 1)
 	return text
