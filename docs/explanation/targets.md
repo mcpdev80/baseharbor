@@ -140,6 +140,15 @@ Application and environment resolution stay independent.
 
 Targets are designed for shell-local activation, similar to Python virtual environments. Different terminals can therefore safely target different destinations at the same time.
 
+```bash
+eval "$(baha target activate docker-dev)"
+baha target -o json
+baha config prompt
+source <(baha shell-init bash)
+```
+
+Use `baha shell-init zsh` or `baha shell-init fish` for the equivalent shell integration.
+
 The optional prompt segment keeps the selected Target visible before a BaseHarbor command is entered:
 
 ```text
