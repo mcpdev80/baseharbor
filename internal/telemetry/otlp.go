@@ -448,7 +448,7 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
   telemetry:
     name: ${BASEHARBOR_TELEMETRY_NETWORK}
 %s`, networkDecl))
-	return b.String()
+	return strings.ReplaceAll(b.String(), "${BASEHARBOR_TELEMETRY_NETWORK}", telemetryNetwork)
 }
 
 func collectorConfig() string {
