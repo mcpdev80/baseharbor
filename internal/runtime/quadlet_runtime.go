@@ -445,8 +445,8 @@ func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletPro
 			return fmt.Errorf("Quadlet service %q has no expected container name", service)
 		}
 		cmd := exec.CommandContext(ctx, podman, "container", "exists", container)
-			cmd.Env = runtimeCommandEnv(podman)
-			if err := cmd.Run(); err == nil {
+		cmd.Env = runtimeCommandEnv(podman)
+		if err := cmd.Run(); err == nil {
 			continue
 		}
 		unit := project.ServiceUnits[service]
@@ -749,7 +749,7 @@ func quadletLogs(ctx context.Context, runtimeCommand string, project QuadletProj
 			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project.Project)
 		}
 		cmd := exec.CommandContext(ctx, runtimeCommand, "logs", "--tail", "120", container)
-			cmd.Env = runtimeCommandEnv(runtimeCommand)
+		cmd.Env = runtimeCommandEnv(runtimeCommand)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
