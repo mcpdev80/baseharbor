@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"io"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode"
-	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func detectAppProject(root string) (appProjectDetection, error) {
