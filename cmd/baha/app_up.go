@@ -29,7 +29,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			m := resolved.Manifest
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
-	term.Info("target", resolved.Target.Name)
+			term.Info("target", resolved.Target.Name)
 			if err := printResolvedTracesPlacement(out, m); err != nil {
 				return err
 			}
