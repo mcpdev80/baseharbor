@@ -23,7 +23,7 @@ func appRuntimeIdentityCommand(store application.Store) *cli.Command {
 			Summary: "Rotate the application runtime credential",
 			Usage:   "baha app runtime-identity rotate [NAME] [--yes]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, confirmed, err := resolveRuntimeIdentityMutation(store, args, "rotate")
+				resolved, confirmed, err := resolveRuntimeIdentityMutation(ctx, store, args, "rotate")
 				if err != nil {
 					return err
 				}
@@ -47,7 +47,7 @@ func appRuntimeIdentityCommand(store application.Store) *cli.Command {
 			Summary: "Immediately revoke the application runtime credential",
 			Usage:   "baha app runtime-identity revoke [NAME] [--yes]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, confirmed, err := resolveRuntimeIdentityMutation(store, args, "revoke")
+				resolved, confirmed, err := resolveRuntimeIdentityMutation(ctx, store, args, "revoke")
 				if err != nil {
 					return err
 				}
@@ -70,7 +70,7 @@ func appRuntimeIdentityCommand(store application.Store) *cli.Command {
 	return command
 }
 
-func resolveRuntimeIdentityMutation(store application.Store, args []string, action string) (resolvedApplication, bool, error) {
+func resolveRuntimeIdentityMutation(ctx context.Context, store application.Store, args []string, action string) (resolvedApplication, bool, error) {
 	name, confirmed, err := parseRuntimeIdentityMutationArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false, err
