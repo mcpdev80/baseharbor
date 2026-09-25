@@ -45,6 +45,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	m := resolved.Manifest
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
 	plan, err := application.BuildPlan(m)
 	if err != nil {
 		return err
