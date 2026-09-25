@@ -194,7 +194,7 @@ func appCommand(store application.Store) *cli.Command {
 					checks = append(checks,
 						preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
 							var err error
-							platformFiles, err = bhruntime.ExistingFiles("")
+							platformFiles, err = existingTargetRuntimeFiles(ctx)
 							return err
 						}},
 						preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {
