@@ -179,7 +179,7 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	if err != nil {
 		return fmt.Errorf("certificate update preflight: application runtime state is unavailable: %w", err)
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
 		return fmt.Errorf("certificate update preflight: runtime orchestration is unavailable: %w", err)
 	}
