@@ -14,12 +14,26 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-func effectiveTarget() (deployment.ResolvedTarget, error) {
+type targetOverrideContextKey struct{}
+
+func withTargetOverride(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, targetOverrideContextKey{}, strings.TrimSpace(name))
+}
+
+func targetOverrideFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	value, _ := ctx.Value(targetOverrideContextKey{}).(string)
+	return strings.TrimSpace(value)
+}
+
+func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		return deployment.ResolvedTarget{}, err
 	}
-	return cfg.ResolveTarget(globalTargetOverride, os.Getenv("BASEHARBOR_TARGET"))
+	return cfg.ResolveTarget(targetOverrideFromContext(ctx), os.Getenv("BASEHARBOR_TARGET"))
 }
 
 func targetCommand() *cli.Command {
@@ -31,7 +45,7 @@ func targetCommand() *cli.Command {
 			if len(args) != 0 {
 				return usageError("baha target does not accept positional arguments", "Use 'baha target show NAME' or 'baha target --help'.")
 			}
-			target, err := effectiveTarget()
+			target, err := effectiveTarget(ctx)
 			if err != nil {
 				return err
 			}
