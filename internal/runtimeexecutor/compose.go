@@ -208,10 +208,10 @@ func ExistingFilesAt(dataDir, namespace string) (Files, error) {
 	}
 	dir := filepath.Join(dataDir, "runtime-executor")
 	files := Files{
-		Dir: dir,
-		Compose: filepath.Join(dir, "compose.yaml"),
-		Env: filepath.Join(dir, "runtime.env"),
-		Project: scopedName(ProjectName, namespace),
+		Dir:            dir,
+		Compose:        filepath.Join(dir, "compose.yaml"),
+		Env:            filepath.Join(dir, "runtime.env"),
+		Project:        scopedName(ProjectName, namespace),
 		ControlNetwork: scopedName(ControlNetworkName, namespace),
 	}
 	for _, path := range []string{files.Compose, files.Env} {
