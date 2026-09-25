@@ -19,17 +19,20 @@ type machineInspectInput struct {
 }
 
 type machineApplicationInput struct {
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
 type machineUpdateInput struct {
+	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Environment        string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	BackupPasswordFile string `json:"backup_password_file,omitempty" jsonschema:"owner-only local file containing the backup password used for the pre-update recovery point"`
 	NoBackup           bool   `json:"no_backup,omitempty" jsonschema:"explicitly acknowledge updating durable state without a pre-update recovery point"`
 }
 
 type machineBackupInput struct {
+	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Name         string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment  string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	OutputPath   string `json:"output_path,omitempty" jsonschema:"optional local path for the encrypted BaseHarbor recovery archive"`
@@ -37,6 +40,7 @@ type machineBackupInput struct {
 }
 
 type machineRestoreInput struct {
+	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	BackupPath   string `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
 	Name         string `json:"name,omitempty" jsonschema:"optional expected application identity"`
 	Environment  string `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
@@ -44,6 +48,7 @@ type machineRestoreInput struct {
 }
 
 type machineDestroyInput struct {
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
@@ -127,7 +132,8 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		resolved, err := resolveApplication(store, machineApplicationArgs(input.Name, input.Environment), "plan")
+		ctx = withTargetOverride(ctx, input.Target)
+		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -139,6 +145,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		ctx = machineLifecycleContext(ctx)
 		args := machineApplicationArgs(input.Name, input.Environment)
 		if err := executeApplicationApplyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
@@ -166,6 +173,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("status", "Read-only runtime and readiness observation for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(input.Name, input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -174,6 +182,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("doctor", "Read-only diagnostic verification for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationDoctor(ctx, store, machineApplicationArgs(input.Name, input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -182,6 +191,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("observe", "Return one secret-safe diagnostics view combining application readiness and doctor verification, including observability checks already supported by BaseHarbor.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		args := machineApplicationArgs(input.Name, input.Environment)
 		status, err := collectApplicationStatusResult(ctx, store, args)
 		if err != nil {
@@ -201,9 +211,10 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("update", "Fast-forward the current Git-backed application safely, preserving the existing backup/recovery policy and full post-update verification.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineUpdateInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		ctx = machineLifecycleContext(ctx)
 		environment := strings.TrimSpace(input.Environment)
-		resolved, err := resolveApplicationEnvironment(store, nil, "update", environment)
+		resolved, err := resolveApplicationEnvironment(ctx, store, nil, "update", environment)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -242,6 +253,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("repair", "Run the existing guarded drift/doctor repair path. Only BaseHarbor-owned findings classified as safely repairable are mutated.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		ctx = machineLifecycleContext(ctx)
 		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--fix")
@@ -261,6 +273,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("backup", "Create the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineBackupInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		ctx = machineLifecycleContext(ctx)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
 		if passwordFile == "" {
@@ -274,7 +287,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		resolved, err := resolveApplication(store, machineApplicationArgs(input.Name, input.Environment), "backup")
+		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "backup")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -290,6 +303,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		ctx = machineLifecycleContext(ctx)
 		backupPath := strings.TrimSpace(input.BackupPath)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
@@ -322,11 +336,12 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("destroy", "Permanently remove BaseHarbor-owned application runtime resources and state. Explicit approval is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineDestroyInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx = machineLifecycleContext(ctx)
-		resolved, err := resolveApplication(store, machineApplicationArgs(input.Name, input.Environment), "destroy")
+		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "destroy")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -343,6 +358,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("policy.check", "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -351,7 +367,8 @@ func newMCPServer(store application.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, machineMCPTool("policy.explain", "Read-only explanation of effective environment policy defaults, rules and bounded operator overrides.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		result, err := explainApplicationPolicy(store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
+		ctx = withTargetOverride(ctx, input.Target)
+		result, err := explainApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
 		}
