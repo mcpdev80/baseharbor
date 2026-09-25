@@ -621,10 +621,6 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 		}
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
 	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
 		if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared runtime provider executor: %w", err)
@@ -712,7 +708,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 		return err
 	}
 	fmt.Fprintln(out, "BaseHarbor target destroy plan")
-	fmt.Fprintln(out, "  control plane: Compose project baseharbor (containers, network and BaseHarbor-owned volumes)")
+	fmt.Fprintf(out, "  control plane: project %s (containers, network and BaseHarbor-owned volumes)\n", files.Project)
 	if _, err := objectstorage.ExistingProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  object storage: shared SeaweedFS provider (container, network and BaseHarbor-owned volume)")
 	}
