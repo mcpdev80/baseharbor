@@ -143,4 +143,9 @@ remove_containers
 remove_networks
 remove_volumes
 
-rm -rf /tmp/baseharbor-* /tmp/baha /tmp/mailflow /tmp/baseharbor-demo 2>/dev/null || true
+rm -rf \
+  "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
+  "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
+  "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
+  /tmp/baseharbor-* /tmp/baha /tmp/mailflow /tmp/baseharbor-demo \
+  2>/dev/null || true
