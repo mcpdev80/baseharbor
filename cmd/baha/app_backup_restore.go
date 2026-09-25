@@ -171,7 +171,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	if captureErr != nil || restartErr != nil {
 		return errors.Join(captureErr, restartErr)
 	}
-	fmt.Fprintf(out, "Backup for %s (%s) written to %s.\n", m.Name, m.Environment, outputPath)
+	fmt.Fprintf(out, "Backup for %s / %s / %s written to %s.\n", resolved.Target.Name, m.Name, m.Environment, outputPath)
 	return nil
 
 }
@@ -334,7 +334,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
-	fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
+	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
 }
