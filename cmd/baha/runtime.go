@@ -317,8 +317,12 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
+	files, err := existingTargetRuntimeFiles(parent)
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
 	if strings.TrimSpace(recoveryFile) == "" {
-		checks := health.RuntimeChecks()
+		checks := health.RuntimeChecksForFiles(files)
 		if len(checks) > 0 {
 			_, ready := health.Format(checks)
 			if ready {
@@ -328,10 +332,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 		}
 	}
 
-	files, err := existingTargetRuntimeFiles(parent)
-	if err != nil {
-		return fmt.Errorf("runtime is not initialized: %w", err)
-	}
+
 	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
@@ -461,7 +462,7 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 	var ok bool
 	readinessDeadline := time.Now().Add(30 * time.Second)
 	for {
-		formatted, ok = health.Format(health.RuntimeChecks())
+		formatted, ok = health.Format(health.RuntimeChecksForFiles(files))
 		if ok {
 			fmt.Fprint(out, formatted)
 			return nil
@@ -791,7 +792,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 		return nil
 	}
 
-	checks := health.RuntimeChecks()
+	checks := health.RuntimeChecksForFiles(files)
 	if len(checks) == 0 {
 		return nil
 	}
