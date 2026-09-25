@@ -130,7 +130,7 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
-	if _, err := bhruntime.ExistingFiles(""); err == nil {
+	if _, err := existingTargetRuntimeFiles(parent); err == nil {
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
 		}
@@ -317,8 +317,12 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
+	files, err := existingTargetRuntimeFiles(parent)
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
 	if strings.TrimSpace(recoveryFile) == "" {
-		checks := health.RuntimeChecks()
+		checks := health.RuntimeChecksForFiles(files)
 		if len(checks) > 0 {
 			_, ready := health.Format(checks)
 			if ready {
@@ -328,10 +332,6 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 		}
 	}
 
-	files, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		return fmt.Errorf("runtime is not initialized: %w", err)
-	}
 	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
@@ -372,39 +372,43 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.C
 	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
 		return err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
-	return compose.Up(ctx, files.Compose, files.Env)
+	return compose.UpProject(ctx, files.Project, files.Compose, files.Env)
 }
 
 func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.EnsureFilesWithPorts("", ports)
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
 	return compose, files, nil
 }
 
 func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return bhruntime.Compose{}, err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
 		return bhruntime.Compose{}, err
 	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return bhruntime.Compose{}, err
+	}
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return bhruntime.Compose{}, err
 	}
 	return compose, nil
@@ -457,7 +461,7 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 	var ok bool
 	readinessDeadline := time.Now().Add(30 * time.Second)
 	for {
-		formatted, ok = health.Format(health.RuntimeChecks())
+		formatted, ok = health.Format(health.RuntimeChecksForFiles(files))
 		if ok {
 			fmt.Fprint(out, formatted)
 			return nil
@@ -482,18 +486,22 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
 	if err := suspendSharedPlatformRuntime(ctx, compose, out); err != nil {
 		return fmt.Errorf("suspend shared platform runtime: %w", err)
 	}
-	if err := compose.Down(ctx, files.Compose, files.Env); err != nil {
+	if err := compose.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime stopped")
@@ -501,7 +509,15 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 }
 
 func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
-	rules, err := application.LoadConnectivityRules()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -511,26 +527,22 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 			return err
 		}
 		for _, rule := range rules {
-			if err := suspendConnectivityRule(ctx, compose, rule, containers); err != nil {
+			if err := suspendConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, containers); err != nil {
 				return err
 			}
 		}
 		fmt.Fprintf(out, "[OK] connectivity       suspended %d platform connection(s); policy preserved\n", len(rules))
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
-	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		if err := compose.StopProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+	if files, err := runtimeexecutor.ExistingFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared runtime provider executor: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor stopped")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err != nil {
 		return err
 	} else {
 		for _, instance := range instances {
@@ -542,16 +554,16 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 			fmt.Fprintf(out, "[OK] metrics            %d shared Prometheus provider(s) stopped\n", len(instances))
 		}
 	}
-	if files, err := telemetry.ExistingProviderFiles(); err == nil {
-		if err := compose.StopProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared telemetry provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector stopped")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
-		if err := compose.StopProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared object-storage provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider stopped")
@@ -562,29 +574,37 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 }
 
 func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
-	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
-		if err := compose.ConfigProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	if files, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared object-storage provider: %w", err)
 		}
-		if err := compose.UpProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared object-storage provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider resumed")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if files, err := telemetry.ExistingProviderFiles(); err == nil {
-		if err := compose.ConfigProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared telemetry provider: %w", err)
 		}
-		if err := compose.UpProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared telemetry provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector resumed")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err != nil {
 		return err
 	} else {
 		for _, instance := range instances {
@@ -600,15 +620,11 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 		}
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
-	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+	if files, err := runtimeexecutor.ExistingFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared runtime provider executor: %w", err)
 		}
-		if err := compose.UpProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared runtime provider executor: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor resumed")
@@ -623,7 +639,15 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 }
 
 func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhruntime.Compose) error {
-	rules, err := application.LoadConnectivityRules()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -644,7 +668,7 @@ func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhrunt
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
@@ -663,30 +687,34 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 		}
 	}
 
-	files, err := bhruntime.ExistingFiles("")
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	files, err := existingTargetRuntimeFiles(parent)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	if err := application.CheckControlPlaneDestroySafe(); err != nil {
-		return fmt.Errorf("global destroy preflight: %w", err)
-	}
-	runtimeDir, err := bhruntime.StateDir("")
+	dataDir, err := targetDataRoot(target)
 	if err != nil {
 		return err
 	}
-	dataDir, err := bhruntime.DataDir("")
+	if err := application.CheckControlPlaneDestroySafeAt(dataDir); err != nil {
+		return fmt.Errorf("target destroy preflight: %w", err)
+	}
+	runtimeDir, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Global BaseHarbor destroy plan")
-	fmt.Fprintln(out, "  control plane: Compose project baseharbor (containers, network and BaseHarbor-owned volumes)")
-	if _, err := objectstorage.ExistingProviderFiles(); err == nil {
+	fmt.Fprintln(out, "BaseHarbor target destroy plan")
+	fmt.Fprintf(out, "  control plane: project %s (containers, network and BaseHarbor-owned volumes)\n", files.Project)
+	if _, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
 		fmt.Fprintln(out, "  object storage: shared SeaweedFS provider (container, network and BaseHarbor-owned volume)")
 	}
-	if _, err := telemetry.ExistingProviderFiles(); err == nil {
+	if _, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
 		fmt.Fprintln(out, "  telemetry: shared OpenTelemetry Collector provider (container and network)")
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err == nil && len(instances) > 0 {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err == nil && len(instances) > 0 {
 		fmt.Fprintf(out, "  metrics: %d shared Prometheus provider instance(s) across default/sharing boundaries\n", len(instances))
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
@@ -698,13 +726,13 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
 	if !confirmed {
-		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the global BaseHarbor control plane.")
+		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the selected BaseHarbor target control plane.")
 		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -713,7 +741,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	} else if removed > 0 {
 		fmt.Fprintf(out, "[OK] host trust         removed %d BaseHarbor-owned CA anchor(s)\n", removed)
 	}
-	if relays, err := connectivityrelay.ExistingInstances(); err != nil {
+	if relays, err := connectivityrelay.ExistingInstancesAt(dataDir, target.Name); err != nil {
 		return fmt.Errorf("inspect connectivity relay state: %w", err)
 	} else {
 		for _, relay := range relays {
@@ -722,22 +750,22 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 			}
 		}
 	}
-	if err := runtimeexecutor.DestroyShared(ctx, compose, dataDir); err != nil {
+	if err := runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
-	if err := objectstorage.DestroySharedProvider(ctx, compose); err != nil {
+	if err := objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared object-storage provider: %w", err)
 	}
-	if err := telemetry.DestroySharedProvider(ctx, compose); err != nil {
+	if err := telemetry.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared telemetry provider: %w", err)
 	}
-	if err := tracesprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+	if err := tracesprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared traces providers: %w", err)
 	}
-	if err := metricsprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+	if err := metricsprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared metrics providers: %w", err)
 	}
-	if err := compose.DestroyProject(ctx, "baseharbor", files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
 	}
 	if err := os.RemoveAll(runtimeDir); err != nil {
@@ -757,7 +785,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := os.RemoveAll(filepath.Join(dataDir, "connectivity")); err != nil {
 		return fmt.Errorf("remove BaseHarbor connectivity runtime state: %w", err)
 	}
-	fmt.Fprintln(out, "BaseHarbor global control plane was permanently destroyed.")
+	fmt.Fprintln(out, "BaseHarbor target control plane was permanently destroyed.")
 	return nil
 }
 
@@ -765,20 +793,24 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	status, err := compose.Status(ctx, files.Compose, files.Env)
+	status, err := compose.StatusProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return err
 	}
 	fmt.Fprint(out, status)
-	running, err := compose.RunningServicesProject(ctx, "baseharbor", files.Compose, files.Env)
+	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return err
 	}
@@ -787,7 +819,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 		return nil
 	}
 
-	checks := health.RuntimeChecks()
+	checks := health.RuntimeChecksForFiles(files)
 	if len(checks) == 0 {
 		return nil
 	}

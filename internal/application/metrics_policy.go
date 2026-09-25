@@ -93,13 +93,29 @@ func MetricsTargetAliasFor(applicationName, environment, service string) string 
 }
 
 func MetricsProviderNetworkName(m Manifest) string {
+	return MetricsProviderNetworkNameForNamespace(m, "")
+}
+
+func MetricsProviderNetworkNameForNamespace(m Manifest, namespace string) string {
 	sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment))
-	return fmt.Sprintf("baseharbor-metrics-%x", sum[:8])
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return fmt.Sprintf("baseharbor-metrics-%x", sum[:8])
+	}
+	return fmt.Sprintf("baseharbor-metrics-%s-%x", namespace, sum[:8])
 }
 
 func MetricsRuntimeTargetVolumeName(m Manifest) string {
+	return MetricsRuntimeTargetVolumeNameForNamespace(m, "")
+}
+
+func MetricsRuntimeTargetVolumeNameForNamespace(m Manifest, namespace string) string {
 	sum := sha256.Sum256([]byte(m.Name + "\x00" + m.Environment))
-	return fmt.Sprintf("baseharbor-metrics-targets-%x", sum[:8])
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return fmt.Sprintf("baseharbor-metrics-targets-%x", sum[:8])
+	}
+	return fmt.Sprintf("baseharbor-metrics-targets-%s-%x", namespace, sum[:8])
 }
 
 func HasRuntimeMetricsPermissions(m Manifest) bool {

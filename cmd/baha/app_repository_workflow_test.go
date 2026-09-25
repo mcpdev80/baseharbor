@@ -13,6 +13,7 @@ import (
 )
 
 func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
+	configureTestTarget(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -57,6 +58,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 }
 
 func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
+	target := configureTestTarget(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -71,7 +73,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 	if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store := application.DefaultStore()
+	store := testDeploymentStore(t, target, m)
 	if _, err := store.Sync(m); err != nil {
 		t.Fatal(err)
 	}

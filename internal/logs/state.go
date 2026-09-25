@@ -53,18 +53,30 @@ type ProviderFiles struct {
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
-	if err != nil {
-		return Placement{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
 	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
+	p, err := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+	if err != nil {
+		return Placement{}, err
+	}
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
 		project := providerProject
-		dir := filepath.Join(dataDir, "providers", "loki", "shared")
+		if prefix != "" {
+			project = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
+		}
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
 		if p.SharingBoundary != "" {
@@ -77,13 +89,13 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 		network := project + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
+		suffix := prefix + m.Name + "-" + m.Environment
 		project := providerProject + "-" + suffix
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
 			Network:          project + "-internal",
-			Dir:              filepath.Join(dataDir, "providers", "loki", "applications", m.Name, m.Environment),
+			Dir:              filepath.Join(filepath.Clean(dataDir), "providers", "loki", "applications", m.Name, m.Environment),
 			LokiVolume:       "baseharbor-loki-data-" + suffix,
 			AlloyVolume:      "baseharbor-alloy-data-" + suffix,
 			OwnerApplication: m.Name,
@@ -111,7 +123,15 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 }
 
 func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return EnsureProviderFilesForRuntimeAt(ctx, issuer, dataDir, "", m, runtimeKind)
+}
+
+func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -179,7 +199,15 @@ func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Iss
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -196,7 +224,15 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 }
 
 func ApplicationRegistration(m application.Manifest) (Registration, error) {
-	files, err := ExistingProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Registration{}, err
+	}
+	return ApplicationRegistrationAt(dataDir, "", m)
+}
+
+func ApplicationRegistrationAt(dataDir, namespace string, m application.Manifest) (Registration, error) {
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return Registration{}, err
 	}
@@ -217,7 +253,15 @@ func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeF
 }
 
 func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
-	registration, err := ApplicationRegistration(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", err
+	}
+	return EnsureWorkloadOverrideForRuntimeAt(dataDir, "", m, runtime, services, runtimeKind)
+}
+
+func EnsureWorkloadOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
+	registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
 	if err != nil {
 		return "", err
 	}
@@ -247,11 +291,25 @@ func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime applicatio
 }
 
 func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
-	return EnsureRuntimeProjectOverrideForRuntime(
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", false, err
+	}
+	return EnsureProviderSourceOverrideForRuntimeAt(dataDir, "", m, runtime, runtimeKind)
+}
+
+func EnsureProviderSourceOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
+	project := strings.TrimSpace(runtime.Project)
+	if project == "" {
+		project = application.RuntimeProjectName(m)
+	}
+	return EnsureRuntimeProjectOverrideForRuntimeAt(
+		dataDir,
+		namespace,
 		m,
 		runtime.Dir,
 		providerOverrideName,
-		application.RuntimeProjectName(m),
+		project,
 		runtimeKind,
 		observability.SourceApplicationProvider,
 	)
@@ -265,7 +323,24 @@ func EnsureRuntimeProjectOverrideForRuntime(
 	runtimeKind string,
 	class observability.SourceClass,
 ) (string, bool, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", false, err
+	}
+	return EnsureRuntimeProjectOverrideForRuntimeAt(dataDir, "", m, dir, filename, project, runtimeKind, class)
+}
+
+func EnsureRuntimeProjectOverrideForRuntimeAt(
+	dataDir string,
+	namespace string,
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	runtimeKind string,
+	class observability.SourceClass,
+) (string, bool, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return "", false, err
 	}
@@ -317,13 +392,13 @@ func EnsureRuntimeProjectOverrideForRuntime(
 	if !strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		switch class {
 		case observability.SourceApplicationProvider:
-			registration, err := ApplicationRegistration(m)
+			registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
 			if err != nil {
 				return "", false, err
 			}
 			port = registration.ProviderSyslogPort
 		case observability.SourcePlatformProvider:
-			files, err := ExistingProviderFiles(m)
+			files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 			if err != nil {
 				return "", false, err
 			}
@@ -410,7 +485,15 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 }
 
 func UnregisterApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return UnregisterApplicationAt(ctx, runtime, issuer, dataDir, "", m)
+}
+
+func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}
@@ -440,7 +523,7 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 		return err
 	}
 	if p.Scope == capability.ScopeApplication || len(registrations) == 0 {
-		return DestroyProvider(ctx, runtime, m)
+		return DestroyProviderAt(ctx, runtime, dataDir, namespace, m)
 	}
 	providerSources, err := providerLogSources(p, registrations)
 	if err != nil {
@@ -477,11 +560,19 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope != capability.ScopeApplication {
 		return err
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -492,7 +583,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}

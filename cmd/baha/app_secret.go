@@ -37,7 +37,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret set")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret set")
 				if err != nil {
 					return err
 				}
@@ -69,7 +69,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if len(args) == 1 {
 					name = args[0]
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret list")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret list")
 				if err != nil {
 					return err
 				}
@@ -104,7 +104,7 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveSecretApplication(store, name, "secret delete")
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret delete")
 				if err != nil {
 					return err
 				}
@@ -143,11 +143,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 	return command
 }
 
-func resolveSecretApplication(store application.Store, name, command string) (resolvedApplication, error) {
+func resolveSecretApplication(ctx context.Context, store application.Store, name, command string) (resolvedApplication, error) {
 	if name == "" {
-		return resolveApplication(store, nil, command)
+		return resolveApplication(ctx, store, nil, command)
 	}
-	return resolveApplication(store, []string{name}, command)
+	return resolveApplication(ctx, store, []string{name}, command)
 }
 
 func parseSecretSetArgs(args []string) (string, string, error) {

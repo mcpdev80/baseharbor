@@ -38,13 +38,14 @@ func appApplyCommand(store application.Store) *cli.Command {
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 	secretService := applicationsecret.New(store)
-	resolved, err := resolveApplication(store, args, "apply")
+	resolved, err := resolveApplication(ctx, store, args, "apply")
 	if err != nil {
 		return err
 	}
 	m := resolved.Manifest
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
 	plan, err := application.BuildPlan(m)
 	if err != nil {
 		return err
@@ -92,18 +93,18 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 			return err
 		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
-			_, err := application.LoadConnectivityRules()
+			_, err := application.LoadConnectivityRulesAt(resolved.TargetStateRoot)
 			return err
 		}},
 		{Name: "provider registry", Run: func(context.Context) error {
-			return application.CheckReferenceProviderRegistry(m)
+			return application.CheckReferenceProviderRegistryAt(resolved.TargetStateRoot, m)
 		}},
 	}
 	needsServiceIssuer := requiresManagedServiceIssuer(m)
 	if needsServiceIssuer || application.RequiresRuntimeBroker(m) {
 		checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 			var err error
-			platformFiles, err = bhruntime.ExistingFiles("")
+			platformFiles, err = existingTargetRuntimeFiles(ctx)
 			if err != nil {
 				return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
 			}
@@ -156,7 +157,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return err
 	}
 	if application.HasManagedRuntimeServices(m) {
-		project := application.RuntimeProjectName(m)
+		project := files.Project
 		if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 			return err
 		}
@@ -271,7 +272,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		}
 		return classifyOperationalFailure(err, resource)
 	}
-	if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+	if err := reconcileConnectivityForManifest(ctx, out, compose, resolved); err != nil {
 		return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 	}
 	if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
@@ -291,11 +292,14 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	}
 	registryResources := managedLogsRegistryResources(providers.logs)
 	registryResources = append(registryResources, managedTracesRegistryResources(providers.traces)...)
-	if err := application.ReconcileReferenceProviderRegistry(m, registryResources...); err != nil {
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m, registryResources...); err != nil {
 		return fmt.Errorf("record provider registry after successful convergence: %w", err)
 	}
 	if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
 		return fmt.Errorf("record successfully applied repository desired state: %w", err)
+	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		return fmt.Errorf("record verified target deployment: %w", err)
 	}
 	term.Section("Application")
 	if resolved.FromRepository && !term.Quiet() {
@@ -398,7 +402,7 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 		return nil
 	}
 	const maxAttempts = 3
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 
 	providerOverride, providerLogging, err := logsprovider.ExistingProviderSourceOverride(files)
 	if err != nil {

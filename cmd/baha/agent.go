@@ -81,9 +81,9 @@ func currentAgentDescription() agentDescription {
 	}
 }
 
-func resolveMachineApplication(store application.Store, name string, command string) (resolvedApplication, error) {
+func resolveMachineApplication(ctx context.Context, store application.Store, name string, command string) (resolvedApplication, error) {
 	if name == "" {
-		return resolveApplication(store, nil, command)
+		return resolveApplication(ctx, store, nil, command)
 	}
-	return resolveApplication(store, []string{name}, command)
+	return resolveApplication(ctx, store, []string{name}, command)
 }

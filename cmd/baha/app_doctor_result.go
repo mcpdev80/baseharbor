@@ -31,6 +31,7 @@ type applicationDoctorSecretResult struct {
 
 type applicationDoctorResult struct {
 	ContractVersion string                                       `json:"contract_version"`
+	Target          string                                       `json:"target"`
 	Application     string                                       `json:"application"`
 	Environment     string                                       `json:"environment"`
 	State           string                                       `json:"state"`
@@ -51,13 +52,14 @@ type applicationDoctorResult struct {
 }
 
 func collectApplicationDoctor(ctx context.Context, store application.Store, args []string) (applicationDoctorResult, error) {
-	resolved, err := resolveApplication(store, args, "doctor")
+	resolved, err := resolveApplication(ctx, store, args, "doctor")
 	if err != nil {
 		return applicationDoctorResult{}, err
 	}
 	m := resolved.Manifest
 	result := applicationDoctorResult{
 		ContractVersion: machine.ContractVersion,
+		Target:          resolved.Target.Name,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		State:           "ready",
@@ -123,7 +125,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 		}},
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			compose, err = bhruntime.DetectCompose(ctx)
+			compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
@@ -135,14 +137,14 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 			if runtimeErr != nil {
 				return runtimeErr
 			}
-			return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+			return compose.ConfigProject(ctx, files.Project, files.Compose, files.Env)
 		}},
 		{Name: "running services", Run: func(ctx context.Context) error {
 			if runtimeErr != nil {
 				return runtimeErr
 			}
 			var err error
-			running, err = compose.RunningServicesProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+			running, err = compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 			return err
 		}},
 		{Name: "repository workload", Run: func(ctx context.Context) error {
@@ -244,7 +246,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao control-plane runtime", Run: func(ctx context.Context) error {
 				var err error
-				platformFiles, err = bhruntime.ExistingFiles("")
+				platformFiles, err = existingTargetRuntimeFiles(ctx)
 				if err != nil {
 					return err
 				}

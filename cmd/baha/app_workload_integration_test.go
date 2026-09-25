@@ -81,12 +81,12 @@ networks:
 		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
 	}
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
-	m, _, err := store.Load("workload-ci")
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "workload integration verification")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(store, m)
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,12 +215,12 @@ networks:
 		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
 	}
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
-	m, _, err := store.Load("workload-only-ci")
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "workload-only integration verification")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(store, m)
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,12 +357,12 @@ workload:
 		t.Fatalf("initial build did not report build realization:\n%s", out.String())
 	}
 
-	store := application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}
-	m, _, err := store.Load("build-convergence-ci")
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "build convergence integration verification")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(store, m)
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
 		t.Fatal(err)
 	}

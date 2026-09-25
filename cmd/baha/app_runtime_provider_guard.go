@@ -11,7 +11,7 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-type applicationRuntimeGuardResolver func(application.Store, []string) (resolvedApplication, bool)
+type applicationRuntimeGuardResolver func(context.Context, application.Store, []string) (resolvedApplication, bool)
 
 // applyRemainingApplicationRuntimeProviderGuards keeps the v0.4 migration
 // incremental: stable Compose-backed command implementations remain intact,
@@ -88,7 +88,7 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 	}
 	baseRun := command.Run
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		resolved, ok := resolver(store, args)
+		resolved, ok := resolver(ctx, store, args)
 		if !ok {
 			// Preserve the command's existing parser/error behavior when the guard
 			// cannot confidently identify an application target.
@@ -114,31 +114,31 @@ func guardTLSRuntimeCommands(store application.Store, command *cli.Command) {
 }
 
 func optionalNameGuard(command string) applicationRuntimeGuardResolver {
-	return func(store application.Store, args []string) (resolvedApplication, bool) {
+	return func(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 		if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
 			return resolvedApplication{}, false
 		}
-		return resolveGuardApplication(store, args, command)
+		return resolveGuardApplication(ctx, store, args, command)
 	}
 }
 
-func resolveGuardApplication(store application.Store, args []string, command string) (resolvedApplication, bool) {
-	resolved, err := resolveApplication(store, args, command)
+func resolveGuardApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, bool) {
+	resolved, err := resolveApplication(ctx, store, args, command)
 	if err != nil {
 		return resolvedApplication{}, false
 	}
 	return resolved, true
 }
 
-func resolveGuardApplicationName(store application.Store, name, command string) (resolvedApplication, bool) {
+func resolveGuardApplicationName(ctx context.Context, store application.Store, name, command string) (resolvedApplication, bool) {
 	var args []string
 	if strings.TrimSpace(name) != "" {
 		args = []string{name}
 	}
-	return resolveGuardApplication(store, args, command)
+	return resolveGuardApplication(ctx, store, args, command)
 }
 
-func backupGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func backupGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	var name string
 	var err error
 	if hasOption(args, "--password-file") {
@@ -149,10 +149,10 @@ func backupGuardTarget(store application.Store, args []string) (resolvedApplicat
 	if err != nil {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplicationName(store, name, "backup")
+	return resolveGuardApplicationName(ctx, store, name, "backup")
 }
 
-func restoreGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func restoreGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	var name string
 	var err error
 	if hasOption(args, "--password-file") {
@@ -166,63 +166,63 @@ func restoreGuardTarget(store application.Store, args []string) (resolvedApplica
 	// A named legacy restore may create state that does not exist yet. In that
 	// case the existing Compose-default restore path remains the compatibility
 	// behavior. Repository restores resolve and enforce deployment selection.
-	return resolveGuardApplicationName(store, name, "restore")
+	return resolveGuardApplicationName(ctx, store, name, "restore")
 }
 
-func logsGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func logsGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	appName, _, _, err := parseLogsArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplicationName(store, appName, "logs")
+	return resolveGuardApplicationName(ctx, store, appName, "logs")
 }
 
-func shellGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func shellGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	appName, _, err := parseServiceTarget(args, "shell")
 	if err != nil {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplicationName(store, appName, "shell")
+	return resolveGuardApplicationName(ctx, store, appName, "shell")
 }
 
-func execGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func execGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	appName, _, _, err := parseExecArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplicationName(store, appName, "exec")
+	return resolveGuardApplicationName(ctx, store, appName, "exec")
 }
 
-func updateGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func updateGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	opts, err := parseAppUpdateOptions(args)
 	if err != nil || opts.Check {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplication(store, nil, "update")
+	return resolveGuardApplication(ctx, store, nil, "update")
 }
 
-func tlsUpdateGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func tlsUpdateGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	if len(args) == 1 && args[0] == "--check" {
 		return resolvedApplication{}, false
 	}
 	if len(args) != 0 {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplication(store, nil, "tls update")
+	return resolveGuardApplication(ctx, store, nil, "tls update")
 }
 
-func doctorGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func doctorGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	appArgs := doctorApplicationArgs(args)
 	if len(appArgs) > 1 || (len(appArgs) == 1 && strings.HasPrefix(appArgs[0], "-")) {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplication(store, appArgs, "doctor")
+	return resolveGuardApplication(ctx, store, appArgs, "doctor")
 }
 
-func destroyGuardTarget(store application.Store, args []string) (resolvedApplication, bool) {
+func destroyGuardTarget(ctx context.Context, store application.Store, args []string) (resolvedApplication, bool) {
 	name, _, _, err := parseDestroyArgs(args)
 	if err != nil {
 		return resolvedApplication{}, false
 	}
-	return resolveGuardApplicationName(store, name, "destroy")
+	return resolveGuardApplicationName(ctx, store, name, "destroy")
 }

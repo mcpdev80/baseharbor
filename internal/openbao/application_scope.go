@@ -314,7 +314,7 @@ func loginApplication(ctx context.Context, executor Executor, files bhruntime.Fi
 	if err != nil {
 		return "", errors.New("encode OpenBao application AppRole login request")
 	}
-	out, err := executor.ExecProjectInput(ctx, projectName, files.Compose, files.Env, payload, serviceName, "bao", "write", "-format=json", "auth/approle/login", "-")
+	out, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName, "bao", "write", "-format=json", "auth/approle/login", "-")
 	if err != nil {
 		return "", errors.New("OpenBao application AppRole login failed")
 	}

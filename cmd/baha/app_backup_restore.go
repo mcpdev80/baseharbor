@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -57,7 +58,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	if name != "" {
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
 	if err != nil {
 		return err
 	}
@@ -78,7 +79,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		outputPath = fmt.Sprintf("%s-%s-%s.bhbackup", m.Name, m.Environment, time.Now().UTC().Format("20060102T150405Z"))
 	}
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 	if err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	}
 	var platformFiles bhruntime.Files
 	if m.Services.Secrets {
-		platformFiles, err = bhruntime.ExistingFiles("")
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return err
 		}
@@ -170,7 +171,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	if captureErr != nil || restartErr != nil {
 		return errors.Join(captureErr, restartErr)
 	}
-	fmt.Fprintf(out, "Backup for %s (%s) written to %s.\n", m.Name, m.Environment, outputPath)
+	fmt.Fprintf(out, "Backup for %s / %s / %s written to %s.\n", resolved.Target.Name, m.Name, m.Environment, outputPath)
 	return nil
 
 }
@@ -223,18 +224,18 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		}
 	}
 
-	resolved, err := resolveRestoreTarget(store, m)
+	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
 		return err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 	if err != nil {
 		return err
 	}
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
-		platformFiles, err = bhruntime.ExistingFiles("")
+		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
 		}
@@ -277,7 +278,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 		return err
 	}
@@ -330,10 +331,10 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("restore managed HTTP exposure: %w", err)
 	}
-	if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
-	fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
+	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
 }
@@ -361,8 +362,33 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 	return result
 }
 
-func resolveRestoreTarget(store application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
-	resolved := resolvedApplication{Manifest: backupManifest, Store: store}
+func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	id := deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: backupManifest.Name,
+		Environment: backupManifest.Environment,
+	}
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	resolved := resolvedApplication{
+		Target:              target,
+		DeploymentIdentity:  id,
+		Manifest:            backupManifest,
+		TargetStateRoot:     targetRoot,
+		DeploymentStateRoot: deploymentRoot,
+		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return resolved, err
@@ -381,11 +407,9 @@ func resolveRestoreTarget(store application.Store, backupManifest application.Ma
 	if selection.Manifest.YAML() != backupManifest.YAML() {
 		return resolved, errors.New("selected repository environment manifest does not match backup desired state")
 	}
-	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
-	resolved.Store = application.Store{Root: filepath.Join(stateRoot, "apps")}
 	resolved.ManifestPath = selection.ManifestPath
 	resolved.RepositoryRoot = selection.RepositoryRoot
-	resolved.StateRoot = stateRoot
+	resolved.SourceAvailable = true
 	resolved.FromRepository = true
 	return resolved, nil
 }
@@ -410,7 +434,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 			return err
 		}
 	}
-	if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy previous managed backend before restore: %w", err)
 	}
 	if m.Services.Secrets {

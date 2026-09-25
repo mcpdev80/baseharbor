@@ -20,6 +20,8 @@ func ExistingRuntimeFiles(store Store, m Manifest) (RuntimeFiles, error) {
 		Env:            filepath.Join(dir, "runtime.env"),
 		ApplicationEnv: filepath.Join(dir, "application.env"),
 		Bindings:       filepath.Join(dir, "bindings"),
+		Project:        RuntimeProjectNameForStore(store, m),
+		Namespace:      store.Namespace,
 	}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {

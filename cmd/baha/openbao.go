@@ -141,11 +141,15 @@ func openBaoUnsealCommand() *cli.Command {
 }
 
 func openBaoRuntime(ctx context.Context) (bhruntime.Compose, bhruntime.Files, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, fmt.Errorf("BaseHarbor runtime is not initialized: %w", err)
 	}

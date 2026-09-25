@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
@@ -49,6 +50,7 @@ func TestRootAndNestedHelp(t *testing.T) {
 }
 
 func TestAppCreateListShowPlan(t *testing.T) {
+	target := configureTestTarget(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -64,15 +66,17 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
 	manifest := filepath.Join(dir, ".baseharbor", "apps", "demo", "baseharbor.yaml")
-	if _, err := os.Stat(manifest); err != nil {
+	m, err := application.LoadManifestFile(manifest)
+	if err != nil {
 		t.Fatalf("manifest missing: %v", err)
 	}
+	registerTestDeployment(t, target, m, "", "")
 
 	out.Reset()
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "cache,sql") {
+	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "test") {
 		t.Fatalf("unexpected list: %s", out.String())
 	}
 
@@ -87,8 +91,11 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		}
 	}
 
+	if err := os.WriteFile(filepath.Join(dir, "baseharbor.yaml"), []byte(m.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
-	if err := runWithIO(context.Background(), []string{"app", "plan", "demo"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ensure postgres") || !strings.Contains(out.String(), "No changes were made") {

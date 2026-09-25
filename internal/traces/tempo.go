@@ -51,13 +51,19 @@ type ProviderFiles struct {
 }
 
 type Driver struct {
-	runtime Runtime
-	app     application.Manifest
-	issuer  serviceaccess.Issuer
+	runtime   Runtime
+	app       application.Manifest
+	issuer    serviceaccess.Issuer
+	dataDir   string
+	namespace string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{runtime: runtime, app: app, issuer: issuer}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{runtime: runtime, app: app, issuer: issuer, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
@@ -90,31 +96,40 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ ca
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	_, err := Provision(ctx, d.runtime, d.issuer, d.app)
+	_, err := ProvisionAt(ctx, d.runtime, d.issuer, d.app, d.dataDir, d.namespace)
 	return err
 }
 
 func (d *Driver) Bind(context.Context, capability.Resource, capability.Binding) error { return nil }
 
 func (d *Driver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	return VerifyTrace(ctx, d.app, telemetry.ProbeTraceIDHex)
+	return VerifyTraceAt(ctx, d.app, telemetry.ProbeTraceIDHex, d.dataDir, d.namespace)
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
-	p, err := application.ResolveProviderPlacement(m, capability.ProviderTempo)
-	if err != nil {
-		return Placement{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Placement{}, err
 	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
+	p, err := application.ResolveProviderPlacement(m, capability.ProviderTempo)
+	if err != nil {
+		return Placement{}, err
+	}
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
-		project := "baseharbor-traces"
-		network := "baseharbor-traces"
-		volume := "baseharbor-tempo-data"
-		dir := filepath.Join(dataDir, "providers", "tempo", "shared")
+		project := "baseharbor-" + prefix + "traces"
+		network := "baseharbor-" + prefix + "traces"
+		volume := "baseharbor-" + prefix + "tempo-data"
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
 		if p.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(p.SharingBoundary)
 			project += "-" + token
@@ -124,8 +139,8 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 		}
 		return Placement{Scope: p.Scope, Project: project, Network: network, Volume: volume, Dir: dir, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
-		return Placement{Scope: p.Scope, Project: "baseharbor-traces-" + suffix, Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(dataDir, "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
+		suffix := prefix + m.Name + "-" + m.Environment
+		return Placement{Scope: p.Scope, Project: "baseharbor-traces-" + suffix, Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: p.Scope}, nil
 	default:
@@ -134,7 +149,15 @@ func PlacementFor(m application.Manifest) (Placement, error) {
 }
 
 func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, Placement, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	return EnsureProviderFilesAt(ctx, issuer, dataDir, "", m)
+}
+
+func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) (ProviderFiles, Placement, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
 	}
@@ -182,7 +205,15 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, error) {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, Placement, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
 	}
@@ -199,7 +230,15 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, Placement, er
 }
 
 func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) (Placement, error) {
-	files, p, err := EnsureProviderFiles(ctx, issuer, m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Placement{}, err
+	}
+	return ProvisionAt(ctx, runtime, issuer, m, dataDir, "")
+}
+
+func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest, dataDir, namespace string) (Placement, error) {
+	files, p, err := EnsureProviderFilesAt(ctx, issuer, dataDir, namespace, m)
 	if err != nil {
 		return Placement{}, err
 	}
@@ -257,7 +296,15 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, m, dataDir, "")
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, m application.Manifest, dataDir, namespace string) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope != capability.ScopeApplication {
 		return err
 	}
@@ -269,7 +316,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	p, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, m, dataDir, "")
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, m application.Manifest, dataDir, namespace string) error {
+	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
 		return err
 	}
@@ -289,7 +344,16 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Join(dataDir, "providers", "tempo", "shared")
+	return DestroyAllSharedProvidersAt(ctx, runtime, dataDir, "")
+}
+
+func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -310,14 +374,14 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 		_ = observability.Remove("tempo:" + project)
 		return nil
 	}
-	if err := destroyAt(root, "baseharbor-traces"); err != nil {
+	if err := destroyAt(root, "baseharbor-"+prefix+"traces"); err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-traces-"+entry.Name()); err != nil {
+		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-"+prefix+"traces-"+entry.Name()); err != nil {
 			return err
 		}
 	}
@@ -367,7 +431,15 @@ func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client,
 }
 
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {
-	files, _, err := ExistingProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return VerifyTraceAt(ctx, m, traceID, dataDir, "")
+}
+
+func VerifyTraceAt(ctx context.Context, m application.Manifest, traceID, dataDir, namespace string) error {
+	files, _, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}

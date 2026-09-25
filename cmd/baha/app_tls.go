@@ -123,7 +123,7 @@ func appTLSCommand(store application.Store) *cli.Command {
 						return usageError("unknown app tls update option "+arg, "Run 'baha app tls update --help' for usage.")
 					}
 				}
-				resolved, err := resolveApplication(store, nil, "tls update")
+				resolved, err := resolveApplication(ctx, store, nil, "tls update")
 				if err != nil {
 					return err
 				}
@@ -179,7 +179,7 @@ func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved re
 	if err != nil {
 		return fmt.Errorf("certificate update preflight: application runtime state is unavailable: %w", err)
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
 		return fmt.Errorf("certificate update preflight: runtime orchestration is unavailable: %w", err)
 	}

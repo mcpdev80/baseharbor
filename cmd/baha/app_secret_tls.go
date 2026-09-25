@@ -34,7 +34,7 @@ func appSecretTLSSetCommand(store application.Store, service *applicationsecret.
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveSecretApplication(store, name, "secret tls-set")
+			resolved, err := resolveSecretApplication(ctx, store, name, "secret tls-set")
 			if err != nil {
 				return err
 			}

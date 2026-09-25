@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -30,13 +31,15 @@ func appDownCommand(store application.Store) *cli.Command {
 		Usage:   "baha app down [NAME]",
 		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "down")
+			resolved, err := resolveApplication(ctx, store, args, "down")
 			if err != nil {
 				return err
 			}
 			m := resolved.Manifest
+			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
+			term.Info("target", resolved.Target.Name)
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
@@ -54,15 +57,15 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
-					compose, err = bhruntime.DetectCompose(ctx)
+					compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 					return err
 				}},
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
-					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+					return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 					return err
 				}},
 			}
@@ -72,7 +75,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				return errors.New("application down preflight failed")
 			}
 
-			if err := suspendConnectivityForManifest(ctx, compose, m); err != nil {
+			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
 			}
 			if len(m.Exposures) > 0 {
@@ -84,7 +87,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
 				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
 			}
-			if tracePlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo); err != nil {
+			if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
 				return err
 			} else if found && tracePlacement.Scope == capability.ScopeApplication {
 				if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
@@ -96,7 +99,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			} else if stopped {
 				term.Result("STOPPED", "workload", "repository workload stopped; application-owned volumes preserved")
 			}
-			if err := logsprovider.StopProvider(ctx, compose, m); err != nil {
+			if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 				return fmt.Errorf("stop application-scoped logs provider: %w", err)
 			}
 			if application.RequiresRuntimeBroker(m) {
@@ -106,18 +109,18 @@ func appDownCommand(store application.Store) *cli.Command {
 				term.Result("STOPPED", "runtime-broker", "application runtime broker stopped")
 			}
 
-			project := application.RuntimeProjectName(m)
+			project := runtimeProject
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
-			after, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
+			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 			if err != nil {
 				return fmt.Errorf("verify application down: %w", err)
 			}
 			if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
 				return errors.New("verify application down: container or network still exists")
 			}
-			for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, runtimeProject) {
 				if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
 					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
 				}
@@ -154,13 +157,15 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if name != "" {
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplicationEnvironment(store, appArgs, "destroy", environment)
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "destroy", environment)
 	if err != nil {
 		return err
 	}
 	m := resolved.Manifest
+	runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return err
 	}
@@ -181,7 +186,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
-			return application.CheckApplicationConnectivityReleased(m)
+			return application.CheckApplicationConnectivityReleasedAt(resolved.TargetStateRoot, m)
 		}},
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
@@ -191,7 +196,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			compose, err = bhruntime.DetectCompose(ctx)
+			compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}})
 	}
@@ -199,14 +204,14 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		checks = append(checks,
 			preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 			preflight.Check{Name: "runtime configuration", Run: func(ctx context.Context) error {
-				return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+				return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 			}},
 		)
 	}
 	if application.HasManagedRuntimeServices(m) {
 		checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
 			var err error
-			existing, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+			existing, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 			return err
 		}})
 	}
@@ -215,7 +220,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 				var err error
-				platformFiles, err = bhruntime.ExistingFiles("")
+				platformFiles, err = existingTargetRuntimeFiles(ctx)
 				if err != nil {
 					return err
 				}
@@ -278,7 +283,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 	}
 	if len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m) {
-		metricsPlacement, found, placementErr := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+		metricsPlacement, found, placementErr := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 		if placementErr != nil {
 			return placementErr
 		}
@@ -321,16 +326,16 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 	}
 	if runtimeErr == nil {
-		if err := compose.DestroyProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env); err != nil {
+		if err := compose.DestroyProject(ctx, runtimeProject, files.Compose, files.Env); err != nil {
 			return err
 		}
 	} else if partialRuntime && len(existing) != 0 {
-		if err := compose.DestroyOwnedProjectResources(ctx, application.RuntimeProjectName(m), application.ExpectedRuntimeResources(m)); err != nil {
+		if err := compose.DestroyOwnedProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject)); err != nil {
 			return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
 		}
 	}
 	if application.HasManagedRuntimeServices(m) {
-		remaining, err := application.InspectOwnedRuntimeResources(ctx, compose, m)
+		remaining, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
 		if err != nil {
 			return fmt.Errorf("verify application runtime destruction: %w", err)
 		}
@@ -355,13 +360,13 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if resolved.FromRepository {
 		if platformFiles.Compose == "" {
 			var platformErr error
-			platformFiles, platformErr = bhruntime.ExistingFiles("")
+			platformFiles, platformErr = existingTargetRuntimeFiles(ctx)
 			if platformErr != nil {
 				return fmt.Errorf("load managed trust plane for log collector cleanup: %w", platformErr)
 			}
 		}
 		var cleanupIssuer serviceaccess.Issuer = openbao.NewServiceIssuer(compose, platformFiles)
-		if err := logsprovider.UnregisterApplication(ctx, compose, cleanupIssuer, m); err != nil {
+		if err := logsprovider.UnregisterApplicationAt(ctx, compose, cleanupIssuer, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 			return fmt.Errorf("remove application log collector registration: %w", err)
 		}
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
@@ -371,7 +376,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("remove provider logging override: %w", err)
 		}
 	}
-	tracePlacement, traceFound, err := application.RegisteredProviderPlacement(m, capability.ProviderTempo)
+	tracePlacement, traceFound, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo)
 	if err != nil {
 		return err
 	}
@@ -380,7 +385,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("destroy application-scoped traces provider: %w", err)
 		}
 	}
-	metricsPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	metricsPlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
 	}
@@ -392,7 +397,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			}
 			if platformFiles.Compose == "" {
 				var platformErr error
-				platformFiles, platformErr = bhruntime.ExistingFiles("")
+				platformFiles, platformErr = existingTargetRuntimeFiles(ctx)
 				if platformErr != nil {
 					return fmt.Errorf("load managed trust plane for metrics cleanup: %w", platformErr)
 				}
@@ -423,7 +428,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return fmt.Errorf("remove normalized repository TLS state: %w", err)
 		}
 	}
-	if err := application.ReleaseApplicationProviderRegistry(m); err != nil {
+	if err := application.ReleaseApplicationProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("application resources were destroyed but provider registry cleanup failed: %w", err)
 	}
 	if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
@@ -431,6 +436,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			return errors.New("verify application destruction: application state still exists")
 		}
 		return fmt.Errorf("verify application destruction: %w", err)
+	}
+	if err := deployment.DeleteDeploymentRecord(resolved.DeploymentIdentity); err != nil {
+		return fmt.Errorf("remove target deployment record after verified destruction: %w", err)
 	}
 	term.Section("Application")
 	term.Result("DELETED", "application", m.Name+" permanently deleted")

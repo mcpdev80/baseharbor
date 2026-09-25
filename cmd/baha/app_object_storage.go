@@ -34,7 +34,7 @@ func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose,
 		return nil, nil
 	}
 	files := application.RuntimeFilesFor(resolved.Store, m)
-	driver := objectstorage.NewDriver(compose, m, files, issuer)
+	driver := objectstorage.NewDriverAt(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 	requests := make([]capability.Request, 0, len(application.ObjectStorageBucketNames(m)))
 	for _, bucket := range application.ObjectStorageBucketNames(m) {
 		security := application.ObjectStorageSecureBinding(m, bucket)

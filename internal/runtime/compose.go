@@ -38,9 +38,10 @@ type ImageIdentity struct {
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
 type Compose struct {
-	command string
-	prefix  []string
-	quadlet bool
+	command  string
+	prefix   []string
+	quadlet  bool
+	provider ProviderKind
 }
 
 func (c Compose) Engine() string {
@@ -71,24 +72,40 @@ func DetectCompose(ctx context.Context) (Compose, error) {
 }
 
 func detectCompose(ctx context.Context) (Compose, error) {
-	if path, err := exec.LookPath("docker"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "compose", "version")
-		if err := cmd.Run(); err == nil {
-			return Compose{command: path, prefix: []string{"compose"}}, nil
-		}
+	if docker, err := detectDockerCompose(ctx); err == nil {
+		return docker, nil
 	}
-
-	if path, err := exec.LookPath("podman"); err == nil {
-		if QuadletAvailable(ctx) {
-			return Compose{command: path, quadlet: true}, nil
-		}
-		cmd := exec.CommandContext(ctx, path, "compose", "version")
-		if err := cmd.Run(); err == nil {
-			return Compose{command: path, prefix: []string{"compose"}}, nil
-		}
+	if podman, err := detectPodmanCompose(ctx); err == nil {
+		return podman, nil
 	}
-
 	return Compose{}, ErrRuntimeNotFound
+}
+
+func detectDockerCompose(ctx context.Context) (Compose, error) {
+	path, err := exec.LookPath("docker")
+	if err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	cmd := exec.CommandContext(ctx, path, "compose", "version")
+	if err := cmd.Run(); err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderDocker}, nil
+}
+
+func detectPodmanCompose(ctx context.Context) (Compose, error) {
+	path, err := exec.LookPath("podman")
+	if err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	if QuadletAvailable(ctx) {
+		return Compose{command: path, quadlet: true, provider: ProviderPodman}, nil
+	}
+	cmd := exec.CommandContext(ctx, path, "compose", "version")
+	if err := cmd.Run(); err != nil {
+		return Compose{}, ErrRuntimeNotFound
+	}
+	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderPodman}, nil
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {

@@ -42,6 +42,14 @@ func WorkloadProjectName(m Manifest) string {
 	return "baseharbor-workload-" + m.Name + "-" + m.Environment
 }
 
+func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
+	project := strings.TrimSpace(strings.TrimPrefix(runtime.Project, "baseharbor-"))
+	if project == "" {
+		return WorkloadProjectName(m)
+	}
+	return "baseharbor-workload-" + project
+}
+
 func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, error) {
 	if strings.TrimSpace(repositoryRoot) == "" {
 		return "", false, nil
@@ -105,7 +113,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	override, err := workloadOverrideYAML(m, selected, values)
+	override, err := workloadOverrideYAMLForFiles(m, selected, values, runtime)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -118,7 +126,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 		Compose:        composePath,
 		Override:       overridePath,
 		Services:       selected,
-		Project:        WorkloadProjectName(m),
+		Project:        WorkloadProjectNameForRuntime(m, runtime),
 		Partial:        len(selected) != len(services),
 	}, true, nil
 }
@@ -222,6 +230,18 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 }
 
 func workloadOverrideYAML(m Manifest, services []string, values map[string]string) (string, error) {
+	return workloadOverrideYAMLForRuntime(m, services, values, "")
+}
+
+func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[string]string, runtimeProject string) (string, error) {
+	return workloadOverrideYAMLForFiles(m, services, values, RuntimeFiles{Project: runtimeProject})
+}
+
+func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[string]string, runtime RuntimeFiles) (string, error) {
+	runtimeProject := runtime.Project
+	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
+	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
+	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
@@ -266,7 +286,7 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 						metricsServices[service] = struct{}{}
 					}
 				}
-				metricsNetworkName = MetricsProviderNetworkName(m)
+				metricsNetworkName = MetricsProviderNetworkNameForNamespace(m, namespace)
 			}
 		}
 	}
@@ -376,15 +396,15 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		b.WriteString("networks:\n")
 		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
-			fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkName(m))
+			fmt.Fprintf(&b, "    name: %s\n", applicationBackendNetworkForRuntime(m, runtimeProject))
 		}
 		if objectStorage || hasRuntimeObjectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
-			b.WriteString("    name: baseharbor-object-storage\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(objectStorageNetworkName))
 		}
 		if telemetryManaged {
 			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
-			b.WriteString("    name: baseharbor-telemetry\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetworkName))
 		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
@@ -392,10 +412,32 @@ func workloadOverrideYAML(m Manifest, services []string, values map[string]strin
 		}
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
-			fmt.Fprintf(&b, "    name: %s\n", ApplicationExposureNetworkName(m))
+			fmt.Fprintf(&b, "    name: %s\n", applicationExposureNetworkForRuntime(m, runtimeProject))
 		}
 	}
 	return b.String(), nil
+}
+
+func scopedWorkloadNetworkName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
+}
+
+func applicationBackendNetworkForRuntime(m Manifest, runtimeProject string) string {
+	if name := ApplicationBackendNetworkNameForProject(runtimeProject); name != "" {
+		return name
+	}
+	return ApplicationBackendNetworkName(m)
+}
+
+func applicationExposureNetworkForRuntime(m Manifest, runtimeProject string) string {
+	if name := ApplicationExposureNetworkNameForProject(runtimeProject); name != "" {
+		return name
+	}
+	return ApplicationExposureNetworkName(m)
 }
 
 func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[string]string, error) {

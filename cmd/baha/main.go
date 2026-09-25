@@ -104,7 +104,7 @@ func run(args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
-	filtered, opts, showVersion, err := extractGlobalOutputOptions(args)
+	filtered, opts, showVersion, target, err := extractGlobalOutputOptions(args)
 	if err != nil {
 		return err
 	}
@@ -115,16 +115,19 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 		fmt.Fprintf(out, "BaseHarbor %s\ncommit %s\nbuilt %s\n", version, commit, date)
 		return nil
 	}
+	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 
-func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, error) {
+func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, string, error) {
 	opts := cli.OutputOptions{}
 	filtered := make([]string, 0, len(args))
 	showVersion := false
+	target := ""
 	passthrough := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if passthrough {
 			filtered = append(filtered, arg)
 			continue
@@ -147,17 +150,30 @@ func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, boo
 			opts.NonInteractive = true
 		case "--version":
 			showVersion = true
+		case "--target":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target docker-dev status")
+			}
+			i++
+			target = strings.TrimSpace(args[i])
 		default:
+			if strings.HasPrefix(arg, "--target=") {
+				target = strings.TrimSpace(strings.TrimPrefix(arg, "--target="))
+				if target == "" {
+					return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target=docker-dev status")
+				}
+				continue
+			}
 			filtered = append(filtered, arg)
 		}
 	}
 	if opts.Quiet && opts.Verbose {
-		return nil, opts, showVersion, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
+		return nil, opts, showVersion, target, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
 	}
 	if value := strings.TrimSpace(os.Getenv("BASEHARBOR_REDUCED_MOTION")); value != "" && value != "0" && !strings.EqualFold(value, "false") {
 		opts.ReducedMotion = true
 	}
-	return filtered, opts, showVersion, nil
+	return filtered, opts, showVersion, target, nil
 }
 
 func formatCLIError(w io.Writer, err error) {

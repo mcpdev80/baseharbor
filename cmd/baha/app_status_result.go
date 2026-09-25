@@ -34,7 +34,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if err != nil {
 		return applicationStatusResult{}, err
 	}
-	resolved, err := resolveApplication(store, args, "status")
+	resolved, err := resolveApplication(ctx, store, args, "status")
 	if err != nil {
 		return applicationStatusResult{}, err
 	}

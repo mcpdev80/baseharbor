@@ -15,7 +15,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
@@ -35,7 +34,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	defer cancelStatus()
 	ctx = statusCtx
 
-	resolved, err := resolveApplication(store, args, "status")
+	resolved, err := resolveApplication(ctx, store, args, "status")
 	if err != nil {
 		return application.StatusResult{}, err
 	}
@@ -47,9 +46,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
 			ContractVersion: "v1",
+			Target:          resolved.Target.Name,
 			Application:     m.Name,
 			Environment:     m.Environment,
-			Project:         application.RuntimeProjectName(m),
+			Project:         application.RuntimeProjectNameForStore(resolved.Store, m),
 			State:           "not_applied",
 			Ready:           false,
 			Checks:          []application.StatusCheck{},
@@ -62,17 +62,18 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if err != nil {
 		return application.StatusResult{}, err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForTarget(ctx, resolved.Target)
 	if err != nil {
 		return application.StatusResult{}, err
 	}
-	project := application.RuntimeProjectName(m)
+	project := files.Project
 	services, err := compose.RunningServicesProject(ctx, project, files.Compose, files.Env)
 	if err != nil {
 		return application.StatusResult{}, err
 	}
 	result := application.StatusResult{
 		ContractVersion: "v1",
+		Target:          resolved.Target.Name,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		Project:         project,
@@ -95,7 +96,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	brokerRunning := false
 	if application.RequiresRuntimeBroker(m) {
 		if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
-			if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); runErr == nil {
+			if running, runErr := compose.RunningServicesProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env); runErr == nil {
 				brokerRunning = len(running) > 0
 			}
 		}
@@ -156,7 +157,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 		}
 	}
 	if m.Services.Secrets {
-		platformFiles, platformErr := bhruntime.ExistingFiles("")
+		platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
 		if platformErr != nil {
 			result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 		} else {

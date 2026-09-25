@@ -104,18 +104,30 @@ func ConnectivityTargetAlias(rule ConnectivityRule) string {
 }
 
 func LoadConnectivityRules() ([]ConnectivityRule, error) {
-	path, err := connectivityPolicyPath()
+	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return nil, err
 	}
-	return loadConnectivityRulesAt(path)
+	return LoadConnectivityRulesAt(dataDir)
+}
+
+func LoadConnectivityRulesAt(dataDir string) ([]ConnectivityRule, error) {
+	return loadConnectivityRulesAt(connectivityPolicyPathAt(dataDir))
 }
 
 func AddConnectivityRule(rule ConnectivityRule) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return AddConnectivityRuleAt(dataDir, rule)
+}
+
+func AddConnectivityRuleAt(dataDir string, rule ConnectivityRule) error {
 	if err := rule.Validate(); err != nil {
 		return err
 	}
-	return updateConnectivityRules(func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
+	return updateConnectivityRulesAt(dataDir, func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
 		for _, existing := range rules {
 			if existing == rule {
 				return rules, nil
@@ -128,10 +140,18 @@ func AddConnectivityRule(rule ConnectivityRule) error {
 }
 
 func RemoveConnectivityRule(rule ConnectivityRule) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return RemoveConnectivityRuleAt(dataDir, rule)
+}
+
+func RemoveConnectivityRuleAt(dataDir string, rule ConnectivityRule) error {
 	if err := rule.Validate(); err != nil {
 		return err
 	}
-	return updateConnectivityRules(func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
+	return updateConnectivityRulesAt(dataDir, func(rules []ConnectivityRule) ([]ConnectivityRule, error) {
 		filtered := rules[:0]
 		for _, existing := range rules {
 			if existing != rule {
@@ -143,10 +163,15 @@ func RemoveConnectivityRule(rule ConnectivityRule) error {
 }
 
 func updateConnectivityRules(update func([]ConnectivityRule) ([]ConnectivityRule, error)) error {
-	path, err := connectivityPolicyPath()
+	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return err
 	}
+	return updateConnectivityRulesAt(dataDir, update)
+}
+
+func updateConnectivityRulesAt(dataDir string, update func([]ConnectivityRule) ([]ConnectivityRule, error)) error {
+	path := connectivityPolicyPathAt(dataDir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -196,7 +221,15 @@ func loadConnectivityRulesAt(path string) ([]ConnectivityRule, error) {
 }
 
 func CheckApplicationConnectivityReleased(m Manifest) error {
-	rules, err := LoadConnectivityRules()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckApplicationConnectivityReleasedAt(dataDir, m)
+}
+
+func CheckApplicationConnectivityReleasedAt(dataDir string, m Manifest) error {
+	rules, err := LoadConnectivityRulesAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -221,7 +254,11 @@ func connectivityPolicyPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dataDir, connectivityPolicyFile), nil
+	return connectivityPolicyPathAt(dataDir), nil
+}
+
+func connectivityPolicyPathAt(dataDir string) string {
+	return filepath.Join(filepath.Clean(dataDir), connectivityPolicyFile)
 }
 
 func saveConnectivityRulesAt(path string, rules []ConnectivityRule) error {

@@ -109,18 +109,20 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 	}
 
 	m := application.New("demo", "dev", false, false, false)
+	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:       m,
-		ManifestPath:   manifestPath,
-		Store:          application.Store{Root: filepath.Join(repo, ".baseharbor", "apps")},
-		FromRepository: true,
+		Manifest:            m,
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
 	}
 	var out bytes.Buffer
 	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader("\n"), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
 
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repo))
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,17 +158,19 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	if err := os.WriteFile(manifestPath, []byte("version: 1\\nname: demo\\nenvironment: dev\\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:       application.New("demo", "dev", false, false, false),
-		ManifestPath:   manifestPath,
-		Store:          application.Store{Root: filepath.Join(repo, ".baseharbor", "apps")},
-		FromRepository: true,
+		Manifest:            application.New("demo", "dev", false, false, false),
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
 	}
 	var out bytes.Buffer
 	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader(""), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
-	values, err := readSimpleEnvFile(repositoryInitEnvPath(repo))
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if err != nil {
 		t.Fatal(err)
 	}

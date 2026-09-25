@@ -68,7 +68,7 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveApplication(store, nil, "init")
+			resolved, err := resolveApplication(ctx, store, nil, "init")
 			if err != nil {
 				return err
 			}

@@ -32,6 +32,7 @@ const (
 	ErrorValidationFailed      ErrorCode = "validation_failed"
 	ErrorPortConflict          ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
+	ErrorSourceMissing         ErrorCode = "source_missing"
 	ErrorApprovalRequired      ErrorCode = "approval_required"
 	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
 	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
@@ -117,6 +118,7 @@ func ResultError(err error) ErrorResult {
 
 func Operations() []Operation {
 	return []Operation{
+		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},

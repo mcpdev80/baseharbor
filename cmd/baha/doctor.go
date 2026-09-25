@@ -168,7 +168,7 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 
-	files, err := bhruntime.ExistingFiles("")
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}

@@ -22,13 +22,14 @@ func appUpCommand(store application.Store) *cli.Command {
 		Usage:   "baha app up [NAME]",
 		Long:    "Starts a previously materialized BaseHarbor application runtime using its existing runtime definition, credentials and persistent data; required application secrets are verified before workload start and missing values fail closed. Repository workloads are started after their BaseHarbor backend and per-application secret broker are ready. Workload-only applications skip the empty managed-runtime start and resume their repository Compose workload directly. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			resolved, err := resolveApplication(store, args, "up")
+			resolved, err := resolveApplication(ctx, store, args, "up")
 			if err != nil {
 				return err
 			}
 			m := resolved.Manifest
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
+			term.Info("target", resolved.Target.Name)
 			if err := printResolvedTracesPlacement(out, m); err != nil {
 				return err
 			}
@@ -71,7 +72,7 @@ func appUpCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 					var err error
-					platformFiles, err = bhruntime.ExistingFiles("")
+					platformFiles, err = existingTargetRuntimeFiles(ctx)
 					if err != nil {
 						return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
 					}
@@ -94,26 +95,26 @@ func appUpCommand(store application.Store) *cli.Command {
 					return err
 				}},
 				{Name: "connectivity policy", Run: func(context.Context) error {
-					_, err := application.LoadConnectivityRules()
+					_, err := application.LoadConnectivityRulesAt(resolved.TargetStateRoot)
 					return err
 				}},
 				{Name: "provider registry", Run: func(context.Context) error {
-					return application.CheckReferenceProviderRegistry(m)
+					return application.CheckReferenceProviderRegistryAt(resolved.TargetStateRoot, m)
 				}},
 
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
 					if !application.HasManagedRuntimeServices(m) {
 						return nil
 					}
-					return compose.ConfigProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env)
+					return compose.ConfigProject(ctx, files.Project, files.Compose, files.Env)
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = application.InspectOwnedRuntimeResources(ctx, compose, m)
+					before, err = application.InspectOwnedRuntimeResourcesForFiles(ctx, compose, m, files)
 					return err
 				}},
 				{Name: "persistent data volumes", Run: func(context.Context) error {
-					for _, volume := range application.ExpectedPersistentRuntimeResources(m) {
+					for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, files.Project) {
 						if !application.ResourceNamedExists(before, volume) {
 							return fmt.Errorf("managed %s is missing; refusing to recreate persistent state during app up", volume.Name)
 						}
@@ -165,7 +166,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}
 
 			if application.HasManagedRuntimeServices(m) {
-				project := application.RuntimeProjectName(m)
+				project := files.Project
 				if err := activity(ctx, term, "Starting managed application services", func(progress io.Writer) error {
 					return compose.UpProjectProgress(ctx, project, files.Compose, files.Env, func(detail string) {
 						cli.ReportActivityDetail(progress, detail)
@@ -248,7 +249,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if err := reconcileConnectivityForManifest(ctx, out, compose, m); err != nil {
+			if err := reconcileConnectivityForManifest(ctx, out, compose, resolved); err != nil {
 				return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 			}
 			if err := activity(ctx, term, "Verifying metrics ingestion", func(progress io.Writer) error {
@@ -266,7 +267,7 @@ func appUpCommand(store application.Store) *cli.Command {
 			}); err != nil {
 				return err
 			}
-			if err := application.ReconcileReferenceProviderRegistry(m, managedLogsRegistryResources(providers.logs)...); err != nil {
+			if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m, managedLogsRegistryResources(providers.logs)...); err != nil {
 				return fmt.Errorf("record provider registry after successful restart: %w", err)
 			}
 			if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {

@@ -45,7 +45,17 @@ func waitLokiReady(ctx context.Context, client *http.Client, endpoint string) er
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, services []string) error {
-	files, err := ExistingProviderFiles(m)
+	return VerifyApplicationAt(ctx, m, services, "", "")
+}
+
+func VerifyApplicationAt(ctx context.Context, m application.Manifest, services []string, dataDir, namespace string) error {
+	var files ProviderFiles
+	var err error
+	if strings.TrimSpace(dataDir) == "" {
+		files, err = ExistingProviderFiles(m)
+	} else {
+		files, err = ExistingProviderFilesAt(dataDir, namespace, m)
+	}
 	if err != nil {
 		return err
 	}
@@ -66,10 +76,20 @@ func VerifyApplication(ctx context.Context, m application.Manifest, services []s
 }
 
 func VerifyProviderSources(ctx context.Context, m application.Manifest, sources []observability.SignalSource) error {
+	return VerifyProviderSourcesAt(ctx, m, sources, "", "")
+}
+
+func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, sources []observability.SignalSource, dataDir, namespace string) error {
 	if len(sources) == 0 {
 		return nil
 	}
-	files, err := ExistingProviderFiles(m)
+	var files ProviderFiles
+	var err error
+	if strings.TrimSpace(dataDir) == "" {
+		files, err = ExistingProviderFiles(m)
+	} else {
+		files, err = ExistingProviderFilesAt(dataDir, namespace, m)
+	}
 	if err != nil {
 		return err
 	}

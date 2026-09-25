@@ -42,19 +42,35 @@ type Placement struct {
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Placement{}, err
+	}
+	return PlacementForAt(dataDir, "", m)
+}
+
+func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, error) {
 	providerPlacement, err := application.ResolveProviderPlacement(m, capability.ProviderPrometheus)
 	if err != nil {
 		return Placement{}, err
 	}
-	return placementFromProviderPlacement(m, providerPlacement)
+	return placementFromProviderPlacementAt(dataDir, namespace, m, providerPlacement)
 }
 
 func RegisteredPlacementFor(m application.Manifest) (Placement, bool, error) {
-	providerPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Placement{}, false, err
+	}
+	return RegisteredPlacementForAt(dataDir, "", m)
+}
+
+func RegisteredPlacementForAt(dataDir, namespace string, m application.Manifest) (Placement, bool, error) {
+	providerPlacement, found, err := application.RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPrometheus)
 	if err != nil || !found {
 		return Placement{}, found, err
 	}
-	placement, err := placementFromProviderPlacement(m, providerPlacement)
+	placement, err := placementFromProviderPlacementAt(dataDir, namespace, m, providerPlacement)
 	if err != nil {
 		return Placement{}, false, err
 	}
@@ -66,11 +82,24 @@ func placementFromProviderPlacement(m application.Manifest, providerPlacement ca
 	if err != nil {
 		return Placement{}, err
 	}
+	return placementFromProviderPlacementAt(dataDir, "", m, providerPlacement)
+}
+
+func placementFromProviderPlacementAt(dataDir, namespace string, m application.Manifest, providerPlacement capability.ProviderPlacement) (Placement, error) {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch providerPlacement.Scope {
 	case capability.ScopeShared:
 		project := ProviderProject
 		volume := "baseharbor-prometheus-data"
-		dir := filepath.Join(dataDir, "providers", "prometheus", "shared")
+		if prefix != "" {
+			project = "baseharbor-metrics-" + strings.TrimSuffix(prefix, "-")
+			volume = "baseharbor-prometheus-data-" + strings.TrimSuffix(prefix, "-")
+		}
+		dir := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
 		if providerPlacement.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(providerPlacement.SharingBoundary)
 			project += "-" + token
@@ -84,13 +113,13 @@ func placementFromProviderPlacement(m application.Manifest, providerPlacement ca
 			Dir:     dir,
 		}, nil
 	case capability.ScopeApplication:
-		suffix := m.Name + "-" + m.Environment
+		suffix := prefix + m.Name + "-" + m.Environment
 		return Placement{
 			Scope:   capability.ScopeApplication,
 			Project: "baseharbor-metrics-" + suffix,
-			Network: application.MetricsProviderNetworkName(m),
+			Network: "baseharbor-metrics-" + suffix + "_default",
 			Volume:  "baseharbor-prometheus-data-" + suffix,
-			Dir:     filepath.Join(dataDir, "providers", "prometheus", "applications", m.Name, m.Environment),
+			Dir:     filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "applications", m.Name, m.Environment),
 		}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: capability.ScopeExternal}, nil
@@ -134,6 +163,8 @@ type Driver struct {
 	issuer    serviceaccess.Issuer
 	runtimeCA string
 	client    *http.Client
+	dataDir   string
+	namespace string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, runtimeCA ...string) *Driver {
@@ -148,6 +179,27 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 		runtimeCA: caPath,
 		client:    nil,
 	}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string, runtimeCA ...string) *Driver {
+	driver := NewDriver(runtime, app, issuer, runtimeCA...)
+	driver.dataDir = filepath.Clean(dataDir)
+	driver.namespace = strings.TrimSpace(namespace)
+	return driver
+}
+
+func (d *Driver) placement() (Placement, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return PlacementForAt(d.dataDir, d.namespace, d.app)
+	}
+	return PlacementFor(d.app)
+}
+
+func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureProviderFilesWithRuntimeCAAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.runtimeCA)
+	}
+	return EnsureProviderFilesWithRuntimeCA(ctx, d.issuer, d.app, d.runtimeCA)
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Prometheus }
@@ -190,11 +242,11 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	reconcileCtx, cancel := context.WithTimeout(ctx, providerReconcileTimeout)
 	defer cancel()
 
-	placement, err := PlacementFor(d.app)
+	placement, err := d.placement()
 	if err != nil {
 		return err
 	}
-	files, err := EnsureProviderFilesWithRuntimeCA(reconcileCtx, d.issuer, d.app, d.runtimeCA)
+	files, err := d.ensureProviderFiles(reconcileCtx)
 	if err != nil {
 		return err
 	}
@@ -324,7 +376,15 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, err := ExistingProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return PruneApplicationTargetsAt(dataDir, "", m, desired)
+}
+
+func PruneApplicationTargetsAt(dataDir, namespace string, m application.Manifest, desired map[string]struct{}) error {
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -335,7 +395,15 @@ func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}
 }
 
 func PruneRegisteredApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, found, err := ExistingRegisteredProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return PruneRegisteredApplicationTargetsAt(dataDir, "", m, desired)
+}
+
+func PruneRegisteredApplicationTargetsAt(dataDir, namespace string, m application.Manifest, desired map[string]struct{}) error {
+	files, found, err := ExistingRegisteredProviderFilesAt(dataDir, namespace, m)
 	if !found || errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -515,7 +583,15 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 }
 
 func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeCASource string) (ProviderFiles, error) {
-	placement, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return EnsureProviderFilesWithRuntimeCAAt(ctx, issuer, dataDir, "", m, runtimeCASource)
+}
+
+func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeCASource string) (ProviderFiles, error) {
+	placement, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -534,9 +610,9 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 		Registrations:       filepath.Join(dir, "registrations.json"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
-	registrations := []sourceRegistration{registrationFor(m)}
+	registrations := []sourceRegistration{registrationForAt(m, namespace)}
 	if placement.Scope == capability.ScopeShared {
-		registrations, err = reconcileSharedRegistration(files.Registrations, m, true)
+		registrations, err = reconcileSharedRegistrationAt(files.Registrations, m, namespace, true)
 		if err != nil {
 			return ProviderFiles{}, err
 		}
@@ -633,7 +709,15 @@ func EnsureProviderFilesWithRuntimeCA(ctx context.Context, issuer serviceaccess.
 }
 
 func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
-	placement, err := PlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, error) {
+	placement, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
@@ -641,7 +725,15 @@ func ExistingProviderFiles(m application.Manifest) (ProviderFiles, error) {
 }
 
 func ExistingRegisteredProviderFiles(m application.Manifest) (ProviderFiles, bool, error) {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, false, err
+	}
+	return ExistingRegisteredProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingRegisteredProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, bool, error) {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil || !found {
 		return ProviderFiles{}, found, err
 	}
@@ -660,14 +752,22 @@ func existingProviderFilesForPlacement(placement Placement) (ProviderFiles, erro
 }
 
 func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
-	providerPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return UnregisterSharedApplicationAt(ctx, runtime, issuer, dataDir, "", m)
+}
+
+func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) error {
+	providerPlacement, found, err := application.RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
 	}
 	if !found || providerPlacement.Scope != capability.ScopeShared {
 		return nil
 	}
-	placement, err := placementFromProviderPlacement(m, providerPlacement)
+	placement, err := placementFromProviderPlacementAt(dataDir, namespace, m, providerPlacement)
 	if err != nil {
 		return err
 	}
@@ -678,7 +778,7 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 	if err != nil {
 		return err
 	}
-	registrations, err := reconcileSharedRegistration(files.Registrations, m, false)
+	registrations, err := reconcileSharedRegistrationAt(files.Registrations, m, namespace, false)
 	if err != nil {
 		return err
 	}
@@ -741,7 +841,15 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
@@ -759,7 +867,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
@@ -793,7 +909,18 @@ func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := filepath.Join(dataDir, "providers", "prometheus", "shared")
+	return ExistingSharedProviderInstancesAt(dataDir, "")
+}
+
+func ExistingSharedProviderInstancesAt(dataDir, namespace string) ([]SharedProviderInstance, error) {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	baseProject := ProviderProject
+	baseVolume := "baseharbor-prometheus-data"
+	if namespace != "" {
+		baseProject = "baseharbor-metrics-" + namespace
+		baseVolume = "baseharbor-prometheus-data-" + namespace
+	}
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -807,8 +934,8 @@ func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
 		instances = append(instances, SharedProviderInstance{
 			Placement: Placement{
 				Scope:   capability.ScopeShared,
-				Project: ProviderProject,
-				Volume:  "baseharbor-prometheus-data",
+				Project: baseProject,
+				Volume:  baseVolume,
 				Dir:     root,
 			},
 			Files: files,
@@ -833,8 +960,8 @@ func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
 		instances = append(instances, SharedProviderInstance{
 			Placement: Placement{
 				Scope:   capability.ScopeShared,
-				Project: ProviderProject + "-" + token,
-				Volume:  "baseharbor-prometheus-data-" + token,
+				Project: baseProject + "-" + token,
+				Volume:  baseVolume + "-" + token,
 				Dir:     dir,
 			},
 			Files: files,
@@ -866,7 +993,15 @@ func providerFilesAt(dir string) (ProviderFiles, error) {
 }
 
 func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
-	instances, err := ExistingSharedProviderInstances()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyAllSharedProvidersAt(ctx, runtime, dataDir, "")
+}
+
+func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	instances, err := ExistingSharedProviderInstancesAt(dataDir, namespace)
 	if err != nil {
 		return err
 	}
@@ -878,11 +1013,7 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 	if len(instances) == 0 {
 		return nil
 	}
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
-	return os.RemoveAll(filepath.Join(dataDir, "providers", "prometheus", "shared"))
+	return os.RemoveAll(filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared"))
 }
 
 func ExistingSharedProviderFiles() (ProviderFiles, error) {
@@ -915,13 +1046,17 @@ func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
 }
 
 func registrationFor(m application.Manifest) sourceRegistration {
+	return registrationForAt(m, "")
+}
+
+func registrationForAt(m application.Manifest, namespace string) sourceRegistration {
 	registration := sourceRegistration{
 		Application: m.Name,
 		Environment: m.Environment,
-		Network:     application.MetricsProviderNetworkName(m),
+		Network:     application.MetricsProviderNetworkNameForNamespace(m, namespace),
 	}
 	if application.HasRuntimeMetricsPermissions(m) {
-		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeName(m)
+		registration.RuntimeVolume = application.MetricsRuntimeTargetVolumeNameForNamespace(m, namespace)
 	}
 	return registration
 }
@@ -939,6 +1074,10 @@ func readRegistrations(path string) ([]sourceRegistration, error) {
 }
 
 func reconcileSharedRegistration(path string, m application.Manifest, present bool) ([]sourceRegistration, error) {
+	return reconcileSharedRegistrationAt(path, m, "", present)
+}
+
+func reconcileSharedRegistrationAt(path string, m application.Manifest, namespace string, present bool) ([]sourceRegistration, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -968,7 +1107,7 @@ func reconcileSharedRegistration(path string, m application.Manifest, present bo
 	}
 	registrations = filtered
 	if present {
-		registrations = append(registrations, registrationFor(m))
+		registrations = append(registrations, registrationForAt(m, namespace))
 	}
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -1298,6 +1437,14 @@ func prometheusTargetDiagnostic(ctx context.Context, client *http.Client, endpoi
 }
 
 func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return VerifyProviderSourcesAt(ctx, m, dataDir, "")
+}
+
+func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDir, namespace string) error {
 	policy, err := application.MetricsPolicy(m)
 	if err != nil {
 		return err
@@ -1308,7 +1455,7 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	}
 	allowedApplications := []string{m.Name}
 	if placement.Scope == capability.ScopeShared {
-		if files, fileErr := ExistingProviderFiles(m); fileErr == nil {
+		if files, fileErr := ExistingProviderFilesAt(dataDir, namespace, m); fileErr == nil {
 			if registrations, regErr := readRegistrations(files.Registrations); regErr == nil {
 				allowedApplications = allowedApplications[:0]
 				for _, registration := range registrations {
@@ -1326,7 +1473,7 @@ func VerifyProviderSources(ctx context.Context, m application.Manifest) error {
 	if err != nil || len(sources) == 0 {
 		return err
 	}
-	files, err := ExistingProviderFiles(m)
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}

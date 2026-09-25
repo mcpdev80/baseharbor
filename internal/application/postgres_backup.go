@@ -26,7 +26,7 @@ func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m
 		database := postgresDatabaseName(m, instance)
 		out, err := runtime.ExecProject(
 			ctx,
-			RuntimeProjectName(m),
+			files.Project,
 			files.Compose,
 			files.Env,
 			service,
@@ -63,7 +63,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 		database := postgresDatabaseName(m, instance)
 		if _, err := runtime.ExecProjectInput(
 			ctx,
-			RuntimeProjectName(m),
+			files.Project,
 			files.Compose,
 			files.Env,
 			byInstance[instance],
@@ -77,7 +77,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 		}
 		out, err := runtime.ExecProject(
 			ctx,
-			RuntimeProjectName(m),
+			files.Project,
 			files.Compose,
 			files.Env,
 			service,

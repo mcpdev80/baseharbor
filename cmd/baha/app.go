@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -55,23 +56,56 @@ func appCommand(store application.Store) *cli.Command {
 		},
 		{
 			Name:    "list",
-			Summary: "List configured applications",
-			Usage:   "baha app list",
+			Summary: "List registered deployments for the effective target",
+			Usage:   "baha app list [--all-targets]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 0 {
-					return usageError("baha app list does not accept arguments", "Run 'baha app list --help' for usage.")
+				allTargets := false
+				for _, arg := range args {
+					switch arg {
+					case "--all-targets":
+						allTargets = true
+					default:
+						return unknownOptionUsage("baha app list", arg, "--all-targets")
+					}
 				}
-				items, err := store.List()
+				var (
+					items []deployment.DeploymentRecord
+					err   error
+				)
+				if allTargets {
+					items, err = deployment.ListAllDeployments()
+				} else {
+					target, resolveErr := effectiveTarget(ctx)
+					if resolveErr != nil {
+						return resolveErr
+					}
+					items, err = deployment.ListDeployments(target.Name)
+				}
 				if err != nil {
 					return err
 				}
 				if len(items) == 0 {
-					fmt.Fprintln(out, "No applications configured.")
+					fmt.Fprintln(out, "No deployments registered.")
 					return nil
 				}
-				fmt.Fprintf(out, "  %-20s %-12s %s\n", "NAME", "ENVIRONMENT", "SERVICES")
+				if allTargets {
+					fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", "TARGET", "APPLICATION", "ENVIRONMENT", "RUNTIME", "STATE", "SOURCE")
+					for _, item := range items {
+						source := "MISSING"
+						if deployment.SourceAvailable(item.Source) {
+							source = "OK"
+						}
+						fmt.Fprintf(out, "%-20s %-20s %-12s %-12s %-10s %s\n", item.Identity.Target, item.Identity.Application, item.Identity.Environment, item.Applied.RuntimeProvider, item.Observed.State, source)
+					}
+					return nil
+				}
+				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", "APPLICATION", "ENVIRONMENT", "STATE", "SOURCE")
 				for _, item := range items {
-					fmt.Fprintf(out, "  %-20s %-12s %s\n", item.Name, item.Environment, serviceNames(item))
+					source := "MISSING"
+					if deployment.SourceAvailable(item.Source) {
+						source = "OK"
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Identity.Application, item.Identity.Environment, item.Observed.State, source)
 				}
 				return nil
 			},
@@ -81,7 +115,7 @@ func appCommand(store application.Store) *cli.Command {
 			Summary: "Show the resolved application manifest",
 			Usage:   "baha app show [NAME]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "show")
+				resolved, err := resolveApplication(ctx, store, args, "show")
 				if err != nil {
 					return err
 				}
@@ -99,7 +133,7 @@ func appCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				resolved, err := resolveApplication(store, filtered, "plan")
+				resolved, err := resolveApplication(ctx, store, filtered, "plan")
 				if err != nil {
 					return err
 				}
@@ -124,7 +158,7 @@ func appCommand(store application.Store) *cli.Command {
 			Usage:   "baha app preflight [NAME]",
 			Long:    "Checks manifest integrity, supported desired services, local state, the container runtime, OpenBao application-provisioning prerequisites and required-secret readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				resolved, err := resolveApplication(store, args, "preflight")
+				resolved, err := resolveApplication(ctx, store, args, "preflight")
 				if err != nil {
 					return err
 				}
@@ -142,7 +176,7 @@ func appCommand(store application.Store) *cli.Command {
 					}},
 					{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 						var err error
-						compose, err = bhruntime.DetectCompose(ctx)
+						compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 						return err
 					}},
 					{Name: "desired-state plan", Run: func(context.Context) error {
@@ -160,7 +194,7 @@ func appCommand(store application.Store) *cli.Command {
 					checks = append(checks,
 						preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
 							var err error
-							platformFiles, err = bhruntime.ExistingFiles("")
+							platformFiles, err = existingTargetRuntimeFiles(ctx)
 							return err
 						}},
 						preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {

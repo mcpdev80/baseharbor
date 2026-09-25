@@ -29,6 +29,16 @@ baha
 ├── plan
 ├── status
 ├── doctor
+├── target
+│   ├── list
+│   ├── show
+│   ├── create
+│   ├── delete
+│   ├── activate
+│   └── deactivate
+├── config
+│   └── prompt
+├── shell-init bash|zsh|fish
 ├── agent
 │   └── describe
 ├── mcp
@@ -187,7 +197,26 @@ explicit --target
 
 Repository detection may select the current application/environment, but never defines the global deployment registry. `baha app list` is therefore CWD-independent.
 
-Shell-local activation is the preferred interactive model so separate terminals can safely target different targets at the same time. Optional prompt integration can show a compact active-target segment before any BaseHarbor command is typed. Prompt style, environment labels/colors, accessibility mode, and placement before/after the path (or right prompt where supported) are user-configurable.
+Shell-local activation is the preferred interactive model so separate terminals can safely target different targets at the same time.
+
+```bash
+eval "$(baha target activate docker-dev)"
+eval "$(baha target deactivate)"
+```
+
+For Fish, source the generated shell integration instead of evaluating POSIX syntax:
+
+```fish
+baha shell-init fish | source
+```
+
+Bash and Zsh shell integration can likewise be loaded with `source <(baha shell-init bash)` or `source <(baha shell-init zsh)`. The optional prompt integration is configured through `baha config prompt` and can render before/after the normal prompt or as a right prompt where the shell supports it.
+
+Structured target inspection is available through:
+
+```bash
+baha target -o json
+```
 
 See [Targets and deployment destinations](../explanation/targets.md).
 
@@ -245,7 +274,7 @@ Local MCP server:
 baha mcp serve
 ```
 
-The MCP server uses stdio only and exposes six read-only semantic tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status`, `baseharbor.doctor`, `baseharbor.policy.check` and `baseharbor.policy.explain`.
+The MCP server uses stdio only and includes the read-only `baseharbor.target` operation plus the lifecycle and policy tools documented in the MCP reference. Target selection uses the same explicit target / activated shell target / configured default precedence as the CLI.
 
 There is no generic shell, exec, Docker or Compose tool. MCP calls route into the same typed result collectors used by the CLI/TUI and therefore preserve BaseHarbor ownership, isolation and verification semantics.
 
@@ -273,7 +302,7 @@ baha up --postgres-port 15432 --openbao-port 18200
 
 The default ports are checked before first initialization. An occupied default port is not blindly bound.
 
-Control-plane state is user-global by default under `$XDG_DATA_HOME/baseharbor/runtime` or `~/.local/share/baseharbor/runtime` when XDG is unset. `BASEHARBOR_STATE_DIR` is the explicit override.
+Control-plane and provider state is owned by the effective Target under `$XDG_DATA_HOME/baseharbor/targets/<target>/` or `~/.local/share/baseharbor/targets/<target>/` when XDG is unset. This keeps runtime state, generated artifacts, provider registries, networks and deployment records isolated across Targets.
 
 ## Read-only repository inspection
 

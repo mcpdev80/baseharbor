@@ -100,7 +100,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	mustGitUpdateTest(t, upstream, "push", "origin", "main")
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.update", map[string]any{"no_backup": true})
 
-	resolved, err := resolveApplication(application.DefaultStore(), nil, "MCP lifecycle acceptance drift")
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "MCP lifecycle acceptance drift")
 	if err != nil {
 		t.Fatal(err)
 	}

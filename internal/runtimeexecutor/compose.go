@@ -21,10 +21,12 @@ const (
 )
 
 type Files struct {
-	Dir     string
-	Compose string
-	Env     string
-	Image   string
+	Dir            string
+	Compose        string
+	Env            string
+	Image          string
+	Project        string
+	ControlNetwork string
 }
 
 type ObservabilityBinding struct {
@@ -39,6 +41,10 @@ type Runtime interface {
 }
 
 func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string, observability ...ObservabilityBinding) (Files, error) {
+	return EnsureFilesAt(dataDir, "", identity, adminCredentialsPath, s3Endpoint, s3TrustPath, observability...)
+}
+
+func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string, observability ...ObservabilityBinding) (Files, error) {
 	dataDir = strings.TrimSpace(dataDir)
 	if dataDir == "" {
 		return Files{}, errors.New("BaseHarbor data directory is required for runtime executor")
@@ -127,14 +133,26 @@ func EnsureFiles(dataDir string, identity openbao.RuntimeExecutorMTLSFiles, admi
 	if err := os.Chmod(envPath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor environment: %w", err)
 	}
-	content := composeYAML(image, identity, adminProjection, s3Endpoint, s3TrustProjection, observer)
+	project := scopedName(ProjectName, namespace)
+	controlNetwork := scopedName(ControlNetworkName, namespace)
+	objectStorageNetwork := scopedName("baseharbor-object-storage", namespace)
+	telemetryNetwork := scopedName("baseharbor-telemetry", namespace)
+	content := composeYAMLForNetworks(image, identity, adminProjection, s3Endpoint, s3TrustProjection, controlNetwork, objectStorageNetwork, telemetryNetwork, observer)
 	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write runtime executor compose file: %w", err)
 	}
 	if err := os.Chmod(composePath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor compose file: %w", err)
 	}
-	return Files{Dir: dir, Compose: composePath, Env: envPath, Image: image}, nil
+	return Files{Dir: dir, Compose: composePath, Env: envPath, Image: image, Project: project, ControlNetwork: controlNetwork}, nil
+}
+
+func scopedName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
 }
 
 func projectContainerReadableSecret(dir, source, targetName, label string) (string, error) {
@@ -180,12 +198,22 @@ func projectContainerReadableFile(dir, source, targetName, label string, require
 }
 
 func ExistingFiles(dataDir string) (Files, error) {
+	return ExistingFilesAt(dataDir, "")
+}
+
+func ExistingFilesAt(dataDir, namespace string) (Files, error) {
 	dataDir = strings.TrimSpace(dataDir)
 	if dataDir == "" {
 		return Files{}, errors.New("BaseHarbor data directory is required for runtime executor")
 	}
 	dir := filepath.Join(dataDir, "runtime-executor")
-	files := Files{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env")}
+	files := Files{
+		Dir:            dir,
+		Compose:        filepath.Join(dir, "compose.yaml"),
+		Env:            filepath.Join(dir, "runtime.env"),
+		Project:        scopedName(ProjectName, namespace),
+		ControlNetwork: scopedName(ControlNetworkName, namespace),
+	}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return Files{}, err
@@ -195,7 +223,11 @@ func ExistingFiles(dataDir string) (Files, error) {
 }
 
 func DestroyShared(ctx context.Context, runtime Runtime, dataDir string) error {
-	files, err := ExistingFiles(dataDir)
+	return DestroySharedAt(ctx, runtime, dataDir, "")
+}
+
+func DestroySharedAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	files, err := ExistingFilesAt(dataDir, namespace)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -205,13 +237,17 @@ func DestroyShared(ctx context.Context, runtime Runtime, dataDir string) error {
 	if runtime == nil {
 		return errors.New("runtime executor lifecycle runtime is required")
 	}
-	if err := runtime.DestroyProject(ctx, ProjectName, files.Compose, files.Env); err != nil {
+	if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	return os.RemoveAll(files.Dir)
 }
 
 func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath string, observability ...ObservabilityBinding) string {
+	return composeYAMLForNetworks(image, identity, adminCredentialsPath, s3Endpoint, s3TrustPath, ControlNetworkName, "baseharbor-object-storage", "baseharbor-telemetry", observability...)
+}
+
+func composeYAMLForNetworks(image string, identity openbao.RuntimeExecutorMTLSFiles, adminCredentialsPath, s3Endpoint, s3TrustPath, controlNetwork, objectStorageNetwork, telemetryNetwork string, observability ...ObservabilityBinding) string {
 	var observer ObservabilityBinding
 	if len(observability) > 0 {
 		observer = observability[0]
@@ -285,15 +321,15 @@ func composeYAML(image string, identity openbao.RuntimeExecutorMTLSFiles, adminC
 	b.WriteString("  runtime-resource-state:\n")
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  runtime-control:\n")
-	b.WriteString("    name: baseharbor-runtime-control\n")
+	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(controlNetwork))
 	b.WriteString("    internal: true\n")
 	b.WriteString("  object-storage:\n")
 	b.WriteString("    external: true\n")
-	b.WriteString("    name: baseharbor-object-storage\n")
+	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(objectStorageNetwork))
 	if observer.Endpoint != "" {
 		b.WriteString("  telemetry:\n")
 		b.WriteString("    external: true\n")
-		b.WriteString("    name: baseharbor-telemetry\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetwork))
 	}
 	return b.String()
 }

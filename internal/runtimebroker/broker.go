@@ -35,8 +35,20 @@ func ProjectName(m application.Manifest) string {
 	return "baseharbor-broker-" + m.Name + "-" + m.Environment
 }
 
+func ProjectNameForRuntime(m application.Manifest, files application.RuntimeFiles) string {
+	namespace := strings.TrimSpace(strings.ReplaceAll(files.Namespace, ".", "-"))
+	if namespace == "" {
+		return ProjectName(m)
+	}
+	return "baseharbor-broker-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
 func ObservabilityNetworkName(m application.Manifest) string {
 	return ProjectName(m) + "-observability"
+}
+
+func ObservabilityNetworkNameForRuntime(m application.Manifest, files application.RuntimeFiles) string {
+	return ProjectNameForRuntime(m, files) + "-observability"
 }
 
 func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
@@ -96,7 +108,7 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if hasOTLPBinding {
 		otlp = &otlpBinding
 	}
-	content, err := composeYAML(m, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort, otlp)
+	content, err := composeYAMLForRuntime(m, appFiles, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort, otlp)
 	if err != nil {
 		return Files{}, err
 	}
@@ -343,7 +355,23 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 }
 
 func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
+	return composeYAMLForRuntime(m, application.RuntimeFiles{}, mtls, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
+}
+
+func composeYAMLForRuntime(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
+	if scoped := application.ApplicationBackendNetworkNameForProject(appFiles.Project); scoped != "" {
+		backendNetwork = scoped
+	}
+	namespace := strings.TrimSpace(strings.ReplaceAll(appFiles.Namespace, ".", "-"))
+	secretsNetwork := "baseharbor-secrets"
+	runtimeControlNetwork := "baseharbor-runtime-control"
+	telemetryNetwork := "baseharbor-telemetry"
+	if namespace != "" {
+		secretsNetwork = "baseharbor-" + namespace + "-secrets"
+		runtimeControlNetwork = "baseharbor-runtime-control-" + namespace
+		telemetryNetwork = "baseharbor-telemetry-" + namespace
+	}
 	metricsPolicy, err := application.MetricsPolicy(m)
 	if err != nil {
 		return "", err
@@ -543,7 +571,7 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 			b.WriteString("\nvolumes:\n")
 		}
 		b.WriteString("  runtime-metrics:\n")
-		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(application.MetricsRuntimeTargetVolumeName(m)))
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(application.MetricsRuntimeTargetVolumeNameForNamespace(m, appFiles.Namespace)))
 	}
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
@@ -553,23 +581,23 @@ func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPat
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(backendNetwork))
 	if metricsEnabled {
 		b.WriteString("  observability:\n")
-		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(ObservabilityNetworkName(m)))
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(ObservabilityNetworkNameForRuntime(m, appFiles)))
 		b.WriteString("    internal: true\n")
 	}
 	if m.Services.Secrets {
 		b.WriteString("  secrets:\n")
 		b.WriteString("    external: true\n")
-		b.WriteString("    name: baseharbor-secrets\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(secretsNetwork))
 	}
 	if len(m.Runtime.Permissions) > 0 {
 		b.WriteString("  runtime-control:\n")
 		b.WriteString("    external: true\n")
-		b.WriteString("    name: baseharbor-runtime-control\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(runtimeControlNetwork))
 	}
 	if otlp != nil && otlp.Provider == capability.ProviderOTelCollector {
 		b.WriteString("  telemetry:\n")
 		b.WriteString("    external: true\n")
-		b.WriteString("    name: baseharbor-telemetry\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetwork))
 	}
 	return b.String(), nil
 }

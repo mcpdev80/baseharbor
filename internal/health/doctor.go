@@ -46,6 +46,10 @@ func RuntimeChecks() []Check {
 		}
 		return []Check{{Name: "runtime-config", OK: false, Message: "runtime state is unreadable"}}
 	}
+	return RuntimeChecksForFiles(files)
+}
+
+func RuntimeChecksForFiles(files bhruntime.Files) []Check {
 	cfg, err := bhruntime.LoadConfig(files.Env)
 	if err != nil {
 		return []Check{{Name: "runtime-config", OK: false, Message: "runtime configuration is invalid"}}

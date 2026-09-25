@@ -74,7 +74,7 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
 
-	_, controlPlaneExists := existingControlPlaneForSelfUpdate()
+	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
 	_, localApplicationExists := localApplicationForSelfUpdate()
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
@@ -384,8 +384,8 @@ func selfUpdateEnvironment(target string) []string {
 	return append(result, key+defaultRuntimeImage(target))
 }
 
-func existingControlPlaneForSelfUpdate() (bhruntime.Files, bool) {
-	files, err := bhruntime.ExistingFiles("")
+func existingControlPlaneForSelfUpdate(ctx context.Context) (bhruntime.Files, bool) {
+	files, err := existingTargetRuntimeFiles(ctx)
 	return files, err == nil
 }
 

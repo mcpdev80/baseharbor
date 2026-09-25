@@ -26,13 +26,15 @@ type managedMetricsExecution struct {
 	registeredPlacement capability.ProviderPlacement
 	registered          bool
 	placementChanged    bool
+	dataDir             string
+	namespace           string
 }
 
 func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedMetricsExecution, error) {
 	m := resolved.Manifest
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)
 
-	registeredPlacement, registered, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	registeredPlacement, registered, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +48,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 			manifest:            m,
 			registeredPlacement: registeredPlacement,
 			registered:          true,
+			dataDir:             resolved.TargetStateRoot,
+			namespace:           resolved.Target.Name,
 		}, nil
 	}
 
@@ -64,6 +68,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 			enabled:             false,
 			registeredPlacement: registeredPlacement,
 			registered:          registered,
+			dataDir:             resolved.TargetStateRoot,
+			namespace:           resolved.Target.Name,
 		}, nil
 	}
 
@@ -88,7 +94,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		}
 	}
 	prepared := &managedMetricsExecution{
-		driver:              metricsprovider.NewDriver(compose, m, issuer, runtimeCA),
+		driver:              metricsprovider.NewDriverAt(compose, m, issuer, resolved.TargetStateRoot, resolved.Target.Name, runtimeCA),
 		runtime:             compose,
 		issuer:              issuer,
 		manifest:            m,
@@ -99,6 +105,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		registeredPlacement: registeredPlacement,
 		registered:          registered,
 		placementChanged:    registered && desiredPlacement != registeredPlacement,
+		dataDir:             resolved.TargetStateRoot,
+		namespace:           resolved.Target.Name,
 	}
 
 	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
@@ -163,7 +171,7 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 	if _, err := prepared.execution.ProvisionAndBind(ctx); err != nil {
 		return err
 	}
-	if err := metricsprovider.PruneApplicationTargets(prepared.manifest, metricsprovider.DesiredTargetFiles(prepared.manifest)); err != nil {
+	if err := metricsprovider.PruneApplicationTargetsAt(prepared.dataDir, prepared.namespace, prepared.manifest, metricsprovider.DesiredTargetFiles(prepared.manifest)); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "[UPDATED] metrics-provider Prometheus target state for %s\n", prepared.manifest.Name)
@@ -180,7 +188,7 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		}
 		fmt.Fprintf(out, "[VERIFIED] metrics       %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	}
-	if err := metricsprovider.VerifyProviderSources(ctx, prepared.manifest); err != nil {
+	if err := metricsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
 	if prepared.placementChanged {
@@ -198,12 +206,12 @@ func cleanupRegisteredMetricsPlacement(ctx context.Context, prepared *managedMet
 	}
 	switch prepared.registeredPlacement.Scope {
 	case capability.ScopeShared:
-		if err := metricsprovider.PruneRegisteredApplicationTargets(prepared.manifest, nil); err != nil {
+		if err := metricsprovider.PruneRegisteredApplicationTargetsAt(prepared.dataDir, prepared.namespace, prepared.manifest, nil); err != nil {
 			return err
 		}
-		return metricsprovider.UnregisterSharedApplication(ctx, prepared.runtime, prepared.issuer, prepared.manifest)
+		return metricsprovider.UnregisterSharedApplicationAt(ctx, prepared.runtime, prepared.issuer, prepared.dataDir, prepared.namespace, prepared.manifest)
 	case capability.ScopeApplication:
-		return metricsprovider.DestroyProvider(ctx, prepared.runtime, prepared.manifest)
+		return metricsprovider.DestroyProviderAt(ctx, prepared.runtime, prepared.dataDir, prepared.namespace, prepared.manifest)
 	case capability.ScopeExternal:
 		return nil
 	default:
