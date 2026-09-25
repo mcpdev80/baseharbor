@@ -159,7 +159,19 @@ func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project,
 
 func (c Compose) UpProjectFilesSelectedForceRecreateNoBuild(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
 	if c.quadlet {
-		return c.UpProjectFilesSelectedNoBuildProgress(ctx, project, workdir, environment, services, nil, composeFiles...)
+		resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
+		if err != nil {
+			return err
+		}
+		q, err := RenderComposeProjectFilesQuadletsEnv(resolved, "", environment, project, services...)
+		if err != nil {
+			return err
+		}
+		if err := quadletForceRestartProjectNoBuild(ctx, q, services); err != nil {
+			return err
+		}
+		cacheProjectEnvironment(project, environment)
+		return nil
 	}
 	args := []string{"up", "-d", "--force-recreate", "--no-build"}
 	if len(services) > 0 {
