@@ -76,6 +76,7 @@ type machineLifecycleDoctorResult struct {
 
 type machineObserveResult struct {
 	ContractVersion string                  `json:"contract_version"`
+	Target          string                  `json:"target"`
 	Application     string                  `json:"application"`
 	Environment     string                  `json:"environment"`
 	Status          applicationStatusResult `json:"status"`
@@ -216,6 +217,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 		}
 		return nil, machineObserveResult{
 			ContractVersion: machine.ContractVersion,
+			Target:          status.Target,
 			Application:     status.Application,
 			Environment:     status.Environment,
 			Status:          status,
