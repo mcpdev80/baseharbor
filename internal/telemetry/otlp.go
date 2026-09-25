@@ -49,6 +49,8 @@ type Driver struct {
 	traceEndpoint    string
 	traceNetwork     string
 	client           *http.Client
+	dataDir          string
+	namespace        string
 }
 
 type ProviderFiles struct {
@@ -56,17 +58,37 @@ type ProviderFiles struct {
 	Compose string
 	Env     string
 	Config  string
+	Project string
+	Network string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{
-		runtime:          runtime,
-		app:              app,
-		files:            files,
-		issuer:           issuer,
+		runtime: runtime, app: app, files: files, issuer: issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
-		client:           nil,
 	}
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	return &Driver{
+		runtime: runtime, app: app, files: files, issuer: issuer,
+		externalEndpoint: application.ExternalOTLPEndpoint(),
+		dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace),
+	}
+}
+
+func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, d.dataDir, d.namespace)
+	}
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment)
+}
+
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace)
+	}
+	return ExistingProviderFiles()
 }
 
 func (d *Driver) Descriptor() capability.Provider {
@@ -110,14 +132,14 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
 	}
-	files, err := EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment)
+	files, err := d.ensureProviderFiles(ctx)
 	if err != nil {
 		return err
 	}
-	if err := d.runtime.ConfigProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate OpenTelemetry Collector configuration: %w", err)
 	}
-	if err := d.runtime.UpProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("start OpenTelemetry Collector: %w", err)
 	}
 	endpoint, err := providerEndpoint(files)
@@ -163,7 +185,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, d.externalEndpoint, d.externalEndpoint)
 	}
-	files, err := ExistingProviderFiles()
+	files, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
@@ -224,7 +246,7 @@ func VerifyApplication(ctx context.Context, m application.Manifest, files applic
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	endpoint := d.externalEndpoint
 	if resource.Provider != capability.ProviderExternalOTLP {
-		files, err := ExistingProviderFiles()
+		files, err := d.existingProviderFiles()
 		if err != nil {
 			return err
 		}
@@ -276,7 +298,11 @@ func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issu
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "opentelemetry-collector")
+	return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, issuer, traceEndpoint, traceNetwork, environment, dataDir, "")
+}
+
+func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment, dataDir, namespace string) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create OpenTelemetry Collector provider state: %w", err)
 	}
@@ -285,6 +311,8 @@ func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issu
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "runtime.env"),
 		Config:  filepath.Join(dir, "collector.yaml"),
+		Project: scopedTelemetryName(ProviderProject, namespace),
+		Network: scopedTelemetryName(ProviderNetwork, namespace),
 	}
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
@@ -323,7 +351,7 @@ func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issu
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork, accessFiles)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -334,8 +362,12 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	dir := filepath.Join(dataDir, "providers", "opentelemetry-collector")
-	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Config: filepath.Join(dir, "collector.yaml")}
+	return ExistingProviderFilesAt(dataDir, "")
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
+	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Config: filepath.Join(dir, "collector.yaml"), Project: scopedTelemetryName(ProviderProject, namespace), Network: scopedTelemetryName(ProviderNetwork, namespace)}
 	for _, path := range []string{files.Compose, files.Env, files.Config} {
 		if _, err := os.Stat(path); err != nil {
 			return ProviderFiles{}, err
@@ -345,18 +377,34 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 }
 
 func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
-	files, err := ExistingProviderFiles()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroySharedProviderAt(ctx, runtime, dataDir, "")
+}
+
+func DestroySharedProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if err := runtime.DestroyProject(ctx, ProviderProject, files.Compose, files.Env); err != nil {
+	if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
-	_ = observability.Remove("opentelemetry-collector:" + ProviderProject)
+	_ = observability.Remove("opentelemetry-collector:" + files.Project)
 	return os.RemoveAll(files.Dir)
+}
+
+func scopedTelemetryName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
 }
 
 func providerComposeYAML() string {
@@ -369,6 +417,10 @@ func providerComposeYAMLWithTraceNetwork(traceNetwork string) string {
 }
 
 func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access serviceaccess.HTTPGatewayFiles) string {
+	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
+}
+
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
 	var networks = "      - telemetry\n"
 	var networkDecl = ""
 	if strings.TrimSpace(traceNetwork) != "" {
@@ -394,7 +446,7 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, otlpAccessSpec()))
 	b.WriteString(fmt.Sprintf(`networks:
   telemetry:
-    name: baseharbor-telemetry
+    name: ${BASEHARBOR_TELEMETRY_NETWORK}
 %s`, networkDecl))
 	return b.String()
 }
