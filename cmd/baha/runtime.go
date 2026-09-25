@@ -487,7 +487,11 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -668,22 +672,26 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 		}
 	}
 
-	files, err := bhruntime.ExistingFiles("")
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	files, err := existingTargetRuntimeFiles(parent)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	if err := application.CheckControlPlaneDestroySafe(); err != nil {
-		return fmt.Errorf("global destroy preflight: %w", err)
-	}
-	runtimeDir, err := bhruntime.StateDir("")
+	dataDir, err := targetDataRoot(target)
 	if err != nil {
 		return err
 	}
-	dataDir, err := bhruntime.DataDir("")
+	if err := application.CheckControlPlaneDestroySafeAt(dataDir); err != nil {
+		return fmt.Errorf("target destroy preflight: %w", err)
+	}
+	runtimeDir, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Global BaseHarbor destroy plan")
+	fmt.Fprintln(out, "BaseHarbor target destroy plan")
 	fmt.Fprintln(out, "  control plane: Compose project baseharbor (containers, network and BaseHarbor-owned volumes)")
 	if _, err := objectstorage.ExistingProviderFiles(); err == nil {
 		fmt.Fprintln(out, "  object storage: shared SeaweedFS provider (container, network and BaseHarbor-owned volume)")
@@ -703,13 +711,13 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
 	if !confirmed {
-		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the global BaseHarbor control plane.")
+		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the selected BaseHarbor target control plane.")
 		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -762,7 +770,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := os.RemoveAll(filepath.Join(dataDir, "connectivity")); err != nil {
 		return fmt.Errorf("remove BaseHarbor connectivity runtime state: %w", err)
 	}
-	fmt.Fprintln(out, "BaseHarbor global control plane was permanently destroyed.")
+	fmt.Fprintln(out, "BaseHarbor target control plane was permanently destroyed.")
 	return nil
 }
 
@@ -770,11 +778,15 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
-	files, err := bhruntime.ExistingFiles("")
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
