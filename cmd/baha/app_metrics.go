@@ -26,6 +26,8 @@ type managedMetricsExecution struct {
 	registeredPlacement capability.ProviderPlacement
 	registered          bool
 	placementChanged    bool
+	dataDir             string
+	namespace           string
 }
 
 func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedMetricsExecution, error) {
@@ -88,7 +90,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		}
 	}
 	prepared := &managedMetricsExecution{
-		driver:              metricsprovider.NewDriver(compose, m, issuer, runtimeCA),
+		driver:              metricsprovider.NewDriverAt(compose, m, issuer, resolved.TargetStateRoot, resolved.Target.Name, runtimeCA),
 		runtime:             compose,
 		issuer:              issuer,
 		manifest:            m,
@@ -99,6 +101,8 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 		registeredPlacement: registeredPlacement,
 		registered:          registered,
 		placementChanged:    registered && desiredPlacement != registeredPlacement,
+		dataDir:             resolved.TargetStateRoot,
+		namespace:           resolved.Target.Name,
 	}
 
 	runtimeMetrics := application.HasRuntimeMetricsPermissions(m)
@@ -180,7 +184,7 @@ func verifyManagedMetricsAfterWorkload(ctx context.Context, out io.Writer, prepa
 		}
 		fmt.Fprintf(out, "[VERIFIED] metrics       %d source(s) scraped and ingested for %s\n", len(prepared.manifest.Metrics.Sources), prepared.manifest.Name)
 	}
-	if err := metricsprovider.VerifyProviderSources(ctx, prepared.manifest); err != nil {
+	if err := metricsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
 	if prepared.placementChanged {
