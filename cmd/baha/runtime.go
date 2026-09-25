@@ -534,8 +534,8 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		fmt.Fprintf(out, "[OK] connectivity       suspended %d platform connection(s); policy preserved\n", len(rules))
 	}
 
-	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		if err := compose.StopProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+	if files, err := runtimeexecutor.ExistingFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared runtime provider executor: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor stopped")
@@ -620,11 +620,11 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 		}
 	}
 
-	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
-		if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+	if files, err := runtimeexecutor.ExistingFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared runtime provider executor: %w", err)
 		}
-		if err := compose.UpProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared runtime provider executor: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] runtime-executor   shared provider executor resumed")
@@ -750,7 +750,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 			}
 		}
 	}
-	if err := runtimeexecutor.DestroyShared(ctx, compose, dataDir); err != nil {
+	if err := runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
 	if err := objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
