@@ -3,6 +3,17 @@ name: "Acceptance · Observability Full Stack"
 run-name: "Acceptance · Observability Full Stack · ${{ inputs.ref || github.ref_name }}"
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact Git ref or commit SHA to test
+        required: true
+        type: string
+      all_runtimes:
+        description: Run Docker and Podman jobs when used as a release gate
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       ref:
@@ -15,7 +26,7 @@ on:
       - 'runtime-validation/observability/**'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: observability-full-stack-${{ github.ref }}-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -23,7 +34,7 @@ permissions:
 
 jobs:
   docker:
-    if: ${{ !contains(github.ref_name, '/podman/') }}
+    if: ${{ inputs.all_runtimes || !contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 15
     env:
@@ -86,7 +97,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   podman:
-    if: ${{ contains(github.ref_name, '/podman/') }}
+    if: ${{ inputs.all_runtimes || contains(github.ref_name, '/podman/') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 20
     env:
