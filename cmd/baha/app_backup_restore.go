@@ -330,7 +330,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("restore managed HTTP exposure: %w", err)
 	}
-	if err := application.ReconcileReferenceProviderRegistry(m); err != nil {
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
 	fmt.Fprintf(out, "Application %s (%s) was restored and verified.\n", m.Name, m.Environment)
