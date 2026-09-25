@@ -211,7 +211,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, resolved.Target.Name)
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, namespace)
 		targetContainers := containersForResolvedEndpoint(rule.Target, containers, resolved.Target.Name)
 		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
 			continue
