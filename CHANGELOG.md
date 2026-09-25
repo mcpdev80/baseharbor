@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Target configuration lives in XDG user config while mutable runtime/deployment state is isolated below `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
 - `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective target identity across human and machine interfaces.
 
+- Added explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
+- Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
+
 ### Changed
 
 - Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
