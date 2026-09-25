@@ -2,18 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
-	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 type applicationDoctorWorkloadResult struct {
