@@ -3,15 +3,15 @@ package logs
 import (
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/observability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func ApplicationRegistration(m application.Manifest) (Registration, error) {
