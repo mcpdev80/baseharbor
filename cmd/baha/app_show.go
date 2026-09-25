@@ -194,7 +194,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 
 	if application.HasOTLPTelemetry(m) {
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		verifyErr := telemetry.VerifyApplication(checkCtx, m, files)
+		verifyErr := telemetry.VerifyApplicationAt(checkCtx, m, files, resolved.TargetStateRoot, resolved.Target.Name)
 		cancel()
 		if verifyErr == nil {
 			overview.TelemetryState = "healthy"

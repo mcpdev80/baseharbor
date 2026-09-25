@@ -3,6 +3,7 @@ package applicationsecret
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ type Service struct {
 	runtimeClient *openbao.ApplicationRuntimeClient
 	compose       *bhruntime.Compose
 	platformFiles *bhruntime.Files
+	manifest      *application.Manifest
+	runtimeFiles  *application.RuntimeFiles
 }
 
 func New(store application.Store) *Service {
@@ -34,6 +37,16 @@ func New(store application.Store) *Service {
 
 func NewForRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files) *Service {
 	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
+}
+
+func NewForApplicationRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
+	return &Service{
+		store:         store,
+		compose:       &compose,
+		platformFiles: &platformFiles,
+		manifest:      &manifest,
+		runtimeFiles:  &runtimeFiles,
+	}
 }
 
 // NewRuntime creates the narrow data-plane service used by the managed runtime
@@ -170,18 +183,31 @@ type runtimeResolvedApplication struct {
 }
 
 func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication, error) {
-	m, _, err := s.store.Load(name)
-	if err != nil {
-		return resolvedApplication{}, err
+	var (
+		m     application.Manifest
+		files application.RuntimeFiles
+		err   error
+	)
+	if s.manifest != nil && s.runtimeFiles != nil {
+		m = *s.manifest
+		files = *s.runtimeFiles
+		if strings.TrimSpace(name) != "" && name != m.Name {
+			return resolvedApplication{}, fmt.Errorf("application %q does not match resolved secret scope %q", name, m.Name)
+		}
+	} else {
+		m, _, err = s.store.Load(name)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+		files, err = application.ExistingRuntimeFiles(s.store, m)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
 	if !m.Services.Secrets {
 		return resolvedApplication{}, errors.New("application does not enable managed secrets")
 	}
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
-		return resolvedApplication{}, err
-	}
-	files, err := application.ExistingRuntimeFiles(s.store, m)
-	if err != nil {
 		return resolvedApplication{}, err
 	}
 	if err := application.CheckRuntimePermissions(files); err != nil {

@@ -192,12 +192,12 @@ func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhrunt
 		return err
 	}
 	for _, rule := range rules {
-		sourceContainers := containersForResolvedEndpoint(rule.Source, containers)
-		targetContainers := containersForResolvedEndpoint(rule.Target, containers)
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, target.Name)
+		targetContainers := containersForResolvedEndpoint(rule.Target, containers, target.Name)
 		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
 			continue
 		}
-		targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, rule.Target, containers)
+		targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, rule.Target, containers, target.Name)
 		if err != nil {
 			return err
 		}

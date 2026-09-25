@@ -61,11 +61,11 @@ func connectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			source, sourceContainers, err := resolveConnectivityEndpoint(sourceInput, containers)
+			source, sourceContainers, err := resolveConnectivityEndpoint(sourceInput, containers, selectedTarget.Name)
 			if err != nil {
 				return fmt.Errorf("resolve source %q: %w", args[0], err)
 			}
-			target, targetContainers, err := resolveConnectivityEndpoint(targetInput, containers)
+			target, targetContainers, err := resolveConnectivityEndpoint(targetInput, containers, selectedTarget.Name)
 			if err != nil {
 				return fmt.Errorf("resolve target %q: %w", args[1], err)
 			}
@@ -73,7 +73,7 @@ func connectCommand() *cli.Command {
 			if err != nil {
 				return fmt.Errorf("resolve target %q: %w", args[1], err)
 			}
-			targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, target, containers)
+			targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, target, containers, selectedTarget.Name)
 			if err != nil {
 				return fmt.Errorf("resolve target network for %q: %w", args[1], err)
 			}
@@ -211,12 +211,12 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		sourceContainers := containersForResolvedEndpoint(rule.Source, containers)
-		targetContainers := containersForResolvedEndpoint(rule.Target, containers)
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, resolved.Target.Name)
+		targetContainers := containersForResolvedEndpoint(rule.Target, containers, resolved.Target.Name)
 		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
 			continue
 		}
-		targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, rule.Target, containers)
+		targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, rule.Target, containers, resolved.Target.Name)
 		if err != nil {
 			return err
 		}
@@ -346,7 +346,7 @@ func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, d
 		return err
 	}
 	network := application.ConnectivityNetworkName(rule)
-	for _, container := range containersForResolvedEndpoint(rule.Source, containers) {
+	for _, container := range containersForResolvedEndpoint(rule.Source, containers, namespace) {
 		if err := compose.DisconnectManagedNetwork(ctx, network, container); err != nil {
 			return fmt.Errorf("detach connectivity source %s: %w", container, err)
 		}
@@ -412,14 +412,14 @@ func canonicalConnectivityService(service string) string {
 	}
 }
 
-func resolveConnectivityEndpoint(input connectivityEndpointInput, containers []bhruntime.ComposeContainer) (application.ConnectivityEndpoint, []string, error) {
+func resolveConnectivityEndpoint(input connectivityEndpointInput, containers []bhruntime.ComposeContainer, namespace string) (application.ConnectivityEndpoint, []string, error) {
 	type candidate struct {
 		endpoint   application.ConnectivityEndpoint
 		containers []string
 	}
 	byKey := map[string]*candidate{}
 	for _, container := range containers {
-		environment, ok := connectivityProjectEnvironment(container.Project, input.Application)
+		environment, ok := connectivityProjectEnvironment(container.Project, input.Application, namespace)
 		if !ok || (input.Environment != "" && input.Environment != environment) {
 			continue
 		}
@@ -482,10 +482,10 @@ func resolveConnectivityTargetPort(ctx context.Context, compose bhruntime.Compos
 	panic("unreachable")
 }
 
-func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.Compose, endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer) (string, error) {
+func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.Compose, endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer, namespace string) (string, error) {
 	var matched []bhruntime.ComposeContainer
 	for _, container := range containers {
-		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application)
+		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application, namespace)
 		if ok && environment == endpoint.Environment && container.Service == endpoint.Service {
 			matched = append(matched, container)
 		}
@@ -550,11 +550,19 @@ func connectivityServiceMatches(requested, actual string) bool {
 	return false
 }
 
-func connectivityProjectEnvironment(project, applicationName string) (string, bool) {
-	for _, prefix := range []string{
+func connectivityProjectEnvironment(project, applicationName, namespace string) (string, bool) {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefixes := []string{
 		"baseharbor-workload-" + applicationName + "-",
 		"baseharbor-" + applicationName + "-",
-	} {
+	}
+	if namespace != "" {
+		prefixes = []string{
+			"baseharbor-workload-" + namespace + "-" + applicationName + "-",
+			"baseharbor-" + namespace + "-" + applicationName + "-",
+		}
+	}
+	for _, prefix := range prefixes {
 		if strings.HasPrefix(project, prefix) {
 			environment := strings.TrimPrefix(project, prefix)
 			if environment != "" {
@@ -598,10 +606,10 @@ func connectivityInputMatchesEndpoint(input connectivityEndpointInput, endpoint 
 	return connectivityServiceMatches(input.Service, endpoint.Service)
 }
 
-func containersForResolvedEndpoint(endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer) []string {
+func containersForResolvedEndpoint(endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer, namespace string) []string {
 	var result []string
 	for _, container := range containers {
-		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application)
+		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application, namespace)
 		if !ok || environment != endpoint.Environment || container.Service != endpoint.Service {
 			continue
 		}

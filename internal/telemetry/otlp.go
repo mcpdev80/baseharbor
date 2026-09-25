@@ -170,12 +170,12 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		signals := map[string]observability.ProviderSignalRuntime{}
 		if metricsEnabled {
 			signals["collector-metrics"] = observability.ProviderSignalRuntime{
-				Network: ProviderNetwork,
+				Network: files.Network,
 				Target:  ProviderService + ":8888",
 			}
 		}
 		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
-			ID:         "opentelemetry-collector:" + ProviderProject,
+			ID:         "opentelemetry-collector:" + files.Project,
 			Descriptor: capability.OTelCollectorIntegration,
 			Class:      observability.SourcePlatformProvider,
 			Scope:      capability.ScopeShared,
@@ -219,6 +219,10 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
+	return VerifyApplicationAt(ctx, m, files, "", "")
+}
+
+func VerifyApplicationAt(ctx context.Context, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
 		return err
@@ -240,6 +244,8 @@ func VerifyApplication(ctx context.Context, m application.Manifest, files applic
 		app:              m,
 		files:            files,
 		externalEndpoint: values["OTLP_HOST_ENDPOINT"],
+		dataDir:          filepath.Clean(dataDir),
+		namespace:        strings.TrimSpace(namespace),
 	}
 	resource := capability.Resource{
 		Application: m.Name,

@@ -161,7 +161,10 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 }
 `)
 	for i, registration := range registrations {
-		project := application.WorkloadProjectName(application.New(registration.Application, registration.Environment, false, false, false))
+		project := application.WorkloadProjectNameForNamespace(
+			application.New(registration.Application, registration.Environment, false, false, false),
+			registration.Namespace,
+		)
 		pattern := "^" + regexp.QuoteMeta(project) + "(?:_(.+)_[0-9]+|-(.+))$"
 		label := fmt.Sprintf("application_%d", i)
 		fmt.Fprintf(&b, "\nloki.relabel %s {\n", strconv.Quote(label))

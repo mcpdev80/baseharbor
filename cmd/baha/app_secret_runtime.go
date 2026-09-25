@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -16,5 +17,9 @@ func resolvedApplicationSecretService(ctx context.Context, resolved resolvedAppl
 	if err != nil {
 		return nil, err
 	}
-	return applicationsecret.NewForRuntime(resolved.Store, compose, platformFiles), nil
+	runtimeFiles, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		return nil, err
+	}
+	return applicationsecret.NewForApplicationRuntime(resolved.Store, compose, platformFiles, resolved.Manifest, runtimeFiles), nil
 }

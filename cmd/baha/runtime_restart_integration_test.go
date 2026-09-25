@@ -71,10 +71,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := bhruntime.ExistingFiles("")
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := runtimeFiles
 	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
 	if err := platformopenbao.Bootstrap(ctx, compose, files, recovery); err != nil {
 		t.Fatalf("bootstrap OpenBao: %v", err)
