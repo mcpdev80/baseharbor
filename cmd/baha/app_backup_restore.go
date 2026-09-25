@@ -128,44 +128,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		brokerStopped = true
 	}
 
-	captureErr := func() error {
-		entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.SQLInstanceNames(m)))
-		metadata, err := applicationbackup.ApplicationManifestPayloadEntry(m)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, metadata)
-		dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
-		if err != nil {
-			return err
-		}
-		postgresEntries, err := applicationbackup.PostgresPayloadEntries(dumps)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, postgresEntries...)
-		if m.Services.Secrets {
-			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-			secretBackup, err := openbao.ExportApplicationSecrets(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
-			if err != nil {
-				return err
-			}
-			secretEntry, err := applicationbackup.OpenBaoPayloadEntry(secretBackup)
-			if err != nil {
-				return err
-			}
-			entries = append(entries, secretEntry)
-		}
-		archive, err := applicationbackup.Build(m.Name, m.Environment, time.Now().UTC(), entries, password)
-		if err != nil {
-			return err
-		}
-		defer zeroBytes(archive)
-		if err := writeBackupArchive(outputPath, archive); err != nil {
-			return err
-		}
-		return nil
-	}()
+	captureErr := captureApplicationBackup(ctx, compose, platformFiles, m, files, password, outputPath)
 
 	restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
 	if captureErr != nil || restartErr != nil {
@@ -190,39 +153,13 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	defer zeroBytes(password)
-	archive, err := os.ReadFile(backupPath)
+	restoreData, err := loadApplicationRestoreData(backupPath, password, name, environment)
 	if err != nil {
-		return fmt.Errorf("read application backup: %w", err)
+		return err
 	}
-	defer zeroBytes(archive)
-	payload, err := applicationbackup.Open(archive, password)
-	if err != nil {
-		return fmt.Errorf("validate application backup before mutation: %w", err)
-	}
-	m, err := applicationbackup.ApplicationManifestFromPayload(payload)
-	if err != nil {
-		return fmt.Errorf("validate application metadata before mutation: %w", err)
-	}
-	if name != "" && name != m.Name {
-		return errors.New("restore target NAME does not match backup application identity")
-	}
-	if environment != "" && environment != m.Environment {
-		return fmt.Errorf("restore target environment %q does not match backup environment %q", environment, m.Environment)
-	}
-	if application.HasObjectStorage(m) {
-		return errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
-	}
-	postgresBackups, err := applicationbackup.PostgresBackupsFromPayload(m, payload)
-	if err != nil {
-		return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
-	}
-	var secretBackup openbao.ApplicationSecretBackup
-	if m.Services.Secrets {
-		secretBackup, err = applicationbackup.OpenBaoBackupFromPayload(m.Name, m.Environment, payload)
-		if err != nil {
-			return fmt.Errorf("validate OpenBao backup before mutation: %w", err)
-		}
-	}
+	m := restoreData.manifest
+	postgresBackups := restoreData.postgresBackups
+	secretBackup := restoreData.secretBackup
 
 	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
