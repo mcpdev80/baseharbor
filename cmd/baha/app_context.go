@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 var applicationEnvironmentOverride string
@@ -30,12 +33,17 @@ func applyApplicationEnvironmentOverride(m application.Manifest) (application.Ma
 }
 
 type resolvedApplication struct {
-	Manifest       application.Manifest
-	ManifestPath   string
-	RepositoryRoot string
-	StateRoot      string
-	Store          application.Store
-	FromRepository bool
+	Target              deployment.ResolvedTarget
+	DeploymentIdentity  deployment.DeploymentIdentity
+	DeploymentRecord    *deployment.DeploymentRecord
+	Manifest            application.Manifest
+	ManifestPath        string
+	RepositoryRoot      string
+	TargetStateRoot     string
+	DeploymentStateRoot string
+	Store               application.Store
+	SourceAvailable     bool
+	FromRepository      bool
 }
 
 func (r resolvedApplication) repositoryRoot() string {
@@ -45,25 +53,21 @@ func (r resolvedApplication) repositoryRoot() string {
 	if r.ManifestPath != "" {
 		return filepath.Dir(r.ManifestPath)
 	}
+	if r.DeploymentRecord != nil {
+		return r.DeploymentRecord.Source.Repository
+	}
 	return ""
 }
 
 func (r resolvedApplication) stateRoot() string {
-	if r.StateRoot != "" {
-		return r.StateRoot
-	}
-	root := r.repositoryRoot()
-	if root == "" {
-		return ""
-	}
-	return filepath.Join(root, ".baseharbor")
+	return r.DeploymentStateRoot
 }
 
-func resolveApplication(store application.Store, args []string, command string) (resolvedApplication, error) {
-	return resolveApplicationEnvironment(store, args, command, applicationEnvironmentOverride)
+func resolveApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, error) {
+	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
-func resolveApplicationEnvironment(store application.Store, args []string, command, environment string) (resolvedApplication, error) {
+func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolvedApplication, error) {
 	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -78,51 +82,156 @@ func resolveApplicationEnvironment(store application.Store, args []string, comma
 	if len(args) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
 	}
-	if len(args) == 1 {
-		m, path, err := store.Load(args[0])
+
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+
+	if len(args) == 0 {
+		cwd, err := os.Getwd()
 		if err != nil {
+			return resolvedApplication{}, fmt.Errorf("resolve current directory: %w", err)
+		}
+		selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
+		if err == nil {
+			return resolvedRepositoryApplication(target, targetRoot, selection)
+		}
+		if !errors.Is(err, application.ErrRepositoryManifestNotFound) {
 			return resolvedApplication{}, err
 		}
-		if environment != "" && m.Environment != environment {
-			return resolvedApplication{}, usageError(
-				"--environment cannot retarget stored application state",
-				"Run inside the application repository so BaseHarbor can select the environment-scoped manifest and state safely.",
-			)
-		}
-		return resolvedApplication{Manifest: m, ManifestPath: path, Store: store}, nil
+		return resolvedApplication{}, usageError(
+			"no application deployment could be resolved",
+			"Run inside a repository containing baseharbor.yaml, or pass an application NAME registered on the effective target.",
+		)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return resolvedApplication{}, fmt.Errorf("resolve current directory: %w", err)
-	}
-	selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
-	if err != nil {
-		if errors.Is(err, application.ErrRepositoryManifestNotFound) {
-			return resolvedApplication{}, usageError(
-				"no application environment could be resolved",
-				"Run inside a repository containing baseharbor.yaml or envs/<environment>/baseharbor.yaml; use -e/--environment when multiple environments exist.",
-			)
-		}
-		return resolvedApplication{}, err
-	}
+	return resolveRegisteredApplication(target, targetRoot, args[0], environment, command)
+}
 
-	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
-	if err := configureRepositoryComposeEnvironment(selection.RepositoryRoot, stateRoot); err != nil {
+func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {
+	id := deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: selection.Manifest.Name,
+		Environment: selection.Manifest.Environment,
+	}
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
 		return resolvedApplication{}, err
 	}
-	repoStore := application.Store{Root: filepath.Join(stateRoot, "apps")}
-	if _, err := repoStore.Sync(selection.Manifest); err != nil {
-		return resolvedApplication{}, fmt.Errorf("synchronize repository manifest: %w", err)
+	var record *deployment.DeploymentRecord
+	if existing, err := deployment.LoadDeploymentRecord(id); err == nil {
+		record = &existing
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return resolvedApplication{}, err
 	}
 	return resolvedApplication{
-		Manifest:       selection.Manifest,
-		ManifestPath:   selection.ManifestPath,
-		RepositoryRoot: selection.RepositoryRoot,
-		StateRoot:      stateRoot,
-		Store:          repoStore,
-		FromRepository: true,
+		Target:              target,
+		DeploymentIdentity:  id,
+		DeploymentRecord:    record,
+		Manifest:            selection.Manifest,
+		ManifestPath:        selection.ManifestPath,
+		RepositoryRoot:      selection.RepositoryRoot,
+		TargetStateRoot:     targetRoot,
+		DeploymentStateRoot: deploymentRoot,
+		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state")},
+		SourceAvailable:     true,
+		FromRepository:      true,
 	}, nil
+}
+
+func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
+	records, err := deployment.ListDeployments(target.Name)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	var matches []deployment.DeploymentRecord
+	for _, record := range records {
+		if record.Identity.Application != name {
+			continue
+		}
+		if environment != "" && record.Identity.Environment != environment {
+			continue
+		}
+		matches = append(matches, record)
+	}
+	if len(matches) == 0 {
+		if environment == "" {
+			return resolvedApplication{}, fmt.Errorf("application %q has no registered deployment on target %q", name, target.Name)
+		}
+		return resolvedApplication{}, fmt.Errorf("application %q environment %q has no registered deployment on target %q", name, environment, target.Name)
+	}
+	if len(matches) > 1 {
+		return resolvedApplication{}, usageError(
+			"environment selection required for application "+name,
+			"Select one registered environment with -e/--environment.",
+		)
+	}
+	record := matches[0]
+	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+
+	resolved := resolvedApplication{
+		Target:              target,
+		DeploymentIdentity:  record.Identity,
+		DeploymentRecord:    &record,
+		TargetStateRoot:     targetRoot,
+		DeploymentStateRoot: deploymentRoot,
+		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state")},
+		RepositoryRoot:      record.Source.Repository,
+		ManifestPath:        record.Source.Manifest,
+		SourceAvailable:     deployment.SourceAvailable(record.Source),
+	}
+
+	if resolved.SourceAvailable {
+		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
+		if sourceErr == nil {
+			if selection.Manifest.Name != record.Identity.Application {
+				return resolvedApplication{}, fmt.Errorf("registered source resolves application %q, expected %q", selection.Manifest.Name, record.Identity.Application)
+			}
+			resolved.Manifest = selection.Manifest
+			resolved.ManifestPath = selection.ManifestPath
+			resolved.RepositoryRoot = selection.RepositoryRoot
+			resolved.FromRepository = true
+			return resolved, nil
+		}
+		resolved.SourceAvailable = false
+	}
+
+	if commandRequiresLiveSource(command) {
+		return resolvedApplication{}, &machine.Error{
+			Code:      machine.ErrorSourceMissing,
+			CauseCode: "SOURCE_MISSING",
+			Message:   fmt.Sprintf("source repository for %s/%s/%s is unavailable", record.Identity.Target, record.Identity.Application, record.Identity.Environment),
+			Resource:  record.Identity.Target + "/" + record.Identity.Application + "/" + record.Identity.Environment,
+			Next:      "Restore the registered repository path or run the operation from an available repository source.",
+		}
+	}
+	if len(record.Applied.Intent) == 0 {
+		return resolvedApplication{}, fmt.Errorf("deployment %s/%s/%s has no applied intent snapshot", record.Identity.Target, record.Identity.Application, record.Identity.Environment)
+	}
+	if err := json.Unmarshal(record.Applied.Intent, &resolved.Manifest); err != nil {
+		return resolvedApplication{}, fmt.Errorf("decode applied intent for %s/%s/%s: %w", record.Identity.Target, record.Identity.Application, record.Identity.Environment, err)
+	}
+	if err := resolved.Manifest.Validate(); err != nil {
+		return resolvedApplication{}, fmt.Errorf("validate applied intent for %s/%s/%s: %w", record.Identity.Target, record.Identity.Application, record.Identity.Environment, err)
+	}
+	return resolved, nil
+}
+
+func commandRequiresLiveSource(command string) bool {
+	switch command {
+	case "apply", "update", "plan", "preflight", "init":
+		return true
+	default:
+		return false
+	}
 }
 
 func extractApplicationEnvironment(args []string, command string) ([]string, string, error) {
