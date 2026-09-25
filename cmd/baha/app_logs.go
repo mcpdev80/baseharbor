@@ -91,7 +91,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved
 			Driver: prepared.driver,
 		})
 	}
-	if err := application.CheckAdditionalProviderResources(resolved.Manifest, resources); err != nil {
+	if err := application.CheckAdditionalProviderResourcesAt(resolved.TargetStateRoot, resolved.Manifest, resources); err != nil {
 		return nil, fmt.Errorf("logs provider registry preflight: %w", err)
 	}
 	execution, _, err := capability.Prepare(ctx, resolved.Manifest.Name, requests)
