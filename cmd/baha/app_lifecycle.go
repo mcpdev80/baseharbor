@@ -39,7 +39,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
-	term.Info("target", resolved.Target.Name)
+			term.Info("target", resolved.Target.Name)
 			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
