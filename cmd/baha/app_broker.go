@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -24,6 +25,13 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
+
+func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
+	if strings.TrimSpace(files.Namespace) != "" {
+		return deployment.TargetStateRoot(files.Namespace)
+	}
+	return bhruntime.DataDir("")
+}
 
 func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
@@ -76,13 +84,14 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			traceSecurity.Authentication = "mtls"
 		}
 	}
+	brokerProject := runtimebroker.ProjectNameForRuntime(m, files)
 	if err := application.ReconcileRuntimeComponentObservability(m, application.RuntimeComponentObservability{
-		ID:               "runtime-broker:" + runtimebroker.ProjectName(m),
+		ID:               "runtime-broker:" + brokerProject,
 		Provider:         capability.ProviderRuntimeBroker,
 		Class:            observability.SourceApplicationProvider,
 		Scope:            capability.ScopeApplication,
 		OwnerApplication: m.Name,
-		MetricsNetwork:   runtimebroker.ObservabilityNetworkName(m),
+		MetricsNetwork:   runtimebroker.ObservabilityNetworkNameForRuntime(m, files),
 		MetricsTarget:    "baseharbor-runtime:8443",
 		MetricsPath:      "/metrics",
 		MetricsSecurity: observability.Security{
@@ -93,7 +102,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			ClientKey:         mtlsFiles.ClientKey,
 			ServerName:        "baseharbor-runtime",
 		},
-		LogsTarget:     observability.RuntimeTarget(runtimebroker.ProjectName(m), runtimebroker.ServiceName),
+		LogsTarget:     observability.RuntimeTarget(brokerProject, runtimebroker.ServiceName),
 		TracesTarget:   traceTarget,
 		TracesSecurity: traceSecurity,
 	}); err != nil {
@@ -103,7 +112,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	if err != nil {
 		return fmt.Errorf("materialize application runtime broker: %w", err)
 	}
-	project := runtimebroker.ProjectName(m)
+	project := brokerProject
 	if err := compose.ConfigProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate application runtime broker: %w", err)
 	}
@@ -146,9 +155,13 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
 	}
 	issuer := openbao.NewServiceIssuer(compose, platformFiles)
-	providerFiles, _, adminCredentialsPath, err := objectstorage.ExistingReadySharedProvider(ctx)
+	dataDir, err := runtimeComponentDataRoot(files)
 	if err != nil {
-		providerFiles, _, adminCredentialsPath, err = objectstorage.EnsureSharedProvider(ctx, compose, issuer)
+		return fmt.Errorf("resolve target data directory for runtime executor: %w", err)
+	}
+	providerFiles, _, adminCredentialsPath, err := objectstorage.ExistingReadySharedProviderAt(ctx, dataDir, files.Namespace)
+	if err != nil {
+		providerFiles, _, adminCredentialsPath, err = objectstorage.EnsureSharedProviderAt(ctx, compose, issuer, dataDir, files.Namespace)
 		if err != nil {
 			return fmt.Errorf("converge runtime object-storage provider: %w", err)
 		}
@@ -160,10 +173,6 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	s3Trust, err := objectstorage.ServiceTrustBundle(providerFiles)
 	if err != nil {
 		return fmt.Errorf("resolve runtime object-storage trust bundle: %w", err)
-	}
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return fmt.Errorf("resolve BaseHarbor data directory for runtime executor: %w", err)
 	}
 	identityDir := filepath.Join(dataDir, "runtime-executor", "identity")
 	identity, identityChanged, err := openbao.EnsureRuntimeExecutorMTLSIdentity(ctx, issuer, identityDir)
@@ -194,12 +203,16 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 			ServerName:        "otel-collector-access",
 		}
 	}
+	executorFiles, err := runtimeexecutor.EnsureFilesAt(dataDir, files.Namespace, identity, adminCredentialsPath, s3Endpoint, s3Trust, observabilityBinding...)
+	if err != nil {
+		return fmt.Errorf("materialize runtime provider executor: %w", err)
+	}
 	if err := application.ReconcileRuntimeComponentObservability(m, application.RuntimeComponentObservability{
-		ID:             "runtime-executor:" + runtimeexecutor.ProjectName,
+		ID:             "runtime-executor:" + executorFiles.Project,
 		Provider:       capability.ProviderRuntimeExecutor,
 		Class:          observability.SourcePlatformProvider,
 		Scope:          capability.ScopeShared,
-		MetricsNetwork: runtimeexecutor.ControlNetworkName,
+		MetricsNetwork: executorFiles.ControlNetwork,
 		MetricsTarget:  "baseharbor-runtime-executor:9443",
 		MetricsPath:    "/metrics",
 		MetricsSecurity: observability.Security{
@@ -210,30 +223,26 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 			ClientKey:         identity.ClientKey,
 			ServerName:        openbao.RuntimeExecutorDNSName,
 		},
-		LogsTarget:     observability.RuntimeTarget(runtimeexecutor.ProjectName, runtimeexecutor.ServiceName),
+		LogsTarget:     observability.RuntimeTarget(executorFiles.Project, runtimeexecutor.ServiceName),
 		TracesTarget:   traceTarget,
 		TracesSecurity: traceSecurity,
 	}); err != nil {
 		return fmt.Errorf("register runtime executor observability: %w", err)
 	}
-	executorFiles, err := runtimeexecutor.EnsureFiles(dataDir, identity, adminCredentialsPath, s3Endpoint, s3Trust, observabilityBinding...)
-	if err != nil {
-		return fmt.Errorf("materialize runtime provider executor: %w", err)
-	}
-	if err := compose.ConfigProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+	if err := compose.ConfigProject(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env); err != nil {
 		return fmt.Errorf("validate runtime provider executor: %w", err)
 	}
 	if identityChanged || refreshMutableImage {
-		if err := compose.DownProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env); err != nil {
+		if err := compose.DownProject(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env); err != nil {
 			return fmt.Errorf("recreate runtime provider executor for desired identity: %w", err)
 		}
 	}
-	if err := compose.UpProjectProgress(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env, func(detail string) {
+	if err := compose.UpProjectProgress(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env, func(detail string) {
 		cli.ReportActivityDetail(progress, detail)
 	}); err != nil {
 		return fmt.Errorf("start runtime provider executor: %w", err)
 	}
-	services, err := compose.RunningServicesProject(ctx, runtimeexecutor.ProjectName, executorFiles.Compose, executorFiles.Env)
+	services, err := compose.RunningServicesProject(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env)
 	if err != nil {
 		return fmt.Errorf("inspect runtime provider executor: %w", err)
 	}
@@ -268,7 +277,7 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, 
 	if err != nil {
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
-	project := runtimebroker.ProjectName(m)
+	project := runtimebroker.ProjectNameForRuntime(m, files)
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--fail", "--silent", "--show-error",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
@@ -368,10 +377,10 @@ func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m applica
 	if err != nil {
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
-	if err := compose.DownProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env); err != nil {
+	if err := compose.DownProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("stop application runtime broker: %w", err)
 	}
-	services, err := compose.RunningServicesProject(ctx, runtimebroker.ProjectName(m), brokerFiles.Compose, files.Env)
+	services, err := compose.RunningServicesProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env)
 	if err != nil {
 		return fmt.Errorf("verify application runtime broker stop: %w", err)
 	}
