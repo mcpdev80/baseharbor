@@ -111,34 +111,6 @@ func (d *Driver) applicationRegistration() (Registration, error) {
 	return ApplicationRegistration(d.app)
 }
 
-func (d *Driver) placement() (Placement, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return PlacementForAt(d.dataDir, d.namespace, d.app)
-	}
-	return PlacementFor(d.app)
-}
-
-func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return EnsureProviderFilesForRuntimeAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.engine)
-	}
-	return EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
-}
-
-func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return ExistingProviderFilesAt(d.dataDir, d.namespace, d.app)
-	}
-	return ExistingProviderFiles(d.app)
-}
-
-func (d *Driver) applicationRegistration() (Registration, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return ApplicationRegistrationAt(d.dataDir, d.namespace, d.app)
-	}
-	return ApplicationRegistration(d.app)
-}
-
 func (d *Driver) Descriptor() capability.Provider { return capability.Loki }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
