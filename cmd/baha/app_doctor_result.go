@@ -51,7 +51,7 @@ type applicationDoctorResult struct {
 }
 
 func collectApplicationDoctor(ctx context.Context, store application.Store, args []string) (applicationDoctorResult, error) {
-	resolved, err := resolveApplication(store, args, "doctor")
+	resolved, err := resolveApplication(ctx, store, args, "doctor")
 	if err != nil {
 		return applicationDoctorResult{}, err
 	}
