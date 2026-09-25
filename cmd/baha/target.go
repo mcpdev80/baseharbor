@@ -343,3 +343,15 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 	}
 	return target, files, nil
 }
+
+func detectComposeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.Compose, error) {
+	provider, err := bhruntime.DetectProviderForKind(bhruntime.ProviderKind(target.RuntimeProvider))
+	if err != nil {
+		return bhruntime.Compose{}, err
+	}
+	compose, ok := provider.(bhruntime.Compose)
+	if !ok {
+		return bhruntime.Compose{}, fmt.Errorf("target %q runtime provider %q is not compatible with the local container lifecycle", target.Name, target.RuntimeProvider)
+	}
+	return compose, nil
+}
