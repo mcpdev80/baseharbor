@@ -38,7 +38,7 @@ func appApplyCommand(store application.Store) *cli.Command {
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 	secretService := applicationsecret.New(store)
-	resolved, err := resolveApplication(store, args, "apply")
+	resolved, err := resolveApplication(ctx, store, args, "apply")
 	if err != nil {
 		return err
 	}
