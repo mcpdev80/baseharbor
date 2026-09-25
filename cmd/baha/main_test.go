@@ -65,12 +65,15 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
-	manifest := filepath.Join(dir, ".baseharbor", "apps", "demo", "baseharbor.yaml")
-	m, err := application.LoadManifestFile(manifest)
+	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "test"}
+	record, err := deployment.LoadDeploymentRecord(id)
 	if err != nil {
-		t.Fatalf("manifest missing: %v", err)
+		t.Fatalf("deployment record missing: %v", err)
 	}
-	registerTestDeployment(t, target, m, "", "")
+	m, err := application.LoadManifestFile(record.Source.Manifest)
+	if err != nil {
+		t.Fatalf("managed target manifest missing: %v", err)
+	}
 
 	out.Reset()
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
