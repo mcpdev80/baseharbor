@@ -70,7 +70,7 @@ func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error)
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
 	}
 
-	rendered := string(composeYAML)
+	rendered := renderComposeForProject(project)
 	composePath := filepath.Join(stateDir, composeName)
 	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
@@ -135,7 +135,7 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
 	}
 
-	rendered := string(composeYAML)
+	rendered := renderComposeForProject(files.Project)
 	rendered, err = renderSecureControlPlanePostgres(rendered)
 	if err != nil {
 		return err
@@ -154,6 +154,14 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		return fmt.Errorf("write control-plane service access compose: %w", err)
 	}
 	return nil
+}
+
+func renderComposeForProject(project string) string {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		project = "baseharbor"
+	}
+	return strings.ReplaceAll(string(composeYAML), "name: baseharbor-secrets", "name: "+project+"-secrets")
 }
 
 func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial) error {
