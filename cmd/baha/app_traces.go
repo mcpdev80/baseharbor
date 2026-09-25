@@ -125,7 +125,7 @@ func verifyManagedTracesAfterTelemetry(ctx context.Context, out io.Writer, prepa
 		var err error
 		switch {
 		case source.Mode == capability.ObservabilityInteraction && source.Protocol == "interaction":
-			traceID, err = telemetry.ExportProviderInteractionTrace(ctx, prepared.manifest, source)
+			traceID, err = telemetry.ExportProviderInteractionTraceAt(ctx, prepared.manifest, source, prepared.dataDir, prepared.namespace)
 		case source.Mode == capability.ObservabilityNative && source.Protocol == "otlp":
 			traceID, err = runtimeComponentTraceProbe(ctx, prepared, source)
 		default:
@@ -151,7 +151,7 @@ func runtimeComponentTraceProbe(ctx context.Context, prepared *managedTracesExec
 		}
 		raw, err := prepared.runtime.ExecProject(
 			ctx,
-			runtimebroker.ProjectName(prepared.manifest),
+			runtimebroker.ProjectNameForRuntime(prepared.manifest, prepared.runtimeFiles),
 			brokerFiles.Compose,
 			prepared.runtimeFiles.Env,
 			runtimebroker.ServiceName,
@@ -167,13 +167,13 @@ func runtimeComponentTraceProbe(ctx context.Context, prepared *managedTracesExec
 		}
 		return traceIDFromHTTPResponse(raw)
 	case capability.ProviderRuntimeExecutor:
-		executorFiles, err := runtimeexecutor.ExistingFiles(prepared.dataDir)
+		executorFiles, err := runtimeexecutor.ExistingFilesAt(prepared.dataDir, prepared.namespace)
 		if err != nil {
 			return "", fmt.Errorf("load runtime executor for trace verification: %w", err)
 		}
 		raw, err := prepared.runtime.ExecProject(
 			ctx,
-			runtimeexecutor.ProjectName,
+			executorFiles.Project,
 			executorFiles.Compose,
 			executorFiles.Env,
 			runtimeexecutor.ServiceName,
