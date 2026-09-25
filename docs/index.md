@@ -2,6 +2,9 @@
 
 BaseHarbor keeps documentation separated by purpose so you can find the right level quickly.
 
+> **AI-generated, human-specified, machine-verified.**  
+> BaseHarbor treats human intent and architecture as the specification, AI as an implementation accelerator, and deterministic machine verification as the evidence that the result is correct.
+
 ## New to BaseHarbor?
 
 Start with [Getting started](tutorials/getting-started.md).
