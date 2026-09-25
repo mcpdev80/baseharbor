@@ -12,8 +12,18 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+type targetInspectionResult struct {
+	ContractVersion string                    `json:"contract_version"`
+	Target          deployment.ResolvedTarget `json:"target"`
+	Application     string                    `json:"application,omitempty"`
+	Environment     string                    `json:"environment,omitempty"`
+	Repository      string                    `json:"repository,omitempty"`
+	Effective       string                    `json:"effective"`
+}
 
 type targetOverrideContextKey struct{}
 
@@ -43,27 +53,41 @@ func targetCommand() *cli.Command {
 		Summary: "Inspect and manage BaseHarbor deployment targets",
 		Usage:   "baha target [list|show|create|delete|activate|deactivate]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if len(args) != 0 {
-				return usageError("baha target does not accept positional arguments", "Use 'baha target show NAME' or 'baha target --help'.")
+			jsonOutput := false
+			for i := 0; i < len(args); i++ {
+				switch args[i] {
+				case "-o", "--output":
+					if i+1 >= len(args) {
+						return usageError(args[i]+" requires a value", "Use -o json or --output json.")
+					}
+					i++
+					if args[i] != "json" {
+						return usageError("unsupported target output "+args[i], "Only json is supported for structured target output.")
+					}
+					jsonOutput = true
+				default:
+					return unknownOptionUsage("baha target", args[i], "-o", "--output")
+				}
 			}
-			target, err := effectiveTarget(ctx)
+			result, err := collectTargetInspection(ctx)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "Target   %s\n", target.Name)
-			fmt.Fprintf(out, "Runtime  %s\n", target.RuntimeProvider)
-			fmt.Fprintf(out, "Access   %s\n", target.AccessReference)
-			if target.Scope != "" {
-				fmt.Fprintf(out, "Scope    %s\n", target.Scope)
+			if jsonOutput {
+				return writeJSON(out, result)
 			}
-			if cwd, err := os.Getwd(); err == nil {
-				if selection, err := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); err == nil {
-					fmt.Fprintf(out, "\nApplication  %s\n", selection.Manifest.Name)
-					fmt.Fprintf(out, "Environment  %s\n", selection.Manifest.Environment)
-					fmt.Fprintf(out, "Repository   %s\n", selection.RepositoryRoot)
-					fmt.Fprintf(out, "\nEffective\n%s / %s / %s\n", target.Name, selection.Manifest.Name, selection.Manifest.Environment)
-				}
+			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
+			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
+			fmt.Fprintf(out, "Access   %s\n", result.Target.AccessReference)
+			if result.Target.Scope != "" {
+				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
 			}
+			if result.Application != "" {
+				fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
+				fmt.Fprintf(out, "Environment  %s\n", result.Environment)
+				fmt.Fprintf(out, "Repository   %s\n", result.Repository)
+			}
+			fmt.Fprintf(out, "\nEffective\n%s\n", result.Effective)
 			return nil
 		},
 		Children: []*cli.Command{
@@ -177,6 +201,27 @@ func targetCommand() *cli.Command {
 			},
 		},
 	}
+}
+
+func collectTargetInspection(ctx context.Context) (targetInspectionResult, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return targetInspectionResult{}, err
+	}
+	result := targetInspectionResult{
+		ContractVersion: machine.ContractVersion,
+		Target:          target,
+		Effective:       target.Name,
+	}
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
+			result.Application = selection.Manifest.Name
+			result.Environment = selection.Manifest.Environment
+			result.Repository = selection.RepositoryRoot
+			result.Effective = target.Name + " / " + result.Application + " / " + result.Environment
+		}
+	}
+	return result, nil
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
