@@ -141,6 +141,5 @@
   },
   "baseBranchPatterns": [
     "develop"
-  ],
-  "configMigration": true
+  ]
 }
