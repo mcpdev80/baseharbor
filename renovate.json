@@ -139,7 +139,7 @@
     ],
     "automerge": false
   },
-  "baseBranches": [
+  "baseBranchPatterns": [
     "develop"
   ]
 }
