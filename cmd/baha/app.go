@@ -26,7 +26,7 @@ func appCommand(store application.Store) *cli.Command {
 			appInitCommand(),
 			appCreateCommand(),
 			appListCommand(),
-			appShowCommand(store),
+			appManifestShowCommand(store),
 			appPlanCommand(store),
 			appPreflightCommand(store),
 		},
