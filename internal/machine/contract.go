@@ -32,6 +32,7 @@ const (
 	ErrorValidationFailed      ErrorCode = "validation_failed"
 	ErrorPortConflict          ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
+	ErrorSourceMissing         ErrorCode = "source_missing"
 	ErrorApprovalRequired      ErrorCode = "approval_required"
 	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
 	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
