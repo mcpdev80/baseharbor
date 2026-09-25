@@ -73,7 +73,7 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 
 	record := DeploymentRecord{
 		Identity: DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: "dev"},
-		Applied: AppliedDeployment{RuntimeProvider: "docker"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
 	}
 	if err := SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 	for _, target := range []string{"docker-dev", "podman-dev"} {
 		if err := SaveDeploymentRecord(DeploymentRecord{
 			Identity: DeploymentIdentity{Target: target, Application: "demo", Environment: "dev"},
-			Applied: AppliedDeployment{RuntimeProvider: target},
+			Applied:  AppliedDeployment{RuntimeProvider: target},
 		}); err != nil {
 			t.Fatal(err)
 		}
