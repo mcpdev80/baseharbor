@@ -37,12 +37,15 @@ type TargetDefinition struct {
 }
 
 type PromptConfig struct {
-	Enabled     bool              `yaml:"enabled" json:"enabled"`
-	Preset      string            `yaml:"preset,omitempty" json:"preset,omitempty"`
-	Position    string            `yaml:"position,omitempty" json:"position,omitempty"`
-	Environment string            `yaml:"environment,omitempty" json:"environment,omitempty"`
-	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Colors      map[string]string `yaml:"colors,omitempty" json:"colors,omitempty"`
+	Enabled         bool              `yaml:"enabled" json:"enabled"`
+	Preset          string            `yaml:"preset,omitempty" json:"preset,omitempty"`
+	Position        string            `yaml:"position,omitempty" json:"position,omitempty"`
+	Environment     string            `yaml:"environment,omitempty" json:"environment,omitempty"`
+	ShowApplication bool              `yaml:"show-application,omitempty" json:"show_application,omitempty"`
+	TextOnly        bool              `yaml:"text-only,omitempty" json:"text_only,omitempty"`
+	ProdIndicator   string            `yaml:"prod-indicator,omitempty" json:"prod_indicator,omitempty"`
+	Labels          map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Colors          map[string]string `yaml:"colors,omitempty" json:"colors,omitempty"`
 }
 
 type Config struct {
