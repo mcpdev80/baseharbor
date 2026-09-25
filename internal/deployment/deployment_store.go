@@ -190,8 +190,7 @@ func listDeploymentRecords(root string) ([]DeploymentRecord, error) {
 				continue
 			}
 			id := DeploymentIdentity{Application: app.Name(), Environment: env.Name()}
-			targetRoot := filepath.Dir(filepath.Dir(root))
-			id.Target = filepath.Base(targetRoot)
+			id.Target = filepath.Base(filepath.Dir(root))
 			record, err := LoadDeploymentRecord(id)
 			if err != nil {
 				return nil, err
