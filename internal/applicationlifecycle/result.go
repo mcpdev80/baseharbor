@@ -5,6 +5,7 @@ import "github.com/mcpdev80/baseharbor/internal/machine"
 type Result struct {
 	ContractVersion string `json:"contract_version"`
 	Operation       string `json:"operation"`
+	Target          string `json:"target,omitempty"`
 	Application     string `json:"application,omitempty"`
 	Environment     string `json:"environment,omitempty"`
 	State           string `json:"state"`
@@ -21,6 +22,11 @@ func NewResult(operation, application, environment, state string, verified bool)
 		State:           state,
 		Verified:        verified,
 	}
+}
+
+func (r Result) WithTarget(target string) Result {
+	r.Target = target
+	return r
 }
 
 func RequireApproval(operation string, approved bool) error {
