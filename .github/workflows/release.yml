@@ -89,7 +89,7 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml$' || true)"
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/release-audits/v[0-9]+\.[0-9]+\.[0-9]+\.md)$' || true)"
             if [ -n "${unexpected}" ]; then
               return 1
             fi
@@ -121,6 +121,7 @@ jobs:
               echo "  .github/workflows/release.yml" >&2
               echo "  .github/workflows/runtime-image.yml" >&2
               echo "  .github/workflows/supplemental-release-validation.yml" >&2
+              echo "  docs/release-audits/vX.Y.Z.md" >&2
               echo "Actual changed files:" >&2
               git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
               exit 1

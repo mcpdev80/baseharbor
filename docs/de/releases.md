@@ -64,3 +64,14 @@ Veroeffentlichte Tags werden niemals verschoben. Fehlerhafte Releases werden dur
 Manifest v1 bleibt unveraendert. Die v0.4-Linie hat schrittweise Provider-, Observability-, Repository-, Agent-/MCP-, Environment-/Policy- und Reconciliation-Semantik hinter diesem stabilen Application Contract aufgebaut.
 
 v0.4.14 ergaenzt ein typisiertes Desired/Observed/Diff/Ownership-Modell mit fail-closed Foreign-Ownership-/Conflict-/Unsupported-/Degraded-Zustaenden, Core-NOOP, minimaler Repair-Semantik und erneuter Observation nach Verification. Provider Integration Contract v1 bleibt die gemeinsame Provider-Grenze. Kubernetes/OpenShift werden dadurch nicht implementiert.
+
+
+## v0.4.15-Kompatibilitaet
+
+Manifest v1 bleibt unveraendert. v0.4.15 fuehrt Deployment Targets als eigene Achse neben Application und Environment ein und isoliert Runtime-/Deployment-State Target-scoped.
+
+Docker verwendet weiterhin Docker Compose. Der unterstuetzte Podman-Pfad verwendet jetzt native rootless Quadlets ueber `systemd --user`; `podman-compose` ist kein BaseHarbor-Runtime-Dependency mehr.
+
+Die TLS-/Service-Access-, Observability- und Agent-/MCP-Erweiterungen bleiben providerneutral hinter bestehenden Application-Vertraegen. Das komplette MCP/JSON-Lifecycle nutzt denselben Policy-/Ownership-/Reconciliation-/Verification-Core wie die CLI.
+
+`baha destroy --all` entfernt bewusst den kompletten BaseHarbor-eigenen Installations-State ueber alle Targets, behaelt aber Application-Source-Repositories sowie fremde/externe Application-Daten.
