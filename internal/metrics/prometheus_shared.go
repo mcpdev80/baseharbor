@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
-	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/capability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
