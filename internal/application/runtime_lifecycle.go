@@ -14,11 +14,14 @@ import (
 var ErrRuntimeDefinitionChanged = errors.New("application runtime definition differs from the BaseHarbor-managed definition")
 
 func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	return ExpectedRuntimeResourcesForProject(m, RuntimeProjectName(m))
+}
+
+func ExpectedRuntimeResourcesForProject(m Manifest, project string) []bhruntime.ProjectResource {
 	if !HasManagedRuntimeServices(m) {
 		return nil
 	}
-	project := RuntimeProjectName(m)
-	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkName(m)}}
+	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(project)}}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
@@ -73,6 +76,10 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 
 func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
 	return compose.InspectProjectResources(ctx, RuntimeProjectName(m), ExpectedRuntimeResources(m))
+}
+
+func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
+	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForProject(m, files.Project))
 }
 
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {
