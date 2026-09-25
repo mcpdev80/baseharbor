@@ -18,7 +18,7 @@ func TestDynamicApplicationSecretLifecycleRealOpenBao(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime", "baseharbor-openbao-dynamic-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort}))
+	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime"), "baseharbor-openbao-dynamic-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
 	if err != nil {
 		t.Fatal(err)
 	}
