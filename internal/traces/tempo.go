@@ -344,7 +344,16 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 	if err != nil {
 		return err
 	}
+	return DestroyAllSharedProvidersAt(ctx, runtime, dataDir, "")
+}
+
+func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
