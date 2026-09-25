@@ -45,7 +45,7 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 	if !registered {
 		return nil
 	}
-	registrations, err := reconcileRegistration(files.Registrations, m, false)
+	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, false)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
