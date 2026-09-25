@@ -78,7 +78,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		outputPath = fmt.Sprintf("%s-%s-%s.bhbackup", m.Name, m.Environment, time.Now().UTC().Format("20060102T150405Z"))
 	}
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 	if err != nil {
 		return err
 	}
