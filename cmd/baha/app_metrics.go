@@ -32,7 +32,7 @@ func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resol
 	m := resolved.Manifest
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)
 
-	registeredPlacement, registered, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	registeredPlacement, registered, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderPrometheus)
 	if err != nil {
 		return nil, err
 	}
