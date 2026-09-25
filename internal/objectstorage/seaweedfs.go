@@ -131,7 +131,15 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 }
 
 func ExistingReadySharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
-	files, err := ExistingProviderFiles()
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	return ExistingReadySharedProviderAt(ctx, dataDir, "")
+}
+
+func ExistingReadySharedProviderAt(ctx context.Context, dataDir, namespace string) (ProviderFiles, AdminCredentials, string, error) {
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
