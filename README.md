@@ -17,6 +17,9 @@
   <a href="https://mcpdev80.github.io/baseharbor/">
     <img src="https://img.shields.io/badge/docs-GitHub%20Pages-0068E9" alt="GitHub Pages">
   </a>
+  <a href="CONTRIBUTING.md">
+    <img src="https://img.shields.io/badge/contributing-welcome-2ea44f" alt="Contributing">
+  </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/mcpdev80/baseharbor" alt="License">
   </a>
