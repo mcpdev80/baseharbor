@@ -25,7 +25,7 @@ type machineApplicationInput struct {
 }
 
 type machineUpdateInput struct {
-	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Target             string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Environment        string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 	BackupPasswordFile string `json:"backup_password_file,omitempty" jsonschema:"owner-only local file containing the backup password used for the pre-update recovery point"`
 	NoBackup           bool   `json:"no_backup,omitempty" jsonschema:"explicitly acknowledge updating durable state without a pre-update recovery point"`
