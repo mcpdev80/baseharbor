@@ -15,7 +15,8 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 	m = WithLogsCollection(m, "application")
 	m = WithOTLPTelemetry(m, "traces")
 
-	if err := reconcileManagedRuntimeObservability(m); err != nil {
+	project := "baseharbor-local-demo-dev"
+	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,11 +45,11 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 		for _, source := range sources {
 			got[source.Provider] = source.Target
 		}
-		if target := got[capability.ProviderPostgreSQL]; !strings.HasSuffix(target, "/postgres") {
-			t.Fatalf("%s PostgreSQL target = %q, want canonical /postgres service", kind, target)
+		if target := got[capability.ProviderPostgreSQL]; target != project+"/postgres" {
+			t.Fatalf("%s PostgreSQL target = %q, want target-scoped %q", kind, target, project+"/postgres")
 		}
-		if target := got[capability.ProviderValkey]; !strings.HasSuffix(target, "/valkey") {
-			t.Fatalf("%s Valkey target = %q, want canonical /valkey service", kind, target)
+		if target := got[capability.ProviderValkey]; target != project+"/valkey" {
+			t.Fatalf("%s Valkey target = %q, want target-scoped %q", kind, target, project+"/valkey")
 		}
 	}
 
