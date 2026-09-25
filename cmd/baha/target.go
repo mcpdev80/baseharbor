@@ -150,7 +150,7 @@ func targetCommand() *cli.Command {
 				Long:    "Activation is shell-local. Evaluate the emitted assignment in the current shell; BaseHarbor never mutates a parent process environment.",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 					if len(args) != 1 {
-						return usageError("baha target activate requires NAME", "Example: eval "$(baha target activate docker-dev)"")
+						return usageError("baha target activate requires NAME", "Example: eval \"$(baha target activate docker-dev)\"")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
@@ -169,7 +169,7 @@ func targetCommand() *cli.Command {
 				Usage:   "baha target deactivate",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 					if len(args) != 0 {
-						return usageError("baha target deactivate does not accept arguments", "Example: eval "$(baha target deactivate)"")
+						return usageError("baha target deactivate does not accept arguments", "Example: eval \"$(baha target deactivate)\"")
 					}
 					fmt.Fprintln(out, "unset BASEHARBOR_TARGET")
 					return nil
