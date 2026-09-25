@@ -2,6 +2,19 @@
 
 These rules apply to code, tests, documentation and provider/runtime work.
 
+## Project engineering principle
+
+> **AI-generated, human-specified, machine-verified.**  
+> **KI-generiert, menschlich spezifiziert, maschinell verifiziert.**
+
+This is a concrete engineering rule:
+
+- **Human-specified:** architecture, intent, constraints, safety boundaries and acceptance criteria are deliberate human decisions.
+- **AI-generated:** AI may implement code, tests, documentation and repetitive integration work from those specifications.
+- **Machine-verified:** correctness is established by deterministic validation, tests, static checks, runtime verification and release evidence rather than trust in generated output alone.
+
+AI-generated changes do not bypass reviewable contracts, ownership rules, verification or release gates.
+
 ## 1. Smallest correct design
 
 Implement only what the current requirement needs. Avoid speculative frameworks, unrelated refactors and product-specific shortcuts.
