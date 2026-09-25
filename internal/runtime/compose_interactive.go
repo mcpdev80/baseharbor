@@ -69,6 +69,7 @@ func (c Compose) RunProjectFilesEnv(ctx context.Context, project, workdir string
 				}
 				logArgs = append(logArgs, container)
 				cmd := exec.CommandContext(ctx, c.command, logArgs...)
+				cmd.Env = runtimeCommandEnv(c.command)
 				cmd.Stdin = stdin
 				cmd.Stdout = stdout
 				cmd.Stderr = stderr
@@ -94,6 +95,7 @@ func (c Compose) RunProjectFilesEnv(ctx context.Context, project, workdir string
 			cmdArgs := []string{"exec", "-i", container}
 			cmdArgs = append(cmdArgs, execArgs[1:]...)
 			cmd := exec.CommandContext(ctx, c.command, cmdArgs...)
+			cmd.Env = runtimeCommandEnv(c.command)
 			cmd.Stdin = stdin
 			cmd.Stdout = stdout
 			cmd.Stderr = stderr
