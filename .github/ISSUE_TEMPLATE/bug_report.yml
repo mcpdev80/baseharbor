@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible BaseHarbor problem
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please keep secrets, credentials and private keys out of issues.
+
+  - type: input
+    id: version
+    attributes:
+      label: BaseHarbor version
+      description: Output of `baha version` or the commit SHA.
+      placeholder: v0.4.15
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Docker
+        - Podman / Quadlet
+        - Not runtime-specific
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal steps, commands or manifest needed to reproduce the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant output
+      description: Logs or command output with all secrets removed.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed secrets, tokens, private keys and recovery material from this report.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
