@@ -192,7 +192,7 @@ func resolveAccessBinding(store application.Store, appName, kind, instance strin
 	if appName != "" {
 		appArgs = []string{appName}
 	}
-	resolved, err := resolveApplication(store, appArgs, kind)
+	resolved, err := resolveApplication(ctx, store, appArgs, kind)
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
@@ -235,7 +235,7 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	if appName != "" {
 		appArgs = []string{appName}
 	}
-	resolved, err := resolveApplication(store, appArgs, "workload access")
+	resolved, err := resolveApplication(ctx, store, appArgs, "workload access")
 	if err != nil {
 		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
 	}
