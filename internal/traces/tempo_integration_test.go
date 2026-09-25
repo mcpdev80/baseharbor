@@ -31,33 +31,34 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	providerState := t.TempDir()
+	namespace := "trace-acceptance"
 	t.Setenv(application.TracesEnabledEnv, "true")
 
 	m := application.WithOTLPTelemetry(application.New("traces-acceptance", "dev", false, false, false), "traces")
 	issuer := serviceissuer.New(t)
 
 	traceResource := capability.Resource{Application: m.Name, Kind: capability.Traces, Name: "default", Provider: capability.ProviderTempo}
-	traceDriver := traces.NewDriver(compose, m, issuer)
+	traceDriver := traces.NewDriverAt(compose, m, issuer, providerState, namespace)
 	if err := traceDriver.Preflight(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := traceDriver.Provision(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatalf("provision Tempo: %v", err)
 	}
-	defer func() { _ = traces.DestroyAllSharedProviders(context.Background(), compose) }()
+	defer func() { _ = traces.DestroyAllSharedProvidersAt(context.Background(), compose, providerState, namespace) }()
 
-	if err := containersecurity.VerifyComposeService(ctx, "baseharbor-traces", "tempo", containersecurity.Requirements{
+	placement, err := traces.PlacementForAt(providerState, namespace, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, placement.Project, "tempo", containersecurity.Requirements{
 		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 	}); err != nil {
 		t.Fatalf("Tempo runtime security: %v", err)
 	}
 
-	placement, err := traces.PlacementFor(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	otelDriver := telemetry.NewDriver(compose, m, application.RuntimeFiles{}, issuer)
+	otelDriver := telemetry.NewDriverAt(compose, m, application.RuntimeFiles{}, issuer, providerState, namespace)
 	otelDriver.SetTraceBackend(traces.NetworkEndpoint(placement), placement.Network)
 	otelResource := capability.Resource{Application: m.Name, Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderOTelCollector}
 	otelBinding := capability.Binding{
@@ -75,9 +76,9 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	if err := otelDriver.Provision(ctx, otelResource, otelBinding); err != nil {
 		t.Fatalf("provision OpenTelemetry Collector: %v", err)
 	}
-	defer func() { _ = telemetry.DestroySharedProvider(context.Background(), compose) }()
+	defer func() { _ = telemetry.DestroySharedProviderAt(context.Background(), compose, providerState, namespace) }()
 
-	files, err := telemetry.ExistingProviderFiles()
+	files, err := telemetry.ExistingProviderFilesAt(providerState, namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +101,7 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 		t.Fatalf("OTLP verification export returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
-	if err := traces.VerifyTrace(ctx, m, telemetry.ProbeTraceIDHex); err != nil {
+	if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
 		t.Fatalf("query verification trace from Tempo: %v", err)
 	}
 	fmt.Println("verified OTLP Collector -> Tempo trace ingestion")
