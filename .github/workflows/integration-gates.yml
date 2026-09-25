@@ -195,7 +195,7 @@ jobs:
           set -e
           test "$required_code" -eq 1
           grep -q "required secrets check failed" /tmp/required-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-required-demo-dev)"
 
           /tmp/baha app preflight required-demo >/tmp/required-preflight-missing.out 2>&1 || true
           grep -Eq 'API_TOKEN[[:space:]]+missing - user input required[[:space:]]+baha app secret set API_TOKEN --stdin' /tmp/required-preflight-missing.out
@@ -218,7 +218,7 @@ jobs:
           set -e
           test "$required_up_code" -eq 1
           grep -q "required application secrets" /tmp/required-up-missing.out
-          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-required-demo-dev)"
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-ci-required-demo-dev)"
 
           printf '%s' 'integration-secret-2' | /tmp/baha app secret set required-demo API_TOKEN --stdin
           /tmp/baha app up required-demo | grep -q "runtime and requested infrastructure verified"
