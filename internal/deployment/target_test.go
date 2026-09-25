@@ -59,6 +59,26 @@ func TestTargetStateRootIsolation(t *testing.T) {
 	if want := filepath.Join(root, "baseharbor", "targets", "docker-dev"); a != want {
 		t.Fatalf("root = %q, want %q", a, want)
 	}
+	for path, provider := range map[string]string{a: "docker", b: "podman"} {
+		runtimeDir := filepath.Join(path, "runtime")
+		if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, "provider"), []byte(provider), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dockerProvider, err := os.ReadFile(filepath.Join(a, "runtime", "provider"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	podmanProvider, err := os.ReadFile(filepath.Join(b, "runtime", "provider"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(dockerProvider) != "docker" || string(podmanProvider) != "podman" {
+		t.Fatalf("target runtime state crossed boundaries: docker=%q podman=%q", dockerProvider, podmanProvider)
+	}
 }
 
 func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
@@ -103,5 +123,31 @@ func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Fatalf("deployments = %d, want 2", len(got))
+	}
+}
+
+func TestMultipleEnvironmentsWithinOneTarget(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	for _, environment := range []string{"dev", "test"} {
+		if err := SaveDeploymentRecord(DeploymentRecord{
+			Identity: DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: environment},
+			Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := ListDeployments("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("deployments = %d, want 2", len(got))
+	}
+	seen := map[string]bool{}
+	for _, record := range got {
+		seen[record.Identity.Environment] = true
+	}
+	if !seen["dev"] || !seen["test"] {
+		t.Fatalf("environments missing from target registry: %#v", seen)
 	}
 }
