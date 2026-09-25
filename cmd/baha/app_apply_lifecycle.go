@@ -61,11 +61,11 @@ func newApplicationApplyExecution(ctx context.Context, store application.Store, 
 	}
 
 	return &applicationApplyExecution{
-		resolved:      resolved,
-		manifest:      m,
-		term:          term,
-		out:           out,
-		errOut:        errOut,
+		resolved:  resolved,
+		manifest:  m,
+		term:      term,
+		out:       out,
+		errOut:    errOut,
 		providers: &managedProviderPreflightState{},
 	}, nil
 }
