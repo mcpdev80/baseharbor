@@ -216,7 +216,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 				var err error
-				platformFiles, err = bhruntime.ExistingFiles("")
+				platformFiles, err = existingTargetRuntimeFiles(ctx)
 				if err != nil {
 					return err
 				}
@@ -356,7 +356,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if resolved.FromRepository {
 		if platformFiles.Compose == "" {
 			var platformErr error
-			platformFiles, platformErr = bhruntime.ExistingFiles("")
+			platformFiles, platformErr = existingTargetRuntimeFiles(ctx)
 			if platformErr != nil {
 				return fmt.Errorf("load managed trust plane for log collector cleanup: %w", platformErr)
 			}
@@ -393,7 +393,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			}
 			if platformFiles.Compose == "" {
 				var platformErr error
-				platformFiles, platformErr = bhruntime.ExistingFiles("")
+				platformFiles, platformErr = existingTargetRuntimeFiles(ctx)
 				if platformErr != nil {
 					return fmt.Errorf("load managed trust plane for metrics cleanup: %w", platformErr)
 				}
