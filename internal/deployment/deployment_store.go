@@ -28,10 +28,10 @@ type DeploymentSource struct {
 }
 
 type AppliedDeployment struct {
-	Intent           json.RawMessage     `json:"intent,omitempty"`
-	RuntimeProvider  string              `json:"runtime_provider"`
-	GeneratedState   map[string]string   `json:"generated_state,omitempty"`
-	LastAppliedRef   string              `json:"last_applied_ref,omitempty"`
+	Intent          json.RawMessage   `json:"intent,omitempty"`
+	RuntimeProvider string            `json:"runtime_provider"`
+	GeneratedState  map[string]string `json:"generated_state,omitempty"`
+	LastAppliedRef  string            `json:"last_applied_ref,omitempty"`
 }
 
 type ObservedDeployment struct {
