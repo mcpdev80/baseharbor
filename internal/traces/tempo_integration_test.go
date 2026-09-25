@@ -46,7 +46,9 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	if err := traceDriver.Provision(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatalf("provision Tempo: %v", err)
 	}
-	defer func() { _ = traces.DestroyAllSharedProvidersAt(context.Background(), compose, providerState, namespace) }()
+	defer func() {
+		_ = traces.DestroyAllSharedProvidersAt(context.Background(), compose, providerState, namespace)
+	}()
 
 	placement, err := traces.PlacementForAt(providerState, namespace, m)
 	if err != nil {
