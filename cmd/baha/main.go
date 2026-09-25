@@ -22,7 +22,6 @@ var (
 	date    = "unknown"
 )
 
-
 func main() {
 	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := interruptibleProcessContext()
