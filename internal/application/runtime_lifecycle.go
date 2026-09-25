@@ -47,8 +47,12 @@ func ExpectedPostgresRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 }
 
 func ExpectedPersistentRuntimeResources(m Manifest) []bhruntime.ProjectResource {
+	return ExpectedPersistentRuntimeResourcesForProject(m, RuntimeProjectName(m))
+}
+
+func ExpectedPersistentRuntimeResourcesForProject(m Manifest, project string) []bhruntime.ProjectResource {
 	var resources []bhruntime.ProjectResource
-	for _, resource := range ExpectedRuntimeResources(m) {
+	for _, resource := range ExpectedRuntimeResourcesForProject(m, project) {
 		if resource.Kind == "volume" {
 			resources = append(resources, resource)
 		}
