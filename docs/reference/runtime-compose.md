@@ -1,6 +1,6 @@
 # Local control-plane runtime
 
-BaseHarbor's current operational control plane is intentionally single-node and local-first.
+BaseHarbor's current operational control plane is intentionally single-node. On Docker and Podman Targets it is local-first and owned by the effective Target.
 
 ## Services
 
@@ -41,29 +41,31 @@ After initialization, `baha up` does not silently rewrite configured ports.
 
 ## Runtime state
 
-The control plane is machine/user scoped, so its runtime files are user-global by default:
+The control plane and provider state belong to the effective Target. Runtime files are stored below:
 
 ```text
-$XDG_DATA_HOME/baseharbor/runtime/
+$XDG_DATA_HOME/baseharbor/targets/<target>/
 ```
 
 or, when `XDG_DATA_HOME` is unset:
 
 ```text
-~/.local/share/baseharbor/runtime/
+~/.local/share/baseharbor/targets/<target>/
 ```
 
-Typical protected runtime-state files include:
+Typical protected Target state includes:
 
 ```text
-provider-registry.json
-runtime/
-├── compose.yaml   # canonical generated runtime model; Podman renders this to Quadlet units
-├── runtime.env
-└── openbao-admin.env
+targets/<target>/
+├── runtime/
+│   ├── compose.yaml   # canonical generated runtime model; Podman renders this to Quadlet units
+│   ├── runtime.env
+│   └── openbao-admin.env
+├── providers/
+└── deployments/
 ```
 
-With automatic state selection, the provider registry is stored beside `runtime/`, not inside it. This prevents provider metadata from materializing or switching the selected runtime-state location. An explicit `BASEHARBOR_STATE_DIR` remains self-contained and owns its provider registry as well. For compatibility, a legacy repository-local `.baseharbor/runtime` is reused only when no global runtime state exists yet.
+This boundary allows multiple Docker/Podman Targets to coexist without sharing BaseHarbor-owned runtime state. `BASEHARBOR_STATE_DIR` and repository-local `.baseharbor/runtime` are legacy compatibility inputs for pre-Target runtime state; new v0.4.15 Target-owned state uses the XDG Target root.
 
 Credential-bearing files are owner-only. Generated PostgreSQL credentials and selected ports are preserved across subsequent starts.
 
