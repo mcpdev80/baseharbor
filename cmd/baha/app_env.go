@@ -35,7 +35,7 @@ func appEnvCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			files, err := application.ExistingRuntimeFiles(store, m)
+			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 			if err != nil {
 				return err
 			}
