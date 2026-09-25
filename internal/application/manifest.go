@@ -339,4 +339,3 @@ func SecretRequirementByName(m Manifest, name string) (SecretRequirement, bool) 
 	}
 	return SecretRequirement{}, false
 }
-
