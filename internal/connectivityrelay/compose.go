@@ -31,6 +31,14 @@ type Files struct {
 }
 
 func EnsureFiles(spec RuntimeSpec) (Files, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return Files{}, err
+	}
+	return EnsureFilesAt(dataDir, "", spec)
+}
+
+func EnsureFilesAt(dataDir, namespace string, spec RuntimeSpec) (Files, error) {
 	if err := validateRelayID(spec.ID); err != nil {
 		return Files{}, err
 	}
@@ -47,11 +55,7 @@ func EnsureFiles(spec RuntimeSpec) (Files, error) {
 	if spec.TargetPort < 1 || spec.TargetPort > 65535 {
 		return Files{}, errors.New("connectivity relay target port is invalid")
 	}
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return Files{}, err
-	}
-	dir := filepath.Join(dataDir, "connectivity", spec.ID)
+	dir := filepath.Join(filepath.Clean(dataDir), "connectivity", spec.ID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Files{}, err
 	}
@@ -69,7 +73,7 @@ func EnsureFiles(spec RuntimeSpec) (Files, error) {
 		Dir:     dir,
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "runtime.env"),
-		Project: "baseharbor-connectivity-" + spec.ID,
+		Project: relayProjectName(namespace, spec.ID),
 	}
 	if err := os.WriteFile(files.Env, nil, 0o600); err != nil {
 		return Files{}, err
@@ -91,11 +95,15 @@ func RemoveFiles(id string) error {
 	if err != nil {
 		return err
 	}
+	return RemoveFilesAt(dataDir, id)
+}
+
+func RemoveFilesAt(dataDir, id string) error {
 	if err := validateRelayID(id); err != nil {
 		return err
 	}
 	id = strings.TrimSpace(id)
-	return os.RemoveAll(filepath.Join(dataDir, "connectivity", id))
+	return os.RemoveAll(filepath.Join(filepath.Clean(dataDir), "connectivity", id))
 }
 
 func ExistingInstances() ([]Files, error) {
@@ -103,7 +111,11 @@ func ExistingInstances() ([]Files, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := filepath.Join(dataDir, "connectivity")
+	return ExistingInstancesAt(dataDir, "")
+}
+
+func ExistingInstancesAt(dataDir, namespace string) ([]Files, error) {
+	root := filepath.Join(filepath.Clean(dataDir), "connectivity")
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -119,7 +131,7 @@ func ExistingInstances() ([]Files, error) {
 		if err := validateRelayID(entry.Name()); err != nil {
 			return nil, fmt.Errorf("invalid connectivity relay state directory %q: %w", entry.Name(), err)
 		}
-		files, err := ExistingFiles(entry.Name())
+		files, err := ExistingFilesAt(dataDir, namespace, entry.Name())
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
@@ -133,19 +145,23 @@ func ExistingInstances() ([]Files, error) {
 }
 
 func ExistingFiles(id string) (Files, error) {
-	if err := validateRelayID(id); err != nil {
-		return Files{}, err
-	}
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return Files{}, err
 	}
-	dir := filepath.Join(dataDir, "connectivity", strings.TrimSpace(id))
+	return ExistingFilesAt(dataDir, "", id)
+}
+
+func ExistingFilesAt(dataDir, namespace, id string) (Files, error) {
+	if err := validateRelayID(id); err != nil {
+		return Files{}, err
+	}
+	dir := filepath.Join(filepath.Clean(dataDir), "connectivity", strings.TrimSpace(id))
 	files := Files{
 		Dir:     dir,
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "runtime.env"),
-		Project: "baseharbor-connectivity-" + strings.TrimSpace(id),
+		Project: relayProjectName(namespace, strings.TrimSpace(id)),
 	}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
@@ -153,6 +169,14 @@ func ExistingFiles(id string) (Files, error) {
 		}
 	}
 	return files, nil
+}
+
+func relayProjectName(namespace, id string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return "baseharbor-connectivity-" + id
+	}
+	return "baseharbor-" + namespace + "-connectivity-" + id
 }
 
 func validateRelayID(id string) error {
