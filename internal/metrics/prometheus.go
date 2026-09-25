@@ -376,7 +376,15 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 }
 
 func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, err := ExistingProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return PruneApplicationTargetsAt(dataDir, "", m, desired)
+}
+
+func PruneApplicationTargetsAt(dataDir, namespace string, m application.Manifest, desired map[string]struct{}) error {
+	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -387,7 +395,15 @@ func PruneApplicationTargets(m application.Manifest, desired map[string]struct{}
 }
 
 func PruneRegisteredApplicationTargets(m application.Manifest, desired map[string]struct{}) error {
-	files, found, err := ExistingRegisteredProviderFiles(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return PruneRegisteredApplicationTargetsAt(dataDir, "", m, desired)
+}
+
+func PruneRegisteredApplicationTargetsAt(dataDir, namespace string, m application.Manifest, desired map[string]struct{}) error {
+	files, found, err := ExistingRegisteredProviderFilesAt(dataDir, namespace, m)
 	if !found || errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -709,7 +725,15 @@ func ExistingProviderFilesAt(dataDir, namespace string, m application.Manifest) 
 }
 
 func ExistingRegisteredProviderFiles(m application.Manifest) (ProviderFiles, bool, error) {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, false, err
+	}
+	return ExistingRegisteredProviderFilesAt(dataDir, "", m)
+}
+
+func ExistingRegisteredProviderFilesAt(dataDir, namespace string, m application.Manifest) (ProviderFiles, bool, error) {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil || !found {
 		return ProviderFiles{}, found, err
 	}
@@ -728,14 +752,22 @@ func existingProviderFilesForPlacement(placement Placement) (ProviderFiles, erro
 }
 
 func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
-	providerPlacement, found, err := application.RegisteredProviderPlacement(m, capability.ProviderPrometheus)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return UnregisterSharedApplicationAt(ctx, runtime, issuer, dataDir, "", m)
+}
+
+func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) error {
+	providerPlacement, found, err := application.RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPrometheus)
 	if err != nil {
 		return err
 	}
 	if !found || providerPlacement.Scope != capability.ScopeShared {
 		return nil
 	}
-	placement, err := placementFromProviderPlacement(m, providerPlacement)
+	placement, err := placementFromProviderPlacementAt(dataDir, namespace, m, providerPlacement)
 	if err != nil {
 		return err
 	}
@@ -809,7 +841,15 @@ func UnregisterSharedApplication(ctx context.Context, runtime Runtime, issuer se
 }
 
 func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return StopProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func StopProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
@@ -827,7 +867,15 @@ func StopProvider(ctx context.Context, runtime Runtime, m application.Manifest) 
 }
 
 func DestroyProvider(ctx context.Context, runtime Runtime, m application.Manifest) error {
-	placement, found, err := RegisteredPlacementFor(m)
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroyProviderAt(ctx, runtime, dataDir, "", m)
+}
+
+func DestroyProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string, m application.Manifest) error {
+	placement, found, err := RegisteredPlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return err
 	}
