@@ -543,7 +543,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err != nil {
 		return err
 	} else {
 		for _, instance := range instances {
@@ -555,16 +555,16 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 			fmt.Fprintf(out, "[OK] metrics            %d shared Prometheus provider(s) stopped\n", len(instances))
 		}
 	}
-	if files, err := telemetry.ExistingProviderFiles(); err == nil {
-		if err := compose.StopProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared telemetry provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector stopped")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
-		if err := compose.StopProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.StopProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared object-storage provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider stopped")
@@ -583,29 +583,29 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 	if err != nil {
 		return err
 	}
-	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
-		if err := compose.ConfigProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared object-storage provider: %w", err)
 		}
-		if err := compose.UpProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared object-storage provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] object-storage     shared SeaweedFS provider resumed")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if files, err := telemetry.ExistingProviderFiles(); err == nil {
-		if err := compose.ConfigProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+	if files, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
+		if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared telemetry provider: %w", err)
 		}
-		if err := compose.UpProject(ctx, telemetry.ProviderProject, files.Compose, files.Env); err != nil {
+		if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("start shared telemetry provider: %w", err)
 		}
 		fmt.Fprintln(out, "[OK] telemetry          shared OpenTelemetry Collector resumed")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err != nil {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err != nil {
 		return err
 	} else {
 		for _, instance := range instances {
@@ -709,13 +709,13 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	}
 	fmt.Fprintln(out, "BaseHarbor target destroy plan")
 	fmt.Fprintf(out, "  control plane: project %s (containers, network and BaseHarbor-owned volumes)\n", files.Project)
-	if _, err := objectstorage.ExistingProviderFiles(); err == nil {
+	if _, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
 		fmt.Fprintln(out, "  object storage: shared SeaweedFS provider (container, network and BaseHarbor-owned volume)")
 	}
-	if _, err := telemetry.ExistingProviderFiles(); err == nil {
+	if _, err := telemetry.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
 		fmt.Fprintln(out, "  telemetry: shared OpenTelemetry Collector provider (container and network)")
 	}
-	if instances, err := metricsprovider.ExistingSharedProviderInstances(); err == nil && len(instances) > 0 {
+	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err == nil && len(instances) > 0 {
 		fmt.Fprintf(out, "  metrics: %d shared Prometheus provider instance(s) across default/sharing boundaries\n", len(instances))
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
@@ -754,16 +754,16 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	if err := runtimeexecutor.DestroyShared(ctx, compose, dataDir); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
-	if err := objectstorage.DestroySharedProvider(ctx, compose); err != nil {
+	if err := objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared object-storage provider: %w", err)
 	}
-	if err := telemetry.DestroySharedProvider(ctx, compose); err != nil {
+	if err := telemetry.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared telemetry provider: %w", err)
 	}
-	if err := tracesprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+	if err := tracesprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared traces providers: %w", err)
 	}
-	if err := metricsprovider.DestroyAllSharedProviders(ctx, compose); err != nil {
+	if err := metricsprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared metrics providers: %w", err)
 	}
 	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
