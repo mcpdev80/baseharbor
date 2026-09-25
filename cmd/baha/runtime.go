@@ -510,7 +510,15 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 }
 
 func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
-	rules, err := application.LoadConnectivityRules()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -520,17 +528,13 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 			return err
 		}
 		for _, rule := range rules {
-			if err := suspendConnectivityRule(ctx, compose, rule, containers); err != nil {
+			if err := suspendConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, containers); err != nil {
 				return err
 			}
 		}
 		fmt.Fprintf(out, "[OK] connectivity       suspended %d platform connection(s); policy preserved\n", len(rules))
 	}
 
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
 	if files, err := runtimeexecutor.ExistingFiles(dataDir); err == nil {
 		if err := compose.StopProject(ctx, runtimeexecutor.ProjectName, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("stop shared runtime provider executor: %w", err)
@@ -571,6 +575,14 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 }
 
 func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
 	if files, err := objectstorage.ExistingProviderFiles(); err == nil {
 		if err := compose.ConfigProject(ctx, objectstorage.ProviderProject, files.Compose, files.Env); err != nil {
 			return fmt.Errorf("validate shared object-storage provider: %w", err)
@@ -632,7 +644,15 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 }
 
 func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhruntime.Compose) error {
-	rules, err := application.LoadConnectivityRules()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
 	if err != nil {
 		return err
 	}
@@ -653,7 +673,7 @@ func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhrunt
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRule(ctx, compose, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
@@ -726,7 +746,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 	} else if removed > 0 {
 		fmt.Fprintf(out, "[OK] host trust         removed %d BaseHarbor-owned CA anchor(s)\n", removed)
 	}
-	if relays, err := connectivityrelay.ExistingInstances(); err != nil {
+	if relays, err := connectivityrelay.ExistingInstancesAt(dataDir, target.Name); err != nil {
 		return fmt.Errorf("inspect connectivity relay state: %w", err)
 	} else {
 		for _, relay := range relays {
