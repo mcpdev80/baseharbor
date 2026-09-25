@@ -10,9 +10,9 @@ baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
 baha openbao status
 ```
 
-Bootstrap initializes and unseals OpenBao, enables the `baseharbor/` KV v2 mount and AppRole auth, creates the restricted BaseHarbor manager identity, verifies it, and revokes the initial root token. The recovery file is owner-only, must live outside `.baseharbor`, and is never overwritten or printed.
+Bootstrap initializes and unseals OpenBao, enables the `baseharbor/` KV v2 mount and AppRole auth, creates the restricted BaseHarbor manager identity, verifies it, and revokes the initial root token. The recovery file is owner-only, must live outside BaseHarbor-managed state, and is never overwritten or printed.
 
-The persistent manager bootstrap state is owner-only under `.baseharbor/runtime/` and contains no root token or unseal key.
+The persistent manager bootstrap state is owner-only below the effective Target's `$XDG_DATA_HOME/baseharbor/targets/<target>/runtime/` directory (or the corresponding `~/.local/share` fallback) and contains no root token or unseal key.
 
 ### Managed provider runtime hardening
 
