@@ -73,7 +73,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				return errors.New("application down preflight failed")
 			}
 
-			if err := suspendConnectivityForManifest(ctx, compose, m); err != nil {
+			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
 			}
 			if len(m.Exposures) > 0 {
@@ -182,7 +182,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
-			return application.CheckApplicationConnectivityReleased(m)
+			return application.CheckApplicationConnectivityReleasedAt(resolved.TargetStateRoot, m)
 		}},
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
