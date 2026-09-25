@@ -210,7 +210,7 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	if err := runtime.ConfigProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); err != nil {
 		return fmt.Errorf("validate application-provider log collection: %w", err)
 	}
-	if found && runtime.Engine() == "docker" {
+	if found {
 		if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, project, files.Dir, environment, nil, composeFiles...); err != nil {
 			return fmt.Errorf("reconcile application-provider log collection: %w", err)
 		}
@@ -247,7 +247,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			if err := runtime.ConfigProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("validate runtime broker log collection: %w", err)
 			}
-			if found && runtime.Engine() == "docker" {
+			if found {
 				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, nil, nil, composeFiles...); err != nil {
 					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 				}
@@ -278,7 +278,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 		if err := runtime.ConfigProjectFiles(ctx, executorFiles.Project, executorFiles.Dir, composeFiles...); err != nil {
 			return fmt.Errorf("validate runtime executor log collection: %w", err)
 		}
-		if found && runtime.Engine() == "docker" {
+		if found {
 			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 			}
