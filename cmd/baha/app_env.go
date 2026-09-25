@@ -30,7 +30,7 @@ func appEnvCommand(store application.Store) *cli.Command {
 			if name != "" {
 				appArgs = []string{name}
 			}
-			resolved, err := resolveApplication(store, appArgs, "env")
+			resolved, err := resolveApplication(ctx, store, appArgs, "env")
 			if err != nil {
 				return err
 			}
