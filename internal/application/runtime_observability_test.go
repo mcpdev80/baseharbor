@@ -1,7 +1,6 @@
 package application
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
