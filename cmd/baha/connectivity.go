@@ -220,7 +220,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if err != nil {
 			return err
 		}
-		if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
+		if err := convergeConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, sourceContainers, targetNetwork); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
@@ -245,7 +245,7 @@ func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.Compo
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
+		if err := suspendConnectivityRuleAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, rule, containers); err != nil {
 			return err
 		}
 	}
