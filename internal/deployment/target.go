@@ -196,6 +196,27 @@ func (c Config) Validate() error {
 			return fmt.Errorf("default target %q is not configured", c.DefaultTarget)
 		}
 	}
+	if value := strings.TrimSpace(c.Prompt.Preset); value != "" {
+		switch value {
+		case "minimal", "compact", "accessible", "detailed", "none":
+		default:
+			return fmt.Errorf("unsupported prompt preset %q", value)
+		}
+	}
+	if value := strings.TrimSpace(c.Prompt.Position); value != "" {
+		switch value {
+		case "before-path", "after-path", "right":
+		default:
+			return fmt.Errorf("unsupported prompt position %q", value)
+		}
+	}
+	if value := strings.TrimSpace(c.Prompt.Environment); value != "" {
+		switch value {
+		case "never", "critical-only", "always":
+		default:
+			return fmt.Errorf("unsupported prompt environment mode %q", value)
+		}
+	}
 	return nil
 }
 
