@@ -133,6 +133,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		name string
 		args map[string]any
 	}{
+		{name: "baseharbor.target", args: map[string]any{}},
 		{name: "baseharbor.inspect", args: map[string]any{"path": root}},
 		{name: "baseharbor.plan", args: map[string]any{"name": manifest.Name}},
 		{name: "baseharbor.status", args: map[string]any{"name": manifest.Name}},
