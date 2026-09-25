@@ -35,7 +35,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	defer cancelStatus()
 	ctx = statusCtx
 
-	resolved, err := resolveApplication(store, args, "status")
+	resolved, err := resolveApplication(ctx, store, args, "status")
 	if err != nil {
 		return application.StatusResult{}, err
 	}
