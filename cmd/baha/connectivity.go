@@ -211,7 +211,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 		if !connectivityEndpointMatchesManifest(rule.Source, m) && !connectivityEndpointMatchesManifest(rule.Target, m) {
 			continue
 		}
-		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, namespace)
+		sourceContainers := containersForResolvedEndpoint(rule.Source, containers, resolved.Target.Name)
 		targetContainers := containersForResolvedEndpoint(rule.Target, containers, resolved.Target.Name)
 		if len(sourceContainers) == 0 || len(targetContainers) == 0 {
 			continue
@@ -346,7 +346,7 @@ func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, d
 		return err
 	}
 	network := application.ConnectivityNetworkName(rule)
-	for _, container := range containersForResolvedEndpoint(rule.Source, containers, resolved.Target.Name) {
+	for _, container := range containersForResolvedEndpoint(rule.Source, containers, namespace) {
 		if err := compose.DisconnectManagedNetwork(ctx, network, container); err != nil {
 			return fmt.Errorf("detach connectivity source %s: %w", container, err)
 		}
