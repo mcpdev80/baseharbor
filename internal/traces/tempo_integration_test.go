@@ -1,13 +1,9 @@
 package traces_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
