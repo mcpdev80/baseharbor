@@ -8,7 +8,7 @@ import (
 
 func TestResolveTargetPrecedence(t *testing.T) {
 	cfg := Config{
-		Version: ConfigVersion,
+		Version:       ConfigVersion,
 		DefaultTarget: "default",
 		Access: map[string]AccessDefinition{
 			"a": {Provider: "docker", Reference: "local"},
