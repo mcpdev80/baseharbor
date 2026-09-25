@@ -15,24 +15,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective Target identity across human and machine interfaces.
 - Complete agent-native lifecycle operations over the shared machine/MCP core, including apply, update, repair, backup, restore and destroy with typed safety metadata and approval requirements.
 - Generic provider/runtime observability declarations and registration for metrics, logs and traces, including Runtime Broker and Runtime Executor observability.
+- Standards-first service-contract schemas based on JSON Schema 2020-12 for SQL, cache, object storage, secrets, messaging, vector, observability and identity service families.
+- Provider descriptor/catalog metadata separates service contract, provider protocol, provider version, product/engine version, OCI artifact identity, digest and provenance.
+- Repository inspection now classifies supported backend services as replaceable infrastructure, keeps application workloads separate, and carries strong evidence into guided capability adoption.
+- Guided repository adoption now supports interactive capability selection, per-secret accept/skip/rename/required/generate/prompt/later choices and secure `baha app secret set KEY` prompting.
+- Deterministic workload selection and runtime-resource detection cover ambiguous multi-service repositories and Runtime API S3 creation without silently inventing application intent.
 - Explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
 
 ### Changed
 
+- Portable application service intent is provider-neutral: canonical manifest/CLI service families are `sql` and `cache` instead of product-named PostgreSQL/Redis intent; provider-specific implementation names remain implementation detail.
+- Service connection outputs align with Service Binding Specification 1.1 well-known names while `secure-binding/v1` remains a separate BaseHarbor security/lifecycle extension.
+- Runtime Broker readiness now verifies build compatibility and Runtime Docs HTTPS readiness; runtime status exposes runtime artifact identity.
+- Repository `build:` workloads persist verified build fingerprints and rebuild only affected services after relevant source changes; stale source/build state is not reported READY.
+- Repository detection normalizes product evidence into generic service families, keeps suggested capabilities opt-in and makes `--quick` fail closed on ambiguous Compose roles, metrics targets, OTLP signals and runtime-permission workload scope.
+- Guided init now renders a human-readable adoption summary by default, keeps generated YAML behind `--verbose`, uses `baha up` as the normal next step and preflights fixed workload host ports before first start.
+- Missing required application secrets can be resolved interactively during apply without restarting the lifecycle; non-interactive paths remain deterministic and return actionable remediation.
+- Runtime failures use stable typed error/cause/resource/remediation metadata shared by human and machine output while normal output suppresses raw Docker/Podman/provider noise unless `--verbose` is requested.
 - Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
 - `baha app list` reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
 - Managed service access now follows the provider-neutral TLS/PKI and environment-aware access baseline, including external/BYOC PKI and protected trust/auth material.
 - Observability collection uses the shared source/ownership/placement model instead of product-specific registration branches; runtime component metrics/logs/traces participate in the same semantic registry.
-- Podman runtime execution uses native Quadlets instead of the external `podman-compose` provider. Docker continues to use Docker Compose.
+- Podman runtime execution uses native rootless Quadlets managed through `systemd --user` instead of the external `podman-compose` provider; Docker continues to use Docker Compose.
+- Podman lifecycle/container-state inspection and runner cleanup use batched runtime operations instead of N+1 inspection paths where ownership/readiness semantics allow it.
+- Managed Podman network/volume resources are reconciled against physical runtime state before container start so stale active Quadlet units cannot hide missing resources.
 - Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
 - Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
+- Pre-Release validation pins one exact external demo revision, proves the complete guided/deterministic acceptance suite on both Docker and Podman and hands immutable candidate/demo evidence into publish instead of rerunning the same expensive acceptance matrix.
 
 ### Security
 
 - TLS remains mandatory for managed network service access, with environment-aware developer/test/production access semantics and fail-closed ownership/authentication behavior.
+- Standards-first repository adoption treats weak or ambiguous evidence as non-authoritative; infrastructure-shaped unknown Compose services and unresolved workload scope fail closed instead of being silently adopted.
+- Generated/application secrets remain distinct from provider/runtime credentials; secure terminal prompting hides secret input and optional application secrets do not accidentally become startup requirements.
 - MCP mutation paths reuse the same policy, ownership, preflight, reconciliation and verification semantics as CLI/JSON; no generic shell, Docker, Compose or Podman execution primitive is exposed.
 - Observability registration preserves application/environment/sharing-boundary isolation and secret-safe metadata.
 - Full installation cleanup never broadens ownership assumptions to foreign resources and preserves application source repositories and external application-owned data.
+
+### Compatibility
+
+- Manifest v1 remains the compatibility contract, but product-named portable service intent has converged on canonical provider-neutral `sql` and `cache` service families; legacy product-named manifest/CLI aliases removed during the v0.4.15 development line are no longer the canonical interface.
+- Existing v0.4 capability IDs remain valid compatibility surfaces while repository detection and provider metadata map them to broader standards-first service families.
+- Docker remains Docker Compose based; supported Podman execution is now native Quadlet/systemd-user based.
+- Kubernetes/OpenShift Target definitions remain contract-only and fail closed at execution until those runtime providers are implemented.
 
 ## [0.4.14]
 
