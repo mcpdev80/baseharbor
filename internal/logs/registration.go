@@ -37,6 +37,10 @@ func providerLogSources(p Placement, registrations []Registration) ([]observabil
 }
 
 func reconcileRegistration(path string, m application.Manifest, present bool) ([]Registration, error) {
+	return reconcileRegistrationAt(path, m, "", present)
+}
+
+func reconcileRegistrationAt(path string, m application.Manifest, namespace string, present bool) ([]Registration, error) {
 	registrations, err := readRegistrations(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -52,7 +56,7 @@ func reconcileRegistration(path string, m application.Manifest, present bool) ([
 		result = append(result, registration)
 	}
 	if present {
-		r := Registration{Application: m.Name, Environment: m.Environment}
+		r := Registration{Application: m.Name, Environment: m.Environment, Namespace: strings.TrimSpace(namespace)}
 		if existing != nil {
 			r.SyslogPort = existing.SyslogPort
 			r.ProviderSyslogPort = existing.ProviderSyslogPort
