@@ -70,7 +70,7 @@ func appCommand(store application.Store) *cli.Command {
 				}
 				var (
 					items []deployment.DeploymentRecord
-					err error
+					err   error
 				)
 				if allTargets {
 					items, err = deployment.ListAllDeployments()
