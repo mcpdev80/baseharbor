@@ -89,6 +89,9 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	}
 
 	results := append([]fullDestroyResult{}, discoveryResults...)
+	for _, target := range targets {
+		releaseFullDestroyConnectivity(parent, target, &results)
+	}
 	if deploymentErr != nil {
 		results = append(results, fullDestroyResult{Status: "FAILED", Resource: "deployment-registry", Detail: deploymentErr.Error()})
 	} else {
@@ -206,6 +209,54 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 		targets = append(targets, byName[name])
 	}
 	return targets, results
+}
+
+func releaseFullDestroyConnectivity(parent context.Context, target deployment.ResolvedTarget, results *[]fullDestroyResult) {
+	dataDir, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity", Detail: err.Error()})
+		return
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
+	if errors.Is(err, os.ErrNotExist) || len(rules) == 0 {
+		return
+	}
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-policy", Detail: err.Error()})
+		return
+	}
+	if strings.TrimSpace(target.RuntimeProvider) == "" {
+		*results = append(*results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "connectivity-runtime", Detail: "runtime provider is unknown; refusing to guess external resources"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, time.Minute)
+	defer cancel()
+	compose, err := detectComposeForTarget(ctx, target)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
+		return
+	}
+	containers, err := compose.ListComposeContainers(ctx)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
+		return
+	}
+	for _, rule := range rules {
+		resource := "connectivity " + application.ConnectivityRuleID(rule)
+		if err := suspendConnectivityRuleAt(ctx, compose, dataDir, target.Name, rule, containers); err != nil {
+			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: resource, Detail: err.Error()})
+			continue
+		}
+		if err := application.RemoveConnectivityRuleAt(dataDir, rule); err != nil {
+			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: resource + " policy", Detail: err.Error()})
+			continue
+		}
+		if err := connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule)); err != nil {
+			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: resource + " state", Detail: err.Error()})
+			continue
+		}
+		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: resource})
+	}
 }
 
 func bestEffortApplicationCleanup(parent context.Context, record deployment.DeploymentRecord, results *[]fullDestroyResult) {
