@@ -51,7 +51,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		if name != "" {
 			appArgs = []string{name}
 		}
-		resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
+		resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
 		if err != nil {
 			return err
 		}
