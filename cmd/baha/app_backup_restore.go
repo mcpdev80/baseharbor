@@ -57,7 +57,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	if name != "" {
 		appArgs = []string{name}
 	}
-	resolved, err := resolveApplicationEnvironment(store, appArgs, "backup", environment)
+	resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
 	if err != nil {
 		return err
 	}
