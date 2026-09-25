@@ -208,10 +208,18 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		name = strings.TrimSpace(c.DefaultTarget)
 	}
 	if name == "" {
-		return ResolvedTarget{}, errors.New("target selection required; use --target, BASEHARBOR_TARGET, or configure default-target")
+		name = "local"
 	}
 	target, ok := c.Targets[name]
 	if !ok {
+		if name == "local" {
+			return ResolvedTarget{
+				Name:            "local",
+				RuntimeProvider: "compose",
+				AccessReference: "local",
+				Scope:           "default",
+			}, nil
+		}
 		return ResolvedTarget{}, fmt.Errorf("target %q is not configured", name)
 	}
 	return ResolvedTarget{
