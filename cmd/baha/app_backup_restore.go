@@ -223,7 +223,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		}
 	}
 
-	resolved, err := resolveRestoreTarget(store, m)
+	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
 		return err
 	}
@@ -361,8 +361,33 @@ func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platform
 	return result
 }
 
-func resolveRestoreTarget(store application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
-	resolved := resolvedApplication{Manifest: backupManifest, Store: store}
+func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	id := deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: backupManifest.Name,
+		Environment: backupManifest.Environment,
+	}
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	resolved := resolvedApplication{
+		Target:              target,
+		DeploymentIdentity:  id,
+		Manifest:            backupManifest,
+		TargetStateRoot:     targetRoot,
+		DeploymentStateRoot: deploymentRoot,
+		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return resolved, err
@@ -381,11 +406,9 @@ func resolveRestoreTarget(store application.Store, backupManifest application.Ma
 	if selection.Manifest.YAML() != backupManifest.YAML() {
 		return resolved, errors.New("selected repository environment manifest does not match backup desired state")
 	}
-	stateRoot := application.RepositoryEnvironmentStateRoot(selection)
-	resolved.Store = application.Store{Root: filepath.Join(stateRoot, "apps")}
 	resolved.ManifestPath = selection.ManifestPath
 	resolved.RepositoryRoot = selection.RepositoryRoot
-	resolved.StateRoot = stateRoot
+	resolved.SourceAvailable = true
 	resolved.FromRepository = true
 	return resolved, nil
 }
