@@ -141,7 +141,11 @@ func openBaoUnsealCommand() *cli.Command {
 }
 
 func openBaoRuntime(ctx context.Context) (bhruntime.Compose, bhruntime.Files, error) {
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return bhruntime.Compose{}, bhruntime.Files{}, err
+	}
+	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
 		return bhruntime.Compose{}, bhruntime.Files{}, err
 	}
