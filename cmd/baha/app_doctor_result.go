@@ -123,7 +123,7 @@ func collectApplicationDoctor(ctx context.Context, store application.Store, args
 		}},
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			compose, err = bhruntime.DetectCompose(ctx)
+			compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
