@@ -14,6 +14,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
+type machineTargetInput struct {
+	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+}
+
 type machineInspectInput struct {
 	Path string `json:"path,omitempty" jsonschema:"local repository path or Git URL; defaults to the current directory"`
 }
@@ -117,6 +121,15 @@ func newMCPServer(store application.Store) *mcp.Server {
 	}, &mcp.ServerOptions{
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
 		Capabilities:              &mcp.ServerCapabilities{},
+	})
+
+	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
+		result, err := collectTargetInspection(ctx)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
 	})
 
 	mcp.AddTool(server, machineMCPTool("inspect", "Read-only repository inspection. Returns deterministic, secret-safe evidence and capability findings without changing repository or runtime state.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineInspectInput) (*mcp.CallToolResult, any, error) {
