@@ -56,7 +56,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
-					compose, err = bhruntime.DetectCompose(ctx)
+					compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 					return err
 				}},
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
@@ -194,7 +194,7 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			compose, err = bhruntime.DetectCompose(ctx)
+			compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}})
 	}
