@@ -295,6 +295,15 @@ func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDest
 				}
 				id := deployment.DeploymentIdentity{Target: targetEntry.Name(), Application: appEntry.Name(), Environment: envEntry.Name()}
 				record, loadErr := deployment.LoadDeploymentRecord(id)
+				if errors.Is(loadErr, os.ErrNotExist) {
+					results = append(results, fullDestroyResult{
+						Status:   "SKIPPED",
+						Target:   targetEntry.Name(),
+						Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(),
+						Detail:   "incomplete deployment state has no deployment.json; refusing to guess runtime ownership, local BaseHarbor state will still be removed",
+					})
+					continue
+				}
 				if loadErr != nil {
 					results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(), Detail: loadErr.Error()})
 					continue
