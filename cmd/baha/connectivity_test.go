@@ -64,7 +64,6 @@ func TestConnectivityCommandsAreDiscoverable(t *testing.T) {
 	}
 }
 
-
 func TestConnectivityProjectEnvironmentRecognizesCurrentApplicationProject(t *testing.T) {
 	tests := []struct {
 		name        string
