@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -27,7 +28,7 @@ func TestRecoveryMetadataRoundTripAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != metadata {
+	if !reflect.DeepEqual(got, metadata) {
 		t.Fatalf("recovery metadata=%+v want %+v", got, metadata)
 	}
 	info, err := os.Stat(filepath.Join(store.Root, "mailflow", lastRecoveryMetadataName))

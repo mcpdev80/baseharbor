@@ -164,7 +164,10 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if err := execution.cleanupProviderState(ctx); err != nil {
 		return err
 	}
-	return execution.removeApplicationState()
+	if err := execution.removeApplicationState(); err != nil {
+		return err
+	}
+	return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "ownership verified", "BaseHarbor-owned application runtime resources and state removed")
 }
 
 func parseDestroyArgs(args []string) (string, bool, bool, error) {

@@ -40,6 +40,20 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 		if err != nil {
 			return fmt.Errorf("prepare recovery metadata: validate application metadata: %w", err)
 		}
+		recoveryManifest, found, err := applicationbackup.RecoveryManifestFromPayload(payload)
+		if err != nil {
+			return fmt.Errorf("prepare recovery metadata: validate recovery manifest: %w", err)
+		}
+		if !found {
+			legacySelection, discoveryErr := applicationbackup.DiscoverManifestRecovery(m)
+			if discoveryErr != nil {
+				return fmt.Errorf("prepare recovery metadata: derive legacy recovery manifest: %w", discoveryErr)
+			}
+			recoveryManifest = applicationbackup.RecoveryManifest{
+				Version:      applicationbackup.RecoveryManifestVersion,
+				Contributors: legacySelection.Contributors,
+			}
+		}
 		if name != "" && name != m.Name {
 			return errors.New("restore target NAME does not match backup application identity")
 		}
@@ -63,9 +77,13 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 			RestoredAt:      time.Now().UTC(),
 			BackupCreatedAt: payload.Manifest.CreatedAt,
 			ArchivePath:     absolutePath,
+			Recovery:        recoveryContributorMetadata(recoveryManifest, true),
 		}
 		if err := resolved.Store.RecordLastRecovery(metadata); err != nil {
 			return fmt.Errorf("application was restored and verified but recording recovery metadata failed: %w", err)
+		}
+		if err := recordApplicationAudit(ctx, resolved, "restore", "success", "status+doctor verified", "recovery unit restored and application verification reached READY"); err != nil {
+			return err
 		}
 		fmt.Fprintln(out, "Status: READY")
 		return nil

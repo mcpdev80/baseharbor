@@ -125,6 +125,7 @@ func Operations() []Operation {
 		{ID: "status", MCPTool: "baseharbor.status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "doctor", MCPTool: "baseharbor.doctor", Description: "Run diagnostic verification without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "observe", MCPTool: "baseharbor.observe", Description: "Return secret-safe application diagnostics and observability state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "evidence", MCPTool: "baseharbor.evidence", Description: "Export deterministic secret-safe lifecycle, policy, verification and recovery evidence.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "update", MCPTool: "baseharbor.update", Description: "Safely update repository source and reconverge the application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "repair", MCPTool: "baseharbor.repair", Description: "Repair safely reconcilable BaseHarbor-owned application drift and verify the result.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "backup", MCPTool: "baseharbor.backup", Description: "Create and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, ContractVersion: ContractVersion},

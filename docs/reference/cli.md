@@ -63,6 +63,7 @@ baha
 │   ├── env
 │   ├── status
 │   ├── doctor
+│   ├── evidence
 │   ├── backup
 │   ├── restore
 │   ├── update
@@ -92,6 +93,16 @@ baha
 │   └── unseal
 └── version
 ```
+
+
+
+## Evidence export
+
+`baha app evidence [NAME] -o json` exports one deterministic, secret-safe v1 evidence bundle derived from the same plan, policy, status, doctor, recovery and lifecycle models used elsewhere by BaseHarbor.
+
+The bundle separates desired state, enforced policy, observed state, verified results, explicit exceptions and unsupported controls. Recovery evidence records the selected state classes, logical resources, ownership/support and per-contributor verification without exposing backup passwords, secret values, tokens, access keys, private keys or credential-bearing URLs.
+
+Human output is available without `-o json`. JSON stdout is the generic export boundary for external evidence tooling; BaseHarbor does not provision SIEM or compliance products.
 
 ## Shell completion
 

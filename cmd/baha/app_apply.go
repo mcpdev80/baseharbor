@@ -49,7 +49,10 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
 		return err
 	}
-	return execution.recordVerifiedDeployment(ctx)
+	if err := execution.recordVerifiedDeployment(ctx); err != nil {
+		return err
+	}
+	return recordApplicationAudit(ctx, execution.resolved, "apply", "success", "verified", "desired application state converged and verified")
 }
 
 type applicationSecretSetter interface {
