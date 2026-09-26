@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
@@ -128,7 +131,51 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	}()
 
 	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
-		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+		diag := ""
+		if compose.Engine() == "docker" {
+			resolved, resolveErr := resolveApplication(ctx, application.Store{}, nil, "status")
+			if resolveErr != nil {
+				diag = "resolve diagnostic state: " + resolveErr.Error()
+			} else {
+				registration, registrationErr := logsprovider.ApplicationRegistrationAt(resolved.TargetStateRoot, resolved.Target.Name, m)
+				if registrationErr != nil {
+					diag = "load log registration: " + registrationErr.Error()
+				} else {
+					conn, dialErr := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", registration.ProviderSyslogPort))
+					if dialErr != nil {
+						diag = "dial provider syslog: " + dialErr.Error()
+					} else {
+						_, writeErr := fmt.Fprintf(conn, "<14>1 %s baseharbor runtime-broker/baseharbor-internal-broker - - - synthetic-broker-provider-log\\n", time.Now().UTC().Format(time.RFC3339))
+						_ = conn.Close()
+						if writeErr != nil {
+							diag = "write provider syslog: " + writeErr.Error()
+						} else {
+							placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+							if placementErr != nil {
+								diag = "resolve Loki placement: " + placementErr.Error()
+							} else {
+								sources, listErr := observability.List(observability.SignalLogs, placement, []string{m.Name}, true, true)
+								if listErr != nil {
+									diag = "list provider log sources: " + listErr.Error()
+								} else {
+									var brokerSources []observability.SignalSource
+									for _, source := range sources {
+										if source.Provider == capability.ProviderRuntimeBroker && source.Class == observability.SourceApplicationProvider {
+											brokerSources = append(brokerSources, source)
+										}
+									}
+									verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 20*time.Second)
+									verifyErr := logsprovider.VerifyProviderSourcesAt(verifyCtx, m, brokerSources, resolved.TargetStateRoot, resolved.Target.Name)
+									verifyCancel()
+									diag = fmt.Sprintf("synthetic provider syslog port=%d brokerSources=%d verify=%v", registration.ProviderSyslogPort, len(brokerSources), verifyErr)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		t.Fatalf("full-stack observability apply failed: %v\nDIAGNOSTIC: %s\n%s", err, diag, out.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("apply output missing final verified-ready state:\n%s", out.String())
