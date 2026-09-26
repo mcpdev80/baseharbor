@@ -411,7 +411,7 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 	if len(prepared.providerSources) > 0 {
 		if prepared.runtime.Engine() == "docker" && application.RequiresRuntimeBroker(prepared.manifest) {
 			brokerProject := runtimebroker.ProjectNameForRuntime(prepared.manifest, prepared.runtimeFiles)
-			driver, tag, err := prepared.runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+			driver, tag, address, err := prepared.runtime.ContainerLogConfigDetailsProjectService(ctx, brokerProject, runtimebroker.ServiceName)
 			if err != nil {
 				return fmt.Errorf("verify final runtime broker log configuration: %w", err)
 			}
@@ -421,6 +421,14 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 			expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
 			if tag != expectedTag {
 				return fmt.Errorf("verify final runtime broker syslog tag: got %q, want %q", tag, expectedTag)
+			}
+			registration, err := logsprovider.ApplicationRegistrationAt(prepared.dataDir, prepared.namespace, prepared.manifest)
+			if err != nil {
+				return fmt.Errorf("resolve final runtime broker log registration: %w", err)
+			}
+			expectedAddress := fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)
+			if address != expectedAddress {
+				return fmt.Errorf("verify final runtime broker syslog address: got %q, want %q", address, expectedAddress)
 			}
 		}
 		for attempt := 0; attempt < 3; attempt++ {
