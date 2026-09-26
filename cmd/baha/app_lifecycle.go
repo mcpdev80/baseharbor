@@ -31,7 +31,8 @@ func appDownCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
+			runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
+			resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
 			term.Info("target", resolved.Target.Name)
@@ -60,7 +61,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
+					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, resourceProject))
 					return err
 				}},
 			}
@@ -108,14 +109,14 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
-			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject))
+			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, resourceProject))
 			if err != nil {
 				return fmt.Errorf("verify application down: %w", err)
 			}
 			if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
 				return errors.New("verify application down: container or network still exists")
 			}
-			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, runtimeProject) {
+			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, resourceProject) {
 				if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
 					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
 				}
