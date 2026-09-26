@@ -536,7 +536,6 @@ func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testi
 	}
 }
 
-
 func TestInspectResolvesComposeYAMLMergeKeys(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `x-common: &common
