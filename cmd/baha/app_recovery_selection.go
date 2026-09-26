@@ -95,13 +95,40 @@ type recoveryWorkloadStorage struct {
 	Volume  string
 }
 
+type recoveryComposeMount struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+func (m *recoveryComposeMount) UnmarshalJSON(data []byte) error {
+	var short string
+	if err := json.Unmarshal(data, &short); err == nil {
+		parts := strings.SplitN(strings.TrimSpace(short), ":", 3)
+		switch len(parts) {
+		case 1:
+			m.Target = strings.TrimSpace(parts[0])
+		case 2, 3:
+			m.Source = strings.TrimSpace(parts[0])
+			m.Target = strings.TrimSpace(parts[1])
+		}
+		if m.Target == "" {
+			return fmt.Errorf("Compose volume mount %q has no target", short)
+		}
+		return nil
+	}
+	type alias recoveryComposeMount
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*m = recoveryComposeMount(decoded)
+	return nil
+}
+
 type recoveryComposeModel struct {
 	Services map[string]struct {
-		Volumes []struct {
-			Type   string `json:"type"`
-			Source string `json:"source"`
-			Target string `json:"target"`
-		} `json:"volumes"`
+		Volumes []recoveryComposeMount `json:"volumes"`
 	} `json:"services"`
 	Volumes map[string]struct {
 		Name     string `json:"name"`
@@ -150,7 +177,15 @@ func resolveRecoveryWorkloadStorage(ctx context.Context, compose bhruntime.Compo
 			if source == "" {
 				continue
 			}
-			switch strings.ToLower(strings.TrimSpace(mount.Type)) {
+			mountType := strings.ToLower(strings.TrimSpace(mount.Type))
+			if mountType == "" {
+				if _, declared := model.Volumes[source]; declared {
+					mountType = "volume"
+				} else {
+					mountType = "bind"
+				}
+			}
+			switch mountType {
 			case "bind":
 				key := "bind:" + source
 				if _, ok := seen[key]; ok {
