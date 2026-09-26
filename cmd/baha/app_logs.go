@@ -278,6 +278,18 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 					if tag != expectedTag {
 						return fmt.Errorf("verify runtime broker syslog tag: got %q, want %q", tag, expectedTag)
 					}
+					address, err := runtime.ContainerLogAddressProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+					if err != nil {
+						return fmt.Errorf("verify runtime broker syslog address: %w", err)
+					}
+					registration, err := logsprovider.ApplicationRegistrationAt(dataDir, namespace, m)
+					if err != nil {
+						return fmt.Errorf("resolve runtime broker log registration: %w", err)
+					}
+					expectedAddress := fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)
+					if address != expectedAddress {
+						return fmt.Errorf("verify runtime broker syslog address: got %q, want %q", address, expectedAddress)
+					}
 				}
 			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
