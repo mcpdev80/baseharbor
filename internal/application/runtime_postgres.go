@@ -18,11 +18,11 @@ import (
 var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
 
 type RuntimeFiles struct {
-	Dir            string
-	Compose        string
-	Env            string
-	ApplicationEnv string
-	Bindings       string
+	Dir             string
+	Compose         string
+	Env             string
+	ApplicationEnv  string
+	Bindings        string
 	Project         string
 	ResourceProject string
 	Namespace       string
@@ -60,11 +60,11 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 	dir := filepath.Join(store.Root, m.Name, "runtime")
 	return RuntimeFiles{
-		Dir:            dir,
-		Compose:        filepath.Join(dir, "compose.yaml"),
-		Env:            filepath.Join(dir, "runtime.env"),
-		ApplicationEnv: filepath.Join(dir, "application.env"),
-		Bindings:       filepath.Join(dir, "bindings"),
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "runtime.env"),
+		ApplicationEnv:  filepath.Join(dir, "application.env"),
+		Bindings:        filepath.Join(dir, "bindings"),
 		Project:         RuntimeComposeProjectNameForStore(store, m),
 		ResourceProject: RuntimeProjectNameForStore(store, m),
 		Namespace:       strings.TrimSpace(store.Namespace),
