@@ -200,7 +200,6 @@ func TestWithInMemoryPasswordFileUsesOwnerOnlyNonDiskFile(t *testing.T) {
 	}
 }
 
-
 func TestPromptGuidedRecoverySelectionUsesTypedDefaultsAndChoices(t *testing.T) {
 	selection, err := applicationbackup.NewRecoverySelection([]applicationbackup.RecoveryContributor{
 		{StateClass: applicationbackup.StateApplicationMetadata, Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
