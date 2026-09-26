@@ -515,6 +515,32 @@ func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
 	t.Fatalf("explicit OTLP traces finding missing: %#v", result.Findings)
 }
 
+func TestInspectKeepsUnsupportedMySQLServiceAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    image: example/api
+  mysql:
+    image: mysql:8
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "api" {
+		t.Fatalf("WorkloadServices = %q, want api", got)
+	}
+	if got := strings.Join(result.AmbiguousServices, ","); got != "mysql" {
+		t.Fatalf("AmbiguousServices = %q, want mysql", got)
+	}
+	for _, finding := range result.Findings {
+		if finding.Capability == "database.sql" && finding.Confidence == ConfidenceDetected {
+			t.Fatalf("unsupported MySQL service must not become detected managed SQL: %#v", finding)
+		}
+	}
+}
+
 func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `services:
