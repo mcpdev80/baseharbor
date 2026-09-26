@@ -37,11 +37,13 @@ type machineUpdateInput struct {
 }
 
 type machineBackupInput struct {
-	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
-	Name         string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
-	Environment  string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
-	OutputPath   string `json:"output_path,omitempty" jsonschema:"optional local path for the encrypted BaseHarbor recovery archive"`
-	PasswordFile string `json:"password_file,omitempty" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+	Target       string   `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Name         string   `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment  string   `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	OutputPath   string   `json:"output_path,omitempty" jsonschema:"optional local path for the encrypted BaseHarbor recovery archive"`
+	PasswordFile string   `json:"password_file,omitempty" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+	IncludeState []string `json:"include_state,omitempty" jsonschema:"optional typed recovery state classes to include"`
+	ExcludeState []string `json:"exclude_state,omitempty" jsonschema:"optional typed recovery state classes to exclude from this partial recovery unit"`
 }
 
 type machineRestoreInput struct {

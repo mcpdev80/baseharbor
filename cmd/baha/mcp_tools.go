@@ -212,6 +212,12 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if output := strings.TrimSpace(input.OutputPath); output != "" {
 			args = append(args, "--output", output)
 		}
+		for _, class := range input.IncludeState {
+			args = append(args, "--include-state", class)
+		}
+		for _, class := range input.ExcludeState {
+			args = append(args, "--exclude-state", class)
+		}
 		if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
