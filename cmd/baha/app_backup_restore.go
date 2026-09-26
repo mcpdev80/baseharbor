@@ -161,11 +161,6 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	m := restoreData.manifest
-	postgresBackups := restoreData.postgresBackups
-	secretBackup := restoreData.secretBackup
-	objectBackups := restoreData.objectStorage
-	workloadStorage := restoreData.workloadStorage
-	logsHistory := restoreData.logsHistory
 
 	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
