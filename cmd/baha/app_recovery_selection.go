@@ -45,7 +45,6 @@ func extractRecoverySelectionArgs(args []string) ([]string, recoverySelectionArg
 	return filtered, selection, nil
 }
 
-
 func discoverApplicationRecoverySelection(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (applicationbackup.RecoverySelection, []recoveryWorkloadStorage, error) {
 	selection, err := applicationbackup.DiscoverManifestRecovery(resolved.Manifest)
 	if err != nil {
