@@ -3,6 +3,7 @@ package repositoryinspect
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -13,7 +14,7 @@ type sqlDetector struct{}
 func (sqlDetector) Name() string { return "database.sql" }
 
 func (sqlDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
-	return detectCapability(ctx, snapshot, "database.sql", sqlSignals()), nil
+	return detectCapability(ctx, snapshot, "database.sql", sqlSignals())
 }
 
 type keyValueDetector struct{}
@@ -21,7 +22,7 @@ type keyValueDetector struct{}
 func (keyValueDetector) Name() string { return "cache.key-value" }
 
 func (keyValueDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
-	return detectCapability(ctx, snapshot, "cache.key-value", keyValueSignals()), nil
+	return detectCapability(ctx, snapshot, "cache.key-value", keyValueSignals())
 }
 
 type signalSet struct {
@@ -56,7 +57,7 @@ func keyValueSignals() signalSet {
 	}
 }
 
-func detectCapability(ctx context.Context, snapshot Snapshot, capability string, signals signalSet) []Finding {
+func detectCapability(ctx context.Context, snapshot Snapshot, capability string, signals signalSet) ([]Finding, error) {
 	var detected, suggested, possible []Evidence
 	namedDetected := map[string][]Evidence{}
 	for path, data := range snapshot.Files {
@@ -143,15 +144,15 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		})
 	}
 	if len(findings) > 0 {
-		return findings
+		return findings, nil
 	}
 	if len(suggested) > 0 {
-		return []Finding{{Capability: capability, Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested)}}
+		return []Finding{{Capability: capability, Confidence: ConfidenceSuggested, Evidence: uniqueEvidence(suggested)}}, nil
 	}
 	if len(possible) > 0 {
-		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}
+		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func composeAmbiguousInfrastructureMarker(value string) bool {
