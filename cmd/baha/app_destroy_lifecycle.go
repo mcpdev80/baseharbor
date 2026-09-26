@@ -27,6 +27,7 @@ type applicationDestroyExecution struct {
 	resolved            resolvedApplication
 	manifest            application.Manifest
 	runtimeProject      string
+	resourceProject     string
 	term                *cli.Terminal
 	out                 io.Writer
 	confirmed           bool
@@ -78,7 +79,8 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	return &applicationDestroyExecution{
 		resolved:       resolved,
 		manifest:       m,
-		runtimeProject: application.RuntimeProjectNameForStore(resolved.Store, m),
+		runtimeProject:  application.RuntimeComposeProjectNameForStore(resolved.Store, m),
+		resourceProject: application.RuntimeProjectNameForStore(resolved.Store, m),
 		term:           term,
 		out:            out,
 		confirmed:      confirmed,
@@ -120,7 +122,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if application.HasManagedRuntimeServices(m) {
 		checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
 			var err error
-			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject))
+			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject))
 			return err
 		}})
 	}
@@ -241,12 +243,12 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 	} else if e.partialRuntime && len(e.existing) != 0 {
-		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject)); err != nil {
+		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject)); err != nil {
 			return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
 		}
 	}
 	if application.HasManagedRuntimeServices(m) {
-		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject))
+		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject))
 		if err != nil {
 			return fmt.Errorf("verify application runtime destruction: %w", err)
 		}
