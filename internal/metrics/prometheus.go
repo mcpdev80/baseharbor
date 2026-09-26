@@ -86,10 +86,9 @@ func placementFromProviderPlacementAt(dataDir, namespace string, m application.M
 	}
 	switch providerPlacement.Scope {
 	case capability.ScopeShared:
-		project := ProviderProject
+		project := bhruntime.SharedProjectName(namespace)
 		volume := "baseharbor-prometheus-data"
 		if prefix != "" {
-			project = "baseharbor-metrics-" + strings.TrimSuffix(prefix, "-")
 			volume = "baseharbor-prometheus-data-" + strings.TrimSuffix(prefix, "-")
 		}
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
