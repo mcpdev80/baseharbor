@@ -12,8 +12,8 @@ func TestAuditStoreOwnerOnlyAndScoped(t *testing.T) {
 	first := AuditEvent{
 		SchemaVersion: SchemaVersion, ID: "one",
 		Timestamp: time.Date(2026, 9, 26, 20, 0, 0, 0, time.UTC),
-		Actor: Actor{Interface: "cli", Identity: "local-operator"},
-		Target: "local", Application: "demo", Environment: "dev",
+		Actor:     Actor{Interface: "cli", Identity: "local-operator"},
+		Target:    "local", Application: "demo", Environment: "dev",
 		Operation: "apply", Outcome: "success",
 	}
 	second := first
