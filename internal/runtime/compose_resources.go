@@ -8,13 +8,37 @@ import (
 	"strings"
 )
 
-func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ string) ([]string, error) {
+func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
 	if c.command == "" {
 		return nil, ErrRuntimeNotFound
 	}
 	project = strings.TrimSpace(project)
 	if project == "" {
 		return nil, errors.New("compose project name is required")
+	}
+
+	var moduleServices map[string]struct{}
+	if consolidatedProject(project) && strings.TrimSpace(composeFile) != "" {
+		moduleServices = map[string]struct{}{}
+		if c.quadlet {
+			q, err := quadletRenderProject(composeFile, envFile, project)
+			if err != nil {
+				return nil, err
+			}
+			for service := range q.ServiceUnits {
+				moduleServices[service] = struct{}{}
+			}
+		} else {
+			out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
+			if err != nil {
+				return nil, err
+			}
+			for _, line := range strings.Split(out, "\n") {
+				if service := strings.TrimSpace(line); service != "" {
+					moduleServices[service] = struct{}{}
+				}
+			}
+		}
 	}
 
 	containers, err := c.ListComposeContainers(ctx)
@@ -27,6 +51,11 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ strin
 	for _, container := range containers {
 		if container.Project != project || !container.Running {
 			continue
+		}
+		if moduleServices != nil {
+			if _, ok := moduleServices[container.Service]; !ok {
+				continue
+			}
 		}
 		if _, ok := seen[container.Service]; ok {
 			continue
