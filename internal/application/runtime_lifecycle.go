@@ -69,7 +69,11 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	if err != nil {
 		return fmt.Errorf("read application compose definition: %w", err)
 	}
-	expected, err := RuntimeComposeYAML(m)
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = RuntimeProjectName(m)
+	}
+	expected, err := RuntimeComposeYAMLForProject(m, resourceProject)
 	if err != nil {
 		return err
 	}
