@@ -48,6 +48,34 @@ type DeploymentRecord struct {
 	Observed ObservedDeployment `json:"observed,omitempty"`
 }
 
+type DeploymentRecordStateError struct {
+	Identity DeploymentIdentity
+	Kind     string
+	Err      error
+}
+
+func (e *DeploymentRecordStateError) Error() string {
+	if e == nil {
+		return "deployment record state error"
+	}
+	return fmt.Sprintf("%s deployment state for %s/%s/%s: %v", e.Kind, e.Identity.Target, e.Identity.Application, e.Identity.Environment, e.Err)
+}
+
+func (e *DeploymentRecordStateError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func DeploymentRecordState(err error) (*DeploymentRecordStateError, bool) {
+	var stateErr *DeploymentRecordStateError
+	if errors.As(err, &stateErr) {
+		return stateErr, true
+	}
+	return nil, false
+}
+
 func (id DeploymentIdentity) Validate() error {
 	if err := ValidateTargetName(id.Target); err != nil {
 		return err
@@ -109,17 +137,20 @@ func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
 	path := filepath.Join(root, "deployment.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "incomplete", Err: errors.New("deployment.json is missing")}
+		}
 		return DeploymentRecord{}, err
 	}
 	var record DeploymentRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return DeploymentRecord{}, fmt.Errorf("parse deployment record: %w", err)
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: fmt.Errorf("parse deployment.json: %w", err)}
 	}
 	if record.Version != DeploymentRecordVersion {
-		return DeploymentRecord{}, fmt.Errorf("unsupported deployment record version %d", record.Version)
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: fmt.Errorf("unsupported deployment record version %d", record.Version)}
 	}
 	if record.Identity != id {
-		return DeploymentRecord{}, errors.New("deployment record identity does not match storage path")
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: errors.New("deployment record identity does not match storage path")}
 	}
 	return record, nil
 }
