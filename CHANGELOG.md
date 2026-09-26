@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-09-26
+
+### Added
+
+- Selectable typed application recovery units cover application metadata, managed SQL, the application-owned OpenBao secret scope, managed S3 contents, BaseHarbor-owned repository workload volumes and selectable application log history.
+- Guided backup and automation share the same recovery state classes through interactive selection and `--include-state` / `--exclude-state`.
+- Restore validates the typed recovery manifest before mutation, restores selected state and reports success only after the application boundary is verified READY.
+- `baha app evidence [-o json]` and read-only `baseharbor.evidence` expose one secret-safe v1 evidence bundle spanning desired state, enforced policy, observed state, verified results, recovery evidence, explicit exceptions and unsupported controls.
+- Meaningful completed lifecycle operations persist bounded Target-local audit events with actor interface, target/application/environment, operation, outcome and verification metadata.
+- Evidence bundles are deterministically ordered and include SHA-256 tamper evidence over the exported bundle.
+
+### Changed
+
+- Managed S3 resources no longer force backup/restore to fail closed merely because object storage is present; bucket contents are captured and restored through the existing standards-based S3 provider path.
+- BaseHarbor-owned repository workload named volumes participate in recovery while bind mounts and external named volumes remain explicitly external and outside BaseHarbor ownership.
+- Application log history is selectable operational recovery state and is excluded by default unless the operator explicitly includes `observability.logs`.
+- Metrics and trace history remain explicitly unsupported recovery contributors until BaseHarbor has safe application-scoped restore semantics for those histories.
+- Successful backup/restore metadata records typed recovery contributors and per-contributor verification without storing secret values.
+- CLI and MCP evidence use the same collector and machine contract instead of maintaining separate reporting semantics.
+
+### Security
+
+- Recovery never broadens ownership to external volumes, bind mounts, external data stores or provider-private state; unsupported/external contributors remain explicit in the recovery/evidence model.
+- Application/runtime leaf identities and trust edges are reconstructed from desired state instead of copying Target-wide OpenBao PKI private keys into application archives.
+- Audit persistence is owner-only, bounded and secret-safe; prompts, model reasoning, tokens, access keys, private keys and credential-bearing URLs are excluded.
+- Evidence integrity is explicitly tamper evidence, not a digital signature, remote attestation or compliance certification.
+
+### Compatibility
+
+- Manifest v1 and provider-neutral application contracts remain unchanged.
+- Existing encrypted recovery archives remain supported through the legacy recovery-manifest fallback; v0.4.16 archives carry the typed recovery manifest.
+- Docker Compose and Podman/Quadlet continue to share the same application recovery semantics; physical runtime volume names remain deployment detail and are not portable recovery identity.
+- JSON stdout remains the generic evidence integration boundary; no SIEM- or compliance-vendor-specific backend is introduced.
+
+
 ## [0.4.15.1] - 2026-09-26
 
 ### Fixed
