@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	workloadPortOverridesFile      = "workload-ports.env"
-	workloadFixedPortOverrideFile  = "workload-fixed-ports.override.yaml"
+	workloadPortOverridesFile     = "workload-ports.env"
+	workloadFixedPortOverrideFile = "workload-fixed-ports.override.yaml"
 )
 
 var (
