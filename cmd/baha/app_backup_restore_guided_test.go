@@ -71,13 +71,13 @@ func TestFormatBackupPreviewContainsDurableStateWithoutSecretNames(t *testing.T)
 	}
 }
 
-func TestFormatBackupPreviewShowsUnsupportedDurableState(t *testing.T) {
+func TestFormatBackupPreviewShowsSupportedObjectStorage(t *testing.T) {
 	m := application.New("demo", "dev", false, false, false)
 	m = application.WithObjectStorageBuckets(m, "uploads")
 	var out bytes.Buffer
 	formatBackupPreview(&out, m, "demo-dev.bhbackup")
 	text := out.String()
-	for _, wanted := range []string{"object-storage.s3/uploads: unsupported", "object-storage capture and restore are not implemented yet"} {
+	for _, wanted := range []string{"object-storage.s3/uploads: selected", "security.pki/runtime-identities: selected"} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("backup preview missing %q:\n%s", wanted, text)
 		}
