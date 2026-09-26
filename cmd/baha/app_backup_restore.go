@@ -175,7 +175,19 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
-	var platformFiles bhruntime.Files
+	return restoreApplicationState(ctx, store, out, resolved, compose, restoreData)
+
+}
+
+func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.Compose, restoreData applicationRestoreData) error {
+	m := restoreData.manifest
+	postgresBackups := restoreData.postgresBackups
+	secretBackup := restoreData.secretBackup
+	objectBackups := restoreData.objectStorage
+	workloadStorage := restoreData.workloadStorage
+	logsHistory := restoreData.logsHistory
+	var err error
+var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
 		platformFiles, err = existingTargetRuntimeFiles(ctx)
