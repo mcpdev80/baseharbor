@@ -184,7 +184,11 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, lokiAccessSpec())
+	accessSpec := lokiAccessSpec()
+	if p.Scope == capability.ScopeApplication {
+		accessSpec.ServiceName = "baseharbor-internal-loki-access"
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
