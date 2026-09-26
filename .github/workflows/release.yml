@@ -96,7 +96,7 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md)
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md)$' || true)"
             if [ -n "${unexpected}" ]; then
               return 1
             fi
