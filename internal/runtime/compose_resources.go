@@ -135,14 +135,26 @@ func (c Compose) InspectProjectResources(ctx context.Context, project string, re
 			inspectTemplate = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
 		}
 
-		listed, err := c.directOutput(ctx, listArgs...)
-		if err != nil {
-			return nil, err
-		}
 		existingNames := map[string]struct{}{}
-		for _, line := range strings.Split(listed, "\n") {
-			if name := strings.TrimSpace(line); name != "" {
-				existingNames[name] = struct{}{}
+		if c.quadlet {
+			for name := range wanted {
+				exists, err := quadletRuntimeResourceExists(ctx, kind, name)
+				if err != nil {
+					return nil, err
+				}
+				if exists {
+					existingNames[name] = struct{}{}
+				}
+			}
+		} else {
+			listed, err := c.directOutput(ctx, listArgs...)
+			if err != nil {
+				return nil, err
+			}
+			for _, line := range strings.Split(listed, "\n") {
+				if name := strings.TrimSpace(line); name != "" {
+					existingNames[name] = struct{}{}
+				}
 			}
 		}
 
