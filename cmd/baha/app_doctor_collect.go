@@ -215,6 +215,11 @@ func (c *applicationDoctorCollector) appendObservabilityChecks(checks []prefligh
 
 func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Check) []preflight.Check {
 	m := c.manifest
+	if application.HasManagedRuntimeServices(m) {
+		checks = append(checks, preflight.Check{Name: "workload service bindings", Run: func(context.Context) error {
+			return application.VerifyWorkloadServiceBindings(m, c.files)
+		}})
+	}
 	if m.Services.SQL {
 		checks = append(checks,
 			preflight.Check{Name: "postgres running", Run: func(context.Context) error {
