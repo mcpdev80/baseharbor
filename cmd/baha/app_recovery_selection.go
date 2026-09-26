@@ -45,6 +45,51 @@ func extractRecoverySelectionArgs(args []string) ([]string, recoverySelectionArg
 	return filtered, selection, nil
 }
 
+
+func discoverApplicationRecoverySelection(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (applicationbackup.RecoverySelection, []recoveryWorkloadStorage, error) {
+	selection, err := applicationbackup.DiscoverManifestRecovery(resolved.Manifest)
+	if err != nil {
+		return applicationbackup.RecoverySelection{}, nil, err
+	}
+	workloadContributors, workloadVolumes, err := discoverRecoveryWorkloadStorage(ctx, compose, resolved, files)
+	if err != nil {
+		return applicationbackup.RecoverySelection{}, nil, err
+	}
+	selection, err = applicationbackup.NewRecoverySelection(append(selection.Contributors, workloadContributors...))
+	if err != nil {
+		return applicationbackup.RecoverySelection{}, nil, err
+	}
+	return selection, workloadVolumes, nil
+}
+
+func recoverySelectionArgsFromSelection(selection applicationbackup.RecoverySelection) recoverySelectionArgs {
+	selected := map[applicationbackup.RecoveryStateClass]bool{}
+	supported := map[applicationbackup.RecoveryStateClass]bool{}
+	for _, contributor := range selection.Contributors {
+		if contributor.Support != applicationbackup.RecoverySupported {
+			continue
+		}
+		supported[contributor.StateClass] = true
+		if contributor.Selected {
+			selected[contributor.StateClass] = true
+		}
+	}
+	var result recoverySelectionArgs
+	for class := range supported {
+		if class == applicationbackup.StateApplicationMetadata || class == applicationbackup.StatePKI {
+			continue
+		}
+		if selected[class] {
+			result.Include = append(result.Include, class)
+		} else {
+			result.Exclude = append(result.Exclude, class)
+		}
+	}
+	sort.Slice(result.Include, func(i, j int) bool { return result.Include[i] < result.Include[j] })
+	sort.Slice(result.Exclude, func(i, j int) bool { return result.Exclude[i] < result.Exclude[j] })
+	return result
+}
+
 type recoveryWorkloadStorage struct {
 	Logical string
 	Project string
