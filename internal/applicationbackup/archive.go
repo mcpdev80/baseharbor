@@ -151,6 +151,8 @@ func kindForName(name string) string {
 		return "object-storage"
 	case len(name) >= len("workload-storage/") && name[:len("workload-storage/")] == "workload-storage/":
 		return "workload-storage"
+	case len(name) >= len("observability/") && name[:len("observability/")] == "observability/":
+		return "observability"
 	default:
 		return ""
 	}

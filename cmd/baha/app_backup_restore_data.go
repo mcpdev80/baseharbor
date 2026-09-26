@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -21,6 +22,7 @@ type applicationRestoreData struct {
 	secretBackup     openbao.ApplicationSecretBackup
 	objectStorage    []objectstorage.BucketBackup
 	workloadStorage  map[string][]byte
+	logsHistory      logsprovider.HistoryBackup
 }
 
 func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, selectionArgs recoverySelectionArgs, password []byte, outputPath string) error {
@@ -76,6 +78,13 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 			if err != nil { return err }
 			entries = append(entries, entry)
 		}
+	}
+	if selection.HasSelected(applicationbackup.StateLogs) {
+		history, err := logsprovider.ExportApplicationHistoryAt(ctx, m, resolved.TargetStateRoot, resolved.Target.Name)
+		if err != nil { return fmt.Errorf("capture application log history: %w", err) }
+		entry, err := applicationbackup.LogsHistoryPayloadEntry(history)
+		if err != nil { return err }
+		entries = append(entries, entry)
 	}
 	if selection.HasSelected(applicationbackup.StateWorkloadStorage) {
 		for _, volume := range workloadVolumes {
@@ -153,7 +162,14 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 		for key := range workloadStorage { keys = append(keys, key) }
 		if err := validateRecoveredLogicalResources(recoveryManifest, applicationbackup.StateWorkloadStorage, keys); err != nil { return applicationRestoreData{}, err }
 	}
-	return applicationRestoreData{manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage}, nil
+	var logsHistory logsprovider.HistoryBackup
+	if recoveryManifestHasSelected(recoveryManifest, applicationbackup.StateLogs) {
+		var found bool
+		logsHistory, found, err = applicationbackup.LogsHistoryFromPayload(payload)
+		if err != nil { return applicationRestoreData{}, fmt.Errorf("validate log-history recovery payload before mutation: %w", err) }
+		if !found { return applicationRestoreData{}, errors.New("recovery manifest selects observability.logs but the payload is missing") }
+	}
+	return applicationRestoreData{manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
 }
 
 

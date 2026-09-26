@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -164,6 +165,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
 	workloadStorage := restoreData.workloadStorage
+	logsHistory := restoreData.logsHistory
 
 	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
@@ -253,6 +255,19 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
 		return err
 	}
+	var preparedLogs *managedLogsExecution
+	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateLogs) {
+		preparedLogs, err = prepareManagedLogs(ctx, compose, resolved, issuer)
+		if err != nil {
+			return fmt.Errorf("prepare log-history recovery: %w", err)
+		}
+		if err := convergeManagedLogsBeforeWorkload(ctx, io.Discard, files, preparedLogs); err != nil {
+			return fmt.Errorf("provision log-history recovery target: %w", err)
+		}
+		if err := logsprovider.RestoreApplicationHistoryAt(ctx, m, resolved.TargetStateRoot, resolved.Target.Name, logsHistory); err != nil {
+			return fmt.Errorf("restore application log history: %w", err)
+		}
+	}
 	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateSQL) {
 		if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
 			return err
@@ -312,6 +327,11 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("start restored application workload: %w", err)
+	}
+	if preparedLogs != nil {
+		if err := verifyManagedLogsAfterWorkload(ctx, io.Discard, preparedLogs); err != nil {
+			return fmt.Errorf("verify restored log history: %w", err)
+		}
 	}
 	if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)

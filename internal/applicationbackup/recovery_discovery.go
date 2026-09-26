@@ -1,6 +1,9 @@
 package applicationbackup
 
-import "github.com/mcpdev80/baseharbor/internal/application"
+import (
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+)
 
 func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error) {
 	contributors := []RecoveryContributor{{
@@ -42,15 +45,25 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 		})
 	}
 	if application.HasLogsCollection(m) {
-		for _, source := range m.Logs.Collect {
-			contributors = append(contributors, RecoveryContributor{
-				StateClass:      StateLogs,
-				LogicalResource: source,
-				Ownership:       "application",
-				Support:         RecoveryUnsupported,
-				Reason:          "scoped log-history recovery is not implemented yet",
-			})
+		placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+		if placementErr != nil {
+			return RecoverySelection{}, placementErr
 		}
+		contributor := RecoveryContributor{
+			StateClass:      StateLogs,
+			LogicalResource: "application",
+			Ownership:       "application",
+			Support:         RecoverySupported,
+			DefaultSelected: true,
+		}
+		if placement.Scope == capability.ScopeExternal {
+			contributor.Ownership = "external"
+			contributor.Support = RecoveryExternal
+			contributor.DefaultSelected = false
+			contributor.ExplicitlyExcluded = true
+			contributor.Reason = "external log history remains outside BaseHarbor recovery ownership"
+		}
+		contributors = append(contributors, contributor)
 	}
 	if application.HasMetricsSources(m) {
 		for _, source := range m.Metrics.Sources {
