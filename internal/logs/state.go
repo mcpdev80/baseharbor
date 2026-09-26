@@ -71,18 +71,22 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
+		legacyProject := providerProject
+		if prefix != "" {
+			legacyProject = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
+		}
 		if p.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(p.SharingBoundary)
-			project += "-" + token
 			dir = filepath.Join(dir, token)
+			legacyProject += "-" + token
 			lokiVolume += "-" + token
 			alloyVolume += "-" + token
 		}
-		network := project + "-internal"
+		network := legacyProject + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment
-		project := providerProject + "-" + suffix
+		project := bhruntime.ApplicationProjectName(namespace, m.Name)
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
