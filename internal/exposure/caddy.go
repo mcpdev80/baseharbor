@@ -412,7 +412,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	state := State{
 		Version: stateVersion,
 		Project: ProjectNameForRuntime(d.manifest, d.runtime),
-		Network: application.ApplicationExposureNetworkName(d.manifest),
+		Network: application.ApplicationExposureNetworkNameForProject(d.runtime.ResourceProject),
 		Host:    d.deployment.Hostname,
 		Routes:  routes,
 	}
