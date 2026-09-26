@@ -232,7 +232,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 	}
 	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
-		if err := stopRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
+		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
 			return err
 		}
 	}
