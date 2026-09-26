@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -155,6 +156,9 @@ func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile 
 		}
 		return quadletRemoveProject(ctx, q, false)
 	}
+	if consolidatedProject(project) {
+		return c.removeComposeModule(ctx, project, composeFile, envFile, false)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down")
 }
 
@@ -170,7 +174,7 @@ func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile 
 }
 
 func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
+	if c.quadlet || consolidatedProject(project) {
 		return c.DownProject(ctx, project, composeFile, envFile)
 	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
@@ -184,14 +188,77 @@ func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFi
 		}
 		return quadletRemoveProject(ctx, q, true)
 	}
+	if consolidatedProject(project) {
+		return c.removeComposeModule(ctx, project, composeFile, envFile, true)
+	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes")
 }
 
 func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
+	if c.quadlet || consolidatedProject(project) {
 		return c.DestroyProject(ctx, project, composeFile, envFile)
 	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
+}
+
+func consolidatedProject(project string) bool {
+	return strings.HasPrefix(strings.TrimSpace(project), "bh-")
+}
+
+type composeModuleModel struct {
+	Services map[string]json.RawMessage `json:"services"`
+	Volumes  map[string]struct {
+		Name string `json:"name"`
+	} `json:"volumes"`
+	Networks map[string]struct {
+		Name     string `json:"name"`
+		External bool   `json:"external"`
+	} `json:"networks"`
+}
+
+func (c Compose) removeComposeModule(ctx context.Context, project, composeFile, envFile string, destroy bool) error {
+	rendered, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--format", "json")
+	if err != nil {
+		return err
+	}
+	var model composeModuleModel
+	if err := json.Unmarshal([]byte(rendered), &model); err != nil {
+		return fmt.Errorf("decode Compose module model: %w", err)
+	}
+	services := make([]string, 0, len(model.Services))
+	for service := range model.Services {
+		services = append(services, service)
+	}
+	sort.Strings(services)
+	if len(services) > 0 {
+		args := append([]string{"rm", "-f", "-s"}, services...)
+		if err := c.runProject(ctx, project, composeFile, envFile, args...); err != nil {
+			return err
+		}
+	}
+	if !destroy {
+		return nil
+	}
+	for _, volume := range model.Volumes {
+		if strings.TrimSpace(volume.Name) == "" {
+			continue
+		}
+		if _, err := c.directOutput(ctx, "volume", "rm", "-f", volume.Name); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such volume") {
+			return fmt.Errorf("remove Compose module volume %s: %w", volume.Name, err)
+		}
+	}
+	for _, network := range model.Networks {
+		if network.External || strings.TrimSpace(network.Name) == "" {
+			continue
+		}
+		if _, err := c.directOutput(ctx, "network", "rm", network.Name); err != nil {
+			lower := strings.ToLower(err.Error())
+			if !strings.Contains(lower, "not found") && !strings.Contains(lower, "no such network") && !strings.Contains(lower, "active endpoints") {
+				return fmt.Errorf("remove Compose module network %s: %w", network.Name, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
