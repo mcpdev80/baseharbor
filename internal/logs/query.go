@@ -144,7 +144,9 @@ func waitForQuery(ctx context.Context, client *http.Client, endpoint, query, des
 	defer ticker.Stop()
 	var last error
 	for {
-		ok, err := queryStream(deadline, client, endpoint, query)
+		probeCtx, probeCancel := context.WithTimeout(deadline, 3*time.Second)
+		ok, err := queryStream(probeCtx, client, endpoint, query)
+		probeCancel()
 		if err == nil && ok {
 			return nil
 		}
