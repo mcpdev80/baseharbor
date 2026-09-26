@@ -55,7 +55,8 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
 		item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
 		item.ObjectStorage = composeObjectStorageMarker(lowerName)
-		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.ObjectStorage && composeAmbiguousInfrastructureMarker(lowerName)
+		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.ObjectStorage &&
+			(composeAmbiguousInfrastructureMarker(lowerName) || composeUnsupportedDatabaseMarker(lowerName))
 
 		if raw, ok := definition["image"]; ok {
 			image := strings.TrimSpace(fmt.Sprint(raw))
@@ -65,6 +66,9 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 				item.Postgres = item.Postgres || strings.Contains(lowerImage, "postgres") || strings.Contains(lowerImage, "postgresql")
 				item.Redis = item.Redis || strings.Contains(lowerImage, "redis") || strings.Contains(lowerImage, "valkey")
 				item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(lowerImage)
+				if !item.Postgres && !item.Redis && !item.ObjectStorage && composeUnsupportedDatabaseMarker(lowerImage) {
+					item.AmbiguousInfrastructure = true
+				}
 			}
 		}
 		if raw, ok := definition["build"]; ok && raw != nil {
@@ -91,6 +95,16 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
+}
+
+func composeUnsupportedDatabaseMarker(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{"mysql", "mariadb"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func composeUsesDatabaseInitDirectory(raw any) bool {
