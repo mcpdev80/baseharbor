@@ -99,11 +99,11 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 		if volume.External {
 			continue
 		}
-		unit := project + "-" + sanitizeQuadletName(name)
 		actual := strings.TrimSpace(volume.Name)
 		if actual == "" {
 			actual = project + "_" + name
 		}
+		unit := quadletResourceUnitBase(project, name, actual)
 		result.Files[unit+".volume"] = "[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n"
 	}
 
@@ -111,11 +111,11 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 		if network.External {
 			continue
 		}
-		unit := project + "-" + sanitizeQuadletName(name)
 		actual := strings.TrimSpace(network.Name)
 		if actual == "" {
 			actual = project + "_" + name
 		}
+		unit := quadletResourceUnitBase(project, name, actual)
 		var b strings.Builder
 		b.WriteString("[Network]\nNetworkName=" + actual + "\n")
 		b.WriteString("Label=com.docker.compose.project=" + project + "\n")
@@ -288,6 +288,15 @@ func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeS
 	}
 }
 
+func quadletResourceUnitBase(project, logicalName, actualName string) string {
+	if consolidatedProject(project) {
+		if actual := sanitizeQuadletName(actualName); actual != "" {
+			return project + "-resource-" + actual
+		}
+	}
+	return project + "-" + sanitizeQuadletName(logicalName)
+}
+
 func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName string, model quadletComposeProject, service quadletComposeService) error {
 	serviceNetworks := append([]string(nil), service.Networks.Names...)
 	if len(serviceNetworks) == 0 {
@@ -304,7 +313,11 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 			}
 			fmt.Fprintf(unit, "Network=%s\n", actual)
 		case declared:
-			fmt.Fprintf(unit, "Network=%s-%s.network\n", project, sanitizeQuadletName(networkName))
+			actual := strings.TrimSpace(network.Name)
+			if actual == "" {
+				actual = project + "_" + networkName
+			}
+			fmt.Fprintf(unit, "Network=%s.network\n", quadletResourceUnitBase(project, networkName, actual))
 		default:
 			return fmt.Errorf("Compose service %q references undeclared network %q", serviceName, networkName)
 		}
