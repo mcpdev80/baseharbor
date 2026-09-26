@@ -17,6 +17,7 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
@@ -141,35 +142,68 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 				if registrationErr != nil {
 					diag = "load log registration: " + registrationErr.Error()
 				} else {
-					conn, dialErr := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", registration.ProviderSyslogPort))
-					if dialErr != nil {
-						diag = "dial provider syslog: " + dialErr.Error()
+					placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderLoki)
+					if placementErr != nil {
+						diag = "resolve Loki placement: " + placementErr.Error()
 					} else {
-						_, writeErr := fmt.Fprintf(conn, "<14>1 %s baseharbor runtime-broker/baseharbor-internal-broker - - - synthetic-broker-provider-log\\n", time.Now().UTC().Format(time.RFC3339))
-						_ = conn.Close()
-						if writeErr != nil {
-							diag = "write provider syslog: " + writeErr.Error()
+						sources, listErr := observability.List(observability.SignalLogs, placement, []string{m.Name}, true, true)
+						if listErr != nil {
+							diag = "list provider log sources: " + listErr.Error()
 						} else {
-							placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderLoki)
-							if placementErr != nil {
-								diag = "resolve Loki placement: " + placementErr.Error()
+							var brokerSources []observability.SignalSource
+							for _, source := range sources {
+								if source.Provider == capability.ProviderRuntimeBroker && source.Class == observability.SourceApplicationProvider {
+									brokerSources = append(brokerSources, source)
+								}
+							}
+
+							pid1Result := "not-run"
+							files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+							if filesErr != nil {
+								pid1Result = "runtime-files=" + filesErr.Error()
 							} else {
-								sources, listErr := observability.List(observability.SignalLogs, placement, []string{m.Name}, true, true)
-								if listErr != nil {
-									diag = "list provider log sources: " + listErr.Error()
+								brokerFiles, brokerErr := runtimebroker.Existing(files)
+								if brokerErr != nil {
+									pid1Result = "broker-files=" + brokerErr.Error()
 								} else {
-									var brokerSources []observability.SignalSource
-									for _, source := range sources {
-										if source.Provider == capability.ProviderRuntimeBroker && source.Class == observability.SourceApplicationProvider {
-											brokerSources = append(brokerSources, source)
-										}
+									_, execErr := compose.ExecProject(
+										context.Background(),
+										runtimebroker.ProjectNameForRuntime(m, files),
+										brokerFiles.Compose,
+										files.Env,
+										runtimebroker.ServiceName,
+										"sh",
+										"-ec",
+										"printf '%s\\n' pid1-stdout-provider-log > /proc/1/fd/1",
+									)
+									if execErr != nil {
+										pid1Result = "write=" + execErr.Error()
+									} else {
+										verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 12*time.Second)
+										verifyErr := logsprovider.VerifyProviderSourcesAt(verifyCtx, m, brokerSources, resolved.TargetStateRoot, resolved.Target.Name)
+										verifyCancel()
+										pid1Result = fmt.Sprintf("verify=%v", verifyErr)
 									}
+								}
+							}
+
+							conn, dialErr := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", registration.ProviderSyslogPort))
+							directResult := ""
+							if dialErr != nil {
+								directResult = "dial=" + dialErr.Error()
+							} else {
+								_, writeErr := fmt.Fprintf(conn, "<14>1 %s baseharbor runtime-broker/baseharbor-internal-broker - - - synthetic-broker-provider-log\\n", time.Now().UTC().Format(time.RFC3339))
+								_ = conn.Close()
+								if writeErr != nil {
+									directResult = "write=" + writeErr.Error()
+								} else {
 									verifyCtx, verifyCancel := context.WithTimeout(context.Background(), 20*time.Second)
 									verifyErr := logsprovider.VerifyProviderSourcesAt(verifyCtx, m, brokerSources, resolved.TargetStateRoot, resolved.Target.Name)
 									verifyCancel()
-									diag = fmt.Sprintf("synthetic provider syslog port=%d brokerSources=%d verify=%v", registration.ProviderSyslogPort, len(brokerSources), verifyErr)
+									directResult = fmt.Sprintf("verify=%v", verifyErr)
 								}
 							}
+							diag = fmt.Sprintf("provider port=%d brokerSources=%d pid1-stdout[%s] direct-udp[%s]", registration.ProviderSyslogPort, len(brokerSources), pid1Result, directResult)
 						}
 					}
 				}
