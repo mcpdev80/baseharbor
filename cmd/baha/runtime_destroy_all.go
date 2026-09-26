@@ -347,8 +347,8 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 				}
 			}
 			if application.RequiresRuntimeBroker(m) {
-				if stopErr := stopRuntimeBroker(parent, compose, m, files); stopErr != nil {
-					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-broker " + m.Name + "/" + m.Environment, Detail: stopErr.Error()})
+				if destroyErr := destroyRuntimeBroker(parent, compose, m, files); destroyErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-broker " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 				}
 			}
 			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject)); destroyErr != nil {
