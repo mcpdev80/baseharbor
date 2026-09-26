@@ -401,7 +401,7 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	if c.quadlet {
 		return "", "", nil
 	}
-	ids, err := c.directOutput(ctx, "container", "ls", "-aq",
+	ids, err := c.directOutput(ctx, "container", "ls", "-q",
 		"--filter", "label=com.docker.compose.project="+strings.TrimSpace(project),
 		"--filter", "label=com.docker.compose.service="+strings.TrimSpace(service),
 	)
