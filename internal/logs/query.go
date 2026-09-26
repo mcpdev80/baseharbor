@@ -157,6 +157,15 @@ func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, de
 		}
 		select {
 		case <-deadline.Done():
+			diagCtx, diagCancel := context.WithTimeout(ctx, 2*time.Second)
+			series, diagErr := querySeriesLabels(diagCtx, client, endpoint, `{baseharbor_source_class="application-provider"}`)
+			diagCancel()
+			if diagErr == nil && len(series) > 0 {
+				if len(series) > 8 {
+					series = series[:8]
+				}
+				return fmt.Errorf("verify Loki ingestion for %s: %w; observed application-provider series: %v", description, last, series)
+			}
 			return fmt.Errorf("verify Loki ingestion for %s: %w", description, last)
 		case <-ticker.C:
 		}
@@ -164,6 +173,14 @@ func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, de
 }
 
 func querySeries(ctx context.Context, client *http.Client, endpoint, match string) (bool, error) {
+	series, err := querySeriesLabels(ctx, client, endpoint, match)
+	if err != nil {
+		return false, err
+	}
+	return len(series) > 0, nil
+}
+
+func querySeriesLabels(ctx context.Context, client *http.Client, endpoint, match string) ([]map[string]string, error) {
 	now := time.Now()
 	values := url.Values{
 		"match[]": {match},
@@ -172,25 +189,28 @@ func querySeries(ctx context.Context, client *http.Client, endpoint, match strin
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/series?"+values.Encode(), nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-		return false, fmt.Errorf("Loki series query returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("Loki series query returned HTTP %d", resp.StatusCode)
 	}
 	var payload struct {
 		Status string              `json:"status"`
 		Data   []map[string]string `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-		return false, err
+		return nil, err
 	}
-	return payload.Status == "success" && len(payload.Data) > 0, nil
+	if payload.Status != "success" {
+		return nil, fmt.Errorf("Loki series query returned status %q", payload.Status)
+	}
+	return payload.Data, nil
 }
 
 func waitForQuery(ctx context.Context, client *http.Client, endpoint, query, description string) error {
