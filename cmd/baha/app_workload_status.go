@@ -23,10 +23,10 @@ type workloadServiceStatus struct {
 type workloadExposureStatus = endpoint.ExposureStatus
 
 type repositoryWorkloadStatus struct {
-	Found      bool
-	Workload   application.WorkloadFiles
-	Services   []workloadServiceStatus
-	Exposures  []workloadExposureStatus
+	Found       bool
+	Workload    application.WorkloadFiles
+	Services    []workloadServiceStatus
+	Exposures   []workloadExposureStatus
 	BuildDrift  []string
 	ConfigDrift []string
 }
