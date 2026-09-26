@@ -214,6 +214,39 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, true, false)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := workloadServiceBindingProjectionDir(files)
+	for _, path := range []string{
+		filepath.Join(root, "postgres", "type"),
+		filepath.Join(root, "postgres", "uri"),
+		filepath.Join(root, "postgres", "certificates"),
+		filepath.Join(root, "valkey", "type"),
+		filepath.Join(root, "valkey", "uri"),
+		filepath.Join(root, "valkey", "certificates"),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("projected binding %s: %v", path, err)
+		}
+		if info.Mode().Perm() != 0o444 {
+			t.Fatalf("projected binding %s mode = %o, want 444", path, info.Mode().Perm())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "runtime-identity")); !os.IsNotExist(err) {
+		t.Fatalf("internal runtime identity must not enter service binding projection, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "metadata.json")); !os.IsNotExist(err) {
+		t.Fatalf("internal metadata must not enter service binding projection, err=%v", err)
+	}
+}
+
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
@@ -290,6 +323,18 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("named binding %s: %v", path, err)
+		}
+	}
+
+	projection := workloadServiceBindingProjectionDir(files)
+	for _, path := range []string{
+		filepath.Join(projection, "postgres.primary", "uri"),
+		filepath.Join(projection, "postgres.analytics", "uri"),
+		filepath.Join(projection, "valkey.cache", "uri"),
+		filepath.Join(projection, "valkey.sessions", "uri"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("flattened workload binding %s: %v", path, err)
 		}
 	}
 }
