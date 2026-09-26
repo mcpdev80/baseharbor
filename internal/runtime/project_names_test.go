@@ -9,10 +9,10 @@ func TestOperatorVisibleProjectNames(t *testing.T) {
 	if got, want := SharedProjectName("prod.eu"), "bh-prod-eu-shared"; got != want {
 		t.Fatalf("SharedProjectName(prod.eu) = %q, want %q", got, want)
 	}
-	if got, want := ApplicationProjectName("", "demo"), "bh-local-demo"; got != want {
+	if got, want := ApplicationProjectName("", "demo", "dev"), "bh-local-demo-dev"; got != want {
 		t.Fatalf("ApplicationProjectName() = %q, want %q", got, want)
 	}
-	if got, want := ApplicationProjectName("prod", "loki"), "bh-prod-loki-app"; got != want {
+	if got, want := ApplicationProjectName("prod", "loki", "test"), "bh-prod-loki-app-test"; got != want {
 		t.Fatalf("reserved application project = %q, want %q", got, want)
 	}
 }
