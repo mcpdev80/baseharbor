@@ -46,7 +46,6 @@ func recordApplicationAudit(ctx context.Context, resolved resolvedApplication, o
 	return nil
 }
 
-
 func selectedRecoveryResources(manifest applicationbackup.RecoveryManifest, class applicationbackup.RecoveryStateClass) []string {
 	var result []string
 	for _, contributor := range manifest.Contributors {
