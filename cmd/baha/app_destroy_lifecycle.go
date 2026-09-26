@@ -122,7 +122,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if application.HasManagedRuntimeServices(m) {
 		checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
 			var err error
-			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject))
+			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject))
 			return err
 		}})
 	}
@@ -243,12 +243,12 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 	} else if e.partialRuntime && len(e.existing) != 0 {
-		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject)); err != nil {
+		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject)); err != nil {
 			return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
 		}
 	}
 	if application.HasManagedRuntimeServices(m) {
-		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.resourceProject))
+		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject))
 		if err != nil {
 			return fmt.Errorf("verify application runtime destruction: %w", err)
 		}
