@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -83,7 +84,11 @@ func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose
 }
 
 func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
-	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForProject(m, files.Project))
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = RuntimeProjectName(m)
+	}
+	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForProject(m, resourceProject))
 }
 
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {
