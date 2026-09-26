@@ -40,7 +40,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 		Name:    "restore",
 		Summary: "Restore and verify an encrypted application recovery unit",
 		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
-		Long:    "Validates and decrypts the recovery unit before mutation, follows its typed recovery manifest, reconstructs ephemeral identities, restores selected durable state while the workload remains stopped, then runs final status and doctor verification."
+		Long:    "Validates and decrypts the recovery unit before mutation, follows its typed recovery manifest, reconstructs ephemeral identities, restores selected durable state while the workload remains stopped, then runs final status and doctor verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return executeApplicationRestoreLifecycle(ctx, store, args, out, errOut)
 		},
