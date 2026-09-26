@@ -146,7 +146,7 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 }
 
 func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
-	records, err := deployment.ListDeployments(target.Name)
+	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -161,6 +161,34 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 		matches = append(matches, record)
 	}
 	if len(matches) == 0 {
+		var incomplete []deployment.DeploymentIdentity
+		for _, warning := range warnings {
+			stateErr, ok := deployment.DeploymentRecordState(warning)
+			if !ok || stateErr.Identity.Application != name {
+				continue
+			}
+			if environment != "" && stateErr.Identity.Environment != environment {
+				continue
+			}
+			incomplete = append(incomplete, stateErr.Identity)
+		}
+		if len(incomplete) == 1 {
+			id := incomplete[0]
+			return resolvedApplication{}, &machine.Error{
+				Code:        machine.ErrorOwnershipAmbiguous,
+				CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
+				Message:     fmt.Sprintf("incomplete deployment state for %s/%s/%s: deployment.json is missing or invalid", id.Target, id.Application, id.Environment),
+				Resource:    id.Target + "/" + id.Application + "/" + id.Environment,
+				Next:        "Run the operation from the repository source to reconcile safely, or use 'baha destroy --all' for ownership-safe installation cleanup.",
+				Remediation: "operator_review",
+			}
+		}
+		if len(incomplete) > 1 && environment == "" {
+			return resolvedApplication{}, usageError(
+				"environment selection required for incomplete application "+name,
+				"Select one environment with -e/--environment before attempting recovery or cleanup.",
+			)
+		}
 		if environment == "" {
 			return resolvedApplication{}, fmt.Errorf("application %q has no registered deployment on target %q", name, target.Name)
 		}
