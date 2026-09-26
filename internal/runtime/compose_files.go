@@ -151,7 +151,10 @@ func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project,
 		cacheProjectEnvironment(project, environment)
 		return nil
 	}
-	args := []string{"build"}
+	// Force deterministic non-interactive BuildKit progress. The default
+	// renderer can switch behavior when BaseHarbor itself is attached to a TTY,
+	// while lifecycle execution needs the same build behavior in TTY and CI.
+	args := []string{"build", "--progress", "plain"}
 	args = append(args, services...)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
@@ -480,10 +483,6 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 
 	var stdout bytes.Buffer
 	progress := newComposeProgressCapture(onProgress)
-	// Compose/BuildKit must never inherit an interactive terminal stdin from
-	// BaseHarbor's progress path. Lifecycle commands are non-interactive at
-	// this boundary; inherited TTY stdin can leave a build waiting forever.
-	cmd.Stdin = bytes.NewReader(nil)
 	cmd.Stdout = &stdout
 	cmd.Stderr = progress
 	err = cmd.Run()
