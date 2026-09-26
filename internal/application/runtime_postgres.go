@@ -28,15 +28,11 @@ type RuntimeFiles struct {
 }
 
 func RuntimeProjectName(m Manifest) string {
-	return "baseharbor-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName("", m.Name)
 }
 
 func RuntimeProjectNameForStore(store Store, m Manifest) string {
-	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
-	if namespace == "" {
-		return RuntimeProjectName(m)
-	}
-	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName(store.Namespace, m.Name)
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
