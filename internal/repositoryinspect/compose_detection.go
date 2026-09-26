@@ -20,6 +20,7 @@ type composeService struct {
 	HasPorts                bool
 	Ports                   []string
 	HealthCheck             bool
+	DatabaseBootstrap       bool
 }
 
 type composeDocument struct {
@@ -76,6 +77,9 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		if raw, ok := definition["healthcheck"]; ok && raw != nil {
 			item.HealthCheck = true
 		}
+		if raw, ok := definition["volumes"]; ok {
+			item.DatabaseBootstrap = composeUsesDatabaseInitDirectory(raw)
+		}
 		if item.Postgres || item.Redis || item.ObjectStorage {
 			item.AmbiguousInfrastructure = false
 		}
@@ -87,6 +91,27 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
+}
+
+func composeUsesDatabaseInitDirectory(raw any) bool {
+	values, ok := raw.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range values {
+		switch typed := value.(type) {
+		case string:
+			parts := strings.Split(typed, ":")
+			if len(parts) >= 2 && strings.TrimSpace(parts[1]) == "/docker-entrypoint-initdb.d" {
+				return true
+			}
+		case map[string]any:
+			if strings.TrimSpace(fmt.Sprint(typed["target"])) == "/docker-entrypoint-initdb.d" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func composePortValues(raw any) []string {
