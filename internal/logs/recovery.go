@@ -85,7 +85,7 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 		}
 		var payload struct {
 			Status string `json:"status"`
-			Data struct {
+			Data   struct {
 				Result []struct {
 					Stream map[string]string `json:"stream"`
 					Values [][]string        `json:"values"`
@@ -166,9 +166,13 @@ func RestoreApplicationHistoryAt(ctx context.Context, m application.Manifest, da
 		return err
 	}
 	endpoint, err := ProviderEndpoint(files)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	client, err := lokiHTTPClient(m, files)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	for _, stream := range backup.Streams {
 		if stream.Labels["baseharbor_application"] != m.Name || stream.Labels["baseharbor_environment"] != m.Environment {
 			return errors.New("refusing to restore Loki history outside the application scope")
@@ -197,12 +201,18 @@ func RestoreApplicationHistoryAt(ctx context.Context, m application.Manifest, da
 			}{Stream: stream.Labels, Values: values}
 			payload.Streams = append(payload.Streams, item)
 			body, err := json.Marshal(payload)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/loki/api/v1/push", bytes.NewReader(body))
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := client.Do(req)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 			_ = resp.Body.Close()
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
