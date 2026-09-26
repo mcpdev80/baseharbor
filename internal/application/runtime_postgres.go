@@ -41,7 +41,7 @@ func RuntimeProjectNameForStore(store Store, m Manifest) string {
 }
 
 func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
-	return bhruntime.ApplicationProjectName(store.Namespace, m.Name)
+	return bhruntime.ApplicationProjectName(store.Namespace, m.Name, m.Environment)
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
