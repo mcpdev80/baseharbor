@@ -388,7 +388,11 @@ func renderQuadletVolumeMount(composePath, project string, volumes map[string]qu
 			}
 			return actual + ":" + target + options, nil
 		}
-		return project + "-" + sanitizeQuadletName(source) + ".volume:" + target + options, nil
+		actual := strings.TrimSpace(volume.Name)
+		if actual == "" {
+			actual = project + "_" + source
+		}
+		return quadletResourceUnitBase(project, source, actual) + ".volume:" + target + options, nil
 	}
 	if strings.HasPrefix(source, ".") {
 		absolute, err := filepath.Abs(filepath.Join(filepath.Dir(composePath), source))
