@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -145,32 +146,62 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Fprintf(out, "BaseHarbor · %s\n\n", target.Name)
+	fmt.Fprintln(out, "Target")
+	fmt.Fprintf(out, "  EFFECTIVE  %s\n", target.Name)
+	fmt.Fprintf(out, "  Runtime    %s (%s)\n", target.RuntimeProvider, compose.Engine())
+	fmt.Fprintf(out, "  Access     %s\n", target.AccessReference)
+	if target.Scope != "" {
+		fmt.Fprintf(out, "  Scope      %s\n", target.Scope)
+	}
+
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintln(out, "\nControl Plane")
+			fmt.Fprintln(out, "  NOT DEPLOYED")
+			return nil
+		}
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	status, err := compose.StatusProject(ctx, files.Project, files.Compose, files.Env)
-	if err != nil {
-		return err
-	}
-	fmt.Fprint(out, status)
 	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
 	if err != nil {
 		return err
 	}
+
+	fmt.Fprintln(out, "\nControl Plane")
 	if len(running) == 0 {
-		fmt.Fprintln(out, "BaseHarbor control-plane runtime is stopped.")
-		return nil
+		fmt.Fprintln(out, "  STOPPED")
+	} else {
+		checks := health.RuntimeChecksForFiles(files)
+		if len(checks) == 0 {
+			fmt.Fprintf(out, "  RUNNING    %d service(s)\n", len(running))
+		} else {
+			ready := true
+			for _, check := range checks {
+				state := "READY"
+				if !check.OK {
+					state = "FAILED"
+					ready = false
+				}
+				fmt.Fprintf(out, "  %-9s %s\n", state, check.Name)
+			}
+			if !ready {
+				return errors.New("runtime is running but not ready")
+			}
+		}
 	}
 
-	checks := health.RuntimeChecksForFiles(files)
-	if len(checks) == 0 {
-		return nil
-	}
-	formatted, ok := health.Format(checks)
-	fmt.Fprint(out, formatted)
-	if !ok {
-		return errors.New("runtime is running but not ready")
+	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)
+	fmt.Fprintln(out, "\nApplications")
+	if listErr != nil {
+		fmt.Fprintf(out, "  UNKNOWN    %v\n", listErr)
+	} else {
+		fmt.Fprintf(out, "  %d registered deployment(s)\n", len(records))
+		for _, warning := range warnings {
+			fmt.Fprintf(out, "  WARN       %v\n", warning)
+		}
 	}
 	return nil
 }
