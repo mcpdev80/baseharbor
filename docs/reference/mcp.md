@@ -106,7 +106,7 @@ Example client setting:
 }
 ```
 
-BaseHarbor v0.4.15.1 detaches an accepted mutating lifecycle convergence from client-request cancellation so a client timeout does not intentionally truncate the mutation half-way through. A larger client timeout is still recommended so the caller receives the verified final result rather than having to query status after its own request timeout.
+BaseHarbor v0.4.15.1 detaches an accepted mutating lifecycle convergence from client-request cancellation so a client timeout does not intentionally truncate the mutation half-way through. Detached convergence remains bounded by a BaseHarbor-owned 30-minute lifecycle deadline. A larger client timeout is still recommended so the caller receives the verified final result rather than having to query status after its own request timeout.
 
 Safety model:
 
