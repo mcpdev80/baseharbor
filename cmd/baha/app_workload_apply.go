@@ -13,15 +13,15 @@ import (
 )
 
 type repositoryWorkloadExecution struct {
-	compose           bhruntime.Compose
-	resolved          resolvedApplication
-	files             application.RuntimeFiles
-	workload          application.WorkloadFiles
-	environment       map[string]string
-	composeFiles      []string
-	expectedServices  []string
-	beforeServices    map[string]struct{}
-	freshStart        bool
+	compose            bhruntime.Compose
+	resolved           resolvedApplication
+	files              application.RuntimeFiles
+	workload           application.WorkloadFiles
+	environment        map[string]string
+	composeFiles       []string
+	expectedServices   []string
+	beforeServices     map[string]struct{}
+	freshStart         bool
 	buildFingerprints  map[string]string
 	configFingerprints map[string]string
 	buildChanged       map[string]struct{}
@@ -88,15 +88,15 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 	}
 
 	return &repositoryWorkloadExecution{
-		compose:           compose,
-		resolved:          resolved,
-		files:             files,
-		workload:          workload,
-		environment:       environment,
-		composeFiles:      composeFiles,
-		expectedServices:  expectedServices,
-		beforeServices:    beforeServices,
-		freshStart:        len(beforeStates) == 0,
+		compose:            compose,
+		resolved:           resolved,
+		files:              files,
+		workload:           workload,
+		environment:        environment,
+		composeFiles:       composeFiles,
+		expectedServices:   expectedServices,
+		beforeServices:     beforeServices,
+		freshStart:         len(beforeStates) == 0,
 		buildFingerprints:  buildFingerprints,
 		configFingerprints: configFingerprints,
 		buildChanged:       map[string]struct{}{},
