@@ -87,15 +87,16 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatalf("control-plane down: %v\n%s", err, out.String())
 	}
 
-	out.Reset()
-	err = runtimeUpExisting(ctx, &out, "")
-	if err == nil || !strings.Contains(err.Error(), "initialized but sealed") {
-		t.Fatalf("restart without recovery error=%v output=%q", err, out.String())
+	if err := persistTargetRecoveryFileReference(ctx, recovery); err != nil {
+		t.Fatalf("persist target recovery reference: %v", err)
 	}
 
 	out.Reset()
-	if err := runtimeUpExisting(ctx, &out, recovery); err != nil {
-		t.Fatalf("restart with recovery: %v\n%s", err, out.String())
+	if err := runtimeUpExisting(ctx, &out, ""); err != nil {
+		t.Fatalf("restart with persisted target recovery reference: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "OpenBao is sealed; unsealing from the operator recovery file") {
+		t.Fatalf("restart did not report automatic shared OpenBao unseal: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "control-plane runtime started and ready") {
 		t.Fatalf("restart output did not report verified readiness: %q", out.String())

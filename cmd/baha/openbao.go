@@ -93,6 +93,9 @@ func openBaoBootstrapCommand() *cli.Command {
 			if err := platformopenbao.Bootstrap(bootstrapCtx, compose, files, recoveryPath); err != nil {
 				return err
 			}
+			if err := persistTargetRecoveryFileReference(bootstrapCtx, recoveryPath); err != nil {
+				return fmt.Errorf("persist OpenBao recovery-file reference: %w", err)
+			}
 			if err := reconcileControlPlaneServiceAccess(bootstrapCtx, compose, files); err != nil {
 				return fmt.Errorf("reconcile control-plane service access after OpenBao bootstrap: %w", err)
 			}

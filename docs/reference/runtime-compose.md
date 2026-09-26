@@ -92,12 +92,14 @@ baha openbao status
 
 Bootstrap initializes and unseals the current single-node Shamir profile, enables the `baseharbor/` KV v2 mount and AppRole auth, creates and verifies the restricted BaseHarbor manager identity, then revokes the initial root token.
 
-After a restart:
+After a restart, the normal path is simply:
 
 ```bash
-baha openbao unseal --recovery-file /secure/off-host/openbao-recovery.json
+baha up
 baha openbao status
 ```
+
+`baha up` uses the recovery-file path persisted for the effective Target. The recovery material remains operator-held outside normal BaseHarbor state. `baha up --recovery-file PATH` remains the explicit override when the file was moved or a custom location should be used.
 
 Automatic KMS/HSM/transit unseal is a future deployment profile, not current single-node behavior.
 

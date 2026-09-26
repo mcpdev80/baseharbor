@@ -81,11 +81,15 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 		}
 	}
 
+	resolvedRecoveryFile, _, err := resolveTargetRecoveryFile(ctx, recoveryFile)
+	if err != nil {
+		return err
+	}
 	compose, err := startExistingControlPlaneRuntime(ctx, files)
 	if err != nil {
 		return err
 	}
-	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, strings.TrimSpace(recoveryFile), out); err != nil {
+	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
 		return err
 	}
 	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
