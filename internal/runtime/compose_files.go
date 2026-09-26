@@ -480,6 +480,10 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 
 	var stdout bytes.Buffer
 	progress := newComposeProgressCapture(onProgress)
+	// Compose/BuildKit must never inherit an interactive terminal stdin from
+	// BaseHarbor's progress path. Lifecycle commands are non-interactive at
+	// this boundary; inherited TTY stdin can leave a build waiting forever.
+	cmd.Stdin = bytes.NewReader(nil)
 	cmd.Stdout = &stdout
 	cmd.Stderr = progress
 	err = cmd.Run()
