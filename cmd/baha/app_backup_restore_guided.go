@@ -26,10 +26,14 @@ var guidedBackupReadPassword = readBackupPasswordFromTerminal
 func appGuidedBackupCommand(store application.Store) *cli.Command {
 	command := appBackupCommandWithMetadata(store)
 	baseRun := command.Run
-	command.Usage = "baha app backup [NAME] [--output FILE] [--password-file FILE]"
+	command.Usage = "baha app backup [NAME] [--output FILE] [--password-file FILE] [--include-state CLASS] [--exclude-state CLASS]"
 	command.Long = "Creates one encrypted application recovery unit. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry and safe output defaults. Automation keeps using an owner-only --password-file; backup passwords are never accepted as command-line values."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		filtered, environment, err := extractApplicationEnvironment(args, "backup")
+		selectionFiltered, _, err := extractRecoverySelectionArgs(args)
+		if err != nil {
+			return err
+		}
+		filtered, environment, err := extractApplicationEnvironment(selectionFiltered, "backup")
 		if err != nil {
 			return err
 		}
@@ -76,7 +80,11 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		}
 		defer zeroBytes(password)
 		return withInMemoryPasswordFile(password, func(passwordPath string) error {
-			forwarded := append([]string(nil), filtered...)
+			forwarded := append([]string(nil), args...)
+			forwarded, _, err = extractApplicationEnvironment(forwarded, "backup")
+			if err != nil {
+				return err
+			}
 			if environment != "" {
 				forwarded = append(forwarded, "--environment", environment)
 			}
@@ -134,14 +142,22 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 		if name != "" && name != m.Name {
 			return errors.New("restore target NAME does not match backup application identity")
 		}
-		if _, err := applicationbackup.PostgresBackupsFromPayload(m, payload); err != nil {
-			return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
+		recoveryManifest, found, manifestErr := applicationbackup.RecoveryManifestFromPayload(payload)
+		if manifestErr != nil {
+			return fmt.Errorf("validate recovery manifest before mutation: %w", manifestErr)
+		}
+		if !found {
+			if _, err := applicationbackup.PostgresBackupsFromPayload(m, payload); err != nil {
+				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
+			}
+		} else if recoveryManifestHasSelected(recoveryManifest, applicationbackup.StateSQL) {
+			if _, err := applicationbackup.PostgresBackupsFromPayload(m, payload); err != nil {
+				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
+			}
 		}
 
 		formatRestorePreview(out, backupPath, m, payload.Manifest.CreatedAt, payload.Manifest.Entries)
-		if recoveryManifest, found, manifestErr := applicationbackup.RecoveryManifestFromPayload(payload); manifestErr != nil {
-			return fmt.Errorf("validate recovery manifest before mutation: %w", manifestErr)
-		} else if found {
+		if found {
 			formatRecoveryManifestPreview(out, recoveryManifest)
 		}
 		confirmed, err := promptGuidedConfirmation(guidedBackupInput, out, "Restore this backup and replace matching managed state?", false)
@@ -174,6 +190,15 @@ func parseGuidedBackupArgs(args []string) (name, outputPath string, err error) {
 			outputPath = args[i]
 		case "--password-file":
 			return "", "", usageError("guided backup parser received --password-file", "Use the deterministic password-file path instead.")
+		case "--include-state", "--exclude-state":
+			option := args[i]
+			i++
+			if i >= len(args) || strings.TrimSpace(args[i]) == "" {
+				return "", "", usageError(option+" requires a recovery state class", "Use a typed recovery state class.")
+			}
+			if _, parseErr := applicationbackup.ParseRecoveryStateClass(args[i]); parseErr != nil {
+				return "", "", parseErr
+			}
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return "", "", usageError("unknown option "+args[i], "Run 'baha app backup --help' for usage.")
