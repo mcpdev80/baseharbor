@@ -147,6 +147,10 @@ func kindForName(name string) string {
 		return "postgres"
 	case len(name) >= len("secrets/") && name[:len("secrets/")] == "secrets/":
 		return "secrets"
+	case len(name) >= len("object-storage/") && name[:len("object-storage/")] == "object-storage/":
+		return "object-storage"
+	case len(name) >= len("workload-storage/") && name[:len("workload-storage/")] == "workload-storage/":
+		return "workload-storage"
 	default:
 		return ""
 	}

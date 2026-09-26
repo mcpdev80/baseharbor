@@ -36,9 +36,9 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			StateClass:      StateObjectStorage,
 			LogicalResource: bucket,
 			Ownership:       "application",
-			Support:         RecoveryUnsupported,
+			Support:         RecoverySupported,
+			DefaultSelected: true,
 			Durable:         true,
-			Reason:          "object-storage capture and restore are not implemented yet",
 		})
 	}
 	if application.HasLogsCollection(m) {
@@ -78,6 +78,15 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			break
 		}
 	}
+
+	contributors = append(contributors, RecoveryContributor{
+		StateClass:      StatePKI,
+		LogicalResource: "runtime-identities",
+		Ownership:       "application",
+		Support:         RecoverySupported,
+		DefaultSelected: true,
+		Reason:          "ephemeral runtime identities and trust edges are reconstructed from desired state; private CA keys are not copied",
+	})
 
 	return NewRecoverySelection(contributors)
 }

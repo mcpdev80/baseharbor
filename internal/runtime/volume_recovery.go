@@ -27,6 +27,39 @@ func (c Compose) ExportOwnedVolume(ctx context.Context, project, volume string) 
 	return c.directBinary(ctx, nil, "run", "--rm", "-v", volume+":/data:ro", recoveryHelperImage, "tar", "-C", "/data", "-cf", "-", ".")
 }
 
+func (c Compose) EnsureOwnedVolume(ctx context.Context, project, volume string) error {
+	project = strings.TrimSpace(project)
+	volume = strings.TrimSpace(volume)
+	if project == "" || volume == "" {
+		return errors.New("project and volume are required")
+	}
+	ok, err := c.InspectProjectResource(ctx, project, ProjectResource{Kind: "volume", Name: volume})
+	if err == nil && ok {
+		return nil
+	}
+	if err != nil && !errors.Is(err, ErrResourceOwnership) {
+		return err
+	}
+	if errors.Is(err, ErrResourceOwnership) {
+		return err
+	}
+	if _, createErr := c.directBinary(ctx, nil, "volume", "create",
+		"--label", "com.docker.compose.project="+project,
+		"--label", "io.podman.compose.project="+project,
+		volume,
+	); createErr != nil {
+		return fmt.Errorf("create owned recovery volume %s: %w", volume, createErr)
+	}
+	ok, err = c.InspectProjectResource(ctx, project, ProjectResource{Kind: "volume", Name: volume})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("created recovery volume %s could not be ownership-verified", volume)
+	}
+	return nil
+}
+
 func (c Compose) RestoreOwnedVolume(ctx context.Context, project, volume string, archive []byte) error {
 	project = strings.TrimSpace(project)
 	volume = strings.TrimSpace(volume)
