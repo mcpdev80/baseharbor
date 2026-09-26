@@ -326,6 +326,20 @@ func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhru
 		if err != nil {
 			return fmt.Errorf("resolve runtime broker observability probe state: %w", err)
 		}
+		if runtime.Engine() == "docker" {
+			if _, err := runtime.ExecProject(
+				ctx,
+				runtimebroker.ProjectNameForRuntime(m, files),
+				brokerFiles.Compose,
+				files.Env,
+				runtimebroker.ServiceName,
+				"sh",
+				"-c",
+				"printf '%s\\n' '{\"event\":\"baseharbor_provider_log_probe\"}' > /proc/1/fd/1",
+			); err != nil {
+				return fmt.Errorf("emit runtime broker stdout probe: %w", err)
+			}
+		}
 		out, err := runtime.ExecProject(
 			ctx,
 			runtimebroker.ProjectNameForRuntime(m, files),
