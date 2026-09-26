@@ -40,11 +40,11 @@ var conventionalWorkloadComposePaths = []string{
 }
 
 func WorkloadProjectName(m Manifest) string {
-	return bhruntime.ApplicationProjectName("", m.Name)
+	return bhruntime.ApplicationProjectName("", m.Name, m.Environment)
 }
 
 func WorkloadProjectNameForNamespace(m Manifest, namespace string) string {
-	return bhruntime.ApplicationProjectName(namespace, m.Name)
+	return bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment)
 }
 
 func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
