@@ -372,7 +372,7 @@ func targetDataRoot(target deployment.ResolvedTarget) (string, error) {
 }
 
 func targetRuntimeProjectName(target deployment.ResolvedTarget) string {
-	return "baseharbor-" + strings.ReplaceAll(target.Name, ".", "-")
+	return bhruntime.SharedProjectName(target.Name)
 }
 
 func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhruntime.Files, error) {
