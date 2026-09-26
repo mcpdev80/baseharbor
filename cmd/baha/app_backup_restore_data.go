@@ -27,17 +27,9 @@ type applicationRestoreData struct {
 
 func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, selectionArgs recoverySelectionArgs, password []byte, outputPath string) error {
 	m := resolved.Manifest
-	selection, err := applicationbackup.DiscoverManifestRecovery(m)
+	selection, workloadVolumes, err := discoverApplicationRecoverySelection(ctx, compose, resolved, files)
 	if err != nil {
 		return fmt.Errorf("discover recovery contributors: %w", err)
-	}
-	workloadContributors, workloadVolumes, err := discoverRecoveryWorkloadStorage(ctx, compose, resolved, files)
-	if err != nil {
-		return fmt.Errorf("discover workload recovery storage: %w", err)
-	}
-	selection, err = applicationbackup.NewRecoverySelection(append(selection.Contributors, workloadContributors...))
-	if err != nil {
-		return err
 	}
 	selection, err = selection.Apply(selectionArgs.Include, selectionArgs.Exclude)
 	if err != nil {
