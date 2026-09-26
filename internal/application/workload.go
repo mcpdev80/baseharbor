@@ -242,7 +242,10 @@ func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[st
 }
 
 func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[string]string, runtime RuntimeFiles) (string, error) {
-	runtimeProject := runtime.Project
+	runtimeProject := runtime.ResourceProject
+	if strings.TrimSpace(runtimeProject) == "" {
+		runtimeProject = RuntimeProjectName(m)
+	}
 	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
 	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
 	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
