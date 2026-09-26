@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.15.1] - 2026-09-26
+
+### Fixed
+
+- Runtime Broker compatibility now uses the versioned runtime contract instead of requiring an exact CLI/runtime Git commit match; deterministic version incompatibility fails immediately instead of waiting through the readiness retry window.
+- Repository workload builds no longer inherit interactive TTY stdin, preventing a Compose/BuildKit rebuild from hanging indefinitely under the human progress UI.
+- `baha app down` persists the observed stopped state so `baha app list` does not continue to report READY after a verified stop.
+- Deployment listings tolerate incomplete/orphaned state directories and warn instead of making the complete application registry unusable.
+- Out-of-repository restore resolves and validates the registered repository source before mutating durable state, preventing destructive partial success followed by deployment-record failure.
+- Deterministic `baha app init NAME ...` requires explicit capability/workload intent instead of silently resolving repository ambiguity into a default SQL contract.
+- Repository Compose inspection now decodes YAML merge keys/anchors. Unsupported `include`/`extends` inheritance fails explicitly rather than silently dropping services.
+- Fixed Compose host-port bindings can use a deployment-local automatic fallback without rewriting the source repository; Docker Compose and Podman/Quadlet share the same override semantics.
+- The implicit `local` Target is visible in `baha target list`; target naming failures explain the lowercase slug rules; creating a Target does not change the effective/default Target unless `--default` is supplied.
+- Global `baha status` renders BaseHarbor Target/control-plane/application semantics instead of exposing the raw Compose `ps` table.
+- Managed SQL adoption fails before mutation when replacing a repository database would discard `docker-entrypoint-initdb.d` bootstrap behavior.
+- Accepted mutating MCP lifecycle operations are no longer truncated by client-request cancellation; client timeout guidance and safe permission defaults are documented.
+- Application/full destroy removes BaseHarbor-owned Runtime Broker volumes while continuing to preserve application-owned workload data volumes.
+
+### Security
+
+- Restore and repository-adoption corrections move destructive or ambiguous failures into preflight/fail-closed paths.
+- MCP mutation approval semantics remain unchanged; lifecycle convergence is detached only after the mutating request has already been accepted.
+- Full destroy still removes only BaseHarbor-owned runtime resources and preserves application-owned data.
+
+### Compatibility
+
+- Manifest v1 and provider-neutral application contracts are unchanged.
+- Existing v0.4.15 runtime/provider ownership identities are preserved. Shared Compose-project consolidation is intentionally deferred because it requires an explicit migration design.
+- Git commit identity remains visible as provenance but is no longer treated as the Runtime Broker compatibility boundary.
+
+
 ## [0.4.15] - 2026-09-25
 
 ### Added
