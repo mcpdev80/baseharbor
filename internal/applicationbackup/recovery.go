@@ -30,10 +30,10 @@ const (
 )
 
 type RecoveryContributor struct {
-	StateClass       RecoveryStateClass `json:"state_class"`
-	LogicalResource  string             `json:"logical_resource,omitempty"`
-	Ownership        string             `json:"ownership"`
-	Support          RecoverySupport    `json:"support"`
+	StateClass         RecoveryStateClass `json:"state_class"`
+	LogicalResource    string             `json:"logical_resource,omitempty"`
+	Ownership          string             `json:"ownership"`
+	Support            RecoverySupport    `json:"support"`
 	DefaultSelected    bool               `json:"default_selected"`
 	Selected           bool               `json:"selected"`
 	Durable            bool               `json:"durable,omitempty"`
