@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const (
@@ -31,15 +32,11 @@ func IsMutableDevelopmentImage(image string) bool {
 }
 
 func ProjectName(m application.Manifest) string {
-	return "baseharbor-broker-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName("", m.Name)
 }
 
 func ProjectNameForRuntime(m application.Manifest, files application.RuntimeFiles) string {
-	namespace := strings.TrimSpace(strings.ReplaceAll(files.Namespace, ".", "-"))
-	if namespace == "" {
-		return ProjectName(m)
-	}
-	return "baseharbor-broker-" + namespace + "-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName(files.Namespace, m.Name)
 }
 
 func ObservabilityNetworkName(m application.Manifest) string {
