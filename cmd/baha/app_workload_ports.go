@@ -356,7 +356,7 @@ func existingFixedWorkloadPortOverride(files application.RuntimeFiles) (string, 
 }
 
 func rewriteFixedComposeHostPort(value string, published int) (string, bool) {
-	value = strings.TrimSpace(strings.Trim(value, ""'"))
+	value = strings.TrimSpace(strings.Trim(value, "\"'"))
 	if _, fixed := fixedComposeHostPort(value); !fixed {
 		return "", false
 	}
