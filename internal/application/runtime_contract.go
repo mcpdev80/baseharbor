@@ -165,7 +165,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		return RuntimeContract{}, fmt.Errorf("write application binding metadata: %w", err)
 	}
 
-	workloadBindingsDir, err := ensureWorkloadServiceBindingProjection(m, files, bindingsDir)
+	workloadBindingsDir, err := ensureWorkloadServiceBindingProjection(m, files, values)
 	if err != nil {
 		return RuntimeContract{}, err
 	}
@@ -182,7 +182,7 @@ func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
 	return filepath.Join(files.Dir, workloadServiceBindingDirName)
 }
 
-func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, bindingsDir string) (string, error) {
+func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, values map[string]string) (string, error) {
 	root := workloadServiceBindingProjectionDir(files)
 	if err := os.RemoveAll(root); err != nil {
 		return "", fmt.Errorf("reset workload service binding projection: %w", err)
@@ -191,53 +191,101 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, bind
 		return "", fmt.Errorf("create workload service binding projection: %w", err)
 	}
 
-	type bindingRef struct {
-		kind     string
-		instance string
-		count    int
-	}
-	var refs []bindingRef
 	postgres := SQLInstanceNames(m)
 	for _, instance := range postgres {
-		refs = append(refs, bindingRef{kind: "postgres", instance: instance, count: len(postgres)})
-	}
-	cache := CacheInstanceNames(m)
-	for _, instance := range cache {
-		refs = append(refs, bindingRef{kind: "valkey", instance: instance, count: len(cache)})
+		name := workloadServiceBindingName("postgres", instance, len(postgres))
+		database, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "DB"))
+		if err != nil {
+			return "", err
+		}
+		username, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "USER"))
+		if err != nil {
+			return "", err
+		}
+		password, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "PASSWORD"))
+		if err != nil {
+			return "", err
+		}
+		certificates, err := backendCertificates(values[postgresTLSCAKey(instance)])
+		if err != nil {
+			return "", err
+		}
+		certificatePath := filepath.ToSlash(filepath.Join(workloadServiceBindingRoot, name, "certificates"))
+		query := url.Values{}
+		query.Set("sslmode", "verify-ca")
+		query.Set("sslrootcert", certificatePath)
+		uri := (&url.URL{
+			Scheme:   "postgresql",
+			User:     url.UserPassword(username, password),
+			Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+			Path:     "/" + database,
+			RawQuery: query.Encode(),
+		}).String()
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type":         "postgresql",
+			"provider":     "postgresql",
+			"host":         postgresAccessService(instance),
+			"port":         "5432",
+			"database":     database,
+			"username":     username,
+			"password":     password,
+			"uri":          uri,
+			"certificates": certificates,
+		}); err != nil {
+			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
+		}
 	}
 
-	for _, ref := range refs {
-		source := filepath.Join(bindingsDir, ref.kind)
-		name := ref.kind
-		if ref.count != 1 || ref.instance != defaultServiceInstance {
-			source = filepath.Join(source, ref.instance)
-			name = ref.kind + "." + ref.instance
+	cache := CacheInstanceNames(m)
+	for _, instance := range cache {
+		name := workloadServiceBindingName("valkey", instance, len(cache))
+		password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
+		if err != nil {
+			return "", err
 		}
-		if err := copyServiceBindingDirectory(source, filepath.Join(root, name)); err != nil {
+		certificates, err := backendCertificates(values[valkeyTLSCAKey(instance)])
+		if err != nil {
+			return "", err
+		}
+		uri := (&url.URL{
+			Scheme: "rediss",
+			User:   url.UserPassword("default", password),
+			Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
+			Path:   "/0",
+		}).String()
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type":         "redis",
+			"provider":     "valkey",
+			"host":         valkeyAccessService(instance),
+			"port":         "6379",
+			"username":     "default",
+			"password":     password,
+			"uri":          uri,
+			"certificates": certificates,
+		}); err != nil {
 			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
 		}
 	}
 	return root, nil
 }
 
-func copyServiceBindingDirectory(source, target string) error {
-	entries, err := os.ReadDir(source)
-	if err != nil {
+func workloadServiceBindingName(kind, instance string, count int) string {
+	if count == 1 && instance == defaultServiceInstance {
+		return kind
+	}
+	return kind + "." + instance
+}
+
+func writeWorkloadServiceBinding(dir string, entries map[string]string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !entry.Type().IsRegular() {
-			continue
+	for name, value := range entries {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("workload service binding %s has an empty value", name)
 		}
-		data, err := os.ReadFile(filepath.Join(source, entry.Name()))
-		if err != nil {
-			return err
-		}
-		path := filepath.Join(target, entry.Name())
-		if err := os.WriteFile(path, data, 0o444); err != nil {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(value+"\n"), 0o444); err != nil {
 			return err
 		}
 		if err := os.Chmod(path, 0o444); err != nil {
