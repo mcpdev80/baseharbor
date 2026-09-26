@@ -535,3 +535,70 @@ func TestInspectKeepsInfrastructureShapedUnknownComposeServiceAmbiguous(t *testi
 		t.Fatalf("AmbiguousServices = %q, want database", got)
 	}
 }
+
+
+func TestInspectResolvesComposeYAMLMergeKeys(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `x-common: &common
+  image: grafana/loki:latest
+  ports:
+    - "3100:3100"
+  healthcheck:
+    test: ["CMD", "true"]
+
+services:
+  loki-monolithic:
+    <<: *common
+    deploy:
+      replicas: 1
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "loki-monolithic" {
+		t.Fatalf("WorkloadServices = %q, want loki-monolithic", got)
+	}
+	if len(result.Ports) != 1 || result.Ports[0].Service != "loki-monolithic" || result.Ports[0].Value != "3100:3100" {
+		t.Fatalf("Ports = %#v", result.Ports)
+	}
+	if len(result.HealthChecks) != 1 || result.HealthChecks[0].Detail != "compose service loki-monolithic declares healthcheck" {
+		t.Fatalf("HealthChecks = %#v", result.HealthChecks)
+	}
+}
+
+func TestInspectFailsClosedOnComposeInclude(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `include:
+  - path: ./included.yaml
+services:
+  api:
+    image: example/api
+`)
+	writeTestFile(t, root, "included.yaml", `services:
+  worker:
+    image: example/worker
+`)
+
+	_, err := Inspect(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "Compose include is not yet supported") {
+		t.Fatalf("Inspect error = %v, want explicit include failure", err)
+	}
+}
+
+func TestInspectFailsClosedOnComposeExtends(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  base:
+    image: example/base
+  api:
+    extends:
+      service: base
+`)
+
+	_, err := Inspect(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "uses extends") {
+		t.Fatalf("Inspect error = %v, want explicit extends failure", err)
+	}
+}
