@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate, for example v0.4.15
+        description: Release tag to validate, for example v0.4.15 or v0.4.15.1
         required: true
         type: string
       ref:
@@ -61,21 +61,25 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
           else
-            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
             test -n "$version"
             tag="v$version"
           fi
 
-          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must be valid SemVer with a v prefix." >&2
+          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.HOTFIX, optionally followed by a prerelease suffix." >&2
             exit 1
           fi
 
-          git fetch origin develop
-          git merge-base --is-ancestor HEAD origin/develop || {
-            echo "Pre-release candidate must be contained in develop." >&2
+          git fetch origin main develop
+          if git merge-base --is-ancestor HEAD origin/develop; then
+            echo "Candidate follows the normal develop release line."
+          elif git merge-base --is-ancestor origin/main HEAD; then
+            echo "Candidate follows the released main hotfix line."
+          else
+            echo "Pre-release candidate must either be contained in develop or descend from released main." >&2
             exit 1
-          }
+          fi
 
           version="${tag#v}"
           grep -Fq "## [${version}]" CHANGELOG.md
@@ -199,7 +203,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/pre-release-source-evidence.tsv"
           cat >"$rows" <<EOF
-          Candidate resolution	${{ steps.release.outcome }}	SemVer, changelog, release notes and develop ancestry
+          Candidate resolution	${{ steps.release.outcome }}	release tag, changelog, release notes and develop/main-hotfix ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Source readability	${{ steps.source_readability.outcome }}	production file/function size guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
