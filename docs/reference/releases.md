@@ -41,9 +41,42 @@ Published channels:
 
 Normal development branches must not target `main` directly. Hotfix branches start from `main`, are released through `main`, and must then be merged/backported into `develop` so the next release retains the fix.
 
+## Hotfix releases
+
+During the current v0.4 line, an emergency correction to an already published patch uses a four-part BaseHarbor hotfix version:
+
+```text
+MAJOR.MINOR.PATCH.HOTFIX
+```
+
+Example:
+
+```text
+v0.4.15 -> v0.4.15.1
+```
+
+Hotfix workflow:
+
+1. Start the hotfix release branch from the exact released `main` line, never from in-progress `develop`.
+2. Link every correction to the hotfix release parent issue.
+3. Keep the branch defect-only: no unrelated features, refactors or dependency updates.
+4. Use focused validation while implementing individual fixes.
+5. Update changelog, release notes and any affected operator/reference documentation.
+6. Run the complete pre-release gate exactly once at the release boundary against the final hotfix candidate.
+7. Open the hotfix release PR to `main` only after the candidate evidence is green.
+8. Publish the immutable four-part tag and matching runtime image from the merged `main` commit.
+9. Verify release artifacts/provenance, then forward-port the same fixes to `develop`.
+10. Remove temporary hotfix/validation branches only after publication and forward-port are complete.
+
+If a proposed change alters runtime identity, persisted-state migration, public contracts or architecture beyond what is required to correct the released defect, move it back to the normal roadmap instead of expanding the hotfix.
+
+Rollback rule: do not move or rewrite a published tag. If a hotfix itself is defective, revert the release change on the released line as appropriate and publish a new hotfix version.
+
+Evidence rule: the release issue and release notes must identify the exact BaseHarbor candidate SHA, the external demo revision used by pre-release validation, and the successful release-boundary evidence.
+
 ## Release preparation
 
-Every release is prepared on `develop` and promoted to `main` only after the release candidate is proven.
+Normal releases are prepared on `develop` and promoted to `main` only after the release candidate is proven. Hotfix releases follow the main-based workflow above.
 
 The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](../internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
 
