@@ -361,7 +361,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-broker " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 				}
 			}
-			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, resourceProject)); destroyErr != nil {
+			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject)); destroyErr != nil {
 				*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "application-runtime " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 			}
 			if placement, found, placementErr := application.RegisteredProviderPlacementAt(targetRoot, m, capability.ProviderTempo); placementErr == nil && found && placement.Scope == capability.ScopeApplication {
