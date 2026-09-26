@@ -35,10 +35,10 @@ type OpenBaoTargetConfig struct {
 }
 
 type TargetDefinition struct {
-	Runtime RuntimeDefinition    `yaml:"runtime" json:"runtime"`
-	Access  TargetAccess         `yaml:"access" json:"access"`
-	Scope   string               `yaml:"scope,omitempty" json:"scope,omitempty"`
-	OpenBao OpenBaoTargetConfig  `yaml:"openbao,omitempty" json:"openbao,omitempty"`
+	Runtime RuntimeDefinition   `yaml:"runtime" json:"runtime"`
+	Access  TargetAccess        `yaml:"access" json:"access"`
+	Scope   string              `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao OpenBaoTargetConfig `yaml:"openbao,omitempty" json:"openbao,omitempty"`
 }
 
 type PromptConfig struct {

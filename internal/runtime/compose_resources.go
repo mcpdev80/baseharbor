@@ -433,7 +433,6 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	return driver, tag, nil
 }
 
-
 // ContainerLogAddressProjectService returns the syslog address configured on the
 // running container for an exact Compose project/service.
 func (c Compose) ContainerLogAddressProjectService(ctx context.Context, project, service string) (string, error) {
