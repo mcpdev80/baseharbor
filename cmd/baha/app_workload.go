@@ -220,6 +220,13 @@ func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compo
 	if enabled {
 		composeFiles = append(composeFiles, loggingOverride)
 	}
+	fixedPortOverride, enabled, err := existingFixedWorkloadPortOverride(files)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		composeFiles = append(composeFiles, fixedPortOverride)
+	}
 	return composeFiles, nil
 }
 
