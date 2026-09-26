@@ -14,18 +14,29 @@ import (
 )
 
 type applicationRestoreData struct {
-	manifest        application.Manifest
-	postgresBackups []application.PostgresBackup
-	secretBackup    openbao.ApplicationSecretBackup
+	manifest         application.Manifest
+	recoveryManifest applicationbackup.RecoveryManifest
+	postgresBackups  []application.PostgresBackup
+	secretBackup     openbao.ApplicationSecretBackup
 }
 
 func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, password []byte, outputPath string) error {
-	entries := make([]applicationbackup.PayloadEntry, 0, 2+len(application.SQLInstanceNames(m)))
+	entries := make([]applicationbackup.PayloadEntry, 0, 3+len(application.SQLInstanceNames(m)))
 	metadata, err := applicationbackup.ApplicationManifestPayloadEntry(m)
 	if err != nil {
 		return err
 	}
 	entries = append(entries, metadata)
+
+	selection, err := applicationbackup.DiscoverManifestRecovery(m)
+	if err != nil {
+		return fmt.Errorf("discover recovery contributors: %w", err)
+	}
+	recoveryMetadata, err := applicationbackup.RecoveryManifestPayloadEntry(selection)
+	if err != nil {
+		return fmt.Errorf("encode recovery manifest: %w", err)
+	}
+	entries = append(entries, recoveryMetadata)
 
 	dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
 	if err != nil {
@@ -83,6 +94,21 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 		return applicationRestoreData{}, errors.New("application restore does not yet restore object-storage contents; refusing an incomplete recovery")
 	}
 
+	recoveryManifest, found, err := applicationbackup.RecoveryManifestFromPayload(payload)
+	if err != nil {
+		return applicationRestoreData{}, fmt.Errorf("validate recovery manifest before mutation: %w", err)
+	}
+	if !found {
+		legacySelection, discoveryErr := applicationbackup.DiscoverManifestRecovery(m)
+		if discoveryErr != nil {
+			return applicationRestoreData{}, fmt.Errorf("derive legacy recovery manifest: %w", discoveryErr)
+		}
+		recoveryManifest = applicationbackup.RecoveryManifest{
+			Version:      applicationbackup.RecoveryManifestVersion,
+			Contributors: legacySelection.Contributors,
+		}
+	}
+
 	postgresBackups, err := applicationbackup.PostgresBackupsFromPayload(m, payload)
 	if err != nil {
 		return applicationRestoreData{}, fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
@@ -95,5 +121,5 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 			return applicationRestoreData{}, fmt.Errorf("validate OpenBao backup before mutation: %w", err)
 		}
 	}
-	return applicationRestoreData{manifest: m, postgresBackups: postgresBackups, secretBackup: secretBackup}, nil
+	return applicationRestoreData{manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup}, nil
 }

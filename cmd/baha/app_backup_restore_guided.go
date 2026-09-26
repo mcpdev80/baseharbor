@@ -139,6 +139,11 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 		}
 
 		formatRestorePreview(out, backupPath, m, payload.Manifest.CreatedAt, payload.Manifest.Entries)
+		if recoveryManifest, found, manifestErr := applicationbackup.RecoveryManifestFromPayload(payload); manifestErr != nil {
+			return fmt.Errorf("validate recovery manifest before mutation: %w", manifestErr)
+		} else if found {
+			formatRecoveryManifestPreview(out, recoveryManifest)
+		}
 		confirmed, err := promptGuidedConfirmation(guidedBackupInput, out, "Restore this backup and replace matching managed state?", false)
 		if err != nil {
 			return err
@@ -228,6 +233,26 @@ func formatBackupPreview(out io.Writer, m application.Manifest, outputPath strin
 	} else {
 		fmt.Fprintln(out, "  Managed secrets: none")
 	}
+	if selection, err := applicationbackup.DiscoverManifestRecovery(m); err == nil {
+		fmt.Fprintln(out, "  Recovery state:")
+		for _, contributor := range selection.Contributors {
+			state := "not selected"
+			if contributor.Selected {
+				state = "selected"
+			} else if contributor.Support != applicationbackup.RecoverySupported {
+				state = string(contributor.Support)
+			}
+			resource := ""
+			if contributor.LogicalResource != "" {
+				resource = "/" + contributor.LogicalResource
+			}
+			fmt.Fprintf(out, "    %s%s: %s", contributor.StateClass, resource, state)
+			if contributor.Reason != "" {
+				fmt.Fprintf(out, " (%s)", contributor.Reason)
+			}
+			fmt.Fprintln(out)
+		}
+	}
 	fmt.Fprintln(out, "  Impact: repository workload and secret broker may be stopped briefly for a consistent snapshot.")
 	fmt.Fprintln(out, "  Encryption: password entered with terminal echo disabled; the password is never placed in argv.")
 	fmt.Fprintln(out, "  Password: minimum 12 bytes (12+ ASCII characters recommended).")
@@ -264,6 +289,27 @@ func formatRestorePreview(out io.Writer, backupPath string, m application.Manife
 	}
 	fmt.Fprintln(out, "  Impact: matching managed backends, secret scope and repository workload are stopped/recreated as required by restore.")
 	fmt.Fprintln(out, "  Verification: archive integrity is already validated; runtime identities are regenerated and readiness must pass before success is reported.")
+}
+
+func formatRecoveryManifestPreview(out io.Writer, manifest applicationbackup.RecoveryManifest) {
+	fmt.Fprintln(out, "  Recovery state:")
+	for _, contributor := range manifest.Contributors {
+		state := "not selected"
+		if contributor.Selected {
+			state = "selected"
+		} else if contributor.Support != applicationbackup.RecoverySupported {
+			state = string(contributor.Support)
+		}
+		resource := ""
+		if contributor.LogicalResource != "" {
+			resource = "/" + contributor.LogicalResource
+		}
+		fmt.Fprintf(out, "    %s%s: %s", contributor.StateClass, resource, state)
+		if contributor.Reason != "" {
+			fmt.Fprintf(out, " (%s)", contributor.Reason)
+		}
+		fmt.Fprintln(out)
+	}
 }
 
 func promptGuidedConfirmation(input io.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {

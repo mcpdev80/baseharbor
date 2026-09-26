@@ -61,13 +61,27 @@ func TestFormatBackupPreviewContainsDurableStateWithoutSecretNames(t *testing.T)
 	var out bytes.Buffer
 	formatBackupPreview(&out, m, "mailflow-production.bhbackup")
 	text := out.String()
-	for _, wanted := range []string{"Application: mailflow", "Environment: production", "PostgreSQL: primary", "Managed secrets: included", "never placed in argv"} {
+	for _, wanted := range []string{"Application: mailflow", "Environment: production", "PostgreSQL: primary", "Managed secrets: included", "application.metadata: selected", "database.sql/primary: selected", "secrets/default: selected", "never placed in argv"} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("backup preview missing %q:\n%s", wanted, text)
 		}
 	}
 	if strings.Contains(text, "API_TOKEN") {
 		t.Fatalf("backup preview exposed secret name:\n%s", text)
+	}
+}
+
+
+func TestFormatBackupPreviewShowsUnsupportedDurableState(t *testing.T) {
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithObjectStorageBuckets(m, "uploads")
+	var out bytes.Buffer
+	formatBackupPreview(&out, m, "demo-dev.bhbackup")
+	text := out.String()
+	for _, wanted := range []string{"object-storage.s3/uploads: unsupported", "object-storage capture and restore are not implemented yet"} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("backup preview missing %q:\n%s", wanted, text)
+		}
 	}
 }
 
