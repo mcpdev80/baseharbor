@@ -405,7 +405,7 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.EnsureFilesForProject(root, targetRuntimeProjectName(target), ports)
+	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports)
 	if err != nil {
 		return target, bhruntime.Files{}, err
 	}
