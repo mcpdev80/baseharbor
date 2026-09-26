@@ -114,6 +114,7 @@ type Result struct {
 	SecretSources          map[string]string    `json:"secret_sources,omitempty"`
 	Ports                  []PortEvidence       `json:"ports,omitempty"`
 	HealthChecks           []Evidence           `json:"health_checks,omitempty"`
+	DatabaseBootstrapServices []string           `json:"database_bootstrap_services,omitempty"`
 	Declared               []CapabilityIntent   `json:"declared_capabilities,omitempty"`
 	Reconciliation         []ReconciliationItem `json:"reconciliation,omitempty"`
 }
@@ -141,4 +142,5 @@ type ComposeAnalysis struct {
 	ObjectStorageServices  []string       `json:"object_storage_services,omitempty"`
 	Ports                  []PortEvidence `json:"ports,omitempty"`
 	HealthChecks           []Evidence     `json:"health_checks,omitempty"`
+	DatabaseBootstrapServices []string     `json:"database_bootstrap_services,omitempty"`
 }
