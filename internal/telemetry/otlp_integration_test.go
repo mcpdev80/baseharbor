@@ -78,7 +78,11 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 	if err := driver.Provision(ctx, resource, binding); err != nil {
 		t.Fatalf("provision Collector: %v", err)
 	}
-	if err := containersecurity.VerifyComposeService(ctx, "baseharbor-telemetry", "otel-collector", containersecurity.Requirements{
+	providerFiles, err := ExistingProviderFiles()
+	if err != nil {
+		t.Fatalf("load Collector provider files: %v", err)
+	}
+	if err := containersecurity.VerifyComposeService(ctx, providerFiles.Project, "otel-collector", containersecurity.Requirements{
 		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 	}); err != nil {
 		t.Fatalf("Collector runtime security: %v", err)
