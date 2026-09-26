@@ -58,10 +58,10 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 	totalBytes := 0
 	for {
 		values := url.Values{
-			"query": {query},
-			"start": {strconv.FormatInt(start, 10)},
-			"end": {strconv.FormatInt(end, 10)},
-			"limit": {strconv.Itoa(recoveryQueryBatch)},
+			"query":     {query},
+			"start":     {strconv.FormatInt(start, 10)},
+			"end":       {strconv.FormatInt(end, 10)},
+			"limit":     {strconv.Itoa(recoveryQueryBatch)},
 			"direction": {"forward"},
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)
@@ -109,7 +109,7 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 			stream := streams[key]
 			if stream == nil {
 				labels := make(map[string]string, len(result.Stream))
-				for k, v := range result.Stream { labels[k] = v }
+				for k, v := range result.Stream {\n\t\t\t\t\tlabels[k] = v\n\t\t\t\t}
 				stream = &HistoryStream{Labels: labels}
 				streams[key] = stream
 			}
@@ -121,7 +121,7 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 				if err != nil {
 					return HistoryBackup{}, errors.New("Loki recovery timestamp is malformed")
 				}
-				if ts > lastTimestamp { lastTimestamp = ts }
+				if ts > lastTimestamp {\n\t\t\t\t\tlastTimestamp = ts\n\t\t\t\t}
 				stream.Entries = append(stream.Entries, HistoryEntry{Timestamp: value[0], Line: value[1]})
 				totalEntries++
 				batchEntries++
@@ -138,10 +138,10 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 			return HistoryBackup{}, errors.New("Loki recovery pagination did not advance")
 		}
 		start = lastTimestamp + 1
-		if start > end { break }
+		if start > end {\n\t\t\tbreak\n\t\t}
 	}
 	keys := make([]string, 0, len(streams))
-	for key := range streams { keys = append(keys, key) }
+	for key := range streams {\n\t\tkeys = append(keys, key)\n\t}
 	sort.Strings(keys)
 	backup := HistoryBackup{Streams: make([]HistoryStream, 0, len(keys))}
 	for _, key := range keys {
@@ -154,7 +154,7 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 
 func RestoreApplicationHistoryAt(ctx context.Context, m application.Manifest, dataDir, namespace string, backup HistoryBackup) error {
 	files, err := ExistingProviderFilesAt(dataDir, namespace, m)
-	if err != nil { return err }
+	if err != nil {\n\t\treturn err\n\t}
 	endpoint, err := ProviderEndpoint(files)
 	if err != nil { return err }
 	client, err := lokiHTTPClient(m, files)
@@ -165,7 +165,7 @@ func RestoreApplicationHistoryAt(ctx context.Context, m application.Manifest, da
 		}
 		for offset := 0; offset < len(stream.Entries); offset += 1000 {
 			end := offset + 1000
-			if end > len(stream.Entries) { end = len(stream.Entries) }
+			if end > len(stream.Entries) {\n\t\t\t\tend = len(stream.Entries)\n\t\t\t}
 			values := make([][]string, 0, end-offset)
 			for _, entry := range stream.Entries[offset:end] {
 				if _, err := strconv.ParseInt(entry.Timestamp, 10, 64); err != nil {
