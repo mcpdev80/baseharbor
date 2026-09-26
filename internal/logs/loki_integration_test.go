@@ -154,4 +154,33 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := logs.VerifyProviderSourcesAt(ctx, m, []observability.SignalSource{providerSource}, state, ""); err != nil {
 		t.Fatalf("verify provider syslog ingestion: %v", err)
 	}
+
+	providerWorkdir := t.TempDir()
+	providerCompose := filepath.Join(providerWorkdir, "compose.yaml")
+	providerEnv := filepath.Join(providerWorkdir, "runtime.env")
+	providerProject := application.WorkloadProjectName(application.New("provider-log-probe", "dev", false, false, false))
+	providerYAML := fmt.Sprintf(`services:
+  baseharbor-internal-broker:
+    image: busybox:1.37
+    command: ["sh", "-c", "while true; do echo provider-log-driver-acceptance; sleep 1; done"]
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "udp://127.0.0.1:%d"
+        syslog-format: rfc5424
+        tag: "runtime-broker/baseharbor-internal-broker"
+`, registration.ProviderSyslogPort)
+	if err := os.WriteFile(providerCompose, []byte(providerYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(providerEnv, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := compose.UpProject(ctx, providerProject, providerCompose, providerEnv); err != nil {
+		t.Fatalf("start provider log-driver probe: %v", err)
+	}
+	defer func() { _ = compose.DestroyProject(context.Background(), providerProject, providerCompose, providerEnv) }()
+	if err := logs.VerifyProviderSourcesAt(ctx, m, []observability.SignalSource{providerSource}, state, ""); err != nil {
+		t.Fatalf("verify docker provider log-driver ingestion: %v", err)
+	}
 }
