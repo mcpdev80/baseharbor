@@ -77,17 +77,17 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	term.Info("target", resolved.Target.Name)
 
 	return &applicationDestroyExecution{
-		resolved:       resolved,
-		manifest:       m,
+		resolved:        resolved,
+		manifest:        m,
 		runtimeProject:  application.RuntimeComposeProjectNameForStore(resolved.Store, m),
 		resourceProject: application.RuntimeProjectNameForStore(resolved.Store, m),
-		term:           term,
-		out:            out,
-		confirmed:      confirmed,
-		fullReset:      fullReset,
-		files:          files,
-		runtimeErr:     runtimeErr,
-		partialRuntime: partialRuntime,
+		term:            term,
+		out:             out,
+		confirmed:       confirmed,
+		fullReset:       fullReset,
+		files:           files,
+		runtimeErr:      runtimeErr,
+		partialRuntime:  partialRuntime,
 	}, nil
 }
 
