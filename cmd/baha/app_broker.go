@@ -373,6 +373,32 @@ func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
 	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", brokerFiles.DocsURL)
 }
 
+
+func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	if !application.RequiresRuntimeBroker(m) {
+		return nil
+	}
+	brokerFiles, err := runtimebroker.Existing(files)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("application runtime broker state is missing: %w", err)
+	}
+	project := runtimebroker.ProjectNameForRuntime(m, files)
+	if err := compose.DestroyProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+		return fmt.Errorf("destroy application runtime broker: %w", err)
+	}
+	services, err := compose.RunningServicesProject(ctx, project, brokerFiles.Compose, files.Env)
+	if err != nil {
+		return fmt.Errorf("verify application runtime broker destruction: %w", err)
+	}
+	if len(services) != 0 {
+		return errors.New("verify application runtime broker destruction: broker is still running")
+	}
+	return nil
+}
+
 func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
