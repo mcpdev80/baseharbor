@@ -27,12 +27,13 @@ func TestDiscoverManifestRecoveryUsesPortableStateClasses(t *testing.T) {
 		StateLogs:                1,
 		StateMetrics:             1,
 		StateTraces:              1,
+		StatePKI:                 1,
 	}
 	got := map[RecoveryStateClass]int{}
 	for _, c := range selection.Contributors {
 		got[c.StateClass]++
-		if c.StateClass == StateObjectStorage && c.Support != RecoveryUnsupported {
-			t.Fatalf("object storage support = %q, want unsupported until capture/restore lands", c.Support)
+		if c.StateClass == StateObjectStorage && (c.Support != RecoverySupported || !c.DefaultSelected) {
+			t.Fatalf("object storage recovery = %#v, want supported and selected by default", c)
 		}
 	}
 	for class, count := range want {
