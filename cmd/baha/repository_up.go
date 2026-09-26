@@ -153,14 +153,50 @@ func recoveryFileForRepositoryUp(ctx context.Context, in io.Reader, out io.Write
 	}
 
 	if action == "unseal" {
-		info, statErr := os.Stat(path)
-		if statErr != nil {
-			return "", fmt.Errorf("OpenBao recovery file %s (%s) is unavailable: %w; override with --recovery-file PATH", path, source, statErr)
+		nonInteractive := opts.Yes || noInput(ctx) || !readerIsTerminal(in)
+		if source == "explicit" || source == "persisted target" || nonInteractive {
+			info, statErr := os.Stat(path)
+			if statErr != nil {
+				return "", fmt.Errorf("OpenBao recovery file %s (%s) is unavailable: %w; override with --recovery-file PATH", path, source, statErr)
+			}
+			if info.IsDir() {
+				return "", fmt.Errorf("OpenBao recovery path %s (%s) is a directory; override with --recovery-file PATH", path, source)
+			}
+			return path, nil
 		}
-		if info.IsDir() {
-			return "", fmt.Errorf("OpenBao recovery path %s (%s) is a directory; override with --recovery-file PATH", path, source)
+
+		fmt.Fprintln(out, "OpenBao needs the existing operator-held recovery file used when it was initialized.")
+		reader := bufio.NewReader(in)
+		for {
+			fmt.Fprintf(out, "OpenBao recovery file [%s]: ", path)
+			value, readErr := reader.ReadString('\n')
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return "", readErr
+			}
+			selected := strings.TrimSpace(value)
+			if selected == "" {
+				selected = path
+			}
+			info, statErr := os.Stat(selected)
+			if statErr != nil {
+				if errors.Is(statErr, os.ErrNotExist) {
+					fmt.Fprintln(out, "Error: existing OpenBao recovery file was not found.")
+					if errors.Is(readErr, io.EOF) {
+						return "", usageError("existing OpenBao recovery file was not found", "Choose the recovery file created when OpenBao was initialized.")
+					}
+					continue
+				}
+				return "", fmt.Errorf("inspect OpenBao recovery file: %w", statErr)
+			}
+			if info.IsDir() {
+				fmt.Fprintln(out, "Error: OpenBao recovery path must be a file, not a directory.")
+				if errors.Is(readErr, io.EOF) {
+					return "", usageError("OpenBao recovery path must be a file", "Choose the recovery file created when OpenBao was initialized.")
+				}
+				continue
+			}
+			return selected, nil
 		}
-		return path, nil
 	}
 
 	if opts.Yes || noInput(ctx) || !readerIsTerminal(in) || source == "explicit" || source == "persisted target" {
