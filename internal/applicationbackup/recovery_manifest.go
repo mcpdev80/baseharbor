@@ -8,7 +8,7 @@ import (
 
 const (
 	RecoveryManifestVersion = 1
-	recoveryManifestEntry    = "metadata/recovery.json"
+	recoveryManifestEntry   = "metadata/recovery.json"
 )
 
 type RecoveryManifest struct {
