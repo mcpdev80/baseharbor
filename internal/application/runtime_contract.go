@@ -269,6 +269,74 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 	return root, nil
 }
 
+func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
+	root := workloadServiceBindingProjectionDir(files)
+	postgres := SQLInstanceNames(m)
+	for _, instance := range postgres {
+		name := workloadServiceBindingName("postgres", instance, len(postgres))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: %w", instance, err)
+		}
+		if entries["type"] != "postgresql" || entries["provider"] != "postgresql" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid type/provider", instance)
+		}
+		if entries["host"] != postgresAccessService(instance) || entries["port"] != "5432" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "postgresql" || u.Host != net.JoinHostPort(postgresAccessService(instance), "5432") {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid uri", instance)
+		}
+		wantCA := filepath.ToSlash(filepath.Join(workloadServiceBindingRoot, name, "certificates"))
+		if u.Query().Get("sslmode") != "verify-ca" || u.Query().Get("sslrootcert") != wantCA {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: uri trust reference is incomplete", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: certificates entry is empty", instance)
+		}
+	}
+
+	cache := CacheInstanceNames(m)
+	for _, instance := range cache {
+		name := workloadServiceBindingName("valkey", instance, len(cache))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("verify workload cache binding %s: %w", instance, err)
+		}
+		if entries["type"] != "redis" || entries["provider"] != "valkey" {
+			return fmt.Errorf("verify workload cache binding %s: invalid type/provider", instance)
+		}
+		if entries["host"] != valkeyAccessService(instance) || entries["port"] != "6379" {
+			return fmt.Errorf("verify workload cache binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "rediss" || u.Host != net.JoinHostPort(valkeyAccessService(instance), "6379") {
+			return fmt.Errorf("verify workload cache binding %s: invalid uri", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload cache binding %s: certificates entry is empty", instance)
+		}
+	}
+	return nil
+}
+
+func readWorkloadServiceBinding(dir string) (map[string]string, error) {
+	entries := map[string]string{}
+	for _, name := range []string{"type", "provider", "host", "port", "uri", "certificates"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		value := strings.TrimSpace(string(data))
+		if value == "" {
+			return nil, fmt.Errorf("%s is empty", name)
+		}
+		entries[name] = value
+	}
+	return entries, nil
+}
+
 func workloadServiceBindingName(kind, instance string, count int) string {
 	if count == 1 && instance == defaultServiceInstance {
 		return kind
