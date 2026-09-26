@@ -278,7 +278,6 @@ func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *test
 	}
 }
 
-
 func TestSelectWorkloadServicesRejectsReservedInternalNamespace(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	_, err := selectWorkloadServices(m, []string{"api", "baseharbor-internal-runtime-broker"}, nil)
