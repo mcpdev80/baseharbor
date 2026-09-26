@@ -112,15 +112,19 @@ func composeUsesDatabaseInitDirectory(raw any) bool {
 	if !ok {
 		return false
 	}
+	isInitTarget := func(target string) bool {
+		target = strings.TrimSpace(target)
+		return target == "/docker-entrypoint-initdb.d" || strings.HasPrefix(target, "/docker-entrypoint-initdb.d/")
+	}
 	for _, value := range values {
 		switch typed := value.(type) {
 		case string:
 			parts := strings.Split(typed, ":")
-			if len(parts) >= 2 && strings.TrimSpace(parts[1]) == "/docker-entrypoint-initdb.d" {
+			if len(parts) >= 2 && isInitTarget(parts[1]) {
 				return true
 			}
 		case map[string]any:
-			if strings.TrimSpace(fmt.Sprint(typed["target"])) == "/docker-entrypoint-initdb.d" {
+			if isInitTarget(fmt.Sprint(typed["target"])) {
 				return true
 			}
 		}
