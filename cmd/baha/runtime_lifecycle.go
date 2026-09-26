@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
@@ -15,10 +20,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
-	"io"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 func runtimeDestroy(parent context.Context, args []string, out io.Writer) error {
