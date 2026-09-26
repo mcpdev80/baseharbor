@@ -198,8 +198,8 @@ func composeServiceNames(path string) ([]string, error) {
 func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
 	availableSet := make(map[string]struct{}, len(available))
 	for _, service := range available {
-		if strings.HasPrefix(service, "baseharbor-internal-") {
-			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
+		if service == "baseharbor-broker" || strings.HasPrefix(service, "baseharbor-internal-") {
+			return nil, fmt.Errorf("application Compose service %q uses a reserved BaseHarbor service name", service)
 		}
 		availableSet[service] = struct{}{}
 	}

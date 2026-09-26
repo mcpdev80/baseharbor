@@ -147,82 +147,54 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 }
 
 func recoveryFileForRepositoryUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions, action string) (string, error) {
-	if path := strings.TrimSpace(opts.RecoveryFile); path != "" {
-		return path, nil
-	}
-	if opts.Yes || noInput(ctx) || !readerIsTerminal(in) {
-		return "", usageError(
-			"OpenBao requires an operator-held recovery file before the application can start",
-			"Re-run 'baha up --recovery-file /secure/openbao-recovery.json'. The path must be outside .baseharbor state.",
-		)
+	path, source, err := resolveTargetRecoveryFile(ctx, opts.RecoveryFile)
+	if err != nil {
+		return "", err
 	}
 
+	if action == "unseal" {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			return "", fmt.Errorf("OpenBao recovery file %s (%s) is unavailable: %w; override with --recovery-file PATH", path, source, statErr)
+		}
+		if info.IsDir() {
+			return "", fmt.Errorf("OpenBao recovery path %s (%s) is a directory; override with --recovery-file PATH", path, source)
+		}
+		return path, nil
+	}
+
+	if opts.Yes || noInput(ctx) || !readerIsTerminal(in) || source == "explicit" || source == "persisted target" {
+		if _, statErr := os.Stat(path); statErr == nil {
+			return "", fmt.Errorf("new OpenBao recovery output file already exists at %s; BaseHarbor never overwrites recovery material", path)
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return "", fmt.Errorf("inspect OpenBao recovery output path %s: %w", path, statErr)
+		}
+		return path, nil
+	}
+
+	fmt.Fprintln(out, "OpenBao needs a NEW operator-held recovery output file.")
+	fmt.Fprintln(out, "The file must not already exist, must be outside BaseHarbor state, and will be created owner-only (0600).")
 	reader := bufio.NewReader(in)
-	label := "OpenBao recovery file"
-	if action == "initialize" {
-		fmt.Fprintln(out, "OpenBao needs a NEW operator-held recovery output file.")
-		fmt.Fprintln(out, "The file must not already exist, must be outside BaseHarbor state, and will be created owner-only (0600).")
-		fmt.Fprintln(out, "Where should BaseHarbor create the new recovery file?")
-		label = "OpenBao-recovery-key"
-	} else {
-		fmt.Fprintln(out, "OpenBao needs the existing operator-held recovery file used when it was initialized.")
-		fmt.Fprintln(out, "Which recovery file should BaseHarbor use to unseal OpenBao?")
-		label = "OpenBao-decrypt-key"
-	}
-
 	for {
-		path, err := promptNewFilePath(reader, out, label, in)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return "", err
+		fmt.Fprintf(out, "OpenBao recovery file [%s]: ", path)
+		value, readErr := reader.ReadString('\n')
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return "", readErr
 		}
-		path = strings.TrimSpace(path)
-		if path == "" {
-			if errors.Is(err, io.EOF) {
-				return "", usageError(
-					"OpenBao recovery file path is required",
-					"Choose a secure path outside .baseharbor state, for example /secure/openbao-recovery.json.",
-				)
-			}
-			fmt.Fprintln(out, "Error: OpenBao recovery file path is required.")
-			fmt.Fprintln(out, "Choose a secure path outside .baseharbor state.")
-			continue
+		selected := strings.TrimSpace(value)
+		if selected == "" {
+			selected = path
 		}
-
-		if action == "initialize" {
-			if _, statErr := os.Stat(path); statErr == nil {
-				fmt.Fprintln(out, "Error: new OpenBao recovery output file already exists.")
-				fmt.Fprintln(out, "Choose a new path; BaseHarbor never overwrites an existing recovery file.")
-				if errors.Is(err, io.EOF) {
-					return "", usageError("new OpenBao recovery output file already exists", "Choose a new path; BaseHarbor never overwrites an existing recovery file.")
-				}
-				continue
-			} else if !errors.Is(statErr, os.ErrNotExist) {
-				fmt.Fprintf(out, "Error: inspect OpenBao recovery output path: %v\n", statErr)
-				if errors.Is(err, io.EOF) {
-					return "", fmt.Errorf("inspect OpenBao recovery output path: %w", statErr)
-				}
-				continue
-			}
-			return path, nil
-		}
-
-		if info, statErr := os.Stat(path); statErr != nil {
-			if errors.Is(statErr, os.ErrNotExist) {
-				fmt.Fprintln(out, "Error: existing OpenBao recovery file was not found.")
-				fmt.Fprintln(out, "Choose the recovery file created when OpenBao was initialized.")
-				if errors.Is(err, io.EOF) {
-					return "", usageError("existing OpenBao recovery file was not found", "Choose the recovery file created when OpenBao was initialized.")
-				}
-				continue
-			}
-			return "", fmt.Errorf("inspect OpenBao recovery file: %w", statErr)
-		} else if info.IsDir() {
-			fmt.Fprintln(out, "Error: OpenBao recovery path must be a file, not a directory.")
-			if errors.Is(err, io.EOF) {
-				return "", usageError("OpenBao recovery path must be a file", "Choose the recovery file created when OpenBao was initialized.")
+		if _, statErr := os.Stat(selected); statErr == nil {
+			fmt.Fprintln(out, "Error: new OpenBao recovery output file already exists.")
+			fmt.Fprintln(out, "Choose a new path; BaseHarbor never overwrites an existing recovery file.")
+			if errors.Is(readErr, io.EOF) {
+				return "", usageError("new OpenBao recovery output file already exists", "Choose a new path; BaseHarbor never overwrites an existing recovery file.")
 			}
 			continue
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return "", fmt.Errorf("inspect OpenBao recovery output path %s: %w", selected, statErr)
 		}
-		return path, nil
+		return selected, nil
 	}
 }
