@@ -267,12 +267,16 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 				}
 				if runtime.Engine() == "docker" {
-					driver, err := runtime.ProjectServiceLogDriver(ctx, brokerProject, runtimebroker.ServiceName)
+					driver, tag, err := runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
 					if err != nil {
-						return fmt.Errorf("verify runtime broker log driver: %w", err)
+						return fmt.Errorf("verify runtime broker log configuration: %w", err)
 					}
 					if driver != "syslog" {
 						return fmt.Errorf("verify runtime broker log driver: got %q, want syslog", driver)
+					}
+					expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
+					if tag != expectedTag {
+						return fmt.Errorf("verify runtime broker syslog tag: got %q, want %q", tag, expectedTag)
 					}
 				}
 			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
