@@ -366,6 +366,7 @@ jobs:
 
       - name: Run GoReleaser
         id: goreleaser
+        if: needs.approval.outputs.four_part_hotfix != 'true'
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -373,6 +374,21 @@ jobs:
           args: release --clean --release-notes docs/releases/${{ needs.approval.outputs.tag }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go for four-part hotfix
+        if: needs.approval.outputs.four_part_hotfix == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Publish four-part hotfix
+        id: hotfix_release
+        if: needs.approval.outputs.four_part_hotfix == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/publish-four-part-hotfix.sh "${{ needs.approval.outputs.tag }}" "docs/releases/${{ needs.approval.outputs.tag }}.md"
 
       - name: Attest release archives
         id: attest_archives
@@ -399,7 +415,8 @@ jobs:
           Approved tag/SHA	success	${{ needs.approval.outputs.tag }} -> ${{ needs.approval.outputs.tag_sha }}
           Supplemental release-only checks	${{ needs.supplemental.result }}	reused run ${{ needs.supplemental.outputs.validation_run_id || 'none' }}, artifact ${{ needs.supplemental.outputs.validation_artifact || 'fallback' }}
           Runtime image publish	${{ needs.runtime-image.result }}	multi-arch runtime image and attestation
-          GoReleaser publish	${{ steps.goreleaser.outcome }}	release archives and GitHub release
+          GoReleaser publish	${{ steps.goreleaser.outcome || 'skipped' }}	standard SemVer release path
+          Four-part hotfix publish	${{ steps.hotfix_release.outcome || 'skipped' }}	four-part hotfix archives and GitHub release
           Archive attestation	${{ steps.attest_archives.outcome }}	artifact provenance
           Checksum attestation	${{ steps.attest_checksums.outcome }}	checksum provenance
           EOF
