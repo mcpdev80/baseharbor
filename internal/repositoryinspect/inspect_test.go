@@ -515,6 +515,26 @@ func TestInspectKeepsExplicitOTLPSignalEvidence(t *testing.T) {
 	t.Fatalf("explicit OTLP traces finding missing: %#v", result.Findings)
 }
 
+func TestInspectDetectsPostgresEntrypointBootstrapFileMount(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  postgres:
+    image: postgres:18
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  api:
+    image: example/api
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(result.DatabaseBootstrapServices, ","); got != "postgres" {
+		t.Fatalf("DatabaseBootstrapServices = %q, want postgres", got)
+	}
+}
+
 func TestInspectKeepsUnsupportedMySQLServiceAmbiguous(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `services:
