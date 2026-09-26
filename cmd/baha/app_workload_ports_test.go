@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func TestWorkloadPublishedPortVariables(t *testing.T) {
@@ -219,7 +218,7 @@ func TestFixedComposeHostPort(t *testing.T) {
 	}
 }
 
-func TestPreflightRepositoryWorkloadPublishedPortsRejectsOccupiedFixedPort(t *testing.T) {
+func TestPreflightRepositoryWorkloadPublishedPortsPersistsFallbackForOccupiedFixedPort(t *testing.T) {
 	root := t.TempDir()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -234,29 +233,37 @@ func TestPreflightRepositoryWorkloadPublishedPortsRejectsOccupiedFixedPort(t *te
 		t.Fatal(err)
 	}
 
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	var out bytes.Buffer
 	err = preflightRepositoryWorkloadPublishedPorts(
 		context.Background(),
 		strings.NewReader(""),
-		&bytes.Buffer{},
+		&out,
 		application.WorkloadFiles{
 			RepositoryRoot: root,
 			Compose:        composePath,
 			Services:       []string{"api"},
 		},
-		application.RuntimeFiles{Dir: t.TempDir()},
+		files,
 		map[string]string{},
 	)
-	if err == nil {
-		t.Fatal("expected occupied fixed port to fail before workload start")
+	if err != nil {
+		t.Fatal(err)
 	}
-	var typed *machine.Error
-	if !errors.As(err, &typed) {
-		t.Fatalf("expected typed machine error, got %T: %v", err, err)
+
+	overridePath := fixedWorkloadPortOverridePath(files)
+	data, err := os.ReadFile(overridePath)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if typed.Code != machine.ErrorPortConflict || typed.Resource != "api" {
-		t.Fatalf("typed error = %#v", typed)
+	override := string(data)
+	if !strings.Contains(override, "ports: !override") {
+		t.Fatalf("fixed-port override missing replacement tag: %s", override)
 	}
-	if !strings.Contains(typed.Next, "configurable") {
-		t.Fatalf("remediation = %q", typed.Next)
+	if strings.Contains(override, fmt.Sprintf(":%d:8080", port)) {
+		t.Fatalf("fixed-port override kept occupied port %d: %s", port, override)
+	}
+	if !strings.Contains(out.String(), "saved for this deployment") {
+		t.Fatalf("fallback output missing persistence detail: %q", out.String())
 	}
 }

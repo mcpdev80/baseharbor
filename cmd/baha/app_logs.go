@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -32,6 +33,7 @@ type managedLogsExecution struct {
 	includePlatformProviders    bool
 	dataDir                     string
 	namespace                   string
+	runtimeFiles                application.RuntimeFiles
 }
 
 func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
@@ -111,6 +113,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if prepared == nil {
 		return nil
 	}
+	prepared.runtimeFiles = files
 	if !prepared.enabled {
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 			return err
@@ -174,7 +177,17 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	} else if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 		return err
 	}
-	providerOverride, providerOverrideFound, err := logsprovider.EnsureProviderSourceOverrideForRuntimeAt(prepared.dataDir, prepared.namespace, prepared.manifest, files, prepared.runtime.Engine())
+	providerOverride, providerOverrideFound, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
+		prepared.dataDir,
+		prepared.namespace,
+		prepared.manifest,
+		files.Dir,
+		"provider.logging.override.yaml",
+		files.Project,
+		prepared.runtime.Engine(),
+		observability.SourceApplicationProvider,
+		application.ManagedRuntimeProviderServiceNames(prepared.manifest),
+	)
 	if err != nil {
 		return err
 	}
@@ -226,7 +239,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
-			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+			override, found, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
 				dataDir,
 				namespace,
 				m,
@@ -235,6 +248,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				runtimebroker.ProjectNameForRuntime(m, files),
 				runtime.Engine(),
 				observability.SourceApplicationProvider,
+				[]string{runtimebroker.ServiceName},
 			)
 			if err != nil {
 				return fmt.Errorf("materialize runtime broker log collection: %w", err)
@@ -248,8 +262,22 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				return fmt.Errorf("validate runtime broker log collection: %w", err)
 			}
 			if found {
-				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, nil, nil, composeFiles...); err != nil {
+				brokerProject := runtimebroker.ProjectNameForRuntime(m, files)
+				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, brokerProject, workdir, nil, []string{runtimebroker.ServiceName}, composeFiles...); err != nil {
 					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
+				}
+				if runtime.Engine() == "docker" {
+					driver, tag, err := runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+					if err != nil {
+						return fmt.Errorf("verify runtime broker log configuration: %w", err)
+					}
+					if driver != "syslog" {
+						return fmt.Errorf("verify runtime broker log driver: got %q, want syslog", driver)
+					}
+					expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
+					if tag != expectedTag {
+						return fmt.Errorf("verify runtime broker syslog tag: got %q, want %q", tag, expectedTag)
+					}
 				}
 			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
@@ -258,7 +286,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	}
 
 	if executorFiles, err := runtimeexecutor.ExistingFilesAt(dataDir, namespace); err == nil {
-		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+		override, found, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
 			dataDir,
 			namespace,
 			m,
@@ -267,6 +295,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			executorFiles.Project,
 			runtime.Engine(),
 			observability.SourcePlatformProvider,
+			[]string{runtimeexecutor.ServiceName},
 		)
 		if err != nil {
 			return fmt.Errorf("materialize runtime executor log collection: %w", err)
@@ -279,7 +308,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			return fmt.Errorf("validate runtime executor log collection: %w", err)
 		}
 		if found {
-			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, []string{runtimeexecutor.ServiceName}, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 			}
 		} else if err := runtime.UpProjectFiles(ctx, executorFiles.Project, executorFiles.Dir, composeFiles...); err != nil {
@@ -377,6 +406,34 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 	if prepared.execution != nil {
 		if _, err := prepared.execution.Verify(ctx); err != nil {
 			return err
+		}
+	}
+	if len(prepared.providerSources) > 0 {
+		if prepared.runtime.Engine() == "docker" && application.RequiresRuntimeBroker(prepared.manifest) {
+			brokerProject := runtimebroker.ProjectNameForRuntime(prepared.manifest, prepared.runtimeFiles)
+			driver, tag, err := prepared.runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+			if err != nil {
+				return fmt.Errorf("verify final runtime broker log configuration: %w", err)
+			}
+			if driver != "syslog" {
+				return fmt.Errorf("verify final runtime broker log driver: got %q, want syslog", driver)
+			}
+			expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
+			if tag != expectedTag {
+				return fmt.Errorf("verify final runtime broker syslog tag: got %q, want %q", tag, expectedTag)
+			}
+		}
+		for attempt := 0; attempt < 3; attempt++ {
+			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
+				return err
+			}
+			if attempt < 2 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(750 * time.Millisecond):
+				}
+			}
 		}
 	}
 	if err := logsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.providerSources, prepared.dataDir, prepared.namespace); err != nil {

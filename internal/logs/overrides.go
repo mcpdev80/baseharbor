@@ -131,6 +131,20 @@ func EnsureRuntimeProjectOverrideForRuntimeAt(
 	runtimeKind string,
 	class observability.SourceClass,
 ) (string, bool, error) {
+	return EnsureRuntimeModuleOverrideForRuntimeAt(dataDir, namespace, m, dir, filename, project, runtimeKind, class, nil)
+}
+
+func EnsureRuntimeModuleOverrideForRuntimeAt(
+	dataDir string,
+	namespace string,
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	runtimeKind string,
+	class observability.SourceClass,
+	allowedServices []string,
+) (string, bool, error) {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return "", false, err
@@ -156,6 +170,12 @@ func EnsureRuntimeProjectOverrideForRuntimeAt(
 		Provider capability.ProviderKind
 		Class    observability.SourceClass
 	}
+	allowed := map[string]struct{}{}
+	for _, service := range allowedServices {
+		if service = strings.TrimSpace(service); service != "" {
+			allowed[service] = struct{}{}
+		}
+	}
 	seen := map[string]providerService{}
 	for _, source := range sources {
 		if source.Class != class {
@@ -164,6 +184,11 @@ func EnsureRuntimeProjectOverrideForRuntimeAt(
 		sourceProject, service, ok := observability.ParseRuntimeTarget(source.Target)
 		if !ok || sourceProject != project {
 			continue
+		}
+		if len(allowed) > 0 {
+			if _, ok := allowed[service]; !ok {
+				continue
+			}
 		}
 		seen[service] = providerService{Service: service, Provider: source.Provider, Class: source.Class}
 	}

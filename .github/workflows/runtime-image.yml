@@ -8,7 +8,7 @@ on:
         required: false
         type: string
       version_tag:
-        description: Release tag used for image metadata, for example v0.4.15
+        description: Release tag used for image metadata, for example v0.4.15 or v0.4.15.1
         required: false
         type: string
   workflow_dispatch:
@@ -48,8 +48,8 @@ jobs:
             version_tag=""
           fi
 
-          if [ -n "${version_tag}" ] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Runtime release tag must be valid SemVer with a v prefix." >&2
+          if [ -n "${version_tag}" ] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Runtime release tag must use vMAJOR.MINOR.PATCH[-PRERELEASE] or stable vMAJOR.MINOR.PATCH.HOTFIX." >&2
             exit 1
           fi
 
@@ -70,10 +70,22 @@ jobs:
           set -euo pipefail
           if [ -n "${VERSION_TAG:-}" ]; then
             version="${VERSION_TAG#v}"
+            release_core="${version%%-*}"
+            IFS='.' read -r major minor patch hotfix_extra <<<"${release_core}"
+            minor_tag="${major}.${minor}"
+            if [[ "${version}" == *-* ]]; then
+              stable="false"
+            else
+              stable="true"
+            fi
           else
             version="edge"
+            minor_tag=""
+            stable="false"
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "minor_tag=${minor_tag}" >> "${GITHUB_OUTPUT}"
+          echo "stable=${stable}" >> "${GITHUB_OUTPUT}"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
           echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
           echo "short_commit=$(git rev-parse --short=7 HEAD)" >> "${GITHUB_OUTPUT}"
@@ -97,10 +109,11 @@ jobs:
         with:
           images: ghcr.io/mcpdev80/baseharbor-runtime
           flavor: |
-            latest=auto
+            latest=false
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.source.outputs.version_tag }},enable=${{ steps.source.outputs.version_tag != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.source.outputs.version_tag }},enable=${{ steps.source.outputs.version_tag != '' }}
+            type=raw,value=${{ steps.buildmeta.outputs.version }},enable=${{ steps.source.outputs.version_tag != '' }}
+            type=raw,value=${{ steps.buildmeta.outputs.minor_tag }},enable=${{ steps.buildmeta.outputs.stable == 'true' }}
+            type=raw,value=latest,enable=${{ steps.buildmeta.outputs.stable == 'true' }}
             type=raw,value=edge,enable=${{ steps.source.outputs.version_tag == '' }}
             type=raw,value=sha-${{ steps.buildmeta.outputs.short_commit }}
 

@@ -227,8 +227,11 @@ func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if a.Project == b.Project || a.Volume == b.Volume || a.Dir == b.Dir {
-		t.Fatalf("sharing boundaries are not isolated: a=%#v b=%#v", a, b)
+	if a.Project != b.Project || a.Project != "bh-local-shared" {
+		t.Fatalf("sharing boundaries must share operator-visible project: a=%#v b=%#v", a, b)
+	}
+	if a.Volume == b.Volume || a.Dir == b.Dir {
+		t.Fatalf("sharing boundary state is not isolated: a=%#v b=%#v", a, b)
 	}
 	if a.Scope != capability.ScopeShared || b.Scope != capability.ScopeShared {
 		t.Fatalf("unexpected scopes: a=%s b=%s", a.Scope, b.Scope)

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -276,9 +277,17 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 	if len(platformSyslogPort) > 0 {
 		platformPort = platformSyslogPort[0]
 	}
+	lokiService := "loki"
+	alloyService := "alloy"
+	accessSpec := lokiAccessSpec()
+	if placement.Scope == capability.ScopeApplication {
+		lokiService = "baseharbor-internal-loki"
+		alloyService = "baseharbor-internal-alloy"
+		accessSpec.ServiceName = "baseharbor-internal-loki-access"
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	b.WriteString("  loki:\n")
+	fmt.Fprintf(&b, "  %s:\n", lokiService)
 	fmt.Fprintf(&b, "    image: %s\n", LokiImage)
 	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 	b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\"]\n")
@@ -289,9 +298,13 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
 	b.WriteString("      - loki-data:/loki\n")
-	b.WriteString("    networks: [logs-internal]\n")
-	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, lokiAccessSpec()))
-	b.WriteString("  alloy:\n")
+	if placement.Scope == capability.ScopeApplication {
+		b.WriteString("    networks:\n      logs-internal:\n        aliases:\n          - loki\n")
+	} else {
+		b.WriteString("    networks: [logs-internal]\n")
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
+	fmt.Fprintf(&b, "  %s:\n", alloyService)
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		b.WriteString("    user: \"0:0\"\n")
@@ -324,7 +337,7 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", platformPort, platformPort)))
 		}
 	}
-	b.WriteString("    depends_on: [loki]\n")
+	fmt.Fprintf(&b, "    depends_on: [%s]\n", lokiService)
 	b.WriteString("    networks: [logs-internal, logs-publish]\n")
 	b.WriteString("networks:\n")
 	b.WriteString("  logs-internal:\n")

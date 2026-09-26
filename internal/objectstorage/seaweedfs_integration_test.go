@@ -32,10 +32,11 @@ func TestManagedSeaweedFSRunsUnprivileged(t *testing.T) {
 		}
 	}()
 
-	if _, _, _, err := EnsureSharedProvider(ctx, compose, serviceissuer.New(t)); err != nil {
+	files, _, _, err := EnsureSharedProvider(ctx, compose, serviceissuer.New(t))
+	if err != nil {
 		t.Fatalf("provision SeaweedFS: %v", err)
 	}
-	if err := containersecurity.VerifyComposeService(ctx, ProviderProject, ProviderService, containersecurity.Requirements{
+	if err := containersecurity.VerifyComposeService(ctx, files.Project, ProviderService, containersecurity.Requirements{
 		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 	}); err != nil {
 		t.Fatalf("SeaweedFS runtime security: %v", err)

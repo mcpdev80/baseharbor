@@ -74,7 +74,7 @@ networks:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runWithIO(ctx, []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
 		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {

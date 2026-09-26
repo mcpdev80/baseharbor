@@ -2,9 +2,47 @@
 
 All notable changes to BaseHarbor are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
 ## [Unreleased]
+
+## [0.4.15.1] - 2026-09-26
+
+### Fixed
+
+- Runtime Broker compatibility now uses the versioned runtime contract instead of requiring an exact CLI/runtime Git commit match; deterministic version incompatibility fails immediately instead of waiting through the readiness retry window.
+- Repository workload builds no longer inherit interactive TTY stdin, preventing a Compose/BuildKit rebuild from hanging indefinitely under the human progress UI.
+- `baha app down` persists the observed stopped state so `baha app list` does not continue to report READY after a verified stop.
+- Deployment listings tolerate incomplete/orphaned state directories and warn instead of making the complete application registry unusable.
+- Out-of-repository restore resolves and validates the registered repository source before mutating durable state, preventing destructive partial success followed by deployment-record failure.
+- Deterministic `baha app init NAME ...` requires explicit capability/workload intent instead of silently resolving repository ambiguity into a default SQL contract.
+- Repository Compose inspection now decodes YAML merge keys/anchors. Unsupported `include`/`extends` inheritance fails explicitly rather than silently dropping services.
+- Fixed Compose host-port bindings can use a deployment-local automatic fallback without rewriting the source repository; Docker Compose and Podman/Quadlet share the same override semantics.
+- The implicit `local` Target is visible in `baha target list`; target naming failures explain the lowercase slug rules; creating a Target does not change the effective/default Target unless `--default` is supplied.
+- Global `baha status` renders BaseHarbor Target/control-plane/application semantics instead of exposing the raw Compose `ps` table.
+- Managed SQL adoption fails before mutation when replacing a repository database would discard `docker-entrypoint-initdb.d` bootstrap behavior.
+- Accepted mutating MCP lifecycle operations are no longer truncated by client-request cancellation; client timeout guidance and safe permission defaults are documented.
+- Application/full destroy removes BaseHarbor-owned Runtime Broker volumes while continuing to preserve application-owned workload data volumes.
+- Operator-visible Compose projects now follow provider placement: target-wide shared components use one `bh-<target>-shared` stack, while application runtime/workload and application-scoped providers use `bh-<target>-<application>-<environment>`; external providers remain outside BaseHarbor ownership.
+- Top-level `baha init` no longer writes the legacy global `deployment: single-node` configuration into `baseharbor.yaml`; repository application intent remains owned by `baha app init`, while deployment destination/runtime selection remains Target configuration.
+- OpenBao recovery-file location is now Target-scoped under `target.openbao.recovery-file`. Successful bootstrap persists only the path reference, never recovery material, and later `baha up` can automatically unseal the shared OpenBao provider when that referenced file is present.
+- Docker Runtime Broker observability keeps the stable Compose service identity `broker`, restoring reliable Docker syslog forwarding into Alloy/Loki without changing the application contract or the consolidated application stack boundary.
+
+### Security
+
+- Restore and repository-adoption corrections move destructive or ambiguous failures into preflight/fail-closed paths.
+- MCP mutation approval semantics remain unchanged; lifecycle convergence is detached only after the mutating request has already been accepted.
+- Full destroy still removes only BaseHarbor-owned runtime resources and preserves application-owned data.
+- Target-scoped OpenBao recovery handling stores only an operator-held file path reference; recovery material remains outside normal BaseHarbor state and startup fails closed when an explicitly persisted reference is unavailable or invalid.
+
+### Compatibility
+
+- Manifest v1 and provider-neutral application contracts are unchanged.
+- Manifest/provider ownership semantics remain unchanged. Compose project identity is now separated from physical resource identity so project consolidation does not silently broaden ownership or rename managed backend resources.
+- Git commit identity remains visible as provenance but is no longer treated as the Runtime Broker compatibility boundary.
+- `baha init` remains as a compatibility entrypoint but no longer creates a legacy global `baseharbor.yaml`; use `baha app init` for portable application intent and `baha target create` for deployment Target/runtime configuration.
+- Runtime Broker service identity remains an internal runtime detail; restoring the short `broker` service name does not change Manifest v1, provider contracts, workload bindings or runtime API URLs.
+
 
 ## [0.4.15] - 2026-09-25
 

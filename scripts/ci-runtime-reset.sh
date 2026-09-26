@@ -7,7 +7,7 @@ command -v "$engine" >/dev/null 2>&1 || exit 0
 is_baseharbor_resource() {
   local project="${1:-}" name="${2:-}"
   case "$project:$name" in
-    baseharbor*:*|*:baseharbor-*) return 0 ;;
+    baseharbor*:*|bh-*:*|*:baseharbor-*|*:bh-*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -107,6 +107,11 @@ remove_quadlet_units() {
     "$unit_dir"/baseharbor-*.volume
     "$unit_dir"/baseharbor-*.build
     "$unit_dir"/baseharbor-*.env
+    "$unit_dir"/bh-*.container
+    "$unit_dir"/bh-*.network
+    "$unit_dir"/bh-*.volume
+    "$unit_dir"/bh-*.build
+    "$unit_dir"/bh-*.env
   )
 
   for file in "${files[@]}"; do

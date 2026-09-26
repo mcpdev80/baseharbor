@@ -75,7 +75,11 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		return ComposeAnalysis{}, fmt.Errorf("read compose file %s: %w", filepath.ToSlash(cleanRel), err)
 	}
 	analysis := ComposeAnalysis{}
-	for _, service := range detectComposeServices(data) {
+	services, err := detectComposeServices(data)
+	if err != nil {
+		return ComposeAnalysis{}, err
+	}
+	for _, service := range services {
 		if service.Postgres {
 			analysis.SQLInstances = append(analysis.SQLInstances, detectedLogicalInstanceName(service.Name, "postgres"))
 		}
@@ -87,7 +91,7 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		}
 		if service.Postgres || service.Redis || service.ObjectStorage {
 			analysis.InfrastructureServices = append(analysis.InfrastructureServices, service.Name)
-		} else if service.AmbiguousInfrastructure {
+		} else if service.AmbiguousInfrastructure || service.Unresolved {
 			analysis.AmbiguousServices = append(analysis.AmbiguousServices, service.Name)
 		} else if service.HasBuild || service.HasImage || service.HasPorts {
 			analysis.WorkloadServices = append(analysis.WorkloadServices, service.Name)
@@ -103,6 +107,9 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 				Detail: "compose service " + service.Name + " declares healthcheck",
 			})
 		}
+		if service.DatabaseBootstrap {
+			analysis.DatabaseBootstrapServices = append(analysis.DatabaseBootstrapServices, service.Name)
+		}
 	}
 	analysis.SQLInstances = uniqueSorted(analysis.SQLInstances)
 	analysis.CacheInstances = uniqueSorted(analysis.CacheInstances)
@@ -117,6 +124,7 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		return analysis.Ports[i].Value < analysis.Ports[j].Value
 	})
 	analysis.HealthChecks = uniqueEvidence(analysis.HealthChecks)
+	analysis.DatabaseBootstrapServices = uniqueSorted(analysis.DatabaseBootstrapServices)
 	return analysis, nil
 }
 

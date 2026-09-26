@@ -281,6 +281,19 @@ There is no generic shell, exec, Docker or Compose tool. MCP calls route into th
 
 See [Agent-native machine interface](mcp.md).
 
+## Initialization contracts
+
+`baseharbor.yaml` is exclusively the portable repository application manifest. It does not store local control-plane topology, runtime-provider selection or Target state.
+
+The legacy top-level `baha init` command is retained only as a compatibility entrypoint and no longer writes a configuration file. Use:
+
+```bash
+baha app init
+baha target create NAME --provider PROVIDER --access ACCESS --reference REFERENCE [--scope SCOPE] [--default]
+```
+
+Application intent is created with `baha app init`. Deployment target/runtime selection is stored in the XDG-backed Target configuration. Local control-plane implementation details such as a single-node realization are not portable application intent.
+
 ## Control-plane startup
 
 Interactive first run:
