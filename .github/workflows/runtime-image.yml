@@ -48,8 +48,8 @@ jobs:
             version_tag=""
           fi
 
-          if [ -n "${version_tag}" ] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Runtime release tag must use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.HOTFIX, optionally followed by a prerelease suffix." >&2
+          if [ -n "${version_tag}" ] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] && [[ ! "${version_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Runtime release tag must use vMAJOR.MINOR.PATCH[-PRERELEASE] or stable vMAJOR.MINOR.PATCH.HOTFIX." >&2
             exit 1
           fi
 
