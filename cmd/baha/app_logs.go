@@ -174,7 +174,17 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	} else if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 		return err
 	}
-	providerOverride, providerOverrideFound, err := logsprovider.EnsureProviderSourceOverrideForRuntimeAt(prepared.dataDir, prepared.namespace, prepared.manifest, files, prepared.runtime.Engine())
+	providerOverride, providerOverrideFound, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
+		prepared.dataDir,
+		prepared.namespace,
+		prepared.manifest,
+		files.Dir,
+		"provider.logging.override.yaml",
+		files.Project,
+		prepared.runtime.Engine(),
+		observability.SourceApplicationProvider,
+		application.ManagedRuntimeProviderServiceNames(prepared.manifest),
+	)
 	if err != nil {
 		return err
 	}
@@ -226,7 +236,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
-			override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+			override, found, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
 				dataDir,
 				namespace,
 				m,
@@ -235,6 +245,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				runtimebroker.ProjectNameForRuntime(m, files),
 				runtime.Engine(),
 				observability.SourceApplicationProvider,
+				[]string{runtimebroker.ServiceName},
 			)
 			if err != nil {
 				return fmt.Errorf("materialize runtime broker log collection: %w", err)
@@ -258,7 +269,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	}
 
 	if executorFiles, err := runtimeexecutor.ExistingFilesAt(dataDir, namespace); err == nil {
-		override, found, err := logsprovider.EnsureRuntimeProjectOverrideForRuntimeAt(
+		override, found, err := logsprovider.EnsureRuntimeModuleOverrideForRuntimeAt(
 			dataDir,
 			namespace,
 			m,
@@ -267,6 +278,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			executorFiles.Project,
 			runtime.Engine(),
 			observability.SourcePlatformProvider,
+			[]string{runtimeexecutor.ServiceName},
 		)
 		if err != nil {
 			return fmt.Errorf("materialize runtime executor log collection: %w", err)
