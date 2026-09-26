@@ -395,32 +395,44 @@ func firstRuntimeLabel(values ...string) string {
 // ContainerLogConfigProjectService returns the runtime logging driver and tag
 // for the running container that belongs to an exact Compose project/service.
 func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, service string) (string, string, error) {
+	driver, tag, _, err := c.ContainerLogConfigDetailsProjectService(ctx, project, service)
+	return driver, tag, err
+}
+
+// ContainerLogConfigDetailsProjectService also exposes the syslog address so
+// callers can verify that a running container still targets the active
+// collector registration rather than a stale port.
+func (c Compose) ContainerLogConfigDetailsProjectService(ctx context.Context, project, service string) (string, string, string, error) {
 	if c.command == "" {
-		return "", "", ErrRuntimeNotFound
+		return "", "", "", ErrRuntimeNotFound
 	}
 	if c.quadlet {
-		return "", "", nil
+		return "", "", "", nil
 	}
 	ids, err := c.directOutput(ctx, "container", "ls", "-q",
 		"--filter", "label=com.docker.compose.project="+strings.TrimSpace(project),
 		"--filter", "label=com.docker.compose.service="+strings.TrimSpace(service),
 	)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	id := strings.TrimSpace(strings.Split(ids, "\n")[0])
 	if id == "" {
-		return "", "", fmt.Errorf("container for project %q service %q is not running", project, service)
+		return "", "", "", fmt.Errorf("container for project %q service %q is not running", project, service)
 	}
-	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}", id)
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}|{{index .HostConfig.LogConfig.Config \"syslog-address\"}}", id)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	parts := strings.SplitN(strings.TrimSpace(out), "|", 2)
+	parts := strings.SplitN(strings.TrimSpace(out), "|", 3)
 	driver := strings.TrimSpace(parts[0])
 	tag := ""
-	if len(parts) == 2 {
+	address := ""
+	if len(parts) > 1 {
 		tag = strings.TrimSpace(parts[1])
 	}
-	return driver, tag, nil
+	if len(parts) > 2 {
+		address = strings.TrimSpace(parts[2])
+	}
+	return driver, tag, address, nil
 }
