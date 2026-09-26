@@ -17,14 +17,27 @@ const (
 
 var ErrNoBackupMetadata = errors.New("no application backup metadata recorded")
 
+type RecoveryContributorMetadata struct {
+	StateClass         string `json:"state_class"`
+	LogicalResource    string `json:"logical_resource,omitempty"`
+	Ownership          string `json:"ownership"`
+	Support            string `json:"support"`
+	Selected           bool   `json:"selected"`
+	Durable            bool   `json:"durable,omitempty"`
+	ExplicitlyExcluded bool   `json:"explicitly_excluded,omitempty"`
+	Verified           bool   `json:"verified,omitempty"`
+	Reason             string `json:"reason,omitempty"`
+}
+
 type BackupMetadata struct {
-	Version           int       `json:"version"`
-	Application       string    `json:"application"`
-	Environment       string    `json:"environment"`
-	CreatedAt         time.Time `json:"created_at"`
-	ArchivePath       string    `json:"archive_path"`
-	PostgresResources []string  `json:"postgres_resources,omitempty"`
-	IncludesSecrets   bool      `json:"includes_secrets"`
+	Version           int                           `json:"version"`
+	Application       string                        `json:"application"`
+	Environment       string                        `json:"environment"`
+	CreatedAt         time.Time                     `json:"created_at"`
+	ArchivePath       string                        `json:"archive_path"`
+	PostgresResources []string                      `json:"postgres_resources,omitempty"`
+	IncludesSecrets   bool                          `json:"includes_secrets"`
+	Recovery          []RecoveryContributorMetadata `json:"recovery,omitempty"`
 }
 
 func (m BackupMetadata) Validate() error {
@@ -46,6 +59,19 @@ func (m BackupMetadata) Validate() error {
 	for _, name := range m.PostgresResources {
 		if err := validateSlug("PostgreSQL resource name", name); err != nil {
 			return err
+		}
+	}
+	for _, contributor := range m.Recovery {
+		if strings.TrimSpace(contributor.StateClass) == "" || strings.TrimSpace(contributor.Ownership) == "" {
+			return errors.New("backup recovery contributor is incomplete")
+		}
+		switch contributor.Support {
+		case "supported", "unsupported", "external":
+		default:
+			return fmt.Errorf("unsupported backup recovery support %q", contributor.Support)
+		}
+		if contributor.Selected && contributor.Support != "supported" {
+			return errors.New("selected backup recovery contributor must be supported")
 		}
 	}
 	return nil
