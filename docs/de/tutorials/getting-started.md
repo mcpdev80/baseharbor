@@ -71,13 +71,13 @@ baha up
 
 Beim ersten Lauf kann BaseHarbor nur Informationen abfragen, die es nicht sicher selbst bestimmen darf, zum Beispiel:
 
-- Pfad fuer die operator-gehaltene OpenBao-Recovery-Datei;
+- Annahme oder Anpassung des vorgeschlagenen Target-scoped Pfads fuer die operator-gehaltene OpenBao-Recovery-Datei;
 - Wert eines fehlenden required Application Secrets;
 - Bestaetigung eines sicheren Port-Fallbacks.
 
 Interaktive Secret-Eingabe erfolgt ohne Terminal-Echo. Provider-/Runtime-Credentials werden von BaseHarbor verwaltet und nicht vom Entwickler abgefragt.
 
-Derselbe `baha up`-Lauf konvergiert danach weiter bis READY.
+Derselbe `baha up`-Lauf konvergiert danach weiter bis READY. Nach erfolgreichem OpenBao-Bootstrap speichert BaseHarbor nur die Recovery-Datei-Pfadreferenz am effektiven Target. Spaetere `baha up`-Laeufe verwenden diese Referenz automatisch, um den shared OpenBao Provider zu entsperren, wenn die Datei vorhanden ist.
 
 ## 4. Ergebnis pruefen
 

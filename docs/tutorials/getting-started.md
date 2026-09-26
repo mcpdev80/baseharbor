@@ -73,13 +73,13 @@ baha up
 
 On the first run BaseHarbor may ask for information it cannot safely invent, for example:
 
-- where the operator-held OpenBao recovery file should be created;
+- whether to accept or override the proposed Target-scoped location for the operator-held OpenBao recovery file;
 - a missing required application-secret value;
 - confirmation of a safe port fallback.
 
 Interactive secret input disables terminal echo. Provider/runtime credentials are managed by BaseHarbor and are not requested from the developer.
 
-The same `baha up` operation continues after these decisions and converges managed infrastructure, workload bindings and readiness.
+The same `baha up` operation continues after these decisions and converges managed infrastructure, workload bindings and readiness. After successful OpenBao bootstrap, BaseHarbor persists only the recovery-file path reference on the effective Target. Later `baha up` runs automatically reuse that reference to unseal the shared OpenBao provider when the file is available.
 
 ## 4. Verify
 
