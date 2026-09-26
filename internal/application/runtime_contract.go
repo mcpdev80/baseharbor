@@ -16,10 +16,14 @@ import (
 const loopbackHost = "127.0.0.1"
 
 type RuntimeContract struct {
-	Env         string
-	BindingsDir string
-	Metadata    string
+	Env                 string
+	BindingsDir         string
+	WorkloadBindingsDir string
+	Metadata            string
 }
+
+const workloadServiceBindingDirName = "workload-service-bindings"
+const workloadServiceBindingRoot = "/run/baseharbor/service-bindings"
 
 type runtimeMetadata struct {
 	Version      int                          `json:"version"`
@@ -161,7 +165,86 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		return RuntimeContract{}, fmt.Errorf("write application binding metadata: %w", err)
 	}
 
-	return RuntimeContract{Env: applicationEnv, BindingsDir: bindingsDir, Metadata: metadataPath}, nil
+	workloadBindingsDir, err := ensureWorkloadServiceBindingProjection(m, files, bindingsDir)
+	if err != nil {
+		return RuntimeContract{}, err
+	}
+
+	return RuntimeContract{
+		Env:                 applicationEnv,
+		BindingsDir:         bindingsDir,
+		WorkloadBindingsDir: workloadBindingsDir,
+		Metadata:            metadataPath,
+	}, nil
+}
+
+func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
+	return filepath.Join(files.Dir, workloadServiceBindingDirName)
+}
+
+func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, bindingsDir string) (string, error) {
+	root := workloadServiceBindingProjectionDir(files)
+	if err := os.RemoveAll(root); err != nil {
+		return "", fmt.Errorf("reset workload service binding projection: %w", err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", fmt.Errorf("create workload service binding projection: %w", err)
+	}
+
+	type bindingRef struct {
+		kind     string
+		instance string
+		count    int
+	}
+	var refs []bindingRef
+	postgres := SQLInstanceNames(m)
+	for _, instance := range postgres {
+		refs = append(refs, bindingRef{kind: "postgres", instance: instance, count: len(postgres)})
+	}
+	cache := CacheInstanceNames(m)
+	for _, instance := range cache {
+		refs = append(refs, bindingRef{kind: "valkey", instance: instance, count: len(cache)})
+	}
+
+	for _, ref := range refs {
+		source := filepath.Join(bindingsDir, ref.kind)
+		name := ref.kind
+		if ref.count != 1 || ref.instance != defaultServiceInstance {
+			source = filepath.Join(source, ref.instance)
+			name = ref.kind + "." + ref.instance
+		}
+		if err := copyServiceBindingDirectory(source, filepath.Join(root, name)); err != nil {
+			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
+		}
+	}
+	return root, nil
+}
+
+func copyServiceBindingDirectory(source, target string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(source, entry.Name()))
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(target, entry.Name())
+		if err := os.WriteFile(path, data, 0o444); err != nil {
+			return err
+		}
+		if err := os.Chmod(path, 0o444); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureInstanceBindingDirs(bindingsDir, bindingsAbs, kind, instance string, count int) (string, string, error) {
