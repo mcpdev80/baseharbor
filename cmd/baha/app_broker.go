@@ -373,7 +373,6 @@ func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
 	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", brokerFiles.DocsURL)
 }
 
-
 func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
