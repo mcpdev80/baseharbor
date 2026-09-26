@@ -107,7 +107,7 @@ func placementFromProviderPlacementAt(dataDir, namespace string, m application.M
 		suffix := prefix + m.Name + "-" + m.Environment
 		return Placement{
 			Scope:   capability.ScopeApplication,
-			Project: bhruntime.ApplicationProjectName(namespace, m.Name),
+			Project: bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment),
 			Network: "baseharbor-metrics-" + suffix + "_default",
 			Volume:  "baseharbor-prometheus-data-" + suffix,
 			Dir:     filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "applications", m.Name, m.Environment),
