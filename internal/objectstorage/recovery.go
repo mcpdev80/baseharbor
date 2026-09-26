@@ -150,9 +150,11 @@ func listBucketObjectKeys(ctx context.Context, client *http.Client, endpoint, bu
 			return nil, fmt.Errorf("ListObjectsV2 returned HTTP %d", status)
 		}
 		var response struct {
-			Contents []struct{ Key string `xml:"Key"` } `xml:"Contents"`
-			Truncated bool `xml:"IsTruncated"`
-			Next string `xml:"NextContinuationToken"`
+			Contents []struct {
+				Key string `xml:"Key"`
+			} `xml:"Contents"`
+			Truncated bool   `xml:"IsTruncated"`
+			Next      string `xml:"NextContinuationToken"`
 		}
 		if err := xml.Unmarshal(body, &response); err != nil {
 			return nil, errors.New("decode S3 ListObjectsV2 response")
