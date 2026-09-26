@@ -32,11 +32,11 @@ func IsMutableDevelopmentImage(image string) bool {
 }
 
 func ProjectName(m application.Manifest) string {
-	return bhruntime.ApplicationProjectName("", m.Name)
+	return bhruntime.ApplicationProjectName("", m.Name, m.Environment)
 }
 
 func ProjectNameForRuntime(m application.Manifest, files application.RuntimeFiles) string {
-	return bhruntime.ApplicationProjectName(files.Namespace, m.Name)
+	return bhruntime.ApplicationProjectName(files.Namespace, m.Name, m.Environment)
 }
 
 func ObservabilityNetworkName(m application.Manifest) string {
