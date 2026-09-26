@@ -23,15 +23,24 @@ type RuntimeFiles struct {
 	Env            string
 	ApplicationEnv string
 	Bindings       string
-	Project        string
-	Namespace      string
+	Project         string
+	ResourceProject string
+	Namespace       string
 }
 
 func RuntimeProjectName(m Manifest) string {
-	return bhruntime.ApplicationProjectName("", m.Name)
+	return "baseharbor-" + m.Name + "-" + m.Environment
 }
 
 func RuntimeProjectNameForStore(store Store, m Manifest) string {
+	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
+	if namespace == "" {
+		return RuntimeProjectName(m)
+	}
+	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
 	return bhruntime.ApplicationProjectName(store.Namespace, m.Name)
 }
 
@@ -56,8 +65,9 @@ func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 		Env:            filepath.Join(dir, "runtime.env"),
 		ApplicationEnv: filepath.Join(dir, "application.env"),
 		Bindings:       filepath.Join(dir, "bindings"),
-		Project:        RuntimeProjectNameForStore(store, m),
-		Namespace:      strings.TrimSpace(store.Namespace),
+		Project:         RuntimeComposeProjectNameForStore(store, m),
+		ResourceProject: RuntimeProjectNameForStore(store, m),
+		Namespace:       strings.TrimSpace(store.Namespace),
 	}
 }
 
