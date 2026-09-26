@@ -38,7 +38,7 @@ jobs:
       demo_sha: ${{ steps.gate.outputs.demo_sha }}
     steps:
       - name: Checkout repository metadata
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -290,13 +290,13 @@ jobs:
 
       - name: Checkout approved tag for fallback checks
         if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.approval.outputs.tag }}
 
       - name: Set up Go for fallback checks
         if: needs.approval.outputs.legacy_pre_release == 'true' && steps.coverage.outputs.covered != 'true'
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -345,7 +345,7 @@ jobs:
     steps:
       - name: Checkout approved tagged source
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.approval.outputs.tag }}
           fetch-depth: 0
@@ -358,7 +358,7 @@ jobs:
 
       - name: Run GoReleaser
         id: goreleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
           version: '~> v2'
@@ -368,13 +368,13 @@ jobs:
 
       - name: Attest release archives
         id: attest_archives
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: 'dist/baseharbor_linux_*.tar.gz'
 
       - name: Attest checksum manifest
         id: attest_checksums
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: 'dist/checksums.txt'
 
@@ -401,7 +401,7 @@ jobs:
 
       - name: Upload release evidence
         if: always() && steps.checkout.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-evidence
@@ -419,7 +419,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence generator
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Generate combined release evidence
         shell: bash
@@ -435,7 +435,7 @@ jobs:
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/release-gate-evidence"             "BaseHarbor Final Release Gate Evidence"             "release/combined"             "${{ needs.approval.outputs.tag || github.ref_name }}"             "${{ needs.approval.outputs.tag_sha || github.sha }}"             "$rows"
 
       - name: Upload combined release-gate evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-gate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-gate-evidence

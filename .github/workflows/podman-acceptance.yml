@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Checkout requested ref
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
 
@@ -48,7 +48,7 @@ jobs:
 
       - name: Set up Go
         id: setup_go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -271,7 +271,7 @@ jobs:
 
       - name: Upload Podman evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/podman-evidence

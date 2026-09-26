@@ -44,13 +44,13 @@ jobs:
     steps:
       - name: Checkout BaseHarbor
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
 
       - name: Set up Go
         id: setup_go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Docker demo evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: demo-docker-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-docker-evidence
@@ -141,13 +141,13 @@ jobs:
     steps:
       - name: Checkout BaseHarbor
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
 
       - name: Set up Go
         id: setup_go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -243,7 +243,7 @@ jobs:
 
       - name: Upload Podman demo evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: demo-podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-podman-evidence
@@ -259,7 +259,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence generator
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
 
@@ -281,7 +281,7 @@ jobs:
             "$rows"
 
       - name: Upload demo acceptance summary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: demo-acceptance-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-acceptance-evidence
