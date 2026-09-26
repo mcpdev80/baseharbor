@@ -10,13 +10,14 @@ func SharedProjectName(namespace string) string {
 
 // ApplicationProjectName returns the operator-visible Compose project for one
 // application on a target. Empty namespace means the implicit local target.
-func ApplicationProjectName(namespace, application string) string {
+func ApplicationProjectName(namespace, application, environment string) string {
 	target := projectToken(namespace, "local")
 	app := projectToken(application, "app")
+	env := projectToken(environment, "dev")
 	if reservedApplicationProjectToken(app) {
 		app += "-app"
 	}
-	return "bh-" + target + "-" + app
+	return "bh-" + target + "-" + app + "-" + env
 }
 
 func projectToken(value, fallback string) string {
