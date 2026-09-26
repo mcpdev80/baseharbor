@@ -409,6 +409,20 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 		}
 	}
 	if len(prepared.providerSources) > 0 {
+		if prepared.runtime.Engine() == "docker" && application.RequiresRuntimeBroker(prepared.manifest) {
+			brokerProject := runtimebroker.ProjectNameForRuntime(prepared.manifest, prepared.runtimeFiles)
+			driver, tag, err := prepared.runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+			if err != nil {
+				return fmt.Errorf("verify final runtime broker log configuration: %w", err)
+			}
+			if driver != "syslog" {
+				return fmt.Errorf("verify final runtime broker log driver: got %q, want syslog", driver)
+			}
+			expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
+			if tag != expectedTag {
+				return fmt.Errorf("verify final runtime broker syslog tag: got %q, want %q", tag, expectedTag)
+			}
+		}
 		for attempt := 0; attempt < 3; attempt++ {
 			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
 				return err
