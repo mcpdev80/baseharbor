@@ -140,6 +140,45 @@ func ListDeployments(target string) ([]DeploymentRecord, error) {
 	return listDeploymentRecords(filepath.Join(root, "deployments"))
 }
 
+func ListDeploymentsForDisplay(target string) ([]DeploymentRecord, []error, error) {
+	root, err := TargetStateRoot(target)
+	if err != nil {
+		return nil, nil, err
+	}
+	return listDeploymentRecordsBestEffort(filepath.Join(root, "deployments"))
+}
+
+func ListAllDeploymentsForDisplay() ([]DeploymentRecord, []error, error) {
+	root, err := DataRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+	targetsRoot := filepath.Join(root, "targets")
+	entries, err := os.ReadDir(targetsRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	var records []DeploymentRecord
+	var warnings []error
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		items, itemWarnings, err := ListDeploymentsForDisplay(entry.Name())
+		if err != nil {
+			warnings = append(warnings, fmt.Errorf("target %s: %w", entry.Name(), err))
+			continue
+		}
+		records = append(records, items...)
+		warnings = append(warnings, itemWarnings...)
+	}
+	sortDeploymentRecords(records)
+	return records, warnings, nil
+}
+
 func ListAllDeployments() ([]DeploymentRecord, error) {
 	root, err := DataRoot()
 	if err != nil {
@@ -200,6 +239,47 @@ func listDeploymentRecords(root string) ([]DeploymentRecord, error) {
 	}
 	sortDeploymentRecords(records)
 	return records, nil
+}
+
+
+func listDeploymentRecordsBestEffort(root string) ([]DeploymentRecord, []error, error) {
+	apps, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	var records []DeploymentRecord
+	var warnings []error
+	for _, app := range apps {
+		if !app.IsDir() {
+			continue
+		}
+		envs, err := os.ReadDir(filepath.Join(root, app.Name()))
+		if err != nil {
+			warnings = append(warnings, fmt.Errorf("%s: %w", app.Name(), err))
+			continue
+		}
+		for _, env := range envs {
+			if !env.IsDir() {
+				continue
+			}
+			id := DeploymentIdentity{
+				Target:      filepath.Base(filepath.Dir(root)),
+				Application: app.Name(),
+				Environment: env.Name(),
+			}
+			record, err := LoadDeploymentRecord(id)
+			if err != nil {
+				warnings = append(warnings, fmt.Errorf("%s/%s/%s: %w", id.Target, id.Application, id.Environment, err))
+				continue
+			}
+			records = append(records, record)
+		}
+	}
+	sortDeploymentRecords(records)
+	return records, warnings, nil
 }
 
 func sortDeploymentRecords(records []DeploymentRecord) {
