@@ -391,6 +391,14 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 			return err
 		}
 	}
+	if len(prepared.providerSources) > 0 {
+		files, err := application.ExistingRuntimeFiles(application.Store{}, prepared.manifest)
+		if err == nil {
+			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
+				return err
+			}
+		}
+	}
 	if err := logsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.providerSources, prepared.dataDir, prepared.namespace); err != nil {
 		return err
 	}
