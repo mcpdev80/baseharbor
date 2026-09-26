@@ -391,3 +391,36 @@ func firstRuntimeLabel(values ...string) string {
 	}
 	return ""
 }
+
+// ContainerLogConfigProjectService returns the runtime logging driver and tag
+// for the running container that belongs to an exact Compose project/service.
+func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, service string) (string, string, error) {
+	if c.command == "" {
+		return "", "", ErrRuntimeNotFound
+	}
+	if c.quadlet {
+		return "", "", nil
+	}
+	ids, err := c.directOutput(ctx, "container", "ls", "-aq",
+		"--filter", "label=com.docker.compose.project="+strings.TrimSpace(project),
+		"--filter", "label=com.docker.compose.service="+strings.TrimSpace(service),
+	)
+	if err != nil {
+		return "", "", err
+	}
+	id := strings.TrimSpace(strings.Split(ids, "\n")[0])
+	if id == "" {
+		return "", "", fmt.Errorf("container for project %q service %q is not running", project, service)
+	}
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}", id)
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(strings.TrimSpace(out), "|", 2)
+	driver := strings.TrimSpace(parts[0])
+	tag := ""
+	if len(parts) == 2 {
+		tag = strings.TrimSpace(parts[1])
+	}
+	return driver, tag, nil
+}
