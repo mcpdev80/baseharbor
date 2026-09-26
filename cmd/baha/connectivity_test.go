@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestParseConnectivityEndpointUsesMinimalAliases(t *testing.T) {
@@ -60,5 +61,49 @@ func TestConnectivityCommandsAreDiscoverable(t *testing.T) {
 		if !found {
 			t.Fatalf("%s command is missing", name)
 		}
+	}
+}
+
+
+func TestConnectivityProjectEnvironmentRecognizesCurrentApplicationProject(t *testing.T) {
+	tests := []struct {
+		name        string
+		project     string
+		application string
+		namespace   string
+		wantEnv     string
+		wantOK      bool
+	}{
+		{
+			name:        "implicit local target",
+			project:     bhruntime.ApplicationProjectName("", "baseharbor-demo", "dev"),
+			application: "baseharbor-demo",
+			wantEnv:     "dev",
+			wantOK:      true,
+		},
+		{
+			name:        "explicit target",
+			project:     bhruntime.ApplicationProjectName("demo-docker", "baseharbor-demo", "dev"),
+			application: "baseharbor-demo",
+			namespace:   "demo-docker",
+			wantEnv:     "dev",
+			wantOK:      true,
+		},
+		{
+			name:        "legacy fallback",
+			project:     "baseharbor-workload-demo-docker-baseharbor-demo-dev",
+			application: "baseharbor-demo",
+			namespace:   "demo-docker",
+			wantEnv:     "dev",
+			wantOK:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotEnv, gotOK := connectivityProjectEnvironment(tt.project, tt.application, tt.namespace)
+			if gotEnv != tt.wantEnv || gotOK != tt.wantOK {
+				t.Fatalf("connectivityProjectEnvironment() = (%q, %v), want (%q, %v)", gotEnv, gotOK, tt.wantEnv, tt.wantOK)
+			}
+		})
 	}
 }
