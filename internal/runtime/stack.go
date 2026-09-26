@@ -29,9 +29,10 @@ const (
 var composeYAML []byte
 
 type Files struct {
-	Compose string
-	Env     string
-	Project string
+	Compose         string
+	Env             string
+	Project         string
+	ResourceProject string
 }
 
 type Ports struct {
@@ -48,9 +49,17 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 }
 
 func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error) {
+	return EnsureFilesForProjectAndResources(stateDir, project, project, ports)
+}
+
+func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string, ports Ports) (Files, error) {
 	project = strings.TrimSpace(project)
+	resourceProject = strings.TrimSpace(resourceProject)
 	if project == "" {
 		return Files{}, errors.New("runtime project is required")
+	}
+	if resourceProject == "" {
+		return Files{}, errors.New("runtime resource project is required")
 	}
 	resolved, err := resolveStateDir(stateDir)
 	if err != nil {
@@ -70,7 +79,7 @@ func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error)
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
 	}
 
-	rendered := renderComposeForProject(project)
+	rendered := renderComposeForProject(resourceProject)
 	composePath := filepath.Join(stateDir, composeName)
 	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
@@ -90,7 +99,7 @@ func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error)
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
-	return Files{Compose: composePath, Env: envPath, Project: project}, nil
+	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject}, nil
 }
 
 func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
@@ -135,7 +144,11 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
 	}
 
-	rendered := renderComposeForProject(files.Project)
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = sharedResourceProjectNameForOperatorProject(files.Project)
+	}
+	rendered := renderComposeForProject(resourceProject)
 	rendered, err = renderSecureControlPlanePostgres(rendered)
 	if err != nil {
 		return err
@@ -256,7 +269,7 @@ func ExistingFilesForProject(stateDir, project string) (Files, error) {
 		return Files{}, err
 	}
 	stateDir = resolved
-	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName), Project: project}
+	files := Files{Compose: filepath.Join(stateDir, composeName), Env: filepath.Join(stateDir, envName), Project: project, ResourceProject: sharedResourceProjectNameForOperatorProject(project)}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return Files{}, err
