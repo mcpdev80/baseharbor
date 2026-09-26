@@ -17,7 +17,7 @@ import (
 
 const (
 	DefaultImage = "ghcr.io/mcpdev80/baseharbor-runtime:edge"
-	ServiceName  = "baseharbor-internal-runtime-broker"
+	ServiceName  = "baseharbor-internal-broker"
 	RuntimeURL   = "https://baseharbor-runtime:8443"
 )
 
