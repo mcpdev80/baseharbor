@@ -90,10 +90,9 @@ func ExistingSharedProviderInstances() ([]SharedProviderInstance, error) {
 func ExistingSharedProviderInstancesAt(dataDir, namespace string) ([]SharedProviderInstance, error) {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
-	baseProject := ProviderProject
+	baseProject := bhruntime.SharedProjectName(namespace)
 	baseVolume := "baseharbor-prometheus-data"
 	if namespace != "" {
-		baseProject = "baseharbor-metrics-" + namespace
 		baseVolume = "baseharbor-prometheus-data-" + namespace
 	}
 	entries, err := os.ReadDir(root)
