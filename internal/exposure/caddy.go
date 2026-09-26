@@ -72,7 +72,11 @@ type Driver struct {
 }
 
 func ProjectName(m application.Manifest) string {
-	return "baseharbor-exposure-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName("", m.Name)
+}
+
+func ProjectNameForRuntime(m application.Manifest, runtime application.RuntimeFiles) string {
+	return bhruntime.ApplicationProjectName(runtime.Namespace, m.Name)
 }
 
 func FilesFor(runtime application.RuntimeFiles) Files {
@@ -156,7 +160,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, bi
 		d.previousFiles = snapshot
 	}
 	if _, err := os.Stat(d.files.Compose); err == nil {
-		running, runErr := d.compose.RunningServicesProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env)
+		running, runErr := d.compose.RunningServicesProject(ctx, ProjectNameForRuntime(d.manifest, d.runtime), d.files.Compose, d.files.Env)
 		if runErr != nil {
 			return fmt.Errorf("inspect existing Caddy exposure provider: %w", runErr)
 		}
@@ -177,7 +181,7 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, bi
 		return fmt.Errorf("validate Caddy exposure provider: %w", err)
 	}
 	if changed && d.wasRunning {
-		if err := d.compose.DownProjectRemoveOrphans(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
 			_ = d.Rollback(context.WithoutCancel(ctx))
 			return fmt.Errorf("restart changed Caddy exposure provider: %w", err)
 		}
@@ -206,7 +210,7 @@ func (d *Driver) Rollback(ctx context.Context) error {
 	}
 	var result error
 	if _, err := os.Stat(d.files.Compose); err == nil {
-		if err := d.compose.DownProjectRemoveOrphans(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
+		if err := d.compose.DownProject(ctx, ProjectNameForRuntime(d.manifest, d.runtime), d.files.Compose, d.files.Env); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
@@ -215,7 +219,7 @@ func (d *Driver) Rollback(ctx context.Context) error {
 	}
 	if len(d.previousFiles) > 0 {
 		if d.wasRunning {
-			if err := d.compose.UpProject(ctx, ProjectName(d.manifest), d.files.Compose, d.files.Env); err != nil {
+			if err := d.compose.UpProject(ctx, ProjectNameForRuntime(d.manifest, d.runtime), d.files.Compose, d.files.Env); err != nil {
 				result = errors.Join(result, fmt.Errorf("restore previous Caddy exposure provider: %w", err))
 			}
 		}
@@ -338,7 +342,7 @@ func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application
 	if err != nil {
 		return err
 	}
-	if err := compose.DestroyProjectRemoveOrphans(ctx, state.Project, files.Compose, files.Env); err != nil {
+	if err := compose.DestroyProject(ctx, state.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	return os.RemoveAll(files.Dir)
@@ -407,7 +411,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
 	state := State{
 		Version: stateVersion,
-		Project: ProjectName(d.manifest),
+		Project: ProjectNameForRuntime(d.manifest, d.runtime),
 		Network: application.ApplicationExposureNetworkName(d.manifest),
 		Host:    d.deployment.Hostname,
 		Routes:  routes,
