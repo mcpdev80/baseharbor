@@ -47,6 +47,9 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
+	if err := compose.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
+		return fmt.Errorf("reconcile shared control-plane runtime before broker start: %w", err)
+	}
 	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
 	}
