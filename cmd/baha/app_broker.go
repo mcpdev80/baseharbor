@@ -33,6 +33,8 @@ func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
 	return bhruntime.DataDir("")
 }
 
+var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
+
 func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
@@ -138,6 +140,9 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		if verifyErr == nil {
 			cli.ReportActivityDetail(progress, "runtime broker ready")
 			return nil
+		}
+		if errors.Is(verifyErr, errRuntimeBrokerIncompatible) {
+			return verifyErr
 		}
 		select {
 		case <-verifyCtx.Done():
@@ -314,20 +319,19 @@ func verifyRuntimeBrokerBuildIdentity(actualVersion, actualCommit string) error 
 	actualVersion = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(actualVersion), "v"))
 	actualCommit = strings.TrimSpace(actualCommit)
 	if actualVersion == "" {
-		return errors.New("runtime broker image is incompatible: build identity is missing")
+		return fmt.Errorf("%w: build identity is missing", errRuntimeBrokerIncompatible)
 	}
 	if expectedVersion != "" && actualVersion != expectedVersion {
 		developmentPair := expectedVersion == "dev" && actualVersion == "edge"
 		if !developmentPair {
-			return fmt.Errorf("runtime broker image is incompatible: CLI version %s requires runtime version %s, got %s", expectedVersion, expectedVersion, actualVersion)
+			return fmt.Errorf("%w: CLI version %s requires runtime version %s, got %s", errRuntimeBrokerIncompatible, expectedVersion, expectedVersion, actualVersion)
 		}
 	}
-	if expectedCommit != "" && expectedCommit != "none" && actualCommit != expectedCommit {
-		if actualCommit == "" {
-			actualCommit = "unknown"
-		}
-		return fmt.Errorf("runtime broker image is incompatible: CLI commit %s, runtime commit %s", expectedCommit, actualCommit)
-	}
+	// Commit SHAs are build provenance, not a runtime compatibility contract.
+	// Patch-only/docs-only CLI rebuilds may legitimately differ from the
+	// published runtime image while still speaking the same versioned API.
+	_ = expectedCommit
+	_ = actualCommit
 	return nil
 }
 
@@ -367,6 +371,32 @@ func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
 		return
 	}
 	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", brokerFiles.DocsURL)
+}
+
+
+func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+	if !application.RequiresRuntimeBroker(m) {
+		return nil
+	}
+	brokerFiles, err := runtimebroker.Existing(files)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("application runtime broker state is missing: %w", err)
+	}
+	project := runtimebroker.ProjectNameForRuntime(m, files)
+	if err := compose.DestroyProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+		return fmt.Errorf("destroy application runtime broker: %w", err)
+	}
+	services, err := compose.RunningServicesProject(ctx, project, brokerFiles.Compose, files.Env)
+	if err != nil {
+		return fmt.Errorf("verify application runtime broker destruction: %w", err)
+	}
+	if len(services) != 0 {
+		return errors.New("verify application runtime broker destruction: broker is still running")
+	}
+	return nil
 }
 
 func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
