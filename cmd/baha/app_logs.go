@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -394,8 +395,17 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 		}
 	}
 	if len(prepared.providerSources) > 0 {
-		if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
-			return err
+		for attempt := 0; attempt < 3; attempt++ {
+			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
+				return err
+			}
+			if attempt < 2 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(750 * time.Millisecond):
+				}
+			}
 		}
 	}
 	if err := logsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.providerSources, prepared.dataDir, prepared.namespace); err != nil {
