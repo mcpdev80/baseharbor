@@ -120,6 +120,9 @@ func appDownCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
 				}
 			}
+			if err := recordObservedDeployment(resolved, "stopped", false); err != nil {
+				return fmt.Errorf("record stopped application state: %w", err)
+			}
 			term.Section("Application")
 			term.Result("STOPPED", "application", "persistent data preserved")
 			return nil
