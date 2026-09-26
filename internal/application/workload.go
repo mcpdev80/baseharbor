@@ -198,6 +198,9 @@ func composeServiceNames(path string) ([]string, error) {
 func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
 	availableSet := make(map[string]struct{}, len(available))
 	for _, service := range available {
+		if strings.HasPrefix(service, "baseharbor-internal-") {
+			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
+		}
 		availableSet[service] = struct{}{}
 	}
 	if len(requested) > 0 {
@@ -212,12 +215,14 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 	}
 
 	shadowed := map[string]struct{}{}
-	if len(SQLInstanceNames(m)) > 0 {
-		shadowed["postgres"] = struct{}{}
+	for _, instance := range SQLInstanceNames(m) {
+		shadowed[runtimeServiceName("postgres", instance)] = struct{}{}
 	}
-	if len(CacheInstanceNames(m)) > 0 {
-		shadowed["redis"] = struct{}{}
-		shadowed["valkey"] = struct{}{}
+	for _, instance := range CacheInstanceNames(m) {
+		shadowed[runtimeServiceName("valkey", instance)] = struct{}{}
+		if instance == defaultServiceInstance {
+			shadowed["redis"] = struct{}{}
+		}
 	}
 	selected := make([]string, 0, len(available))
 	for _, service := range available {
