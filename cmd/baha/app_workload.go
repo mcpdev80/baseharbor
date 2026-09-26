@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -28,8 +29,25 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 		return nil
 	}
 	repositoryRoot := resolved.repositoryRoot()
-	_, _, err := application.ResolveWorkloadCompose(repositoryRoot, resolved.Manifest)
-	return err
+	composePath, found, err := application.ResolveWorkloadCompose(repositoryRoot, resolved.Manifest)
+	if err != nil || !found {
+		return err
+	}
+	rel, err := filepath.Rel(repositoryRoot, composePath)
+	if err != nil {
+		return err
+	}
+	analysis, err := repositoryinspect.AnalyzeComposeFile(repositoryRoot, filepath.ToSlash(rel))
+	if err != nil {
+		return fmt.Errorf("inspect repository workload adoption requirements: %w", err)
+	}
+	if len(application.SQLInstanceNames(resolved.Manifest)) > 0 && len(analysis.DatabaseBootstrapServices) > 0 {
+		return fmt.Errorf(
+			"repository database bootstrap for Compose service(s) %s would be discarded by managed SQL replacement; keep the database service in the workload or migrate the bootstrap explicitly before apply",
+			strings.Join(analysis.DatabaseBootstrapServices, ", "),
+		)
+	}
+	return nil
 }
 
 func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
