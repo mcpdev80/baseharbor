@@ -40,19 +40,34 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}
+	pending, err := recordPendingDeployment(ctx, execution.resolved)
+	if err != nil {
+		return fmt.Errorf("record deployment before mutation: %w", err)
+	}
+	execution.resolved.DeploymentRecord = &pending
 	if err := execution.prepareManagedRuntime(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.verifyManagedRuntime(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.recordVerifiedDeployment(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
 	return recordApplicationAudit(ctx, execution.resolved, "apply", "success", "verified", "desired application state converged and verified")
+}
+
+func (e *applicationApplyExecution) recordFailedDeployment(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if err := recordObservedDeployment(e.resolved, "failed", false); err != nil {
+		return errors.Join(cause, fmt.Errorf("record failed deployment state: %w", err))
+	}
+	return cause
 }
 
 type applicationSecretSetter interface {
