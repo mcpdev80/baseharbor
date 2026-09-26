@@ -107,6 +107,9 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 				Detail: "compose service " + service.Name + " declares healthcheck",
 			})
 		}
+		if service.DatabaseBootstrap {
+			analysis.DatabaseBootstrapServices = append(analysis.DatabaseBootstrapServices, service.Name)
+		}
 	}
 	analysis.SQLInstances = uniqueSorted(analysis.SQLInstances)
 	analysis.CacheInstances = uniqueSorted(analysis.CacheInstances)
@@ -121,6 +124,7 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		return analysis.Ports[i].Value < analysis.Ports[j].Value
 	})
 	analysis.HealthChecks = uniqueEvidence(analysis.HealthChecks)
+	analysis.DatabaseBootstrapServices = uniqueSorted(analysis.DatabaseBootstrapServices)
 	return analysis, nil
 }
 
