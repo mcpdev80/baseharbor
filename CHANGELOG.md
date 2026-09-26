@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed SQL adoption fails before mutation when replacing a repository database would discard `docker-entrypoint-initdb.d` bootstrap behavior.
 - Accepted mutating MCP lifecycle operations are no longer truncated by client-request cancellation; client timeout guidance and safe permission defaults are documented.
 - Application/full destroy removes BaseHarbor-owned Runtime Broker volumes while continuing to preserve application-owned workload data volumes.
-- Operator-visible Compose projects now follow provider placement: target-wide shared components use one `bh-<target>-shared` stack, while application runtime/workload and application-scoped providers use `bh-<target>-<application>`; external providers remain outside BaseHarbor ownership.
+- Operator-visible Compose projects now follow provider placement: target-wide shared components use one `bh-<target>-shared` stack, while application runtime/workload and application-scoped providers use `bh-<target>-<application>-<environment>`; external providers remain outside BaseHarbor ownership.
 
 ### Security
 
