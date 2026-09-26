@@ -8,6 +8,33 @@ import (
 	"strings"
 )
 
+func (c Compose) ProjectServiceLogDriver(ctx context.Context, project, service string) (string, error) {
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return "", errors.New("project and service are required")
+	}
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, container := range containers {
+		if container.Project != project || container.Service != service || !container.Running {
+			continue
+		}
+		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}", container.Name)
+		if err != nil {
+			return "", fmt.Errorf("inspect log driver for %s/%s: %w", project, service, err)
+		}
+		driver := strings.TrimSpace(out)
+		if driver == "" {
+			return "", fmt.Errorf("inspect log driver for %s/%s returned an empty value", project, service)
+		}
+		return driver, nil
+	}
+	return "", fmt.Errorf("running service %s/%s was not found", project, service)
+}
+
 func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
 	if c.command == "" {
 		return nil, ErrRuntimeNotFound
