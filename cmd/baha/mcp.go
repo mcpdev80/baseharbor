@@ -159,6 +159,11 @@ func machineApplicationArgs(name, environment string) []string {
 }
 
 func machineLifecycleContext(ctx context.Context) context.Context {
+	// Once a mutating MCP lifecycle operation has been accepted, its
+	// convergence must not be truncated merely because the client request
+	// times out or disconnects. Preserve request values but detach cancellation;
+	// lifecycle-specific verification timeouts still bound individual phases.
+	ctx = context.WithoutCancel(ctx)
 	opts := cli.OutputOptionsFromContext(ctx)
 	opts.NonInteractive = true
 	opts.Quiet = true
