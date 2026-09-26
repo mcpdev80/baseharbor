@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -169,7 +170,7 @@ func machineLifecycleContext(ctx context.Context) (context.Context, context.Canc
 	// disconnects. Preserve request values, detach client cancellation, then
 	// apply a server-owned upper bound so an accepted operation cannot run
 	// forever if an external runtime command wedges.
-	detached := context.WithoutCancel(ctx)
+	detached := context.WithoutCancel(evidence.WithActor(ctx, "mcp", "local-agent"))
 	bounded, cancel := context.WithTimeout(detached, machineLifecycleMaxDuration)
 	opts := cli.OutputOptionsFromContext(bounded)
 	opts.NonInteractive = true
