@@ -32,6 +32,7 @@ type managedLogsExecution struct {
 	includePlatformProviders    bool
 	dataDir                     string
 	namespace                   string
+	runtimeFiles                application.RuntimeFiles
 }
 
 func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
@@ -111,6 +112,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	if prepared == nil {
 		return nil
 	}
+	prepared.runtimeFiles = files
 	if !prepared.enabled {
 		if err := logsprovider.RemoveWorkloadOverride(files); err != nil {
 			return err
@@ -392,11 +394,8 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 		}
 	}
 	if len(prepared.providerSources) > 0 {
-		files, err := application.ExistingRuntimeFiles(application.Store{}, prepared.manifest)
-		if err == nil {
-			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
-				return err
-			}
+		if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
+			return err
 		}
 	}
 	if err := logsprovider.VerifyProviderSourcesAt(ctx, prepared.manifest, prepared.providerSources, prepared.dataDir, prepared.namespace); err != nil {
