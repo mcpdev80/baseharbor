@@ -432,3 +432,39 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	}
 	return driver, tag, nil
 }
+
+
+// ContainerLogAddressProjectService returns the syslog address configured on the
+// running container for an exact Compose project/service.
+func (c Compose) ContainerLogAddressProjectService(ctx context.Context, project, service string) (string, error) {
+	if c.command == "" {
+		return "", ErrRuntimeNotFound
+	}
+	if c.quadlet {
+		return "", nil
+	}
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return "", errors.New("project and service are required")
+	}
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return "", err
+	}
+	containerName := ""
+	for _, container := range containers {
+		if container.Project == project && container.Service == service && container.Running {
+			containerName = container.Name
+			break
+		}
+	}
+	if containerName == "" {
+		return "", fmt.Errorf("running container for project %q service %q was not found", project, service)
+	}
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{index .HostConfig.LogConfig.Config \"syslog-address\"}}", containerName)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
