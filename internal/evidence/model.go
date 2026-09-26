@@ -54,8 +54,8 @@ type RecoveryContributor struct {
 }
 
 type Recovery struct {
-	LastBackup  *time.Time            `json:"last_backup,omitempty"`
-	LastRestore *time.Time            `json:"last_restore,omitempty"`
+	LastBackup   *time.Time            `json:"last_backup,omitempty"`
+	LastRestore  *time.Time            `json:"last_restore,omitempty"`
 	Contributors []RecoveryContributor `json:"contributors,omitempty"`
 }
 
