@@ -313,7 +313,7 @@ func (e *applicationDestroyExecution) cleanupTraces(ctx context.Context) error {
 		return err
 	}
 	if found && placement.Scope == capability.ScopeApplication {
-		if err := tracesprovider.DestroyProvider(ctx, e.compose, e.manifest); err != nil {
+		if err := tracesprovider.DestroyProviderAt(ctx, e.compose, e.manifest, e.resolved.TargetStateRoot, e.resolved.Target.Name); err != nil {
 			return fmt.Errorf("destroy application-scoped traces provider: %w", err)
 		}
 	}
@@ -328,7 +328,7 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 
 	switch placement.Scope {
 	case capability.ScopeShared:
-		if err := metricsprovider.PruneRegisteredApplicationTargets(e.manifest, nil); err != nil {
+		if err := metricsprovider.PruneRegisteredApplicationTargetsAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest, nil); err != nil {
 			return fmt.Errorf("remove application metrics targets: %w", err)
 		}
 		if e.platformFiles.Compose == "" {
@@ -338,11 +338,11 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			}
 		}
 		issuer := openbao.NewServiceIssuer(e.compose, e.platformFiles)
-		if err := metricsprovider.UnregisterSharedApplication(ctx, e.compose, issuer, e.manifest); err != nil {
+		if err := metricsprovider.UnregisterSharedApplicationAt(ctx, e.compose, issuer, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 			return fmt.Errorf("remove application metrics trust edges: %w", err)
 		}
 	case capability.ScopeApplication:
-		if err := metricsprovider.DestroyProvider(ctx, e.compose, e.manifest); err != nil {
+		if err := metricsprovider.DestroyProviderAt(ctx, e.compose, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 			return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
 		}
 	case capability.ScopeExternal:
