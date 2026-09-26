@@ -67,10 +67,7 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	}
 	switch p.Scope {
 	case capability.ScopeShared:
-		project := providerProject
-		if prefix != "" {
-			project = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
-		}
+		project := bhruntime.SharedProjectName(namespace)
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
