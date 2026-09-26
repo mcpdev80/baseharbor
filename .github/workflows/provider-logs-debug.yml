@@ -1,0 +1,30 @@
+name: "Debug · Docker Provider Logs"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/logs/docker-provider-v0.4.15.1'
+
+permissions:
+  contents: read
+
+jobs:
+  provider_logs:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 10
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_LOGS_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Reset runtime state
+        run: bash scripts/ci-runtime-reset.sh docker
+      - name: Run provider syslog integration
+        run: go test -p 1 ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+      - name: Cleanup runtime state
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh docker
