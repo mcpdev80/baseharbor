@@ -86,7 +86,7 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment
-		project := bhruntime.ApplicationProjectName(namespace, m.Name)
+		project := bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment)
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
