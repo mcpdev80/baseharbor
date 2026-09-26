@@ -245,6 +245,22 @@ func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "metadata.json")); !os.IsNotExist(err) {
 		t.Fatalf("internal metadata must not enter service binding projection, err=%v", err)
 	}
+
+	postgresURI, err := os.ReadFile(filepath.Join(root, "postgres", "uri"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(postgresURI), "@postgres:5432/") ||
+		!strings.Contains(string(postgresURI), "sslrootcert=%2Frun%2Fbaseharbor%2Fservice-bindings%2Fpostgres%2Fcertificates") {
+		t.Fatalf("workload PostgreSQL binding is not container-native: %s", postgresURI)
+	}
+	valkeyURI, err := os.ReadFile(filepath.Join(root, "valkey", "uri"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(valkeyURI), "@valkey-access:6379/0") {
+		t.Fatalf("workload Valkey binding is not container-native: %s", valkeyURI)
+	}
 }
 
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
