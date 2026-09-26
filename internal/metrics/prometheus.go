@@ -94,7 +94,6 @@ func placementFromProviderPlacementAt(dataDir, namespace string, m application.M
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
 		if providerPlacement.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(providerPlacement.SharingBoundary)
-			project += "-" + token
 			volume += "-" + token
 			dir = filepath.Join(dir, token)
 		}
@@ -108,7 +107,7 @@ func placementFromProviderPlacementAt(dataDir, namespace string, m application.M
 		suffix := prefix + m.Name + "-" + m.Environment
 		return Placement{
 			Scope:   capability.ScopeApplication,
-			Project: "baseharbor-metrics-" + suffix,
+			Project: bhruntime.ApplicationProjectName(namespace, m.Name),
 			Network: "baseharbor-metrics-" + suffix + "_default",
 			Volume:  "baseharbor-prometheus-data-" + suffix,
 			Dir:     filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "applications", m.Name, m.Environment),
