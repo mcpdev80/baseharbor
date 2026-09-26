@@ -10,6 +10,17 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+func ManagedRuntimeProviderServiceNames(m Manifest) []string {
+	services := make([]string, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
+	for _, instance := range SQLInstanceNames(m) {
+		services = append(services, runtimeServiceName("postgres", instance))
+	}
+	for _, instance := range CacheInstanceNames(m) {
+		services = append(services, runtimeServiceName("valkey", instance))
+	}
+	return services
+}
+
 func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	logsPolicy, err := LogsPolicy(m)
 	if err != nil {
