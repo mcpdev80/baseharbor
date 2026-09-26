@@ -299,6 +299,7 @@ func preflightRepositoryWorkloadPublishedPorts(
 	}
 
 	rewritten := map[string][]string{}
+	reservedFallbackPorts := map[int]struct{}{}
 	for service, ports := range servicePorts {
 		values := append([]string(nil), ports...)
 		changed := false
@@ -308,9 +309,16 @@ func preflightRepositoryWorkloadPublishedPorts(
 				continue
 			}
 			fallback := proposedWorkloadPort(port)
+			for fallback != 0 {
+				if _, reserved := reservedFallbackPorts[fallback]; !reserved {
+					break
+				}
+				fallback = firstAvailablePort(fallback + 1)
+			}
 			if fallback == 0 {
 				return &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Port %d is already in use and no safe fallback was found.", port), Resource: service, Remediation: "manual action required", Next: "Free the port or choose a free host port and retry."}
 			}
+			reservedFallbackPorts[fallback] = struct{}{}
 			accepted, err := acceptFixedWorkloadPortFallback(ctx, in, out, service, port, fallback)
 			if err != nil {
 				return err
