@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
@@ -68,8 +69,15 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		return registrations[i].Environment < registrations[j].Environment
 	})
 
+	serviceName := ProviderService
+	accessSpec := prometheusAccessSpec()
+	if placement.Scope == capability.ScopeApplication {
+		serviceName = "baseharbor-internal-prometheus"
+		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
+	}
 	var b strings.Builder
-	b.WriteString("services:\n  prometheus:\n")
+	b.WriteString("services:\n")
+	fmt.Fprintf(&b, "  %s:\n", serviceName)
 	fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
 	b.WriteString("    restart: unless-stopped\n")
 	b.WriteString("    user: \"65534:65534\"\n")
@@ -122,7 +130,11 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("    cap_drop:\n      - ALL\n")
 	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
 	b.WriteString("    networks:\n")
-	b.WriteString("      - access\n")
+	if placement.Scope == capability.ScopeApplication {
+		b.WriteString("      access:\n        aliases:\n          - prometheus\n")
+	} else {
+		b.WriteString("      - access\n")
+	}
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i := range registrations {
 			fmt.Fprintf(&b, "      - metrics-%d\n", i)
@@ -131,7 +143,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 			fmt.Fprintf(&b, "      - provider-%d\n", i)
 		}
 	}
-	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, prometheusAccessSpec()))
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	b.WriteString("\nnetworks:\n")
 	// Keep the clear-text Prometheus backend isolated. The TLS gateway joins a
 	// separate publish network so Docker/Podman can expose only its loopback
