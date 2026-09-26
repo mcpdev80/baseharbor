@@ -140,7 +140,7 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		return Placement{Scope: p.Scope, Project: project, Network: network, Volume: volume, Dir: dir, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment
-		return Placement{Scope: p.Scope, Project: bhruntime.ApplicationProjectName(namespace, m.Name), Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
+		return Placement{Scope: p.Scope, Project: bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment), Network: "baseharbor-traces-" + suffix, Volume: "baseharbor-tempo-data-" + suffix, Dir: filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "applications", m.Name, m.Environment), OwnerApplication: m.Name}, nil
 	case capability.ScopeExternal:
 		return Placement{Scope: p.Scope}, nil
 	default:
