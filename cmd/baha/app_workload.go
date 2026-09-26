@@ -431,6 +431,9 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	if err := execution.rebuildChangedServices(ctx, out); err != nil {
 		return false, err
 	}
+	if err := execution.recreateConfigurationChangedServices(ctx, out); err != nil {
+		return false, err
+	}
 	if err := execution.start(ctx, out); err != nil {
 		execution.cleanup(ctx)
 		return false, err
