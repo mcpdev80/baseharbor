@@ -139,18 +139,26 @@ func resolveRepositoryWorkloadConfigFingerprints(
 		if !ok {
 			return nil, fmt.Errorf("rendered workload configuration is missing selected service %s", service)
 		}
-		var value any
-		if err := json.Unmarshal(raw, &value); err != nil {
-			return nil, fmt.Errorf("decode rendered configuration for service %s: %w", service, err)
-		}
-		canonical, err := json.Marshal(value)
+		digest, err := fingerprintRenderedWorkloadService(raw)
 		if err != nil {
-			return nil, fmt.Errorf("canonicalize rendered configuration for service %s: %w", service, err)
+			return nil, fmt.Errorf("fingerprint rendered configuration for service %s: %w", service, err)
 		}
-		digest := sha256.Sum256(canonical)
-		result[service] = hex.EncodeToString(digest[:])
+		result[service] = digest
 	}
 	return result, nil
+}
+
+func fingerprintRenderedWorkloadService(raw json.RawMessage) (string, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func loadRepositoryWorkloadConfigState(files application.RuntimeFiles) (repositoryWorkloadConfigState, error) {
