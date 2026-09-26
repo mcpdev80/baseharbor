@@ -261,7 +261,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 				return fmt.Errorf("validate runtime broker log collection: %w", err)
 			}
 			if found {
-				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, nil, nil, composeFiles...); err != nil {
+				if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, nil, []string{runtimebroker.ServiceName}, composeFiles...); err != nil {
 					return fmt.Errorf("reconcile runtime broker log collection: %w", err)
 				}
 			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
@@ -293,7 +293,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 			return fmt.Errorf("validate runtime executor log collection: %w", err)
 		}
 		if found {
-			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, nil, composeFiles...); err != nil {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, executorFiles.Project, executorFiles.Dir, nil, []string{runtimeexecutor.ServiceName}, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime executor log collection: %w", err)
 			}
 		} else if err := runtime.UpProjectFiles(ctx, executorFiles.Project, executorFiles.Dir, composeFiles...); err != nil {
