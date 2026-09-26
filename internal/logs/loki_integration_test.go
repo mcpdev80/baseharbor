@@ -62,8 +62,16 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 		}
 		t.Fatalf("provision Loki provider: %v%s", err, diagnostics)
 	}
-	for _, service := range []string{"loki", "alloy"} {
-		if err := containersecurity.VerifyComposeService(ctx, "baseharbor-logs", service, containersecurity.Requirements{
+	placement, err := logs.PlacementFor(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	services := []string{"loki", "alloy"}
+	if placement.Scope == capability.ScopeApplication {
+		services = []string{"baseharbor-internal-loki", "baseharbor-internal-alloy"}
+	}
+	for _, service := range services {
+		if err := containersecurity.VerifyComposeService(ctx, placement.Project, service, containersecurity.Requirements{
 			ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 		}); err != nil {
 			t.Fatalf("%s runtime security: %v", service, err)
