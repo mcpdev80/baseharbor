@@ -61,7 +61,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "runtime ownership", Run: func(ctx context.Context) error {
 					var err error
-					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, resourceProject))
+					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
 					return err
 				}},
 			}
@@ -109,7 +109,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
 				return err
 			}
-			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, resourceProject))
+			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
 			if err != nil {
 				return fmt.Errorf("verify application down: %w", err)
 			}
