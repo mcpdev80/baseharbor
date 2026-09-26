@@ -166,10 +166,12 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range SQLInstanceNames(m) {
-		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("postgres", instance))
+		service := runtimeServiceName("postgres", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	for _, instance := range CacheInstanceNames(m) {
-		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
+		service := runtimeServiceName("valkey", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
