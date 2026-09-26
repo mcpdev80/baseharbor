@@ -90,7 +90,7 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 		return RuntimeFiles{}, err
 	}
 
-	compose, err := RuntimeComposeYAML(m)
+	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
 	if err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -145,6 +145,10 @@ func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manif
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
+	return RuntimeComposeYAMLForProject(m, RuntimeProjectName(m))
+}
+
+func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, error) {
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
 	}
@@ -167,6 +171,8 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	for _, instance := range CacheInstanceNames(m) {
 		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
 	}
+	b.WriteString("\nnetworks:\n  default:\n")
+	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	return b.String(), nil
 }
 
