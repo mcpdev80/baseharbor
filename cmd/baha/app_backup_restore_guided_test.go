@@ -199,3 +199,39 @@ func TestWithInMemoryPasswordFileUsesOwnerOnlyNonDiskFile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+
+func TestPromptGuidedRecoverySelectionUsesTypedDefaultsAndChoices(t *testing.T) {
+	selection, err := applicationbackup.NewRecoverySelection([]applicationbackup.RecoveryContributor{
+		{StateClass: applicationbackup.StateApplicationMetadata, Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+		{StateClass: applicationbackup.StateSQL, LogicalResource: "primary", Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+		{StateClass: applicationbackup.StateLogs, LogicalResource: "application", Ownership: "application", Support: applicationbackup.RecoverySupported},
+		{StateClass: applicationbackup.StatePKI, LogicalResource: "runtime-identities", Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "selection")
+	if err := os.WriteFile(path, []byte("no\nyes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	var out bytes.Buffer
+	selected, err := promptGuidedRecoverySelection(file, &out, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.HasSelected(applicationbackup.StateSQL) {
+		t.Fatal("SQL should have been excluded by interactive selection")
+	}
+	if !selected.HasSelected(applicationbackup.StateLogs) {
+		t.Fatal("logs should have been included by interactive selection")
+	}
+	if !selected.HasSelected(applicationbackup.StateApplicationMetadata) || !selected.HasSelected(applicationbackup.StatePKI) {
+		t.Fatal("required reconstruction state was not preserved")
+	}
+}
