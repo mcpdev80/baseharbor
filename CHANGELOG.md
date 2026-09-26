@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Managed S3 resources no longer force backup/restore to fail closed merely because object storage is present; bucket contents are captured and restored through the existing standards-based S3 provider path.
 - BaseHarbor-owned repository workload named volumes participate in recovery while bind mounts and external named volumes remain explicitly external and outside BaseHarbor ownership.
+- Recovery discovery accepts both normalized Compose volume objects and short-syntax mounts, preserving the same workload-storage semantics on Docker Compose and Podman/Quadlet.
 - Application log history is selectable operational recovery state and is excluded by default unless the operator explicitly includes `observability.logs`.
 - Metrics and trace history remain explicitly unsupported recovery contributors until BaseHarbor has safe application-scoped restore semantics for those histories.
 - Successful backup/restore metadata records typed recovery contributors and per-contributor verification without storing secret values.
