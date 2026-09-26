@@ -104,21 +104,43 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-					if len(cfg.Targets) == 0 {
-						fmt.Fprintln(out, "No targets configured.")
-						return nil
+					effective, err := cfg.ResolveTarget("", activated)
+					if err != nil {
+						return err
+					}
+					names := cfg.TargetNames()
+					if _, configured := cfg.Targets["local"]; !configured {
+						names = append(names, "local")
+						sort.Strings(names)
 					}
 					fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "SCOPE", "SELECTOR")
-					for _, name := range cfg.TargetNames() {
-						target := cfg.Targets[name]
-						var marks []string
+					for _, name := range names {
+						var (
+							provider string
+							access   string
+							scope    string
+							marks    []string
+						)
+						if target, configured := cfg.Targets[name]; configured {
+							provider = target.Runtime.Provider
+							access = target.Access.Reference
+							scope = target.Scope
+						} else {
+							provider = "compose"
+							access = "local"
+							scope = "default"
+							marks = append(marks, "implicit")
+						}
 						if name == cfg.DefaultTarget {
 							marks = append(marks, "default")
 						}
 						if name == activated {
 							marks = append(marks, "active")
 						}
-						fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", name, target.Runtime.Provider, target.Access.Reference, target.Scope, strings.Join(marks, ","))
+						if name == effective.Name {
+							marks = append(marks, "effective")
+						}
+						fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", name, provider, access, scope, strings.Join(marks, ","))
 					}
 					return nil
 				},
@@ -280,7 +302,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		Access:  deployment.TargetAccess{Reference: accessName},
 		Scope:   scope,
 	}
-	if makeDefault || cfg.DefaultTarget == "" {
+	if makeDefault {
 		cfg.DefaultTarget = name
 	}
 	if err := cfg.Save(); err != nil {
