@@ -109,9 +109,13 @@ func (s RecoverySelection) Apply(include, exclude []RecoveryStateClass) (Recover
 	}
 
 	known := make(map[RecoveryStateClass]bool)
+	supported := make(map[RecoveryStateClass]bool)
 	for i := range out.Contributors {
 		c := &out.Contributors[i]
 		known[c.StateClass] = true
+		if c.Support == RecoverySupported {
+			supported[c.StateClass] = true
+		}
 		if _, ok := excludes[c.StateClass]; ok {
 			if c.StateClass == StateApplicationMetadata {
 				return RecoverySelection{}, errors.New("application.metadata is required in every recovery unit")
@@ -120,16 +124,18 @@ func (s RecoverySelection) Apply(include, exclude []RecoveryStateClass) (Recover
 			c.ExplicitlyExcluded = true
 		}
 		if _, ok := includes[c.StateClass]; ok {
-			c.ExplicitlyExcluded = false
-			if c.Support != RecoverySupported {
-				return RecoverySelection{}, fmt.Errorf("recovery state class %q is %s for logical resource %q: %s", c.StateClass, c.Support, c.LogicalResource, c.Reason)
+			if c.Support == RecoverySupported {
+				c.Selected = true
+				c.ExplicitlyExcluded = false
 			}
-			c.Selected = true
 		}
 	}
 	for class := range includes {
 		if !known[class] {
 			return RecoverySelection{}, fmt.Errorf("recovery state class %q is not present for this application", class)
+		}
+		if !supported[class] {
+			return RecoverySelection{}, fmt.Errorf("recovery state class %q has no supported application-owned contributor", class)
 		}
 	}
 	for class := range excludes {
