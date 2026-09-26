@@ -15,20 +15,20 @@ func TestRecoveryComposeModelAcceptsNormalizedAndShortVolumeSyntax(t *testing.T)
 	}{
 		{
 			name:       "normalized object",
-			input: `{"services":{"api":{"volumes":[{"type":"volume","source":"data","target":"/data"}]}},"volumes":{"data":{}}}`,
+			input:      `{"services":{"api":{"volumes":[{"type":"volume","source":"data","target":"/data"}]}},"volumes":{"data":{}}}`,
 			wantSource: "data",
 			wantTarget: "/data",
 			wantType:   "volume",
 		},
 		{
 			name:       "compose short syntax",
-			input: `{"services":{"api":{"volumes":["data:/data"]}},"volumes":{"data":{}}}`,
+			input:      `{"services":{"api":{"volumes":["data:/data"]}},"volumes":{"data":{}}}`,
 			wantSource: "data",
 			wantTarget: "/data",
 		},
 		{
 			name:       "bind short syntax with options",
-			input: `{"services":{"api":{"volumes":["./cache:/cache:ro"]}}}`,
+			input:      `{"services":{"api":{"volumes":["./cache:/cache:ro"]}}}`,
 			wantSource: "./cache",
 			wantTarget: "/cache",
 		},
