@@ -43,7 +43,7 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 			Target:          resolved.Target.Name,
 			Application:     m.Name,
 			Environment:     m.Environment,
-			Project:         application.RuntimeProjectNameForStore(resolved.Store, m),
+			Project:         application.RuntimeComposeProjectNameForStore(resolved.Store, m),
 			State:           "not_applied",
 			Ready:           false,
 			Checks:          []application.StatusCheck{},

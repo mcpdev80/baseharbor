@@ -59,7 +59,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := containersecurity.VerifyComposeService(ctx, firstState.Project, "route-public", containersecurity.Requirements{
+	if err := containersecurity.VerifyComposeService(ctx, firstState.Project, "baseharbor-internal-exposure-public", containersecurity.Requirements{
 		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
 	}); err != nil {
 		t.Fatalf("Caddy runtime security: %v", err)

@@ -190,7 +190,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			return err
 		}},
 		{Name: "persistent data volumes", Run: func(context.Context) error {
-			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, e.files.Project) {
+			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, e.files.ResourceProject) {
 				if !application.ResourceNamedExists(e.before, volume) {
 					return fmt.Errorf("managed %s is missing; refusing to recreate persistent state during app up", volume.Name)
 				}

@@ -19,8 +19,8 @@ func TestVerifyRuntimeBrokerBuildIdentity(t *testing.T) {
 	if err := verifyRuntimeBrokerBuildIdentity("0.4.14", "abc123"); err == nil {
 		t.Fatal("mismatched runtime version was accepted")
 	}
-	if err := verifyRuntimeBrokerBuildIdentity("0.4.15", "old"); err == nil {
-		t.Fatal("mismatched runtime commit was accepted")
+	if err := verifyRuntimeBrokerBuildIdentity("0.4.15", "old"); err != nil {
+		t.Fatalf("commit provenance mismatch must not define compatibility: %v", err)
 	}
 	if err := verifyRuntimeBrokerBuildIdentity("", ""); err == nil {
 		t.Fatal("missing runtime build identity was accepted")

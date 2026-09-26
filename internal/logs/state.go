@@ -67,25 +67,26 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	}
 	switch p.Scope {
 	case capability.ScopeShared:
-		project := providerProject
-		if prefix != "" {
-			project = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
-		}
+		project := bhruntime.SharedProjectName(namespace)
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
 		alloyVolume := "baseharbor-alloy-data"
+		legacyProject := providerProject
+		if prefix != "" {
+			legacyProject = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
+		}
 		if p.SharingBoundary != "" {
 			token := application.ProviderPlacementNameToken(p.SharingBoundary)
-			project += "-" + token
 			dir = filepath.Join(dir, token)
+			legacyProject += "-" + token
 			lokiVolume += "-" + token
 			alloyVolume += "-" + token
 		}
-		network := project + "-internal"
+		network := legacyProject + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment
-		project := providerProject + "-" + suffix
+		project := bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment)
 		return Placement{
 			Scope:            p.Scope,
 			Project:          project,
@@ -183,7 +184,11 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, lokiAccessSpec())
+	accessSpec := lokiAccessSpec()
+	if p.Scope == capability.ScopeApplication {
+		accessSpec.ServiceName = "baseharbor-internal-loki-access"
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}

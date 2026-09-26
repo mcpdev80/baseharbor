@@ -295,6 +295,15 @@ func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDest
 				}
 				id := deployment.DeploymentIdentity{Target: targetEntry.Name(), Application: appEntry.Name(), Environment: envEntry.Name()}
 				record, loadErr := deployment.LoadDeploymentRecord(id)
+				if errors.Is(loadErr, os.ErrNotExist) {
+					results = append(results, fullDestroyResult{
+						Status:   "SKIPPED",
+						Target:   targetEntry.Name(),
+						Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(),
+						Detail:   "incomplete deployment state has no deployment.json; refusing to guess runtime ownership, local BaseHarbor state will still be removed",
+					})
+					continue
+				}
 				if loadErr != nil {
 					results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(), Detail: loadErr.Error()})
 					continue
@@ -340,18 +349,19 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 			if filesErr != nil {
 				files = application.RuntimeFilesFor(resolved.Store, m)
 			}
-			runtimeProject := application.RuntimeProjectNameForStore(resolved.Store, m)
+			runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
+			resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
 			if resolved.FromRepository {
 				if _, stopErr := stopRepositoryWorkload(parent, compose, resolved, files); stopErr != nil {
 					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "workload " + m.Name + "/" + m.Environment, Detail: stopErr.Error()})
 				}
 			}
 			if application.RequiresRuntimeBroker(m) {
-				if stopErr := stopRuntimeBroker(parent, compose, m, files); stopErr != nil {
-					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-broker " + m.Name + "/" + m.Environment, Detail: stopErr.Error()})
+				if destroyErr := destroyRuntimeBroker(parent, compose, m, files); destroyErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-broker " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 				}
 			}
-			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForProject(m, runtimeProject)); destroyErr != nil {
+			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject)); destroyErr != nil {
 				*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "application-runtime " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 			}
 			if placement, found, placementErr := application.RegisteredProviderPlacementAt(targetRoot, m, capability.ProviderTempo); placementErr == nil && found && placement.Scope == capability.ScopeApplication {

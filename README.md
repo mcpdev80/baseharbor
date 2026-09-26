@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/mcpdev80/baseharbor/releases">
-    <img src="https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=semver" alt="GitHub Release">
+    <img src="https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=date" alt="GitHub Release">
   </a>
   <a href="https://mcpdev80.github.io/baseharbor/">
     <img src="https://img.shields.io/badge/docs-GitHub%20Pages-0068E9" alt="GitHub Pages">

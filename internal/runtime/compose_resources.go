@@ -8,13 +8,64 @@ import (
 	"strings"
 )
 
-func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ string) ([]string, error) {
+func (c Compose) ProjectServiceLogDriver(ctx context.Context, project, service string) (string, error) {
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return "", errors.New("project and service are required")
+	}
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, container := range containers {
+		if container.Project != project || container.Service != service || !container.Running {
+			continue
+		}
+		out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}", container.Name)
+		if err != nil {
+			return "", fmt.Errorf("inspect log driver for %s/%s: %w", project, service, err)
+		}
+		driver := strings.TrimSpace(out)
+		if driver == "" {
+			return "", fmt.Errorf("inspect log driver for %s/%s returned an empty value", project, service)
+		}
+		return driver, nil
+	}
+	return "", fmt.Errorf("running service %s/%s was not found", project, service)
+}
+
+func (c Compose) RunningServicesProject(ctx context.Context, project, composeFile, envFile string) ([]string, error) {
 	if c.command == "" {
 		return nil, ErrRuntimeNotFound
 	}
 	project = strings.TrimSpace(project)
 	if project == "" {
 		return nil, errors.New("compose project name is required")
+	}
+
+	var moduleServices map[string]struct{}
+	if consolidatedProject(project) && strings.TrimSpace(composeFile) != "" {
+		moduleServices = map[string]struct{}{}
+		if c.quadlet {
+			q, err := quadletRenderProject(composeFile, envFile, project)
+			if err != nil {
+				return nil, err
+			}
+			for service := range q.ServiceUnits {
+				moduleServices[service] = struct{}{}
+			}
+		} else {
+			out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
+			if err != nil {
+				return nil, err
+			}
+			for _, line := range strings.Split(out, "\n") {
+				if service := strings.TrimSpace(line); service != "" {
+					moduleServices[service] = struct{}{}
+				}
+			}
+		}
 	}
 
 	containers, err := c.ListComposeContainers(ctx)
@@ -27,6 +78,11 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, _, _ strin
 	for _, container := range containers {
 		if container.Project != project || !container.Running {
 			continue
+		}
+		if moduleServices != nil {
+			if _, ok := moduleServices[container.Service]; !ok {
+				continue
+			}
 		}
 		if _, ok := seen[container.Service]; ok {
 			continue
@@ -106,14 +162,26 @@ func (c Compose) InspectProjectResources(ctx context.Context, project string, re
 			inspectTemplate = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
 		}
 
-		listed, err := c.directOutput(ctx, listArgs...)
-		if err != nil {
-			return nil, err
-		}
 		existingNames := map[string]struct{}{}
-		for _, line := range strings.Split(listed, "\n") {
-			if name := strings.TrimSpace(line); name != "" {
-				existingNames[name] = struct{}{}
+		if c.quadlet {
+			for name := range wanted {
+				exists, err := quadletRuntimeResourceExists(ctx, kind, name)
+				if err != nil {
+					return nil, err
+				}
+				if exists {
+					existingNames[name] = struct{}{}
+				}
+			}
+		} else {
+			listed, err := c.directOutput(ctx, listArgs...)
+			if err != nil {
+				return nil, err
+			}
+			for _, line := range strings.Split(listed, "\n") {
+				if name := strings.TrimSpace(line); name != "" {
+					existingNames[name] = struct{}{}
+				}
 			}
 		}
 
@@ -322,4 +390,45 @@ func firstRuntimeLabel(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ContainerLogConfigProjectService returns the runtime logging driver and tag
+// for the running container that belongs to an exact Compose project/service.
+func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, service string) (string, string, error) {
+	if c.command == "" {
+		return "", "", ErrRuntimeNotFound
+	}
+	if c.quadlet {
+		return "", "", nil
+	}
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return "", "", errors.New("project and service are required")
+	}
+	containers, err := c.ListComposeContainers(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	containerName := ""
+	for _, container := range containers {
+		if container.Project == project && container.Service == service && container.Running {
+			containerName = container.Name
+			break
+		}
+	}
+	if containerName == "" {
+		return "", "", fmt.Errorf("running container for project %q service %q was not found", project, service)
+	}
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}", containerName)
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(strings.TrimSpace(out), "|", 2)
+	driver := strings.TrimSpace(parts[0])
+	tag := ""
+	if len(parts) == 2 {
+		tag = strings.TrimSpace(parts[1])
+	}
+	return driver, tag, nil
 }

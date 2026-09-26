@@ -207,15 +207,20 @@ func quadletInstallProject(ctx context.Context, project QuadletProject) error {
 	for name := range project.Files {
 		desired[name] = struct{}{}
 	}
-	for _, name := range existing {
-		if _, keep := desired[name]; keep {
-			continue
-		}
-		if unit := quadletUnitForFile(name); unit != "" && strings.HasSuffix(name, ".container") {
-			_, _ = quadletSystemctl(ctx, nil, "stop", unit)
-		}
-		if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+	// Consolidated bh-* projects contain independently rendered modules.
+	// A module install must never prune sibling runtime/provider/workload units
+	// merely because they are absent from the current Compose fragment.
+	if !consolidatedProject(project.Project) {
+		for _, name := range existing {
+			if _, keep := desired[name]; keep {
+				continue
+			}
+			if unit := quadletUnitForFile(name); unit != "" && strings.HasSuffix(name, ".container") {
+				_, _ = quadletSystemctl(ctx, nil, "stop", unit)
+			}
+			if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 		}
 	}
 	if err := WriteQuadletProject(dir, project); err != nil {
@@ -273,16 +278,15 @@ func quadletProjectInstalledUnchanged(dir string, project QuadletProject) (bool,
 	if err != nil {
 		return false, err
 	}
-	if len(existing) != len(project.Files) {
+	if !consolidatedProject(project.Project) && len(existing) != len(project.Files) {
 		return false, nil
 	}
 
-	for _, name := range existing {
-		desired, ok := project.Files[name]
-		if !ok {
+	for name, desired := range project.Files {
+		actual, err := os.ReadFile(filepath.Join(dir, name))
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
-		actual, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return false, err
 		}
@@ -621,6 +625,15 @@ func quadletRemoveProject(ctx context.Context, project QuadletProject, destroyVo
 	files, err := quadletInstalledProjectFiles(dir, project.Project)
 	if err != nil {
 		return err
+	}
+	if consolidatedProject(project.Project) {
+		moduleFiles := make([]string, 0, len(project.Files))
+		for _, name := range files {
+			if _, owned := project.Files[name]; owned {
+				moduleFiles = append(moduleFiles, name)
+			}
+		}
+		files = moduleFiles
 	}
 
 	var networkUnits, volumeUnits []string

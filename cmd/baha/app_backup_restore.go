@@ -337,7 +337,26 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 		return resolved, err
 	}
 	if !found {
-		return resolved, nil
+		record, recordErr := deployment.LoadDeploymentRecord(id)
+		if recordErr == nil && deployment.SourceAvailable(record.Source) {
+			selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, backupManifest.Environment)
+			if sourceErr != nil {
+				return resolved, fmt.Errorf("restore preflight registered source: %w", sourceErr)
+			}
+			if selection.Manifest.YAML() != backupManifest.YAML() {
+				return resolved, errors.New("registered repository environment manifest does not match backup desired state")
+			}
+			resolved.DeploymentRecord = &record
+			resolved.ManifestPath = selection.ManifestPath
+			resolved.RepositoryRoot = selection.RepositoryRoot
+			resolved.SourceAvailable = true
+			resolved.FromRepository = true
+			return resolved, nil
+		}
+		if recordErr != nil && !errors.Is(recordErr, os.ErrNotExist) {
+			return resolved, fmt.Errorf("restore preflight deployment record: %w", recordErr)
+		}
+		return resolved, errors.New("restore preflight source repository is unavailable; run restore from the matching repository or restore the registered repository path before mutation")
 	}
 	selection, err := application.ResolveRepositoryEnvironment(cwd, backupManifest.Environment)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -158,14 +159,22 @@ func machineApplicationArgs(name, environment string) []string {
 	return args
 }
 
-func machineLifecycleContext(ctx context.Context) context.Context {
-	opts := cli.OutputOptionsFromContext(ctx)
+const machineLifecycleMaxDuration = 30 * time.Minute
+
+func machineLifecycleContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	// Once a mutating MCP lifecycle operation has been accepted, convergence
+	// must not be truncated merely because the client request times out or
+	// disconnects. Preserve request values, detach client cancellation, then
+	// apply a server-owned upper bound so an accepted operation cannot run
+	// forever if an external runtime command wedges.
+	detached := context.WithoutCancel(ctx)
+	bounded, cancel := context.WithTimeout(detached, machineLifecycleMaxDuration)
+	opts := cli.OutputOptionsFromContext(bounded)
 	opts.NonInteractive = true
 	opts.Quiet = true
 	opts.Plain = true
-	return cli.WithOutputOptions(ctx, opts)
+	return cli.WithOutputOptions(bounded, opts), cancel
 }
-
 func machineMCPFailure(err error) (*mcp.CallToolResult, any, error) {
 	classified := machine.Classify(classifyMachineCLIError(err))
 	payload := machineToolError{ContractVersion: machine.ContractVersion, Error: classified}

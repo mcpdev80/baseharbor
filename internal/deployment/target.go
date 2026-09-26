@@ -30,10 +30,15 @@ type TargetAccess struct {
 	Reference string `yaml:"reference" json:"reference"`
 }
 
+type OpenBaoTargetConfig struct {
+	RecoveryFile string `yaml:"recovery-file,omitempty" json:"recovery_file,omitempty"`
+}
+
 type TargetDefinition struct {
-	Runtime RuntimeDefinition `yaml:"runtime" json:"runtime"`
-	Access  TargetAccess      `yaml:"access" json:"access"`
-	Scope   string            `yaml:"scope,omitempty" json:"scope,omitempty"`
+	Runtime RuntimeDefinition   `yaml:"runtime" json:"runtime"`
+	Access  TargetAccess        `yaml:"access" json:"access"`
+	Scope   string              `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao OpenBaoTargetConfig `yaml:"openbao,omitempty" json:"openbao,omitempty"`
 }
 
 type PromptConfig struct {
@@ -99,7 +104,7 @@ func TargetStateRoot(name string) (string, error) {
 func ValidateTargetName(name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" || !targetSlug.MatchString(name) {
-		return fmt.Errorf("invalid target name %q", name)
+		return fmt.Errorf("invalid target name %q: use lowercase letters, digits, dots or hyphens; names must start and end with a letter or digit", name)
 	}
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var ErrWorkloadComposeAmbiguous = errors.New("multiple application Compose files found")
@@ -39,23 +40,18 @@ var conventionalWorkloadComposePaths = []string{
 }
 
 func WorkloadProjectName(m Manifest) string {
-	return "baseharbor-workload-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName("", m.Name, m.Environment)
 }
 
 func WorkloadProjectNameForNamespace(m Manifest, namespace string) string {
-	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
-	if namespace == "" {
-		return WorkloadProjectName(m)
-	}
-	return "baseharbor-workload-" + namespace + "-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName(namespace, m.Name, m.Environment)
 }
 
 func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
-	project := strings.TrimSpace(strings.TrimPrefix(runtime.Project, "baseharbor-"))
-	if project == "" {
-		return WorkloadProjectName(m)
+	if project := strings.TrimSpace(runtime.Project); project != "" {
+		return project
 	}
-	return "baseharbor-workload-" + project
+	return WorkloadProjectName(m)
 }
 
 func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, error) {
@@ -202,6 +198,9 @@ func composeServiceNames(path string) ([]string, error) {
 func selectWorkloadServices(m Manifest, available, requested []string) ([]string, error) {
 	availableSet := make(map[string]struct{}, len(available))
 	for _, service := range available {
+		if strings.HasPrefix(service, "baseharbor-internal-") {
+			return nil, fmt.Errorf("application Compose service %q uses the reserved BaseHarbor internal service namespace", service)
+		}
 		availableSet[service] = struct{}{}
 	}
 	if len(requested) > 0 {
@@ -216,12 +215,14 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 	}
 
 	shadowed := map[string]struct{}{}
-	if len(SQLInstanceNames(m)) > 0 {
-		shadowed["postgres"] = struct{}{}
+	for _, instance := range SQLInstanceNames(m) {
+		shadowed[runtimeServiceName("postgres", instance)] = struct{}{}
 	}
-	if len(CacheInstanceNames(m)) > 0 {
-		shadowed["redis"] = struct{}{}
-		shadowed["valkey"] = struct{}{}
+	for _, instance := range CacheInstanceNames(m) {
+		shadowed[runtimeServiceName("valkey", instance)] = struct{}{}
+		if instance == defaultServiceInstance {
+			shadowed["redis"] = struct{}{}
+		}
 	}
 	selected := make([]string, 0, len(available))
 	for _, service := range available {
@@ -246,7 +247,10 @@ func workloadOverrideYAMLForRuntime(m Manifest, services []string, values map[st
 }
 
 func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[string]string, runtime RuntimeFiles) (string, error) {
-	runtimeProject := runtime.Project
+	runtimeProject := runtime.ResourceProject
+	if strings.TrimSpace(runtimeProject) == "" {
+		runtimeProject = RuntimeProjectName(m)
+	}
 	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
 	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
 	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)

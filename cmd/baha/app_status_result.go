@@ -65,7 +65,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 					ExpectedVersion: strings.TrimSpace(version),
 				}
 				if compose, composeErr := bhruntime.DetectCompose(ctx); composeErr == nil {
-					identity, identityErr := compose.ProjectServiceImageIdentity(ctx, runtimebroker.ProjectName(resolved.Manifest), runtimebroker.ServiceName)
+					identity, identityErr := compose.ProjectServiceImageIdentity(ctx, runtimebroker.ProjectNameForRuntime(resolved.Manifest, files), runtimebroker.ServiceName)
 					if identityErr != nil {
 						runtimeArtifact.Detail = identityErr.Error()
 					} else {

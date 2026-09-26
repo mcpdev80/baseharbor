@@ -18,13 +18,14 @@ import (
 var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
 
 type RuntimeFiles struct {
-	Dir            string
-	Compose        string
-	Env            string
-	ApplicationEnv string
-	Bindings       string
-	Project        string
-	Namespace      string
+	Dir             string
+	Compose         string
+	Env             string
+	ApplicationEnv  string
+	Bindings        string
+	Project         string
+	ResourceProject string
+	Namespace       string
 }
 
 func RuntimeProjectName(m Manifest) string {
@@ -37,6 +38,10 @@ func RuntimeProjectNameForStore(store Store, m Manifest) string {
 		return RuntimeProjectName(m)
 	}
 	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
+	return bhruntime.ApplicationProjectName(store.Namespace, m.Name, m.Environment)
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
@@ -55,13 +60,14 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
 	dir := filepath.Join(store.Root, m.Name, "runtime")
 	return RuntimeFiles{
-		Dir:            dir,
-		Compose:        filepath.Join(dir, "compose.yaml"),
-		Env:            filepath.Join(dir, "runtime.env"),
-		ApplicationEnv: filepath.Join(dir, "application.env"),
-		Bindings:       filepath.Join(dir, "bindings"),
-		Project:        RuntimeProjectNameForStore(store, m),
-		Namespace:      strings.TrimSpace(store.Namespace),
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "runtime.env"),
+		ApplicationEnv:  filepath.Join(dir, "application.env"),
+		Bindings:        filepath.Join(dir, "bindings"),
+		Project:         RuntimeComposeProjectNameForStore(store, m),
+		ResourceProject: RuntimeProjectNameForStore(store, m),
+		Namespace:       strings.TrimSpace(store.Namespace),
 	}
 }
 
@@ -84,7 +90,7 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 		return RuntimeFiles{}, err
 	}
 
-	compose, err := RuntimeComposeYAML(m)
+	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
 	if err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -139,6 +145,10 @@ func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manif
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
+	return RuntimeComposeYAMLForProject(m, RuntimeProjectName(m))
+}
+
+func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, error) {
 	if err := CheckSupportedRuntimeServices(m); err != nil {
 		return "", err
 	}
@@ -156,11 +166,15 @@ func RuntimeComposeYAML(m Manifest) (string, error) {
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range SQLInstanceNames(m) {
-		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("postgres", instance))
+		service := runtimeServiceName("postgres", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	for _, instance := range CacheInstanceNames(m) {
-		fmt.Fprintf(&b, "  %s-data:\n", runtimeServiceName("valkey", instance))
+		service := runtimeServiceName("valkey", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
+	b.WriteString("\nnetworks:\n  default:\n")
+	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	return b.String(), nil
 }
 

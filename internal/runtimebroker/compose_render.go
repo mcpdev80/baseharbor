@@ -32,7 +32,11 @@ type runtimeBrokerComposeConfig struct {
 
 func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (runtimeBrokerComposeConfig, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
-	if scoped := application.ApplicationBackendNetworkNameForProject(appFiles.Project); scoped != "" {
+	resourceProject := strings.TrimSpace(appFiles.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = application.RuntimeProjectName(m)
+	}
+	if scoped := application.ApplicationBackendNetworkNameForProject(resourceProject); scoped != "" {
 		backendNetwork = scoped
 	}
 
@@ -132,7 +136,7 @@ func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles applicat
 func (c runtimeBrokerComposeConfig) writeService(b *strings.Builder) {
 	m := c.manifest
 	b.WriteString("services:\n")
-	b.WriteString("  broker:\n")
+	fmt.Fprintf(b, "  %s:\n", ServiceName)
 	fmt.Fprintf(b, "    image: %s\n", strconv.Quote(c.image))
 	b.WriteString("    restart: unless-stopped\n")
 	b.WriteString("    user: \"65532:65532\"\n")

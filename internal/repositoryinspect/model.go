@@ -98,24 +98,25 @@ type PortEvidence struct {
 }
 
 type Result struct {
-	ContractVersion        string               `json:"contract_version"`
-	Root                   string               `json:"root"`
-	Application            string               `json:"application"`
-	ExistingManifest       string               `json:"existing_manifest,omitempty"`
-	Artifacts              []Artifact           `json:"artifacts,omitempty"`
-	ComposeCandidates      []string             `json:"compose_candidates,omitempty"`
-	SelectedCompose        string               `json:"selected_compose,omitempty"`
-	WorkloadServices       []string             `json:"workload_services,omitempty"`
-	InfrastructureServices []string             `json:"infrastructure_services,omitempty"`
-	AmbiguousServices      []string             `json:"ambiguous_services,omitempty"`
-	Findings               []Finding            `json:"findings,omitempty"`
-	RequiredSecrets        []string             `json:"required_secrets,omitempty"`
-	SecretCandidates       []string             `json:"secret_candidates,omitempty"`
-	SecretSources          map[string]string    `json:"secret_sources,omitempty"`
-	Ports                  []PortEvidence       `json:"ports,omitempty"`
-	HealthChecks           []Evidence           `json:"health_checks,omitempty"`
-	Declared               []CapabilityIntent   `json:"declared_capabilities,omitempty"`
-	Reconciliation         []ReconciliationItem `json:"reconciliation,omitempty"`
+	ContractVersion           string               `json:"contract_version"`
+	Root                      string               `json:"root"`
+	Application               string               `json:"application"`
+	ExistingManifest          string               `json:"existing_manifest,omitempty"`
+	Artifacts                 []Artifact           `json:"artifacts,omitempty"`
+	ComposeCandidates         []string             `json:"compose_candidates,omitempty"`
+	SelectedCompose           string               `json:"selected_compose,omitempty"`
+	WorkloadServices          []string             `json:"workload_services,omitempty"`
+	InfrastructureServices    []string             `json:"infrastructure_services,omitempty"`
+	AmbiguousServices         []string             `json:"ambiguous_services,omitempty"`
+	Findings                  []Finding            `json:"findings,omitempty"`
+	RequiredSecrets           []string             `json:"required_secrets,omitempty"`
+	SecretCandidates          []string             `json:"secret_candidates,omitempty"`
+	SecretSources             map[string]string    `json:"secret_sources,omitempty"`
+	Ports                     []PortEvidence       `json:"ports,omitempty"`
+	HealthChecks              []Evidence           `json:"health_checks,omitempty"`
+	DatabaseBootstrapServices []string             `json:"database_bootstrap_services,omitempty"`
+	Declared                  []CapabilityIntent   `json:"declared_capabilities,omitempty"`
+	Reconciliation            []ReconciliationItem `json:"reconciliation,omitempty"`
 }
 
 type Snapshot struct {
@@ -133,12 +134,13 @@ type Engine struct {
 }
 
 type ComposeAnalysis struct {
-	WorkloadServices       []string       `json:"workload_services,omitempty"`
-	InfrastructureServices []string       `json:"infrastructure_services,omitempty"`
-	AmbiguousServices      []string       `json:"ambiguous_services,omitempty"`
-	SQLInstances           []string       `json:"sql_instances,omitempty"`
-	CacheInstances         []string       `json:"cache_instances,omitempty"`
-	ObjectStorageServices  []string       `json:"object_storage_services,omitempty"`
-	Ports                  []PortEvidence `json:"ports,omitempty"`
-	HealthChecks           []Evidence     `json:"health_checks,omitempty"`
+	WorkloadServices          []string       `json:"workload_services,omitempty"`
+	InfrastructureServices    []string       `json:"infrastructure_services,omitempty"`
+	AmbiguousServices         []string       `json:"ambiguous_services,omitempty"`
+	SQLInstances              []string       `json:"sql_instances,omitempty"`
+	CacheInstances            []string       `json:"cache_instances,omitempty"`
+	ObjectStorageServices     []string       `json:"object_storage_services,omitempty"`
+	Ports                     []PortEvidence `json:"ports,omitempty"`
+	HealthChecks              []Evidence     `json:"health_checks,omitempty"`
+	DatabaseBootstrapServices []string       `json:"database_bootstrap_services,omitempty"`
 }

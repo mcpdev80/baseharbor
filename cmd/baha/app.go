@@ -107,6 +107,12 @@ func appInitCommand() *cli.Command {
 				}
 				prepared = append([]string{filepath.Base(cwd)}, prepared...)
 			}
+			if !hasExplicitInitContract(prepared) {
+				return usageError(
+					"deterministic app init requires an explicit capability or workload selection",
+					"Use 'baha app init --quick' for repository detection, or pass explicit flags such as --sql, --cache, --s3, --secrets or --workload-compose/--workload-service.",
+				)
+			}
 			m, err := manifestFromCreateArgs(prepared)
 			if err != nil {
 				return err
@@ -134,6 +140,31 @@ func appInitCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func hasExplicitInitContract(args []string) bool {
+	for _, arg := range args {
+		switch {
+		case arg == "--sql",
+			arg == "--cache",
+			arg == "--s3",
+			arg == "--secrets",
+			arg == "--sql-instance",
+			strings.HasPrefix(arg, "--sql-instance="),
+			arg == "--cache-instance",
+			strings.HasPrefix(arg, "--cache-instance="),
+			arg == "--s3-bucket",
+			strings.HasPrefix(arg, "--s3-bucket="),
+			arg == "--require-secret",
+			strings.HasPrefix(arg, "--require-secret="),
+			arg == "--workload-compose",
+			strings.HasPrefix(arg, "--workload-compose="),
+			arg == "--workload-service",
+			strings.HasPrefix(arg, "--workload-service="):
+			return true
+		}
+	}
+	return false
 }
 
 func hasCreateName(args []string) bool {

@@ -2,6 +2,7 @@ package repositoryinspect
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -21,7 +22,11 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 		lower := strings.ToLower(string(data))
 
 		if isComposeFile(base) {
-			for _, service := range detectComposeServices(data) {
+			services, detectErr := detectComposeServices(data)
+			if detectErr != nil {
+				return nil, fmt.Errorf("inspect Compose file %s: %w", path, detectErr)
+			}
+			for _, service := range services {
 				if service.ObjectStorage {
 					detected = append(detected, Evidence{
 						Kind: EvidenceCompose, Path: path,

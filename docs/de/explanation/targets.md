@@ -83,7 +83,7 @@ $XDG_CONFIG_HOME/baseharbor/config.yaml
 ~/.config/baseharbor/config.yaml
 ```
 
-Sie enthaelt Target-Definitionen, Access-Definitionen, Defaults und Prompt-Praeferenzen.
+Sie enthaelt Target-Definitionen, Access-Definitionen, Defaults und Prompt-Praeferenzen. Auch Target-eigene Provider-Lifecycle-Referenzen koennen hier liegen; fuer managed OpenBao speichert der optionale Eintrag `target.openbao.recovery-file` nur den absoluten Pfad zur operator-gehaltenen Recovery-Datei, niemals das Recovery-Material selbst.
 
 Veraenderlicher Runtime-/Deployment-State ist Target-scoped:
 
@@ -92,7 +92,7 @@ $XDG_DATA_HOME/baseharbor/targets/<target>/
 ~/.local/share/baseharbor/targets/<target>/
 ```
 
-Damit koennen Docker-, Podman- und lokale Kubernetes/K3s-Targets unabhaengig parallel existieren, ohne versehentlich denselben BaseHarbor-State zu teilen.
+Damit koennen Docker-, Podman- und lokale Kubernetes/K3s-Targets unabhaengig parallel existieren, ohne versehentlich denselben BaseHarbor-State zu teilen. Shared Provider gehoeren zum Target-/Provider-Lifecycle und nicht zu einer einzelnen Application. Insbesondere duerfen Application-Destroy oder -Rename weder die Target-weite OpenBao-Recovery-Referenz noch die shared OpenBao Provider-Instanz entfernen.
 
 Ein lokales K3s/Kubernetes-Target ist kein Sonderfall: es ist ein Kubernetes-Target, dessen Access-Definition einen lokalen Cluster erreicht.
 

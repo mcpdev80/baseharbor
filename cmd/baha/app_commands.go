@@ -59,20 +59,24 @@ func appListCommand() *cli.Command {
 				}
 			}
 			var (
-				items []deployment.DeploymentRecord
-				err   error
+				items    []deployment.DeploymentRecord
+				warnings []error
+				err      error
 			)
 			if allTargets {
-				items, err = deployment.ListAllDeployments()
+				items, warnings, err = deployment.ListAllDeploymentsForDisplay()
 			} else {
 				target, resolveErr := effectiveTarget(ctx)
 				if resolveErr != nil {
 					return resolveErr
 				}
-				items, err = deployment.ListDeployments(target.Name)
+				items, warnings, err = deployment.ListDeploymentsForDisplay(target.Name)
 			}
 			if err != nil {
 				return err
+			}
+			for _, warning := range warnings {
+				fmt.Fprintf(errOut, "[WARN] incomplete deployment state: %v\n", warning)
 			}
 			if len(items) == 0 {
 				fmt.Fprintln(out, "No deployments registered.")

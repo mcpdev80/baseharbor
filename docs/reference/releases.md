@@ -1,8 +1,8 @@
 # Releases and versioning
 
-BaseHarbor uses Semantic Versioning with Git tags prefixed by `v`.
+BaseHarbor uses Semantic Versioning for normal releases with Git tags prefixed by `v`. During the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
-Examples: `v0.3.0`, `v0.4.0`, `v0.4.1`, `v1.0.0`.
+Examples: `v0.3.0`, `v0.4.15`, `v0.4.15.1`, `v1.0.0`.
 
 ## Stability policy
 
@@ -34,30 +34,63 @@ BaseHarbor uses two long-lived branches with distinct responsibilities:
 
 Published channels:
 
-- GitHub tag/release `vX.Y.Z`: immutable supported release created from `main`;
-- `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z`: matching runtime image;
+- GitHub tag/release `vX.Y.Z` or v0.4 hotfix `vX.Y.Z.H`: immutable supported release created from `main`;
+- `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z` or `X.Y.Z.H`: matching runtime image;
 - `ghcr.io/mcpdev80/baseharbor-runtime:latest`: latest stable release;
 - `ghcr.io/mcpdev80/baseharbor-runtime:edge`: moving development build from `develop`.
 
 Normal development branches must not target `main` directly. Hotfix branches start from `main`, are released through `main`, and must then be merged/backported into `develop` so the next release retains the fix.
 
+## Hotfix releases
+
+During the current v0.4 line, an emergency correction to an already published patch uses a four-part BaseHarbor hotfix version:
+
+```text
+MAJOR.MINOR.PATCH.HOTFIX
+```
+
+Example:
+
+```text
+v0.4.15 -> v0.4.15.1
+```
+
+Hotfix workflow:
+
+1. Start the hotfix release branch from the exact released `main` line, never from in-progress `develop`.
+2. Link every correction to the hotfix release parent issue.
+3. Keep the branch defect-only: no unrelated features, refactors or dependency updates.
+4. Use focused validation while implementing individual fixes.
+5. Update changelog, release notes and any affected operator/reference documentation.
+6. Run the complete pre-release gate exactly once at the release boundary against the final hotfix candidate.
+7. Open the hotfix release PR to `main` only after the candidate evidence is green.
+8. Publish the immutable four-part tag and matching runtime image from the merged `main` commit.
+9. Verify release artifacts/provenance, then forward-port the same fixes to `develop`.
+10. Remove temporary hotfix/validation branches only after publication and forward-port are complete.
+
+If a proposed change alters runtime identity, persisted-state migration, public contracts or architecture beyond what is required to correct the released defect, move it back to the normal roadmap instead of expanding the hotfix.
+
+Rollback rule: do not move or rewrite a published tag. If a hotfix itself is defective, revert the release change on the released line as appropriate and publish a new hotfix version.
+
+Evidence rule: the release issue and release notes must identify the exact BaseHarbor candidate SHA, the external demo revision used by pre-release validation, and the successful release-boundary evidence.
+
 ## Release preparation
 
-Every release is prepared on `develop` and promoted to `main` only after the release candidate is proven.
+Normal releases are prepared on `develop` and promoted to `main` only after the release candidate is proven. Hotfix releases follow the main-based workflow above.
 
 The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](../internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
 
 1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
-3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
-4. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
-5. Review compatibility impact and select the SemVer increment.
+3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` (or `X.Y.Z.H` for a v0.4 hotfix).
+4. Write human-readable release notes at `docs/releases/vX.Y.Z.md` (or `vX.Y.Z.H.md` for a v0.4 hotfix). They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
+5. Review compatibility impact and select the documented release-version increment.
 6. Run local/Hugging Face validation first where practical.
 7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo acceptance suite on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
 8. The successful pre-release produces immutable approval/evidence containing the tested BaseHarbor SHA and external demo SHA.
 9. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
 10. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
-11. Create an immutable tag `vX.Y.Z` on the resulting `main` release commit and push it.
+11. Create the immutable release tag on the resulting `main` release commit and push it.
 12. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
 13. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
 

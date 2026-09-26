@@ -125,7 +125,7 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, source
 		default:
 			continue
 		}
-		if err := waitForQuery(ctx, client, endpoint, query, "provider "+string(source.Provider)+"/"+service); err != nil {
+		if err := waitForSeries(ctx, client, endpoint, query, "provider "+string(source.Provider)+"/"+service); err != nil {
 			return err
 		}
 	}
@@ -137,6 +137,62 @@ func waitForStream(ctx context.Context, client *http.Client, endpoint string, m 
 	return waitForQuery(ctx, client, endpoint, query, m.Name+"/"+service)
 }
 
+func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, description string) error {
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var last error
+	for {
+		probeCtx, probeCancel := context.WithTimeout(deadline, 3*time.Second)
+		ok, err := querySeries(probeCtx, client, endpoint, match)
+		probeCancel()
+		if err == nil && ok {
+			return nil
+		}
+		if err != nil {
+			last = err
+		} else {
+			last = errors.New("Loki has not ingested a matching log stream yet")
+		}
+		select {
+		case <-deadline.Done():
+			return fmt.Errorf("verify Loki ingestion for %s: %w", description, last)
+		case <-ticker.C:
+		}
+	}
+}
+
+func querySeries(ctx context.Context, client *http.Client, endpoint, match string) (bool, error) {
+	now := time.Now()
+	values := url.Values{
+		"match[]": {match},
+		"start":   {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
+		"end":     {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/series?"+values.Encode(), nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		return false, fmt.Errorf("Loki series query returned HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		Status string              `json:"status"`
+		Data   []map[string]string `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return false, err
+	}
+	return payload.Status == "success" && len(payload.Data) > 0, nil
+}
+
 func waitForQuery(ctx context.Context, client *http.Client, endpoint, query, description string) error {
 	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
@@ -144,7 +200,9 @@ func waitForQuery(ctx context.Context, client *http.Client, endpoint, query, des
 	defer ticker.Stop()
 	var last error
 	for {
-		ok, err := queryStream(deadline, client, endpoint, query)
+		probeCtx, probeCancel := context.WithTimeout(deadline, 3*time.Second)
+		ok, err := queryStream(probeCtx, client, endpoint, query)
+		probeCancel()
 		if err == nil && ok {
 			return nil
 		}
