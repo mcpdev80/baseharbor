@@ -241,7 +241,6 @@ func listDeploymentRecords(root string) ([]DeploymentRecord, error) {
 	return records, nil
 }
 
-
 func listDeploymentRecordsBestEffort(root string) ([]DeploymentRecord, []error, error) {
 	apps, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
