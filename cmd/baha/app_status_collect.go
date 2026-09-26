@@ -116,9 +116,21 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
 	c.collectObjectStorageCheck(ctx)
 	c.collectTelemetryCheck(ctx)
+	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
+}
+
+func (c *applicationStatusCollection) collectServiceBindingCheck() {
+	if !application.HasManagedRuntimeServices(c.manifest) {
+		return
+	}
+	if err := application.VerifyWorkloadServiceBindings(c.manifest, c.files); err != nil {
+		c.result.AddCheck("service-bindings", false, err.Error())
+		return
+	}
+	c.result.AddCheck("service-bindings", true, "standard workload service bindings projected and verified")
 }
 
 func (c *applicationStatusCollection) collectObjectStorageCheck(ctx context.Context) {
