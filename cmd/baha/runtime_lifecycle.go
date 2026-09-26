@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/config"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
@@ -208,18 +207,8 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 }
 
 func initConfig(out io.Writer) error {
-	const path = config.DefaultFile
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("%s already exists", path)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	cfg := config.Default()
-	if err := os.WriteFile(path, []byte(cfg.YAML()), 0o600); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "created %s\n", path)
-	fmt.Fprintln(out, "next: run 'baha doctor'")
+	fmt.Fprintln(out, "baha init no longer creates a global baseharbor.yaml.")
+	fmt.Fprintln(out, "Application intent belongs in the repository manifest: run 'baha app init'.")
+	fmt.Fprintln(out, "Deployment runtime/target selection belongs in Target configuration: run 'baha target create --help'.")
 	return nil
 }
