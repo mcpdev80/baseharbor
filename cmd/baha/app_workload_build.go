@@ -20,7 +20,10 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-const repositoryWorkloadBuildStateName = "workload-build-fingerprints.json"
+const (
+	repositoryWorkloadBuildStateName  = "workload-build-fingerprints.json"
+	repositoryWorkloadConfigStateName = "workload-config-fingerprints.json"
+)
 
 type repositoryWorkloadBuildState struct {
 	Version  int               `json:"version"`
@@ -31,6 +34,15 @@ type renderedWorkloadBuildConfig struct {
 	Services map[string]struct {
 		Build json.RawMessage `json:"build"`
 	} `json:"services"`
+}
+
+type repositoryWorkloadConfigState struct {
+	Version  int               `json:"version"`
+	Services map[string]string `json:"services"`
+}
+
+type renderedWorkloadConfig struct {
+	Services map[string]json.RawMessage `json:"services"`
 }
 
 type repositoryBuildDefinition struct {
@@ -98,6 +110,105 @@ func resolveRepositoryWorkloadBuildFingerprints(
 		result[service] = digest
 	}
 	return result, nil
+}
+
+func repositoryWorkloadConfigStatePath(files application.RuntimeFiles) string {
+	return filepath.Join(files.Dir, repositoryWorkloadConfigStateName)
+}
+
+func resolveRepositoryWorkloadConfigFingerprints(
+	ctx context.Context,
+	compose bhruntime.Compose,
+	workload application.WorkloadFiles,
+	environment map[string]string,
+	services []string,
+	composeFiles []string,
+) (map[string]string, error) {
+	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return nil, fmt.Errorf("render workload for configuration fingerprint: %w", err)
+	}
+	var config renderedWorkloadConfig
+	if err := json.Unmarshal([]byte(rendered), &config); err != nil {
+		return nil, fmt.Errorf("decode workload configuration: %w", err)
+	}
+
+	result := make(map[string]string, len(services))
+	for _, service := range services {
+		raw, ok := config.Services[service]
+		if !ok {
+			return nil, fmt.Errorf("rendered workload configuration is missing selected service %s", service)
+		}
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return nil, fmt.Errorf("decode rendered configuration for service %s: %w", service, err)
+		}
+		canonical, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("canonicalize rendered configuration for service %s: %w", service, err)
+		}
+		digest := sha256.Sum256(canonical)
+		result[service] = hex.EncodeToString(digest[:])
+	}
+	return result, nil
+}
+
+func loadRepositoryWorkloadConfigState(files application.RuntimeFiles) (repositoryWorkloadConfigState, error) {
+	data, err := os.ReadFile(repositoryWorkloadConfigStatePath(files))
+	if errors.Is(err, os.ErrNotExist) {
+		return repositoryWorkloadConfigState{Version: 1, Services: map[string]string{}}, nil
+	}
+	if err != nil {
+		return repositoryWorkloadConfigState{}, err
+	}
+	var state repositoryWorkloadConfigState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return repositoryWorkloadConfigState{}, fmt.Errorf("decode workload configuration fingerprint state: %w", err)
+	}
+	if state.Version != 1 {
+		return repositoryWorkloadConfigState{}, fmt.Errorf("unsupported workload configuration fingerprint state version %d", state.Version)
+	}
+	if state.Services == nil {
+		state.Services = map[string]string{}
+	}
+	return state, nil
+}
+
+func changedRepositoryWorkloadConfigServices(current map[string]string, previous repositoryWorkloadConfigState) []string {
+	var changed []string
+	for service, digest := range current {
+		if previous.Services[service] != digest {
+			changed = append(changed, service)
+		}
+	}
+	sort.Strings(changed)
+	return changed
+}
+
+func persistRepositoryWorkloadConfigState(files application.RuntimeFiles, fingerprints map[string]string) error {
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+		return err
+	}
+	state := repositoryWorkloadConfigState{Version: 1, Services: fingerprints}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	path := repositoryWorkloadConfigStatePath(files)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func parseRepositoryBuildDefinition(raw json.RawMessage) (repositoryBuildDefinition, bool, error) {
