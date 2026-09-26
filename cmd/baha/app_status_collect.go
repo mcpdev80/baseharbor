@@ -48,6 +48,10 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 			Ready:           false,
 			Checks:          []application.StatusCheck{},
 		}
+		if resolved.IncompleteDeployment {
+			result.State = "incomplete"
+			result.AddCheck("deployment-state", false, "deployment convergence is incomplete; no final deployment record exists")
+		}
 		if resolved.FromRepository {
 			result.Manifest = resolved.ManifestPath
 		}
@@ -73,8 +77,11 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 		Environment:     m.Environment,
 		Project:         files.Project,
 		State:           "running",
-		Ready:           true,
+		Ready:           !resolved.IncompleteDeployment,
 		Checks:          []application.StatusCheck{},
+	}
+	if resolved.IncompleteDeployment {
+		result.AddCheck("deployment-state", false, "deployment convergence is incomplete; protected application state was recovered without a final deployment record")
 	}
 	if resolved.FromRepository {
 		result.Manifest = resolved.ManifestPath
