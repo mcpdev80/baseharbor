@@ -72,11 +72,11 @@ type Driver struct {
 }
 
 func ProjectName(m application.Manifest) string {
-	return bhruntime.ApplicationProjectName("", m.Name)
+	return bhruntime.ApplicationProjectName("", m.Name, m.Environment)
 }
 
 func ProjectNameForRuntime(m application.Manifest, runtime application.RuntimeFiles) string {
-	return bhruntime.ApplicationProjectName(runtime.Namespace, m.Name)
+	return bhruntime.ApplicationProjectName(runtime.Namespace, m.Name, m.Environment)
 }
 
 func FilesFor(runtime application.RuntimeFiles) Files {
