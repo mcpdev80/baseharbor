@@ -132,6 +132,9 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 					Detail: "compose service " + service.Name + " declares healthcheck",
 				})
 			}
+			if service.DatabaseBootstrap {
+				result.DatabaseBootstrapServices = append(result.DatabaseBootstrapServices, service.Name)
+			}
 		}
 	}
 	for _, rel := range artifactPaths(artifacts, "dockerfile") {
@@ -150,6 +153,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 			}
 		}
 	}
+	result.DatabaseBootstrapServices = uniqueSorted(result.DatabaseBootstrapServices)
 	result.SecretCandidates = uniqueSorted(result.SecretCandidates)
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
