@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const (
@@ -133,7 +134,7 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 	if err := os.Chmod(envPath, 0o600); err != nil {
 		return Files{}, fmt.Errorf("protect runtime executor environment: %w", err)
 	}
-	project := scopedName(ProjectName, namespace)
+	project := bhruntime.SharedProjectName(namespace)
 	controlNetwork := scopedName(ControlNetworkName, namespace)
 	objectStorageNetwork := scopedName("baseharbor-object-storage", namespace)
 	telemetryNetwork := scopedName("baseharbor-telemetry", namespace)
@@ -211,7 +212,7 @@ func ExistingFilesAt(dataDir, namespace string) (Files, error) {
 		Dir:            dir,
 		Compose:        filepath.Join(dir, "compose.yaml"),
 		Env:            filepath.Join(dir, "runtime.env"),
-		Project:        scopedName(ProjectName, namespace),
+		Project:        bhruntime.SharedProjectName(namespace),
 		ControlNetwork: scopedName(ControlNetworkName, namespace),
 	}
 	for _, path := range []string{files.Compose, files.Env} {

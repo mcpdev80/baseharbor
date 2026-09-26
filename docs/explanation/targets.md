@@ -88,7 +88,7 @@ $XDG_CONFIG_HOME/baseharbor/config.yaml
 ~/.config/baseharbor/config.yaml
 ```
 
-It contains Target definitions, Access definitions, defaults and prompt preferences.
+It contains Target definitions, Access definitions, defaults and prompt preferences. Target-owned provider lifecycle references may also live here; for managed OpenBao the optional `target.openbao.recovery-file` entry stores only the absolute path to the operator-held recovery file, never the recovery material itself.
 
 Mutable runtime/deployment state is Target-scoped:
 
@@ -116,7 +116,7 @@ Conceptually:
         └── deployments/
 ```
 
-This makes independent parallel Targets possible without sharing mutable BaseHarbor runtime state accidentally.
+This makes independent parallel Targets possible without sharing mutable BaseHarbor runtime state accidentally. Shared providers belong to the Target/provider lifecycle rather than to an individual application. In particular, application destroy or rename must not remove the Target-level OpenBao recovery reference or the shared OpenBao provider instance.
 
 A local Kubernetes/K3s Target is not special: it is simply a Kubernetes Target whose Access definition reaches a local cluster.
 

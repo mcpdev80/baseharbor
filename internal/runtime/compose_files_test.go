@@ -46,3 +46,10 @@ func TestComposeUpArgsAlwaysBuildCurrentRepositorySource(t *testing.T) {
 		t.Fatalf("selected compose up args=%q want %q", got, "up -d --build --no-deps api worker")
 	}
 }
+
+func TestComposeBuildArgsForcePlainProgress(t *testing.T) {
+	got := strings.Join(composeBuildArgs([]string{"api"}), " ")
+	if got != "build --progress plain api" {
+		t.Fatalf("compose build args=%q want %q", got, "build --progress plain api")
+	}
+}

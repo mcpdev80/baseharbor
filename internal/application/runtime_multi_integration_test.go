@@ -34,7 +34,7 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project := RuntimeProjectName(m)
+	project := files.Project
 	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 		t.Fatalf("validate generated multi-instance compose: %v", err)
 	}

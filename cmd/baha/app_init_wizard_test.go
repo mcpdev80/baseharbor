@@ -130,6 +130,20 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 	}
 }
 
+func TestGuidedInitDeterministicPathRequiresExplicitContract(t *testing.T) {
+	dir := t.TempDir()
+	withWizardTestDir(t, dir)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "-e", "dev"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "requires an explicit capability or workload selection") {
+		t.Fatalf("expected explicit-contract failure, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, application.RepositoryManifestName)); !os.IsNotExist(statErr) {
+		t.Fatalf("manifest should not be written without explicit deterministic intent, stat err=%v", statErr)
+	}
+}
+
 func TestGuidedInitExplicitFlagsKeepDeterministicPath(t *testing.T) {
 	dir := t.TempDir()
 	withWizardTestDir(t, dir)

@@ -27,6 +27,7 @@ type applicationDestroyExecution struct {
 	resolved            resolvedApplication
 	manifest            application.Manifest
 	runtimeProject      string
+	resourceProject     string
 	term                *cli.Terminal
 	out                 io.Writer
 	confirmed           bool
@@ -76,16 +77,17 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 	term.Info("target", resolved.Target.Name)
 
 	return &applicationDestroyExecution{
-		resolved:       resolved,
-		manifest:       m,
-		runtimeProject: application.RuntimeProjectNameForStore(resolved.Store, m),
-		term:           term,
-		out:            out,
-		confirmed:      confirmed,
-		fullReset:      fullReset,
-		files:          files,
-		runtimeErr:     runtimeErr,
-		partialRuntime: partialRuntime,
+		resolved:        resolved,
+		manifest:        m,
+		runtimeProject:  application.RuntimeComposeProjectNameForStore(resolved.Store, m),
+		resourceProject: application.RuntimeProjectNameForStore(resolved.Store, m),
+		term:            term,
+		out:             out,
+		confirmed:       confirmed,
+		fullReset:       fullReset,
+		files:           files,
+		runtimeErr:      runtimeErr,
+		partialRuntime:  partialRuntime,
 	}, nil
 }
 
@@ -120,7 +122,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if application.HasManagedRuntimeServices(m) {
 		checks = append(checks, preflight.Check{Name: "runtime ownership", Run: func(ctx context.Context) error {
 			var err error
-			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject))
+			e.existing, err = e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject))
 			return err
 		}})
 	}
@@ -232,7 +234,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 	}
 	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
-		if err := stopRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
+		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
 			return err
 		}
 	}
@@ -241,12 +243,12 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 	} else if e.partialRuntime && len(e.existing) != 0 {
-		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject)); err != nil {
+		if err := e.compose.DestroyOwnedProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject)); err != nil {
 			return fmt.Errorf("recover incomplete application runtime destruction: %w", err)
 		}
 	}
 	if application.HasManagedRuntimeServices(m) {
-		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForProject(m, e.runtimeProject))
+		remaining, err := e.compose.InspectProjectResources(ctx, e.runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, e.runtimeProject, e.resourceProject))
 		if err != nil {
 			return fmt.Errorf("verify application runtime destruction: %w", err)
 		}
@@ -311,7 +313,7 @@ func (e *applicationDestroyExecution) cleanupTraces(ctx context.Context) error {
 		return err
 	}
 	if found && placement.Scope == capability.ScopeApplication {
-		if err := tracesprovider.DestroyProvider(ctx, e.compose, e.manifest); err != nil {
+		if err := tracesprovider.DestroyProviderAt(ctx, e.compose, e.manifest, e.resolved.TargetStateRoot, e.resolved.Target.Name); err != nil {
 			return fmt.Errorf("destroy application-scoped traces provider: %w", err)
 		}
 	}
@@ -326,7 +328,7 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 
 	switch placement.Scope {
 	case capability.ScopeShared:
-		if err := metricsprovider.PruneRegisteredApplicationTargets(e.manifest, nil); err != nil {
+		if err := metricsprovider.PruneRegisteredApplicationTargetsAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest, nil); err != nil {
 			return fmt.Errorf("remove application metrics targets: %w", err)
 		}
 		if e.platformFiles.Compose == "" {
@@ -336,11 +338,11 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			}
 		}
 		issuer := openbao.NewServiceIssuer(e.compose, e.platformFiles)
-		if err := metricsprovider.UnregisterSharedApplication(ctx, e.compose, issuer, e.manifest); err != nil {
+		if err := metricsprovider.UnregisterSharedApplicationAt(ctx, e.compose, issuer, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 			return fmt.Errorf("remove application metrics trust edges: %w", err)
 		}
 	case capability.ScopeApplication:
-		if err := metricsprovider.DestroyProvider(ctx, e.compose, e.manifest); err != nil {
+		if err := metricsprovider.DestroyProviderAt(ctx, e.compose, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 			return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
 		}
 	case capability.ScopeExternal:

@@ -51,11 +51,18 @@ func TestParseRuntimeUpOptionsRejectsInvalidPort(t *testing.T) {
 	}
 }
 
-func TestRecoveryFileForRepositoryUpRequiresExplicitPathNonInteractive(t *testing.T) {
+func TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive(t *testing.T) {
+	dataRoot := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataRoot)
+
 	var out bytes.Buffer
-	_, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
-	if err == nil || !strings.Contains(err.Error(), "recovery file") {
-		t.Fatalf("error = %v, want actionable recovery-file failure", err)
+	path, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dataRoot, "baseharbor-recovery", "local", "openbao-recovery.json")
+	if path != want {
+		t.Fatalf("path = %q, want target default %q", path, want)
 	}
 }
 
@@ -71,11 +78,11 @@ func TestRecoveryFileForRepositoryUpInteractivePromptIsVisible(t *testing.T) {
 		t.Fatalf("path = %q, want %q", got, path)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Where should BaseHarbor create the new recovery file?") {
-		t.Fatalf("missing explicit recovery question: %q", text)
+	if !strings.Contains(text, "NEW operator-held recovery output file") {
+		t.Fatalf("missing recovery output explanation: %q", text)
 	}
-	if !strings.Contains(text, "OpenBao-recovery-key:") {
-		t.Fatalf("missing shell-style recovery prompt: %q", text)
+	if !strings.Contains(text, "OpenBao recovery file [") {
+		t.Fatalf("missing recovery prompt with default: %q", text)
 	}
 }
 

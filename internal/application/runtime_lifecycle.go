@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -18,23 +19,27 @@ func ExpectedRuntimeResources(m Manifest) []bhruntime.ProjectResource {
 }
 
 func ExpectedRuntimeResourcesForProject(m Manifest, project string) []bhruntime.ProjectResource {
+	return ExpectedRuntimeResourcesForIdentity(m, project, project)
+}
+
+func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourceProject string) []bhruntime.ProjectResource {
 	if !HasManagedRuntimeServices(m) {
 		return nil
 	}
-	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(project)}}
+	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(resourceProject)}}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: project + "-" + valkeyAccessService(instance) + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: project + "_" + service + "-data"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
 	return resources
@@ -68,7 +73,11 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	if err != nil {
 		return fmt.Errorf("read application compose definition: %w", err)
 	}
-	expected, err := RuntimeComposeYAML(m)
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = RuntimeProjectName(m)
+	}
+	expected, err := RuntimeComposeYAMLForProject(m, resourceProject)
 	if err != nil {
 		return err
 	}
@@ -83,7 +92,11 @@ func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose
 }
 
 func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
-	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForProject(m, files.Project))
+	resourceProject := strings.TrimSpace(files.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = RuntimeProjectName(m)
+	}
+	return compose.InspectProjectResources(ctx, files.Project, ExpectedRuntimeResourcesForIdentity(m, files.Project, resourceProject))
 }
 
 func ResourceExists(resources []bhruntime.ProjectResource, kind string) bool {

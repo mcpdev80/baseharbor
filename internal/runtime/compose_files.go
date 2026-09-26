@@ -151,10 +151,17 @@ func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project,
 		cacheProjectEnvironment(project, environment)
 		return nil
 	}
-	args := []string{"build"}
-	args = append(args, services...)
+	args := composeBuildArgs(services)
 	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
 	return err
+}
+
+func composeBuildArgs(services []string) []string {
+	// Force deterministic non-interactive BuildKit progress. The default
+	// renderer can switch behavior when BaseHarbor itself is attached to a TTY,
+	// while lifecycle execution needs the same build behavior in TTY and CI.
+	args := []string{"build", "--progress", "plain"}
+	return append(args, services...)
 }
 
 func (c Compose) UpProjectFilesSelectedForceRecreateNoBuild(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) error {
