@@ -113,6 +113,22 @@ func appInitCommand() *cli.Command {
 					"Use 'baha app init --quick' for repository detection, or pass explicit flags such as --sql, --cache, --s3, --secrets or --workload-compose/--workload-service.",
 				)
 			}
+			if !hasExplicitWorkloadSelection(prepared) {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return fmt.Errorf("inspect repository workload before deterministic init: %w", err)
+				}
+				if len(detected.ComposeCandidates) > 0 || strings.TrimSpace(detected.Compose) != "" || len(detected.WorkloadServices) > 0 {
+					return usageError(
+						"deterministic app init found repository workload evidence but no explicit workload selection",
+						"Use 'baha app init --quick' for verified repository detection, or pass --workload-compose and --workload-service explicitly.",
+					)
+				}
+			}
 			m, err := manifestFromCreateArgs(prepared)
 			if err != nil {
 				return err
@@ -161,6 +177,18 @@ func hasExplicitInitContract(args []string) bool {
 			strings.HasPrefix(arg, "--workload-compose="),
 			arg == "--workload-service",
 			strings.HasPrefix(arg, "--workload-service="):
+			return true
+		}
+	}
+	return false
+}
+
+func hasExplicitWorkloadSelection(args []string) bool {
+	for _, arg := range args {
+		if arg == "--workload-compose" ||
+			strings.HasPrefix(arg, "--workload-compose=") ||
+			arg == "--workload-service" ||
+			strings.HasPrefix(arg, "--workload-service=") {
 			return true
 		}
 	}
