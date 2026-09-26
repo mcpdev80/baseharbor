@@ -24,7 +24,7 @@ func TestProviderProjectFollowsPlacementScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if app.Project != "bh-ci-demo" {
+	if app.Project != "bh-ci-demo-dev" {
 		t.Fatalf("application project = %q", app.Project)
 	}
 }
