@@ -66,8 +66,8 @@ jobs:
             tag="v$version"
           fi
 
-          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.HOTFIX, optionally followed by a prerelease suffix." >&2
+          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] && [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tag must use vMAJOR.MINOR.PATCH[-PRERELEASE] or stable vMAJOR.MINOR.PATCH.HOTFIX." >&2
             exit 1
           fi
 
