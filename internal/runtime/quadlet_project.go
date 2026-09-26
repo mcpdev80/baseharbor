@@ -479,6 +479,19 @@ func mergeQuadletYAMLMap(base, override *yaml.Node) {
 			continue
 		}
 		baseValue := base.Content[found+1]
+		if value.Tag == "!override" {
+			replacement := cloneQuadletYAMLNode(value)
+			switch replacement.Kind {
+			case yaml.SequenceNode:
+				replacement.Tag = "!!seq"
+			case yaml.MappingNode:
+				replacement.Tag = "!!map"
+			case yaml.ScalarNode:
+				replacement.Tag = "!!str"
+			}
+			base.Content[found+1] = replacement
+			continue
+		}
 		if baseValue.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
 			mergeQuadletYAMLMap(baseValue, value)
 			continue
