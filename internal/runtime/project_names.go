@@ -8,6 +8,24 @@ func SharedProjectName(namespace string) string {
 	return "bh-" + projectToken(namespace, "local") + "-shared"
 }
 
+// SharedResourceProjectName returns the stable physical resource prefix for
+// target-wide platform resources. It is intentionally independent from the
+// operator-visible consolidated Compose project name.
+func SharedResourceProjectName(namespace string) string {
+	return "baseharbor-" + projectToken(namespace, "local")
+}
+
+func sharedResourceProjectNameForOperatorProject(project string) string {
+	project = strings.TrimSpace(project)
+	if strings.HasPrefix(project, "bh-") && strings.HasSuffix(project, "-shared") {
+		target := strings.TrimSuffix(strings.TrimPrefix(project, "bh-"), "-shared")
+		if target != "" {
+			return "baseharbor-" + target
+		}
+	}
+	return project
+}
+
 // ApplicationProjectName returns the operator-visible Compose project for one
 // application on a target. Empty namespace means the implicit local target.
 func ApplicationProjectName(namespace, application, environment string) string {
