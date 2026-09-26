@@ -251,10 +251,12 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	if err != nil {
 		return fmt.Errorf("inspect runtime provider executor: %w", err)
 	}
-	if len(services) != 1 || services[0] != runtimeexecutor.ServiceName {
-		return errors.New("runtime provider executor is not running")
+	for _, service := range services {
+		if service == runtimeexecutor.ServiceName {
+			return nil
+		}
 	}
-	return nil
+	return errors.New("runtime provider executor is not running")
 }
 
 func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
