@@ -278,10 +278,14 @@ func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *test
 	}
 }
 
-func TestSelectWorkloadServicesRejectsReservedInternalNamespace(t *testing.T) {
+func TestSelectWorkloadServicesRejectsReservedBaseHarborServices(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	_, err := selectWorkloadServices(m, []string{"api", "baseharbor-internal-runtime-broker"}, nil)
-	if err == nil || !strings.Contains(err.Error(), "reserved BaseHarbor internal service namespace") {
-		t.Fatalf("expected reserved service namespace error, got %v", err)
+	for _, service := range []string{"baseharbor-broker", "baseharbor-internal-runtime-broker"} {
+		t.Run(service, func(t *testing.T) {
+			_, err := selectWorkloadServices(m, []string{"api", service}, nil)
+			if err == nil || !strings.Contains(err.Error(), "reserved BaseHarbor service name") {
+				t.Fatalf("expected reserved service-name error for %q, got %v", service, err)
+			}
+		})
 	}
 }

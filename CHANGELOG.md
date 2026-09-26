@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Docker runtime-broker log collection remains reliable inside the consolidated application Compose stack by using the reserved internal service id `baseharbor-broker`; application workloads cannot claim that service name.
 - Runtime Broker compatibility now uses the versioned runtime contract instead of requiring an exact CLI/runtime Git commit match; deterministic version incompatibility fails immediately instead of waiting through the readiness retry window.
 - Repository workload builds no longer inherit interactive TTY stdin, preventing a Compose/BuildKit rebuild from hanging indefinitely under the human progress UI.
 - `baha app down` persists the observed stopped state so `baha app list` does not continue to report READY after a verified stop.
