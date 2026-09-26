@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var ErrWorkloadComposeAmbiguous = errors.New("multiple application Compose files found")
@@ -39,23 +40,18 @@ var conventionalWorkloadComposePaths = []string{
 }
 
 func WorkloadProjectName(m Manifest) string {
-	return "baseharbor-workload-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName("", m.Name)
 }
 
 func WorkloadProjectNameForNamespace(m Manifest, namespace string) string {
-	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
-	if namespace == "" {
-		return WorkloadProjectName(m)
-	}
-	return "baseharbor-workload-" + namespace + "-" + m.Name + "-" + m.Environment
+	return bhruntime.ApplicationProjectName(namespace, m.Name)
 }
 
 func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
-	project := strings.TrimSpace(strings.TrimPrefix(runtime.Project, "baseharbor-"))
-	if project == "" {
-		return WorkloadProjectName(m)
+	if project := strings.TrimSpace(runtime.Project); project != "" {
+		return project
 	}
-	return "baseharbor-workload-" + project
+	return WorkloadProjectName(m)
 }
 
 func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, error) {
