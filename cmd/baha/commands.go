@@ -67,8 +67,9 @@ func rootCommand() *cli.Command {
 	root.Children = []*cli.Command{
 		{
 			Name:    "init",
-			Summary: "Create a minimal BaseHarbor configuration",
+			Summary: "Show the current BaseHarbor initialization paths",
 			Usage:   "baha init",
+			Long:    "Compatibility entrypoint. It no longer writes baseharbor.yaml. Use 'baha app init' for portable repository application intent and 'baha target create' for deployment target/runtime selection.",
 			Run:     noArgs("baha init", initConfig),
 		},
 		{
