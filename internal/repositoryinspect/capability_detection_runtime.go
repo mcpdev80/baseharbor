@@ -66,7 +66,11 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		lower := strings.ToLower(string(data))
 		base := strings.ToLower(filepath.Base(path))
 		if isComposeFile(base) {
-			for _, service := range detectComposeServices(data) {
+			services, detectErr := detectComposeServices(data)
+			if detectErr != nil {
+				return nil, fmt.Errorf("inspect Compose file %s: %w", path, detectErr)
+			}
+			for _, service := range services {
 				matches := false
 				instanceKind := ""
 				switch capability {
