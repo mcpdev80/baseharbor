@@ -135,12 +135,12 @@ func TestWorkloadOverrideProjectsStandardServiceBindingRoot(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
 	runtime := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
 	values := map[string]string{
-		"POSTGRES_DB":           "demo_dev",
-		"POSTGRES_USER":         "baseharbor",
-		"POSTGRES_PASSWORD":     "secret",
-		"POSTGRES_TLS_CA_FILE":  filepath.Join(runtime.Dir, "postgres-ca.pem"),
-		"VALKEY_PASSWORD":       "secret",
-		"VALKEY_TLS_CA_FILE":    filepath.Join(runtime.Dir, "valkey-ca.pem"),
+		"POSTGRES_DB":          "demo_dev",
+		"POSTGRES_USER":        "baseharbor",
+		"POSTGRES_PASSWORD":    "secret",
+		"POSTGRES_TLS_CA_FILE": filepath.Join(runtime.Dir, "postgres-ca.pem"),
+		"VALKEY_PASSWORD":      "secret",
+		"VALKEY_TLS_CA_FILE":   filepath.Join(runtime.Dir, "valkey-ca.pem"),
 	}
 	got, err := workloadOverrideYAMLForFiles(m, []string{"api"}, values, runtime)
 	if err != nil {
