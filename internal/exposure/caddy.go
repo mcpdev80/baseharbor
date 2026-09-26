@@ -466,7 +466,7 @@ func composeYAML(state State, files Files) string {
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, route := range state.Routes {
-		serviceName := "route-" + route.Name
+		serviceName := "baseharbor-internal-exposure-" + route.Name
 		containerPort := 8080
 		if route.Protocol == "https" {
 			containerPort = 8443
