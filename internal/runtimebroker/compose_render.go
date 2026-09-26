@@ -32,7 +32,11 @@ type runtimeBrokerComposeConfig struct {
 
 func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (runtimeBrokerComposeConfig, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
-	if scoped := application.ApplicationBackendNetworkNameForProject(appFiles.Project); scoped != "" {
+	resourceProject := strings.TrimSpace(appFiles.ResourceProject)
+	if resourceProject == "" {
+		resourceProject = application.RuntimeProjectName(m)
+	}
+	if scoped := application.ApplicationBackendNetworkNameForProject(resourceProject); scoped != "" {
 		backendNetwork = scoped
 	}
 
