@@ -71,7 +71,6 @@ func TestFormatBackupPreviewContainsDurableStateWithoutSecretNames(t *testing.T)
 	}
 }
 
-
 func TestFormatBackupPreviewShowsUnsupportedDurableState(t *testing.T) {
 	m := application.New("demo", "dev", false, false, false)
 	m = application.WithObjectStorageBuckets(m, "uploads")
