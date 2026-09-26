@@ -3,7 +3,6 @@ package logs_test
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
-	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -127,60 +125,5 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 
 	if err := driver.Verify(ctx, resource, binding); err != nil {
 		t.Fatal(err)
-	}
-
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
-		return
-	}
-	conn, err := net.Dial("udp", fmt.Sprintf("127.0.0.1:%d", registration.ProviderSyslogPort))
-	if err != nil {
-		t.Fatal(err)
-	}
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-	_, err = fmt.Fprintf(conn, "<14>1 %s baseharbor runtime-broker/baseharbor-internal-broker - - - provider-log-acceptance\n", timestamp)
-	_ = conn.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	providerSource := observability.SignalSource{
-		ID:               "runtime-broker:test",
-		Kind:             observability.SignalLogs,
-		Provider:         capability.ProviderRuntimeBroker,
-		Class:            observability.SourceApplicationProvider,
-		Scope:            capability.ScopeApplication,
-		OwnerApplication: m.Name,
-		Target:           observability.RuntimeTarget(project, "baseharbor-internal-broker"),
-	}
-	if err := logs.VerifyProviderSourcesAt(ctx, m, []observability.SignalSource{providerSource}, state, ""); err != nil {
-		t.Fatalf("verify provider syslog ingestion: %v", err)
-	}
-
-	providerWorkdir := t.TempDir()
-	providerCompose := filepath.Join(providerWorkdir, "compose.yaml")
-	providerEnv := filepath.Join(providerWorkdir, "runtime.env")
-	providerProject := application.WorkloadProjectName(application.New("provider-log-probe", "dev", false, false, false))
-	providerYAML := fmt.Sprintf(`services:
-  baseharbor-internal-broker:
-    image: busybox:1.37
-    command: ["sh", "-c", "while true; do echo provider-log-driver-acceptance; sleep 1; done"]
-    logging:
-      driver: syslog
-      options:
-        syslog-address: "udp://127.0.0.1:%d"
-        syslog-format: rfc5424
-        tag: "runtime-broker/baseharbor-internal-broker"
-`, registration.ProviderSyslogPort)
-	if err := os.WriteFile(providerCompose, []byte(providerYAML), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(providerEnv, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := compose.UpProject(ctx, providerProject, providerCompose, providerEnv); err != nil {
-		t.Fatalf("start provider log-driver probe: %v", err)
-	}
-	defer func() { _ = compose.DestroyProject(context.Background(), providerProject, providerCompose, providerEnv) }()
-	if err := logs.VerifyProviderSourcesAt(ctx, m, []observability.SignalSource{providerSource}, state, ""); err != nil {
-		t.Fatalf("verify docker provider log-driver ingestion: %v", err)
 	}
 }

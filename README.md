@@ -14,9 +14,6 @@
   <a href="https://mcpdev80.github.io/baseharbor/">
     <img src="https://img.shields.io/badge/docs-GitHub%20Pages-0068E9" alt="GitHub Pages">
   </a>
-  <a href="https://github.com/mcpdev80/baseharbor-demo">
-    <img src="https://img.shields.io/badge/demo-baseharbor--demo-7C3AED" alt="BaseHarbor Demo">
-  </a>
   <a href="CONTRIBUTING.md">
     <img src="https://img.shields.io/badge/contributing-welcome-2ea44f" alt="Contributing">
   </a>
@@ -162,7 +159,6 @@ baha version
 
 ## Learn more
 
-- [Demo application](https://github.com/mcpdev80/baseharbor-demo)
 - [Documentation home](docs/index.md)
 - [Getting started](docs/tutorials/getting-started.md)
 - [Architecture](docs/explanation/architecture.md)

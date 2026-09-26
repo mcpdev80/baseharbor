@@ -401,18 +401,26 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	if c.quadlet {
 		return "", "", nil
 	}
-	ids, err := c.directOutput(ctx, "container", "ls", "-q",
-		"--filter", "label=com.docker.compose.project="+strings.TrimSpace(project),
-		"--filter", "label=com.docker.compose.service="+strings.TrimSpace(service),
-	)
+	project = strings.TrimSpace(project)
+	service = strings.TrimSpace(service)
+	if project == "" || service == "" {
+		return "", "", errors.New("project and service are required")
+	}
+	containers, err := c.ListComposeContainers(ctx)
 	if err != nil {
 		return "", "", err
 	}
-	id := strings.TrimSpace(strings.Split(ids, "\n")[0])
-	if id == "" {
-		return "", "", fmt.Errorf("container for project %q service %q is not running", project, service)
+	containerName := ""
+	for _, container := range containers {
+		if container.Project == project && container.Service == service && container.Running {
+			containerName = container.Name
+			break
+		}
 	}
-	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}", id)
+	if containerName == "" {
+		return "", "", fmt.Errorf("running container for project %q service %q was not found", project, service)
+	}
+	out, err := c.directOutput(ctx, "container", "inspect", "--format", "{{.HostConfig.LogConfig.Type}}|{{index .HostConfig.LogConfig.Config \"tag\"}}", containerName)
 	if err != nil {
 		return "", "", err
 	}
