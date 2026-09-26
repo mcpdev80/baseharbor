@@ -15,11 +15,11 @@ func ExistingRuntimeFiles(store Store, m Manifest) (RuntimeFiles, error) {
 	}
 	dir := filepath.Join(store.Root, m.Name, "runtime")
 	files := RuntimeFiles{
-		Dir:            dir,
-		Compose:        filepath.Join(dir, "compose.yaml"),
-		Env:            filepath.Join(dir, "runtime.env"),
-		ApplicationEnv: filepath.Join(dir, "application.env"),
-		Bindings:       filepath.Join(dir, "bindings"),
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "runtime.env"),
+		ApplicationEnv:  filepath.Join(dir, "application.env"),
+		Bindings:        filepath.Join(dir, "bindings"),
 		Project:         RuntimeComposeProjectNameForStore(store, m),
 		ResourceProject: RuntimeProjectNameForStore(store, m),
 		Namespace:       store.Namespace,
