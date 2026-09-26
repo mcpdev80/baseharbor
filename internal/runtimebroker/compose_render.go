@@ -136,7 +136,7 @@ func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles applicat
 func (c runtimeBrokerComposeConfig) writeService(b *strings.Builder) {
 	m := c.manifest
 	b.WriteString("services:\n")
-	b.WriteString("  broker:\n")
+	fmt.Fprintf(b, "  %s:\n", ServiceName)
 	fmt.Fprintf(b, "    image: %s\n", strconv.Quote(c.image))
 	b.WriteString("    restart: unless-stopped\n")
 	b.WriteString("    user: \"65532:65532\"\n")
