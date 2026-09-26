@@ -134,7 +134,7 @@ func ExistingSharedProviderInstancesAt(dataDir, namespace string) ([]SharedProvi
 		instances = append(instances, SharedProviderInstance{
 			Placement: Placement{
 				Scope:   capability.ScopeShared,
-				Project: baseProject + "-" + token,
+				Project: baseProject,
 				Volume:  baseVolume + "-" + token,
 				Dir:     dir,
 			},
