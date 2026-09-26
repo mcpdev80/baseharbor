@@ -283,7 +283,11 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, prometheusAccessSpec())
+	accessSpec := prometheusAccessSpec()
+	if placement.Scope == capability.ScopeApplication {
+		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
