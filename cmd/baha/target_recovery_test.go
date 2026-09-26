@@ -52,8 +52,15 @@ func TestTargetRecoveryFileResolutionAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Targets["local"].OpenBaoRecoveryFile != absCustom {
-		t.Fatalf("target path reference not persisted: %+v", cfg.Targets["local"])
+	local, ok := cfg.Targets["local"]
+	if !ok {
+		t.Fatal("persisting the recovery-file reference must materialize the implicit local target")
+	}
+	if local.OpenBao.RecoveryFile != absCustom {
+		t.Fatalf("target path reference not persisted: %+v", local)
+	}
+	if local.Runtime.Provider == "" || local.Access.Reference == "" {
+		t.Fatalf("materialized local target is incomplete: %+v", local)
 	}
 	if _, err := os.Stat(absCustom); !os.IsNotExist(err) {
 		t.Fatalf("persisting a recovery-file reference must not create recovery material: %v", err)

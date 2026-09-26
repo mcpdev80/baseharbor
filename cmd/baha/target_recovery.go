@@ -43,7 +43,7 @@ func resolveTargetRecoveryFile(ctx context.Context, explicit string) (string, st
 		return "", "", err
 	}
 	if def, ok := cfg.Targets[target.Name]; ok {
-		if path := strings.TrimSpace(def.OpenBaoRecoveryFile); path != "" {
+		if path := strings.TrimSpace(def.OpenBao.RecoveryFile); path != "" {
 			abs, err := filepath.Abs(path)
 			if err != nil {
 				return "", "", fmt.Errorf("resolve persisted OpenBao recovery file for target %s: %w", target.Name, err)
@@ -98,7 +98,7 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 			Scope:   target.Scope,
 		}
 	}
-	def.OpenBaoRecoveryFile = abs
+	def.OpenBao.RecoveryFile = abs
 	cfg.Targets[target.Name] = def
 	return cfg.Save()
 }

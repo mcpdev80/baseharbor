@@ -30,11 +30,15 @@ type TargetAccess struct {
 	Reference string `yaml:"reference" json:"reference"`
 }
 
+type OpenBaoTargetConfig struct {
+	RecoveryFile string `yaml:"recovery-file,omitempty" json:"recovery_file,omitempty"`
+}
+
 type TargetDefinition struct {
-	Runtime             RuntimeDefinition `yaml:"runtime" json:"runtime"`
-	Access              TargetAccess      `yaml:"access" json:"access"`
-	Scope               string            `yaml:"scope,omitempty" json:"scope,omitempty"`
-	OpenBaoRecoveryFile string            `yaml:"openbao-recovery-file,omitempty" json:"openbao_recovery_file,omitempty"`
+	Runtime RuntimeDefinition    `yaml:"runtime" json:"runtime"`
+	Access  TargetAccess         `yaml:"access" json:"access"`
+	Scope   string               `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao OpenBaoTargetConfig  `yaml:"openbao,omitempty" json:"openbao,omitempty"`
 }
 
 type PromptConfig struct {
