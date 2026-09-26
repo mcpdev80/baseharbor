@@ -95,7 +95,6 @@ func TestRecoverySelectionCannotExcludeApplicationMetadata(t *testing.T) {
 	}
 }
 
-
 func TestRecoverySelectionIncludesOwnedResourcesWithoutClaimingExternalPeers(t *testing.T) {
 	selection, err := NewRecoverySelection([]RecoveryContributor{
 		{StateClass: StateApplicationMetadata, Ownership: "application", Support: RecoverySupported, DefaultSelected: true},
