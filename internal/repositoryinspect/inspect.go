@@ -107,12 +107,15 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		result.SelectedCompose = result.ComposeCandidates[0]
 	}
 	for _, rel := range result.ComposeCandidates {
-		services := detectComposeServices(snapshot.Files[rel])
+		services, detectErr := detectComposeServices(snapshot.Files[rel])
+		if detectErr != nil {
+			return Result{}, fmt.Errorf("inspect Compose file %s: %w", rel, detectErr)
+		}
 		for _, service := range services {
 			if manifest == nil && rel == result.SelectedCompose {
 				if service.Postgres || service.Redis || service.ObjectStorage {
 					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
-				} else if service.AmbiguousInfrastructure {
+				} else if service.AmbiguousInfrastructure || service.Unresolved {
 					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
 				} else if service.HasBuild || service.HasImage || service.HasPorts {
 					result.WorkloadServices = append(result.WorkloadServices, service.Name)
