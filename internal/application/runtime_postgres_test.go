@@ -263,6 +263,26 @@ func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
 	}
 }
 
+func TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, true, false)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyWorkloadServiceBindings(m, files); err != nil {
+		t.Fatalf("valid workload bindings failed verification: %v", err)
+	}
+
+	certificates := filepath.Join(workloadServiceBindingProjectionDir(files), "valkey", "certificates")
+	if err := os.WriteFile(certificates, nil, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyWorkloadServiceBindings(m, files); err == nil || !strings.Contains(err.Error(), "certificates") {
+		t.Fatalf("expected broken cache trust to fail verification, got %v", err)
+	}
+}
+
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
