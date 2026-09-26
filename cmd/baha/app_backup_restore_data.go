@@ -61,24 +61,24 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 	if selection.HasSelected(applicationbackup.StateSQL) {
 		dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
 		if err != nil {
-		return err
-	}
+			return err
+		}
 		postgresEntries, err := applicationbackup.PostgresPayloadEntries(dumps)
 		if err != nil {
-		return err
-	}
+			return err
+		}
 		entries = append(entries, postgresEntries...)
 	}
 	if m.Services.Secrets && selection.HasSelected(applicationbackup.StateSecrets) {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 		secretBackup, err := openbao.ExportApplicationSecrets(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir))
 		if err != nil {
-		return err
-	}
+			return err
+		}
 		secretEntry, err := applicationbackup.OpenBaoPayloadEntry(secretBackup)
 		if err != nil {
-		return err
-	}
+			return err
+		}
 		entries = append(entries, secretEntry)
 	}
 	if selection.HasSelected(applicationbackup.StateObjectStorage) {
@@ -86,12 +86,12 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 		for _, bucket := range application.ObjectStorageBucketNames(m) {
 			backup, err := driver.ExportBucket(ctx, bucket)
 			if err != nil {
-		return err
-	}
+				return err
+			}
 			entry, err := applicationbackup.ObjectStoragePayloadEntry(backup)
 			if err != nil {
-		return err
-	}
+				return err
+			}
 			entries = append(entries, entry)
 		}
 	}
@@ -102,8 +102,8 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 		}
 		entry, err := applicationbackup.LogsHistoryPayloadEntry(history)
 		if err != nil {
-		return err
-	}
+			return err
+		}
 		entries = append(entries, entry)
 	}
 	if selection.HasSelected(applicationbackup.StateWorkloadStorage) {
@@ -115,8 +115,8 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 			entry, err := applicationbackup.WorkloadStoragePayloadEntry(volume.Logical, archive)
 			zeroBytes(archive)
 			if err != nil {
-		return err
-	}
+				return err
+			}
 			entries = append(entries, entry)
 		}
 	}
@@ -215,7 +215,6 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 	}
 	return applicationRestoreData{manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
 }
-
 
 func recoveryManifestHasSelected(manifest applicationbackup.RecoveryManifest, class applicationbackup.RecoveryStateClass) bool {
 	for _, contributor := range manifest.Contributors {
