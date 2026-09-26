@@ -86,7 +86,8 @@ type Integrity struct {
 }
 
 type Bundle struct {
-	SchemaVersion string       `json:"schema_version"`
+	ContractVersion string       `json:"contract_version"`
+	SchemaVersion   string       `json:"schema_version"`
 	Target        string       `json:"target"`
 	Application   string       `json:"application"`
 	Environment   string       `json:"environment"`
@@ -151,6 +152,7 @@ func auditEventID(event AuditEvent) string {
 }
 
 func Seal(bundle Bundle) (Bundle, error) {
+	bundle.ContractVersion = SchemaVersion
 	bundle.SchemaVersion = SchemaVersion
 	bundle.Integrity = Integrity{}
 	sortRecords(bundle.Desired)
