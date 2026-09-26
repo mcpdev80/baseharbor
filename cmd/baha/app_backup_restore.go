@@ -187,7 +187,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	workloadStorage := restoreData.workloadStorage
 	logsHistory := restoreData.logsHistory
 	var err error
-var platformFiles bhruntime.Files
+	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
 		platformFiles, err = existingTargetRuntimeFiles(ctx)
