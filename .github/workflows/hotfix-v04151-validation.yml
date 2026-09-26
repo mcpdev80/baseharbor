@@ -1,0 +1,41 @@
+name: "Validation · v0.4.15.1 Hotfix"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/hotfix/**'
+
+concurrency:
+  group: hotfix-v04151-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:hotfix-v04151
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Reset Docker runner
+        run: bash scripts/ci-runtime-reset.sh docker
+      - name: Verify hotfix unit regressions
+        run: |
+          go test ./cmd/baha ./internal/application -run '^(TestInitDoesNotCreateLegacyGlobalConfig|TestTargetRecoveryFileResolutionAndPersistence|TestSelectWorkloadServicesRejectsReservedBaseHarborServices)$' -count=1 -v
+      - name: Build exact runtime image
+        run: docker build -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify shared OpenBao restart auto-unseal
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+      - name: Cleanup Docker runner
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh docker
