@@ -278,18 +278,6 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 					if tag != expectedTag {
 						return fmt.Errorf("verify runtime broker syslog tag: got %q, want %q", tag, expectedTag)
 					}
-					address, err := runtime.ContainerLogAddressProjectService(ctx, brokerProject, runtimebroker.ServiceName)
-					if err != nil {
-						return fmt.Errorf("verify runtime broker syslog address: %w", err)
-					}
-					registration, err := logsprovider.ApplicationRegistrationAt(dataDir, namespace, m)
-					if err != nil {
-						return fmt.Errorf("resolve runtime broker log registration: %w", err)
-					}
-					expectedAddress := fmt.Sprintf("udp://127.0.0.1:%d", registration.ProviderSyslogPort)
-					if address != expectedAddress {
-						return fmt.Errorf("verify runtime broker syslog address: got %q, want %q", address, expectedAddress)
-					}
 				}
 			} else if err := runtime.UpProjectFiles(ctx, runtimebroker.ProjectNameForRuntime(m, files), workdir, composeFiles...); err != nil {
 				return fmt.Errorf("reconcile runtime broker log collection: %w", err)
@@ -421,6 +409,20 @@ func verifyManagedLogsAfterWorkload(ctx context.Context, out io.Writer, prepared
 		}
 	}
 	if len(prepared.providerSources) > 0 {
+		if prepared.runtime.Engine() == "docker" && application.RequiresRuntimeBroker(prepared.manifest) {
+			brokerProject := runtimebroker.ProjectNameForRuntime(prepared.manifest, prepared.runtimeFiles)
+			driver, tag, err := prepared.runtime.ContainerLogConfigProjectService(ctx, brokerProject, runtimebroker.ServiceName)
+			if err != nil {
+				return fmt.Errorf("verify final runtime broker log configuration: %w", err)
+			}
+			if driver != "syslog" {
+				return fmt.Errorf("verify final runtime broker log driver: got %q, want syslog", driver)
+			}
+			expectedTag := string(capability.ProviderRuntimeBroker) + "/" + runtimebroker.ServiceName
+			if tag != expectedTag {
+				return fmt.Errorf("verify final runtime broker syslog tag: got %q, want %q", tag, expectedTag)
+			}
+		}
 		for attempt := 0; attempt < 3; attempt++ {
 			if err := emitRuntimeComponentObservabilityEvidence(ctx, prepared.runtime, prepared.manifest, prepared.runtimeFiles, prepared.dataDir, prepared.namespace); err != nil {
 				return err
