@@ -236,15 +236,14 @@ func (c Compose) removeComposeModule(ctx context.Context, project, composeFile, 
 			return err
 		}
 	}
-	if !destroy {
-		return nil
-	}
-	for _, volume := range model.Volumes {
-		if strings.TrimSpace(volume.Name) == "" {
-			continue
-		}
-		if _, err := c.directOutput(ctx, "volume", "rm", "-f", volume.Name); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such volume") {
-			return fmt.Errorf("remove Compose module volume %s: %w", volume.Name, err)
+	if destroy {
+		for _, volume := range model.Volumes {
+			if strings.TrimSpace(volume.Name) == "" {
+				continue
+			}
+			if _, err := c.directOutput(ctx, "volume", "rm", "-f", volume.Name); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such volume") {
+				return fmt.Errorf("remove Compose module volume %s: %w", volume.Name, err)
+			}
 		}
 	}
 	for _, network := range model.Networks {
