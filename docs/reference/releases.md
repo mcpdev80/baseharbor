@@ -1,8 +1,8 @@
 # Releases and versioning
 
-BaseHarbor uses Semantic Versioning with Git tags prefixed by `v`.
+BaseHarbor uses Semantic Versioning for normal releases with Git tags prefixed by `v`. During the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
-Examples: `v0.3.0`, `v0.4.0`, `v0.4.1`, `v1.0.0`.
+Examples: `v0.3.0`, `v0.4.15`, `v0.4.15.1`, `v1.0.0`.
 
 ## Stability policy
 
@@ -34,8 +34,8 @@ BaseHarbor uses two long-lived branches with distinct responsibilities:
 
 Published channels:
 
-- GitHub tag/release `vX.Y.Z`: immutable supported release created from `main`;
-- `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z`: matching runtime image;
+- GitHub tag/release `vX.Y.Z` or v0.4 hotfix `vX.Y.Z.H`: immutable supported release created from `main`;
+- `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z` or `X.Y.Z.H`: matching runtime image;
 - `ghcr.io/mcpdev80/baseharbor-runtime:latest`: latest stable release;
 - `ghcr.io/mcpdev80/baseharbor-runtime:edge`: moving development build from `develop`.
 
@@ -82,15 +82,15 @@ The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-
 
 1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
-3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
-4. Write human-readable release notes at `docs/releases/vX.Y.Z.md`. They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
-5. Review compatibility impact and select the SemVer increment.
+3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` (or `X.Y.Z.H` for a v0.4 hotfix).
+4. Write human-readable release notes at `docs/releases/vX.Y.Z.md` (or `vX.Y.Z.H.md` for a v0.4 hotfix). They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
+5. Review compatibility impact and select the documented release-version increment.
 6. Run local/Hugging Face validation first where practical.
 7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo acceptance suite on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
 8. The successful pre-release produces immutable approval/evidence containing the tested BaseHarbor SHA and external demo SHA.
 9. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
 10. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
-11. Create an immutable tag `vX.Y.Z` on the resulting `main` release commit and push it.
+11. Create the immutable release tag on the resulting `main` release commit and push it.
 12. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
 13. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
 
