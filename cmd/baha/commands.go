@@ -46,6 +46,7 @@ func rootCommand() *cli.Command {
 		appDestroyCommand(store),
 		appSecretCommand(store),
 		appRuntimeIdentityCommand(store),
+		appEvidenceCommand(store),
 	)
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 
