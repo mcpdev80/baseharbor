@@ -8,7 +8,7 @@ The audit covers the BaseHarbor repository, the external `baseharbor-demo`, GitH
 
 ## 1. Release scope and issue closure
 
-- [ ] Confirm the intended release version and SemVer increment.
+- [ ] Confirm the intended release version and versioning rule (SemVer for normal releases; documented four-part extension for v0.4 hotfixes).
 - [ ] Read the current roadmap issue and identify every issue explicitly assigned to this release.
 - [ ] Verify every release-scoped implementation issue is complete.
 - [ ] Do not treat broader future/freeze issues as release blockers unless the roadmap explicitly assigns them to this release.
@@ -84,10 +84,10 @@ When a release adds or changes a service kind, capability/provider contract, run
 
 ## 5. Changelog and release notes
 
-- [ ] Move all release entries from `[Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`.
+- [ ] Move all release entries from `[Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` (or `X.Y.Z.H` for a v0.4 hotfix).
 - [ ] Leave a clean `[Unreleased]` section for subsequent development.
 - [ ] Changelog covers all notable Added/Changed/Fixed/Security behavior in the release, not only the last feature worked on.
-- [ ] Create/update `docs/releases/vX.Y.Z.md`.
+- [ ] Create/update `docs/releases/vX.Y.Z.md` (or `vX.Y.Z.H.md` for a v0.4 hotfix).
 - [ ] Release notes explain what changed and why it matters.
 - [ ] Compatibility/upgrade impact is explicit.
 - [ ] Security implications are explicit.
@@ -137,7 +137,7 @@ Run `.github/workflows/pre-release.yml` for the exact target tag and exact candi
 
 The gate must prove:
 
-- [ ] SemVer/tag format.
+- [ ] Release tag format.
 - [ ] Changelog release section exists.
 - [ ] Release notes exist.
 - [ ] Go formatting.
@@ -183,7 +183,7 @@ After the exact candidate pre-release gate is green:
 
 ## 12. Tag and publish
 
-- [ ] Create immutable tag `vX.Y.Z` on the resulting `main` release commit.
+- [ ] Create the immutable release tag on the resulting `main` release commit.
 - [ ] Never move a published version tag.
 - [ ] Confirm the tag commit is contained in `main`.
 - [ ] Release workflow locates and validates the matching immutable pre-release approval.
@@ -205,7 +205,7 @@ Verify:
 - [ ] `checksums.txt` exists and validates.
 - [ ] Binary `baha version` metadata reports the expected version/commit.
 - [ ] GitHub provenance/attestations are present and verifiable.
-- [ ] `ghcr.io/mcpdev80/baseharbor-runtime:X.Y.Z` exists.
+- [ ] The matching versioned `ghcr.io/mcpdev80/baseharbor-runtime:<version>` image exists.
 - [ ] expected compatible/minor/latest runtime tags were published.
 - [ ] runtime image provenance/attestation is present.
 - [ ] release references the correct pre-release evidence.

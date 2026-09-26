@@ -420,7 +420,7 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create SeaweedFS provider state: %w", err)
 	}
-	project := scopedProviderName(ProviderProject, namespace)
+	project := bhruntime.SharedProjectName(namespace)
 	network := scopedProviderName(ProviderNetwork, namespace)
 	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: project, Network: network}
 	values := map[string]string{}
@@ -469,7 +469,7 @@ func ExistingProviderFiles() (ProviderFiles, error) {
 
 func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "seaweedfs")
-	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: scopedProviderName(ProviderProject, namespace), Network: scopedProviderName(ProviderNetwork, namespace)}
+	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: bhruntime.SharedProjectName(namespace), Network: scopedProviderName(ProviderNetwork, namespace)}
 	for _, path := range []string{files.Compose, files.Env} {
 		if _, err := os.Stat(path); err != nil {
 			return ProviderFiles{}, err

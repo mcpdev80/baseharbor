@@ -15,7 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-func TestInitCreatesConfig(t *testing.T) {
+func TestInitDoesNotCreateLegacyGlobalConfig(t *testing.T) {
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -25,16 +25,23 @@ func TestInitCreatesConfig(t *testing.T) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := run([]string{"init"}); err != nil {
-		t.Fatalf("init failed: %v", err)
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"init"}, &out, &out); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out.String())
 	}
-	path := filepath.Join(dir, "baseharbor.yaml")
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("config not created: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "baseharbor.yaml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("baha init must not create repository manifest/global config: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("unexpected permissions: %o", info.Mode().Perm())
+	for _, wanted := range []string{"baha app init", "baha target create"} {
+		if !strings.Contains(out.String(), wanted) {
+			t.Fatalf("init output missing %q: %s", wanted, out.String())
+		}
+	}
+	for _, forbidden := range []string{"deployment:", "single-node", "data_dir:", "runtime: auto"} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Fatalf("init output still exposes legacy config %q: %s", forbidden, out.String())
+		}
 	}
 }
 

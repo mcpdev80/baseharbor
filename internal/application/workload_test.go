@@ -277,3 +277,11 @@ func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *test
 		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
 	}
 }
+
+func TestSelectWorkloadServicesRejectsReservedInternalNamespace(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	_, err := selectWorkloadServices(m, []string{"api", "baseharbor-internal-runtime-broker"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "reserved BaseHarbor internal service namespace") {
+		t.Fatalf("expected reserved service namespace error, got %v", err)
+	}
+}

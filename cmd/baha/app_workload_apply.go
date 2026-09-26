@@ -65,6 +65,15 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		if err := preflightRepositoryWorkloadPublishedPorts(ctx, runtimeInput, out, workload, files, environment); err != nil {
 			return nil, false, err
 		}
+		// A fixed-port conflict can materialize a deployment-local Compose
+		// override. Re-resolve the effective file set before build/start.
+		composeFiles, err = repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
+		if err != nil {
+			return nil, false, err
+		}
+		if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...); err != nil {
+			return nil, false, fmt.Errorf("validate application workload Compose integration after port fallback: %w", err)
+		}
 	}
 
 	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)

@@ -551,6 +551,17 @@ func connectivityServiceMatches(requested, actual string) bool {
 }
 
 func connectivityProjectEnvironment(project, applicationName, namespace string) (string, bool) {
+	canonicalPrefix := strings.TrimSuffix(
+		bhruntime.ApplicationProjectName(namespace, applicationName, "dev"),
+		"dev",
+	)
+	if strings.HasPrefix(project, canonicalPrefix) {
+		environment := strings.TrimPrefix(project, canonicalPrefix)
+		if environment != "" {
+			return environment, true
+		}
+	}
+
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
 	prefixes := []string{
 		"baseharbor-workload-" + applicationName + "-",

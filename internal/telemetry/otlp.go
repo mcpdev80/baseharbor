@@ -324,7 +324,7 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "runtime.env"),
 		Config:  filepath.Join(dir, "collector.yaml"),
-		Project: scopedTelemetryName(ProviderProject, namespace),
+		Project: bhruntime.SharedProjectName(namespace),
 		Network: scopedTelemetryName(ProviderNetwork, namespace),
 	}
 	port := ""
@@ -385,7 +385,7 @@ func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "runtime.env"),
 		Config:  filepath.Join(dir, "collector.yaml"),
-		Project: scopedTelemetryName(ProviderProject, namespace),
+		Project: bhruntime.SharedProjectName(namespace),
 		Network: scopedTelemetryName(ProviderNetwork, namespace),
 	}
 	for _, path := range []string{files.Compose, files.Env, files.Config} {

@@ -293,7 +293,7 @@ func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) 
 	}
 	config := string(data)
 	for _, want := range []string{
-		`^baseharbor-workload-demo-dev(?:_(.+)_[0-9]+|-(.+))$`,
+		`^bh-local-demo-dev(?:_(.+)_[0-9]+|-(.+))$`,
 		`replacement   = "$1$2"`,
 	} {
 		if !strings.Contains(config, want) {

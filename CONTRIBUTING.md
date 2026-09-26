@@ -59,6 +59,21 @@ scripts/    Project automation
 
 Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch represents released source.
 
+### Production hotfixes
+
+Production hotfixes are the exception to the normal `develop` flow.
+
+- Start from the released `main` line, not from in-progress `develop`.
+- Use a focused `hotfix/<version-or-issue>-<slug>` branch.
+- Keep the change defect-only and link it to the hotfix release parent issue.
+- Run targeted tests while implementing; do not repeatedly run the full release matrix.
+- Update affected docs plus changelog/release notes.
+- Run the complete pre-release validation once against the final hotfix candidate.
+- Merge the proven hotfix to `main`, publish the immutable hotfix tag/runtime image, verify artifacts, then forward-port the same fix to `develop`.
+- If the proposed correction changes runtime identity, migration semantics or architecture beyond the released defect, move it to normal roadmap work instead.
+
+The authoritative release/hotfix procedure is [Releases and versioning](docs/reference/releases.md).
+
 ## Core rules
 
 - Prefer the smallest correct design.
