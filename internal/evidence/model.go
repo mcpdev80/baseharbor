@@ -88,18 +88,18 @@ type Integrity struct {
 type Bundle struct {
 	ContractVersion string       `json:"contract_version"`
 	SchemaVersion   string       `json:"schema_version"`
-	Target        string       `json:"target"`
-	Application   string       `json:"application"`
-	Environment   string       `json:"environment"`
-	Desired       []Record     `json:"desired_state"`
-	Enforced      []Record     `json:"enforced_policy"`
-	Observed      []Record     `json:"observed_state"`
-	Verified      []Record     `json:"verified_result"`
-	Exceptions    []Record     `json:"explicit_exceptions,omitempty"`
-	Unsupported   []Record     `json:"unsupported_controls,omitempty"`
-	Recovery      *Recovery    `json:"recovery,omitempty"`
-	Audit         []AuditEvent `json:"audit_events,omitempty"`
-	Integrity     Integrity    `json:"integrity"`
+	Target          string       `json:"target"`
+	Application     string       `json:"application"`
+	Environment     string       `json:"environment"`
+	Desired         []Record     `json:"desired_state"`
+	Enforced        []Record     `json:"enforced_policy"`
+	Observed        []Record     `json:"observed_state"`
+	Verified        []Record     `json:"verified_result"`
+	Exceptions      []Record     `json:"explicit_exceptions,omitempty"`
+	Unsupported     []Record     `json:"unsupported_controls,omitempty"`
+	Recovery        *Recovery    `json:"recovery,omitempty"`
+	Audit           []AuditEvent `json:"audit_events,omitempty"`
+	Integrity       Integrity    `json:"integrity"`
 }
 
 type actorContextKey struct{}
