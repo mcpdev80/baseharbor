@@ -54,7 +54,8 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			LogicalResource: "application",
 			Ownership:       "application",
 			Support:         RecoverySupported,
-			DefaultSelected: true,
+			DefaultSelected: false,
+			Reason:          "application log history is selectable operational history and is excluded by default",
 		}
 		if placement.Scope == capability.ScopeExternal {
 			contributor.Ownership = "external"
