@@ -379,7 +379,7 @@ func printRuntimeBrokerDocs(out io.Writer, target string, m application.Manifest
 	url := strings.TrimSpace(brokerFiles.DocsURL)
 	if devaccess.Enabled(m.Environment) {
 		if host, hostErr := devaccess.ApplicationHost(target, m.Name, "api"); hostErr == nil {
-			url = devaccess.CanonicalURL(host) + "/swagger/"
+			url = devgateway.URLForTarget(target, host) + "/swagger/"
 		}
 	}
 	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", url)
