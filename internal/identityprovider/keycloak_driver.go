@@ -180,6 +180,18 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	return application.MaterializeIdentityBinding(d.app, d.appFiles, string(capability.ProviderKeycloak), discovery, d.clientID, d.clientSecret)
 }
 
+func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.Binding, origins []string) error {
+	if err := d.SetApplicationOrigins(origins); err != nil {
+		return err
+	}
+	files, err := ExistingKeycloakFilesAt(d.app, d.dataDir, d.namespace)
+	if err != nil {
+		return err
+	}
+	d.files = files
+	return d.Verify(ctx, capability.Resource{}, binding)
+}
+
 func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, binding capability.Binding) error {
 	if binding.Identity == nil { return errors.New("identity binding is required") }
 	client, err := keycloakPublicHTTPClient(d.files)
