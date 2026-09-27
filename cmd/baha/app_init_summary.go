@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"io"
 	"strings"
 )
@@ -135,7 +136,7 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
-	if isDevelopmentEnvironment(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
 		fmt.Fprintln(out, "\nDeveloper management access")
 		fmt.Fprintln(out, "  Scope         target / dev")
 		fmt.Fprintln(out, "  Username      developer (default)")
