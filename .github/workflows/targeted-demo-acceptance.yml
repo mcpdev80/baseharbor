@@ -195,6 +195,20 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
+          if [ "${{ steps.demo.outcome }}" != "success" ]; then
+            runtime="${{ steps.target.outputs.runtime }}"
+            diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
+            mkdir -p "$diagnostics"
+
+            "$runtime" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
+            for id in $("$runtime" ps -aq --filter name=baseharbor 2>/dev/null); do
+              name=$("$runtime" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+              [ -n "$name" ] || name="$id"
+              "$runtime" inspect "$id" >"$diagnostics/$name.inspect.json" 2>&1 || true
+              "$runtime" logs --tail 300 "$id" >"$diagnostics/$name.log" 2>&1 || true
+            done
+          fi
+
       - name: Cleanup runtime state
         id: cleanup
         if: always()
