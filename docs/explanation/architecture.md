@@ -52,6 +52,8 @@ external
 
 BaseHarbor mutates only resources it owns.
 
+Shared placement is a first-class lifecycle boundary, not a shortcut for shared application data. The Target/provider owns the infrastructure; each application owns isolated logical resources, credentials and bindings. This makes resource-efficient topologies such as one PostgreSQL provider serving many isolated application databases possible without coupling portable application intent to provider topology.
+
 ## Lifecycle
 
 Mutating operations follow:
@@ -67,7 +69,7 @@ Reconciliation compares desired state with observed provider/runtime state and f
 Development browser surfaces use one target-wide HTTPS gateway. The canonical URL is the developer-facing source of truth; runtime loopback ports and provider-specific internal endpoints remain implementation detail.
 
 ```text
-https://<app>-<service>.baseharbor.localhost
+https://<app>.baha.localhost
                     |
                     v
           Target dev gateway
@@ -79,7 +81,7 @@ https://<app>-<service>.baseharbor.localhost
         verified internal upstream
 ```
 
-The default domain is configurable per Target. Route ownership follows provider placement: application routes are removed with the application, shared routes belong to the shared provider boundary, and external providers keep their own URLs. Gateway TLS is issued from the existing BaseHarbor service-PKI boundary and HTTPS upstreams are verified against their projected trust material rather than disabling TLS verification.
+The default domain is `baha.localhost` and remains configurable per Target. The normal application workload uses `<app>.<domain>`. Application-scoped management surfaces use `<app>-<service>.<domain>`; shared provider surfaces use short semantic hosts such as `pgadmin.<domain>`, `cache.<domain>`, `storage.<domain>`, `auth.<domain>`, `secrets.<domain>` and `metrics.<domain>`. Route ownership follows provider placement: application routes are removed with the application, shared routes belong to the shared provider boundary, and external providers keep their own URLs. Gateway TLS is issued from the existing BaseHarbor service-PKI boundary and HTTPS upstreams are verified against their projected trust material rather than disabling TLS verification.
 
 ## Interfaces
 
