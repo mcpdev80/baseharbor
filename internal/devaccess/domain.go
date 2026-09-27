@@ -91,6 +91,13 @@ func SharedHost(target, service string) (string, error) {
 	return "shared-" + service + "." + domain, nil
 }
 
+func ExposureService(routeName string, publicExposureCount int) string {
+	if publicExposureCount == 1 {
+		return "api"
+	}
+	return normalizeHostToken(routeName)
+}
+
 func CanonicalURL(host string) string {
 	return "https://" + strings.TrimSpace(host)
 }
