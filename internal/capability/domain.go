@@ -46,6 +46,7 @@ const (
 	ProviderRuntimeBroker   ProviderKind = "runtime-broker"
 	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
 	ProviderKeycloak        ProviderKind = "keycloak"
+	ProviderExternalOIDC    ProviderKind = "external-oidc"
 )
 
 // Provider describes the capability surface of one provider implementation.
