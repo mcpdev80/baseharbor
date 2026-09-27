@@ -17,7 +17,7 @@ func devCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "dev",
 		Summary: "Manage local development conveniences",
-		Usage:   "baha dev credentials [--reset] [--username USER] [--password-file FILE]",
+		Usage:   "baha dev <credentials|domain>",
 		Children: []*cli.Command{
 			{
 				Name:    "credentials",
@@ -26,8 +26,42 @@ func devCommand() *cli.Command {
 				Long:    "Shows the explicit local development management login for the effective Target. The secret is revealed only by this command and is never included in status, plan, doctor, evidence or application manifests. --reset generates a new strong password. --password-file installs an explicit password from an owner-only file.",
 				Run:     devCredentialsCommand,
 			},
+			{
+				Name:    "domain",
+				Summary: "Show or configure the target-scoped development domain",
+				Usage:   "baha dev domain [DOMAIN]",
+				Long:    "Shows the development domain used to derive canonical local application and management URLs. Supplying DOMAIN updates the target-wide value; application manifests are not modified.",
+				Run:     devDomainCommand,
+			},
 		},
 	}
+}
+
+func devDomainCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) > 1 {
+		return usageError("baha dev domain accepts at most one domain", "Run 'baha dev domain --help' for usage.")
+	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	var domain string
+	if len(args) == 1 {
+		domain, err = devaccess.ConfigureDomain(target.Name, args[0])
+	} else {
+		domain, err = devaccess.EnsureDomain(target.Name)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Development domain\n")
+	fmt.Fprintf(out, "  Target  %s\n", target.Name)
+	fmt.Fprintf(out, "  Domain  %s\n", domain)
+	fmt.Fprintln(out, "  Scope   target / dev")
+	if len(args) == 1 {
+		fmt.Fprintln(out, "Run 'baha up' to reconcile canonical development routes.")
+	}
+	return nil
 }
 
 func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
