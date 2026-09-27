@@ -18,6 +18,51 @@ type PostgresBackup struct {
 	SQL      []byte
 }
 
+func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, dataDir, namespace string) ([]PostgresBackup, error) {
+	if !UsesSharedPostgreSQL(m) {
+		return DumpPostgresInstances(ctx, runtime, m, files)
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return nil, err
+	}
+	app, ok := state.Applications[sharedBackendApplicationKey(m)]
+	if !ok {
+		return nil, fmt.Errorf("shared PostgreSQL application registration is missing")
+	}
+	backups := make([]PostgresBackup, 0, len(SQLInstanceNames(m)))
+	for _, instance := range SQLInstanceNames(m) {
+		resource, ok := app.SQL[instance]
+		if !ok {
+			return nil, fmt.Errorf("shared PostgreSQL resource %s is missing", instance)
+		}
+		out, err := runtime.ExecProject(
+			ctx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			sharedPostgresService(m.Environment),
+			"pg_dump",
+			"--clean",
+			"--if-exists",
+			"--no-owner",
+			"--no-privileges",
+			"--format=plain",
+			"-U", resource.Username,
+			"-d", resource.Database,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("dump shared postgres instance %s: %w", instance, err)
+		}
+		if int64(len(out)) > MaxPostgresBackupBytes {
+			return nil, fmt.Errorf("dump postgres instance %s exceeds maximum backup size", instance)
+		}
+		backups = append(backups, PostgresBackup{Instance: instance, SQL: []byte(out)})
+	}
+	return backups, nil
+}
+
 func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles) ([]PostgresBackup, error) {
 	instances := SQLInstanceNames(m)
 	backups := make([]PostgresBackup, 0, len(instances))
@@ -48,6 +93,66 @@ func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m
 		backups = append(backups, PostgresBackup{Instance: instance, SQL: []byte(out)})
 	}
 	return backups, nil
+}
+
+func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, dataDir, namespace string, backups []PostgresBackup) error {
+	if !UsesSharedPostgreSQL(m) {
+		return RestorePostgresInstances(ctx, runtime, m, files, backups)
+	}
+	if err := ValidatePostgresBackupSet(m, backups); err != nil {
+		return err
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return err
+	}
+	app, ok := state.Applications[sharedBackendApplicationKey(m)]
+	if !ok {
+		return fmt.Errorf("shared PostgreSQL application registration is missing")
+	}
+	byInstance := make(map[string][]byte, len(backups))
+	for _, backup := range backups {
+		byInstance[backup.Instance] = backup.SQL
+	}
+	for _, instance := range SQLInstanceNames(m) {
+		resource, ok := app.SQL[instance]
+		if !ok {
+			return fmt.Errorf("shared PostgreSQL resource %s is missing", instance)
+		}
+		if _, err := runtime.ExecProjectInput(
+			ctx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			byInstance[instance],
+			sharedPostgresService(m.Environment),
+			"psql",
+			"-v", "ON_ERROR_STOP=1",
+			"-U", resource.Username,
+			"-d", resource.Database,
+		); err != nil {
+			return fmt.Errorf("restore shared postgres instance %s: %w", instance, err)
+		}
+		out, err := runtime.ExecProject(
+			ctx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			sharedPostgresService(m.Environment),
+			"psql",
+			"-U", resource.Username,
+			"-d", resource.Database,
+			"-tAc", "SELECT 1",
+		)
+		if err != nil {
+			return fmt.Errorf("verify restored shared postgres instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "1" {
+			return fmt.Errorf("verify restored shared postgres instance %s: unexpected query result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
 }
 
 func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, backups []PostgresBackup) error {
