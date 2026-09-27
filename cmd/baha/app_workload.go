@@ -171,6 +171,7 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 
 type renderedComposeConfig struct {
 	Services map[string]struct {
+		Image       string         `json:"image"`
 		Environment map[string]any `json:"environment"`
 	} `json:"services"`
 }
