@@ -263,6 +263,25 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			checks = append(checks, preflight.Check{Name: "postgres shared isolation", Run: func(ctx context.Context) error {
 				return application.VerifySharedPostgreSQL(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
 			}})
+			if resources, err := application.SharedPostgresResourcesAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, m); err == nil {
+				for _, resource := range resources {
+					resource := resource
+					checks = append(checks, preflight.Check{
+						Name: "postgres/" + resource.Instance + " ownership",
+						Run: func(context.Context) error {
+							if resource.ProviderScope != "shared" || resource.CredentialScope != "application" || resource.Owner != m.Name+"/"+m.Environment {
+								return fmt.Errorf(
+									"unexpected shared PostgreSQL ownership: scope=%s owner=%s credential_scope=%s",
+									resource.ProviderScope, resource.Owner, resource.CredentialScope,
+								)
+							}
+							return nil
+						},
+					})
+				}
+			} else {
+				checks = append(checks, preflight.Check{Name: "postgres shared resource ownership", Run: func(context.Context) error { return err }})
+			}
 		} else {
 			checks = append(checks,
 				preflight.Check{Name: "postgres running", Run: func(context.Context) error {
