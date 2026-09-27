@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	IdentityBindingName = "identity"
+	IdentityBindingName              = "identity"
 	IdentityWorkloadClientSecretFile = "/run/baseharbor/service-bindings/identity/client-secret"
 )
 
@@ -141,11 +141,11 @@ func VerifyIdentityBinding(m Manifest, files RuntimeFiles) error {
 
 func validateIdentityDiscovery(d IdentityDiscovery) error {
 	for label, value := range map[string]string{
-		"issuer": d.Issuer,
+		"issuer":                 d.Issuer,
 		"authorization endpoint": d.AuthorizationEndpoint,
-		"token endpoint": d.TokenEndpoint,
-		"userinfo endpoint": d.UserinfoEndpoint,
-		"jwks uri": d.JWKSURI,
+		"token endpoint":         d.TokenEndpoint,
+		"userinfo endpoint":      d.UserinfoEndpoint,
+		"jwks uri":               d.JWKSURI,
 	} {
 		value = strings.TrimSpace(value)
 		if value == "" || !strings.HasPrefix(value, "https://") {
