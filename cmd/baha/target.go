@@ -24,6 +24,7 @@ type targetInspectionResult struct {
 	Environment     string                    `json:"environment,omitempty"`
 	Repository      string                    `json:"repository,omitempty"`
 	Effective       string                    `json:"effective"`
+	OperatorAuth    map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 }
 
 type targetOverrideContextKey struct{}
@@ -82,6 +83,18 @@ func targetCommand() *cli.Command {
 			fmt.Fprintf(out, "Access   %s\n", result.Target.AccessReference)
 			if result.Target.Scope != "" {
 				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
+			}
+			if len(result.OperatorAuth) > 0 {
+				fmt.Fprintln(out, "\nOperator authentication")
+				environments := make([]string, 0, len(result.OperatorAuth))
+				for environment := range result.OperatorAuth {
+					environments = append(environments, environment)
+				}
+				sort.Strings(environments)
+				for _, environment := range environments {
+					auth := result.OperatorAuth[environment]
+					fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
+				}
 			}
 			if result.Application != "" {
 				fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
@@ -235,6 +248,15 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+	}
+	cfg, cfgErr := deployment.LoadConfig()
+	if cfgErr == nil {
+		if definition, ok := cfg.Targets[target.Name]; ok && len(definition.OperatorAuth) > 0 {
+			result.OperatorAuth = make(map[string]operatorAuthObservation, len(definition.OperatorAuth))
+			for environment := range definition.OperatorAuth {
+				result.OperatorAuth[environment] = collectOperatorAuthObservation(ctx, target.Name, environment)
+			}
+		}
 	}
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
