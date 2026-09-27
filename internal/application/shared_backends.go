@@ -1377,7 +1377,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
       - sh
       - -ec
       - |
-        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$VALKEY_PASSWORD" > /tmp/valkey.conf
+        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
         exec valkey-server /tmp/valkey.conf
     volumes:
       - %s-data:/data
