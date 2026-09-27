@@ -252,6 +252,14 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			}},
 		)
 	}
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI {
+		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
+			if c.runtimeErr != nil {
+				return c.runtimeErr
+			}
+			return application.VerifyApplicationManagementUIs(ctx, m, c.files)
+		}})
+	}
 	return checks
 }
 
