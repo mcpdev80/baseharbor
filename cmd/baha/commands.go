@@ -150,6 +150,9 @@ func rootCommand() *cli.Command {
 		connectionsCommand(),
 		openBaoCommand(),
 		trustCommand(),
+		operatorLoginCommand(),
+		operatorLogoutCommand(),
+		operatorWhoAmICommand(),
 		updateCommand(),
 		{
 			Name:    "version",
