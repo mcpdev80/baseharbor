@@ -500,7 +500,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	for _, instance := range SQLInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
 			key := postgresRuntimeKey(instance, suffix)
-			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+			fmt.Fprintf(&b, "%s=%s\\n", key, values[key])
 		}
 	}
 	for _, instance := range CacheInstanceNames(m) {
@@ -516,8 +516,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	}
 	if m.Services.CacheManagementUI {
 		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
-			fmt.Fprintf(&b, "%s=%s
-", key, values[key])
+			fmt.Fprintf(&b, "%s=%s\\n", key, values[key])
 		}
 	}
 	if values[S3TLSHostCAEnv] != "" {
