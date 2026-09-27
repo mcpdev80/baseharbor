@@ -23,6 +23,21 @@ func ensureOperatorAuthForBoundary(ctx context.Context, target, environment stri
 	return err
 }
 
+func resolveStoredOperatorAuthBoundary(target, environment string) (operatorauth.Config, bool, error) {
+	stored, found, err := deployment.OperatorAuthForTargetEnvironment(target, environment)
+	if err != nil {
+		return operatorauth.Config{}, false, err
+	}
+	if !found {
+		return operatorauth.Config{}, false, nil
+	}
+	cfg, err := operatorAuthRuntimeConfig(stored)
+	if err != nil {
+		return operatorauth.Config{}, false, err
+	}
+	return cfg, true, nil
+}
+
 func resolveOperatorAuthBoundaryConfig(ctx context.Context, target, environment string) (operatorauth.Config, error) {
 	stored, found, err := deployment.OperatorAuthForTargetEnvironment(target, environment)
 	if err != nil {
