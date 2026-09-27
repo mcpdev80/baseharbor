@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const GatewayImage = "docker.io/library/caddy:2.11.4-alpine"
@@ -26,13 +28,15 @@ type HTTPGatewayFiles struct {
 }
 
 type HTTPGatewaySpec struct {
-	ServiceName      string
-	Upstream         string
-	PublishedPortEnv string
-	ContainerPort    int
-	Networks         []string
-	RequireClient    bool
-	DenyPaths        []string
+	ServiceName       string
+	Upstream          string
+	PublishedPortEnv  string
+	ContainerPort     int
+	Networks          []string
+	RequireClient     bool
+	DenyPaths         []string
+	BasicAuthUsername string
+	BasicAuthPassword string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
@@ -86,7 +90,19 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		files.AuthToken = token
 	}
-	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication, spec.DenyPaths...)
+	basicAuthUsername := strings.TrimSpace(spec.BasicAuthUsername)
+	basicAuthHash := ""
+	if basicAuthUsername != "" || spec.BasicAuthPassword != "" {
+		if basicAuthUsername == "" || spec.BasicAuthPassword == "" {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway basic auth requires username and password")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(spec.BasicAuthPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return HTTPGatewayFiles{}, fmt.Errorf("hash HTTP service gateway basic auth password: %w", err)
+		}
+		basicAuthHash = string(hash)
+	}
+	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -274,6 +290,19 @@ func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, erro
 	return newHTTPClient(material, requireClient, "")
 }
 
+func NewHTTPClientWithBasicAuth(material TLSMaterial, username, password string) (*http.Client, error) {
+	client, err := newHTTPClient(material, false, "")
+	if err != nil {
+		return nil, err
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return nil, errors.New("service access basic auth requires username and password")
+	}
+	client.Transport = basicAuthTransport{base: client.Transport, username: username, password: password}
+	return client, nil
+}
+
 func NewHTTPClientForPolicy(material TLSMaterial, policy Policy) (*http.Client, error) {
 	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
 	token := ""
@@ -333,6 +362,19 @@ func newHTTPClient(material TLSMaterial, requireClient bool, bearerToken string)
 	return &http.Client{Transport: roundTripper, Timeout: 10 * time.Second}, nil
 }
 
+type basicAuthTransport struct {
+	base     http.RoundTripper
+	username string
+	password string
+}
+
+func (t basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Header = req.Header.Clone()
+	clone.SetBasicAuth(t.username, t.password)
+	return t.base.RoundTrip(clone)
+}
+
 type bearerTransport struct {
 	base  http.RoundTripper
 	token string
@@ -388,7 +430,7 @@ func WaitHTTPS(ctx context.Context, client *http.Client, endpoint, path string) 
 	}
 }
 
-func caddyfile(upstream string, port int, authentication AuthenticationMode, denyPaths ...string) string {
+func caddyfile(upstream string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -413,6 +455,9 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode, den
 		authBlock = `  @unauthorized not header Authorization "Bearer {$BASEHARBOR_ACCESS_TOKEN}"
   respond @unauthorized 401
 `
+	}
+	if basicAuthUsername != "" {
+		authBlock += fmt.Sprintf("  basic_auth {\n    %s %s\n  }\n", basicAuthUsername, basicAuthHash)
 	}
 	return fmt.Sprintf(`{
   auto_https disable_redirects
