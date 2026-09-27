@@ -15,6 +15,7 @@ const (
 	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
 	CapabilityMetrics         CapabilityKind = capability.Metrics
 	CapabilityLogs            CapabilityKind = capability.Logs
+	CapabilityIdentity        CapabilityKind = capability.Identity
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -40,6 +41,7 @@ type PortableContract struct {
 	Exposures    []HTTPExposureRequirement
 	Metrics      []MetricsSourceRequirement
 	Logs         []string
+	Identity     *IdentityRequirements
 }
 
 // PortableContractFromManifest translates the current manifest v1 compatibility
@@ -58,6 +60,16 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		Exposures: append([]HTTPExposureRequirement(nil), m.Exposures...),
 		Metrics:   append([]MetricsSourceRequirement(nil), m.Metrics.Sources...),
 		Logs:      append([]string(nil), m.Logs.Collect...),
+	}
+	if m.Services.Identity {
+		identity := m.Identity
+		identity.CallbackPaths = append([]string(nil), m.Identity.CallbackPaths...)
+		identity.LogoutPaths = append([]string(nil), m.Identity.LogoutPaths...)
+		identity.Scopes = append([]string(nil), m.Identity.Scopes...)
+		identity.Claims = append([]string(nil), m.Identity.Claims...)
+		identity.Authentication.Methods = append([]string(nil), m.Identity.Authentication.Methods...)
+		contract.Identity = &identity
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityIdentity, Name: "default"})
 	}
 	for _, name := range SQLInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilitySQL, Name: name})
