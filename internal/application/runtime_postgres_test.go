@@ -146,6 +146,24 @@ func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeUsesValidPgAdminBootstrapEmail(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, false, false)
+	m.Services.SQLManagementUI = true
+
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := values[PostgresUIEmailEnv]; got != "baseharbor@example.com" {
+		t.Fatalf("unexpected pgAdmin bootstrap email %q", got)
+	}
+}
+
 func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("legacy", "dev", true, true, false)
