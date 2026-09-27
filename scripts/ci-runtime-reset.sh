@@ -2,6 +2,16 @@
 set -euo pipefail
 
 engine="${1:-docker}"
+scope="${2:-}"
+
+matches_scope() {
+  local project="${1:-}" name="${2:-}"
+  [ -z "$scope" ] && return 0
+  case "$project:$name" in
+    *"$scope"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 log() {
   printf '[runtime-reset] %s\n' "$*" >&2
@@ -17,7 +27,7 @@ run_timeout() {
   fi
 }
 
-log "engine=$engine"
+log "engine=$engine scope=${scope:-all}"
 if ! command -v "$engine" >/dev/null 2>&1; then
   log "engine not installed; nothing to reset"
   exit 0
@@ -50,7 +60,7 @@ remove_containers() {
     if [ -z "$project" ] || [ "$project" = "<no value>" ]; then
       project="$podman_project"
     fi
-    if is_baseharbor_resource "$project" "$name"; then
+    if is_baseharbor_resource "$project" "$name" && matches_scope "$project" "$name"; then
       targets+=("$name")
     fi
   done < <(
@@ -86,7 +96,7 @@ remove_networks() {
     if [ -z "$project" ] || [ "$project" = "<no value>" ]; then
       project="$podman_project"
     fi
-    if is_baseharbor_resource "$project" "$name"; then
+    if is_baseharbor_resource "$project" "$name" && matches_scope "$project" "$name"; then
       targets+=("$name")
     fi
   done < <(
@@ -120,7 +130,7 @@ remove_volumes() {
     if [ -z "$project" ] || [ "$project" = "<no value>" ]; then
       project="$podman_project"
     fi
-    if is_baseharbor_resource "$project" "$name"; then
+    if is_baseharbor_resource "$project" "$name" && matches_scope "$project" "$name"; then
       targets+=("$name")
     fi
   done < <(
@@ -149,18 +159,34 @@ remove_quadlet_units() {
   [ -d "$unit_dir" ] || return 0
 
   shopt -s nullglob
-  local -a files=(
-    "$unit_dir"/baseharbor-*.container
-    "$unit_dir"/baseharbor-*.network
-    "$unit_dir"/baseharbor-*.volume
-    "$unit_dir"/baseharbor-*.build
-    "$unit_dir"/baseharbor-*.env
-    "$unit_dir"/bh-*.container
-    "$unit_dir"/bh-*.network
-    "$unit_dir"/bh-*.volume
-    "$unit_dir"/bh-*.build
-    "$unit_dir"/bh-*.env
-  )
+  local -a files=()
+  if [ -n "$scope" ]; then
+    files=(
+      "$unit_dir"/baseharbor-*"$scope"*.container
+      "$unit_dir"/baseharbor-*"$scope"*.network
+      "$unit_dir"/baseharbor-*"$scope"*.volume
+      "$unit_dir"/baseharbor-*"$scope"*.build
+      "$unit_dir"/baseharbor-*"$scope"*.env
+      "$unit_dir"/bh-*"$scope"*.container
+      "$unit_dir"/bh-*"$scope"*.network
+      "$unit_dir"/bh-*"$scope"*.volume
+      "$unit_dir"/bh-*"$scope"*.build
+      "$unit_dir"/bh-*"$scope"*.env
+    )
+  else
+    files=(
+      "$unit_dir"/baseharbor-*.container
+      "$unit_dir"/baseharbor-*.network
+      "$unit_dir"/baseharbor-*.volume
+      "$unit_dir"/baseharbor-*.build
+      "$unit_dir"/baseharbor-*.env
+      "$unit_dir"/bh-*.container
+      "$unit_dir"/bh-*.network
+      "$unit_dir"/bh-*.volume
+      "$unit_dir"/bh-*.build
+      "$unit_dir"/bh-*.env
+    )
+  fi
 
   for file in "${files[@]}"; do
     base="$(basename "$file")"
@@ -200,11 +226,19 @@ remove_networks
 remove_volumes
 
 log "state: removing BaseHarbor XDG/tmp state"
-rm -rf \
-  "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
-  "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
-  "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
-  /tmp/baseharbor-* /tmp/baha /tmp/mailflow /tmp/baseharbor-demo \
-  2>/dev/null || true
+if [ -n "$scope" ]; then
+  rm -rf \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
+    2>/dev/null || true
+else
+  rm -rf \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
+    /tmp/baseharbor-* /tmp/baha /tmp/mailflow /tmp/baseharbor-demo \
+    2>/dev/null || true
+fi
 
 log "cleanup complete"
