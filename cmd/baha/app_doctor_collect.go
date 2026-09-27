@@ -268,7 +268,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			}},
 		)
 	}
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI {
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
@@ -279,7 +279,18 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				}
 			}
 			if m.Services.ObjectStorageManagementUI {
-				return objectstorage.VerifyManagementUIAt(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name)
+				if err := objectstorage.VerifyManagementUIAt(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name); err != nil {
+					return err
+				}
+			}
+			if m.Services.SecretsManagementUI {
+				platformFiles, err := existingTargetRuntimeFiles(ctx)
+				if err != nil {
+					return err
+				}
+				if err := verifyOpenBaoManagementUI(ctx, platformFiles); err != nil {
+					return err
+				}
 			}
 			return nil
 		}})
