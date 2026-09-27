@@ -2,6 +2,7 @@ package devgateway
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
@@ -82,5 +83,29 @@ func TestGatewayHostPortUsesUnprivilegedPortForPodman(t *testing.T) {
 	}
 	if got := canonicalURL("demo.baha.localhost", 8443); got != "https://demo.baha.localhost:8443" {
 		t.Fatalf("podman canonical URL = %q", got)
+	}
+}
+
+
+func TestPruneUnavailableTrustRoutesDropsOnlyStaleHTTPSRoutes(t *testing.T) {
+	dir := t.TempDir()
+	trust := dir + "/ca.pem"
+	if err := os.WriteFile(trust, []byte("ca"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	routes := []Route{
+		{Key: "http", Upstream: "http://app:8080"},
+		{Key: "https-live", Upstream: "https://live:8443", TrustFile: trust},
+		{Key: "https-stale", Upstream: "https://stale:8443", TrustFile: dir + "/missing.pem"},
+	}
+	got, changed, err := pruneUnavailableTrustRoutes(routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected stale HTTPS route to be pruned")
+	}
+	if len(got) != 2 || got[0].Key != "http" || got[1].Key != "https-live" {
+		t.Fatalf("unexpected remaining routes: %#v", got)
 	}
 }
