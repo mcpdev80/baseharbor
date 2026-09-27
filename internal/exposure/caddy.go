@@ -16,6 +16,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/endpoint"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -498,7 +499,8 @@ func composeYAML(state State, files Files) string {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
 		}
-		b.WriteString("    networks:\n      application: {}\n")
+		b.WriteString("    networks:\n      application:\n        aliases:\n")
+		fmt.Fprintf(&b, "          - %s\n", strconv.Quote(devaccess.ProviderAlias(state.Project, route.Name)))
 	}
 	b.WriteString("networks:\n  application:\n    external: true\n")
 	fmt.Fprintf(&b, "    name: %s\n", state.Network)
