@@ -938,10 +938,10 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.C
 		if err != nil {
 			return fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
 		}
-		sql := fmt.Sprintf("SELECT 'CREATE ROLE %s LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s)\\gexec\nALTER ROLE %s WITH LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;\nSELECT 'CREATE DATABASE %s OWNER %s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = %s)\\gexec\nALTER DATABASE %s OWNER TO %s;\nREVOKE ALL ON DATABASE %s FROM PUBLIC;\nGRANT CONNECT, TEMPORARY ON DATABASE %s TO %s;\n",
-			quotePostgresIdent(resource.Username), quotePostgresLiteral(password), quotePostgresLiteral(resource.Username),
+		sql := fmt.Sprintf("SELECT format('CREATE ROLE %%I LOGIN PASSWORD %%L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', %s, %s) WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s)\\gexec\nALTER ROLE %s WITH LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;\nSELECT format('CREATE DATABASE %%I OWNER %%I', %s, %s) WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = %s)\\gexec\nALTER DATABASE %s OWNER TO %s;\nREVOKE ALL ON DATABASE %s FROM PUBLIC;\nGRANT CONNECT, TEMPORARY ON DATABASE %s TO %s;\n",
+			quotePostgresLiteral(resource.Username), quotePostgresLiteral(password), quotePostgresLiteral(resource.Username),
 			quotePostgresIdent(resource.Username), quotePostgresLiteral(password),
-			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Database),
+			quotePostgresLiteral(resource.Database), quotePostgresLiteral(resource.Username), quotePostgresLiteral(resource.Database),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
 			quotePostgresIdent(resource.Database),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
