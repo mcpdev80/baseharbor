@@ -257,6 +257,10 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 		}
 		return usageError("required application deployment inputs are unresolved: "+strings.Join(names, ", "), "Provide them with app init flags or --input NAME=VALUE in non-interactive automation.")
 	}
+	if development {
+		return runRepositoryRuntimeInit(ctx, resolved, repositoryInitOptions{Yes: true}, out)
+	}
+
 	values := applicationinput.PersistableValues(result)
 	resolvedOpts := repositoryInitOptions{
 		Hostname: values[inputHostname],
