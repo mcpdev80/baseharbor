@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -95,7 +96,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 
 func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	m := e.manifest
-	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m)
+	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
@@ -241,6 +242,9 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 	if len(m.Exposures) > 0 {
 		fmt.Fprintf(e.out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 	}
+	if application.HasIdentity(m) {
+		fmt.Fprintln(e.out, "  identity:   BaseHarbor-owned application/environment identity scope removed; shared provider infrastructure preserved")
+	}
 	if e.resolved.FromRepository {
 		if policy, policyErr := application.LogsPolicy(m); policyErr == nil && policy.Enabled && policy.Collect[application.LogsSourceApplication] {
 			fmt.Fprintln(e.out, "  logs:       application log registration and BaseHarbor-owned collector state removed according to placement")
@@ -342,6 +346,9 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 }
 
 func (e *applicationDestroyExecution) cleanupProviderState(ctx context.Context) error {
+	if err := e.cleanupIdentity(ctx); err != nil {
+		return err
+	}
 	if err := e.cleanupLogs(ctx); err != nil {
 		return err
 	}
@@ -349,6 +356,62 @@ func (e *applicationDestroyExecution) cleanupProviderState(ctx context.Context) 
 		return err
 	}
 	return e.cleanupMetrics(ctx)
+}
+
+func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error {
+	if !application.HasIdentity(e.manifest) {
+		return nil
+	}
+
+	keycloakPlacement, keycloakFound, err := application.RegisteredProviderPlacementAt(
+		e.resolved.TargetStateRoot, e.manifest, capability.ProviderKeycloak,
+	)
+	if err != nil {
+		return err
+	}
+	if keycloakFound {
+		driver := identityprovider.NewKeycloakDriver(
+			e.compose, e.manifest, e.files, nil,
+			e.resolved.TargetStateRoot, e.resolved.Target.Name,
+		)
+		if err := driver.DestroyApplication(ctx); err != nil {
+			return fmt.Errorf("destroy managed identity scope: %w", err)
+		}
+		_ = keycloakPlacement
+		return nil
+	}
+
+	if _, found, err := application.RegisteredProviderPlacementAt(
+		e.resolved.TargetStateRoot, e.manifest, capability.ProviderExternalOIDC,
+	); err != nil {
+		return err
+	} else if found {
+		return nil
+	}
+
+	providerPath := filepath.Join(e.files.Bindings, application.IdentityBindingName, "provider")
+	data, err := os.ReadFile(providerPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("identity provider ownership cannot be determined safely; refusing destroy")
+	}
+	if err != nil {
+		return fmt.Errorf("inspect identity provider ownership before destroy: %w", err)
+	}
+	switch capability.ProviderKind(strings.TrimSpace(string(data))) {
+	case capability.ProviderKeycloak:
+		driver := identityprovider.NewKeycloakDriver(
+			e.compose, e.manifest, e.files, nil,
+			e.resolved.TargetStateRoot, e.resolved.Target.Name,
+		)
+		if err := driver.DestroyApplication(ctx); err != nil {
+			return fmt.Errorf("destroy managed identity scope: %w", err)
+		}
+		return nil
+	case capability.ProviderExternalOIDC:
+		return nil
+	default:
+		return fmt.Errorf("identity provider ownership is unsupported or ambiguous")
+	}
 }
 
 func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {
