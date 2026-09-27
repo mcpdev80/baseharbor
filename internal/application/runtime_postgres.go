@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -171,7 +172,7 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		writePostgresUIComposeService(&b, m)
 	}
 	if m.Services.CacheManagementUI {
-		writeCacheUIComposeServices(&b)
+		writeCacheUIComposeServices(&b, m)
 	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range SQLInstanceNames(m) {
@@ -298,6 +299,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
 `)
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n", devaccess.ApplicationAlias(m.Name, "pgadmin"))
 	for _, instance := range SQLInstanceNames(m) {
 		token := envInstanceToken(instance)
 		fmt.Fprintf(b, "      - ./providers/management-ui/postgres/postgres-%s.ca.pem:/run/baseharbor/postgres-%s.ca.pem:ro\n", token, token)
@@ -305,7 +307,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
 	b.WriteString("\n")
 }
 
-func writeCacheUIComposeServices(b *strings.Builder) {
+func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 	b.WriteString(`  cache-ui:
     image: ` + CacheUIImage + `
     restart: unless-stopped
@@ -349,6 +351,7 @@ func writeCacheUIComposeServices(b *strings.Builder) {
       - ./providers/management-ui/cache/server-key.pem:/certs/server-key.pem:ro
 
 `)
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
