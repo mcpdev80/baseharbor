@@ -309,12 +309,25 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 			}
 		}
 	}
+	if err := destroySharedValkeyApplicationRuntime(ctx, compose, shared, app); err != nil {
+		return err
+	}
 	delete(state.Applications, key)
 	if len(state.Applications) == 0 {
 		if err := compose.DestroyProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
 			return err
 		}
 		return os.RemoveAll(shared.Dir)
+	}
+	if sharedBackendPostgresUIRequested(state) {
+		if err := refreshSharedPostgresManagementUIConfig(shared, state); err != nil {
+			return err
+		}
+	}
+	if sharedBackendCacheUIRequested(state) {
+		if err := refreshSharedCacheManagementUIConfig(shared, state); err != nil {
+			return err
+		}
 	}
 	if err := writeSharedBackendState(shared.State, state); err != nil {
 		return err
@@ -323,6 +336,56 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 		return err
 	}
 	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)
+}
+
+func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
+	if len(app.Cache) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("services:\n")
+	instances := make([]string, 0, len(app.Cache))
+	for instance := range app.Cache {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+	for _, instance := range instances {
+		writeSharedValkeyCompose(&b, app, instance)
+	}
+	b.WriteString("volumes:\n")
+	for _, instance := range instances {
+		service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-%s-data\n", service, shared.ResourceProject, sharedBackendToken(app.Environment), service)
+	}
+	b.WriteString("networks:\n  shared-backend:\n    external: true\n")
+	fmt.Fprintf(&b, "    name: %s\n", shared.Network)
+	path := filepath.Join(shared.Dir, ".release-"+sharedBackendToken(app.Application)+"-"+sharedBackendToken(app.Environment)+".yaml")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	defer os.Remove(path)
+	if err := compose.DestroyProject(ctx, shared.Project, path, shared.Env); err != nil {
+		return fmt.Errorf("destroy shared Valkey resources for %s/%s: %w", app.Application, app.Environment, err)
+	}
+	return nil
+}
+
+func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.SQLManagementUI {
+			return true
+		}
+	}
+	return false
+}
+
+func sharedBackendCacheUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.CacheManagementUI {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, m Manifest, state *sharedBackendState, files RuntimeFiles, values map[string]string) error {
@@ -466,11 +529,18 @@ func ensureSharedPostgresManagementUI(ctx context.Context, issuer serviceaccess.
 	if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server.key")); err != nil {
 		return err
 	}
+	return refreshSharedPostgresManagementUIConfig(shared, state)
+}
+
+func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sharedBackendState) error {
+	dir := filepath.Join(shared.Dir, "management-ui", "postgres")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
 		return err
 	}
-
-	postgresPolicy, err := serviceaccess.Resolve(environment, "postgresql", serviceaccess.AuthenticationNative)
+	postgresPolicy, err := serviceaccess.Resolve(state.Environment, "postgresql", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return err
 	}
@@ -478,20 +548,14 @@ func ensureSharedPostgresManagementUI(ctx context.Context, issuer serviceaccess.
 	if err != nil {
 		return err
 	}
-	caTarget := filepath.Join(dir, "postgres.ca.pem")
-	if err := projectUIReadableFile(postgresMaterial.CA, caTarget); err != nil {
+	if err := projectUIReadableFile(postgresMaterial.CA, filepath.Join(dir, "postgres.ca.pem")); err != nil {
 		return err
 	}
-
 	var pgpass strings.Builder
 	servers := map[string]any{"Servers": map[string]any{}}
 	serverMap := servers["Servers"].(map[string]any)
 	index := 1
-	appKeys := make([]string, 0, len(state.Applications))
-	for key := range state.Applications {
-		appKeys = append(appKeys, key)
-	}
-	sort.Strings(appKeys)
+	appKeys := sortedSharedBackendApplicationKeys(state)
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		instances := make([]string, 0, len(app.SQL))
@@ -507,18 +571,11 @@ func ensureSharedPostgresManagementUI(ctx context.Context, issuer serviceaccess.
 				label += " / " + instance
 			}
 			serverMap[strconv.Itoa(index)] = map[string]any{
-				"Name":          label,
-				"Group":         "BaseHarbor",
-				"Host":          sharedPostgresAlias(),
-				"Port":          5432,
-				"MaintenanceDB": resource.Database,
-				"Username":      resource.Username,
-				"SSLMode":       "verify-ca",
-				"PassFile":      "/run/baseharbor/pgpass",
+				"Name": label, "Group": "BaseHarbor", "Host": sharedPostgresAlias(), "Port": 5432,
+				"MaintenanceDB": resource.Database, "Username": resource.Username, "SSLMode": "verify-ca",
+				"PassFile": "/run/baseharbor/pgpass",
 				"ConnectionParameters": map[string]any{
-					"sslmode":     "verify-ca",
-					"sslrootcert": "/run/baseharbor/postgres.ca.pem",
-					"passfile":    "/run/baseharbor/pgpass",
+					"sslmode": "verify-ca", "sslrootcert": "/run/baseharbor/postgres.ca.pem", "passfile": "/run/baseharbor/pgpass",
 				},
 			}
 			index++
@@ -553,16 +610,19 @@ func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Iss
 	if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
 		return err
 	}
+	return refreshSharedCacheManagementUIConfig(shared, state)
+}
+
+func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state sharedBackendState) error {
+	dir := filepath.Join(shared.Dir, "management-ui", "cache")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
 		return err
 	}
-
 	var connections []map[string]any
-	appKeys := make([]string, 0, len(state.Applications))
-	for key := range state.Applications {
-		appKeys = append(appKeys, key)
-	}
-	sort.Strings(appKeys)
+	appKeys := sortedSharedBackendApplicationKeys(state)
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		instances := make([]string, 0, len(app.Cache))
@@ -573,7 +633,7 @@ func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Iss
 		for _, instance := range instances {
 			resource := app.Cache[instance]
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(app.Application), sharedBackendToken(instance))
-			valkeyPolicy, err := serviceaccess.Resolve(environment, "valkey", serviceaccess.AuthenticationNative)
+			valkeyPolicy, err := serviceaccess.Resolve(state.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
 			}
@@ -590,12 +650,8 @@ func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Iss
 				label += " / " + instance
 			}
 			connections = append(connections, map[string]any{
-				"label": label,
-				"host": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
-				"port": 6379,
-				"username": "default",
-				"password": resource.Password,
-				"dbIndex": 0,
+				"label": label, "host": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
+				"port": 6379, "username": "default", "password": resource.Password, "dbIndex": 0,
 				"tls": map[string]any{
 					"ca": []string{strings.TrimSpace(string(caData))},
 					"servername": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
@@ -616,6 +672,16 @@ func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Iss
 	caddy := ":8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy shared-cache-ui:8081\n}\n"
 	return os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644)
 }
+
+func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {
+	keys := make([]string, 0, len(state.Applications))
+	for key := range state.Applications {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
 	instances := make([]string, 0, len(app.SQL))
@@ -685,16 +751,10 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	if hasPostgres {
 		writeSharedPostgresCompose(&b, state)
 	}
-	hasPostgresUI := false
-	hasCacheUI := false
-	for _, app := range state.Applications {
-		hasPostgresUI = hasPostgresUI || app.SQLManagementUI
-		hasCacheUI = hasCacheUI || app.CacheManagementUI
-	}
-	if hasPostgresUI {
+	if sharedBackendPostgresUIRequested(state) {
 		writeSharedPostgresUICompose(&b)
 	}
-	if hasCacheUI {
+	if sharedBackendCacheUIRequested(state) {
 		writeSharedCacheUICompose(&b)
 	}
 	for _, key := range appKeys {
