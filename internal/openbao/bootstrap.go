@@ -505,6 +505,18 @@ path "sys/policies/acl/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
+path "sys/auth/baseharbor-dev" {
+  capabilities = ["create", "update", "read", "delete", "sudo"]
+}
+
+path "auth/baseharbor-dev/users/*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
 path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
