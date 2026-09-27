@@ -22,7 +22,7 @@ const (
 	CacheUIUserEnv        = "BASEHARBOR_CACHE_UI_USER"
 	CacheUIPasswordEnv    = "BASEHARBOR_CACHE_UI_PASSWORD"
 
-	PostgresUIImage = "dpage/pgadmin4:9.18"
+	PostgresUIImage = "docker.io/dpage/pgadmin4:9.18"
 	CacheUIImage    = "ghcr.io/joeferner/redis-commander:0.9.1"
 	UIProxyImage    = "docker.io/library/caddy:2.11.4-alpine"
 )
@@ -359,7 +359,7 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 		return err
 	}
 
-	caddy := ":8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy cache-ui:8081\n}\n"
+	caddy := "{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy cache-ui:8081\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
 		return err
 	}
