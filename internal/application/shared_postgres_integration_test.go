@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,39 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	}
 	aState := state.Applications[sharedBackendApplicationKey(appA)]
 	bState := state.Applications[sharedBackendApplicationKey(appB)]
+
+	adminSecret, err := readSharedBackendCredential(shared.Dir, state.PostgresAdminCredential)
+	if err != nil {
+		t.Fatalf("read provider admin credential: %v", err)
+	}
+	for label, files := range map[string]RuntimeFiles{"appA": filesA, "appB": filesB} {
+		envData, err := os.ReadFile(files.Env)
+		if err != nil {
+			t.Fatalf("read %s runtime env: %v", label, err)
+		}
+		if strings.Contains(string(envData), adminSecret) || strings.Contains(string(envData), "baseharbor_admin") {
+			t.Fatalf("%s application runtime env leaked provider admin identity", label)
+		}
+		err = filepath.WalkDir(files.Bindings, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			if strings.Contains(string(data), adminSecret) || strings.Contains(string(data), "baseharbor_admin") {
+				return fmt.Errorf("provider admin identity leaked into binding %s", path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("%s binding isolation: %v", label, err)
+		}
+	}
 
 	for instance, value := range map[string]string{"default": "A-ONLY", "analytics": "A-ANALYTICS"} {
 		seedSharedPostgresSentinel(t, ctx, compose, shared, aState.SQL[instance], value)
