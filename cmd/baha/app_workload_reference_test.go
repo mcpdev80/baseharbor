@@ -110,3 +110,21 @@ func TestManagedReferenceRewriteValueUsesManagedHost(t *testing.T) {
 		t.Fatalf("cache host rewrite = %q", got)
 	}
 }
+
+func TestAnalyzeManagedServiceReferenceRewritesIgnoresUnselectedNonManagedService(t *testing.T) {
+	m := application.New("demo", "dev", true, false, false)
+	rendered := []byte(`{
+	  "services": {
+	    "api": {"environment":{"WORKER_URL":"http://worker:8080"}},
+	    "worker": {"image":"example/worker:latest","environment":{}},
+	    "database": {"image":"postgres:16","environment":{}}
+	  }
+	}`)
+	got, err := analyzeManagedServiceReferenceRewrites(m, rendered, []string{"api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("non-managed excluded service must not be rewired, got %#v", got)
+	}
+}
