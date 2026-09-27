@@ -40,11 +40,21 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			Scope:     capability.ScopeShared,
 			Ownership: capability.OwnershipBaseHarbor,
 		}, nil
-	case capability.ProviderExternalOTLP, capability.ProviderExternalOIDC:
+	case capability.ProviderExternalOTLP:
 		return capability.ProviderPlacement{
 			Scope:             capability.ScopeExternal,
 			Ownership:         capability.OwnershipExternal,
 			ExternalReference: "default",
+		}, nil
+	case capability.ProviderExternalOIDC:
+		issuer := strings.TrimSpace(os.Getenv("BASEHARBOR_EXTERNAL_OIDC_ISSUER"))
+		if issuer == "" {
+			return capability.ProviderPlacement{}, fmt.Errorf("BASEHARBOR_EXTERNAL_OIDC_ISSUER is required when external OIDC is selected")
+		}
+		return capability.ProviderPlacement{
+			Scope:             capability.ScopeExternal,
+			Ownership:         capability.OwnershipExternal,
+			ExternalReference: issuer,
 		}, nil
 	default:
 		return capability.ProviderPlacement{}, fmt.Errorf("no default provider placement for %q", provider)
