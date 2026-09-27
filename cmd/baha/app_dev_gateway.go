@@ -207,8 +207,18 @@ func (e *applicationApplyExecution) developmentGatewayRoutes() ([]devgateway.Rou
 	if len(m.Exposures) > 0 {
 		state, files, err := exposure.Load(e.files)
 		if err != nil { return nil, err }
+		publicCount := 0
 		for _, route := range state.Routes {
-			host, err := devaccess.ApplicationHost(target, m.Name, route.Name)
+			if !strings.EqualFold(route.Visibility, "internal") {
+				publicCount++
+			}
+		}
+		for _, route := range state.Routes {
+			service := route.Name
+			if !strings.EqualFold(route.Visibility, "internal") {
+				service = devaccess.ExposureService(route.Name, publicCount)
+			}
+			host, err := devaccess.ApplicationHost(target, m.Name, service)
 			if err != nil { return nil, err }
 			containerPort := 8080
 			upstream := "http://"+devaccess.ProviderAlias(state.Project, route.Name)+":8080"
