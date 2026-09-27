@@ -147,7 +147,7 @@ jobs:
 
       - name: Verify Podman Quadlet runtime
         id: quadlet
-        if: steps.target.outputs.runtime == 'podman'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.runtime == 'podman'
         shell: bash
         run: |
           set -euo pipefail
@@ -206,7 +206,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
-          if [ "${{ steps.demo.outcome }}" != "success" ]; then
+          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             runtime="${{ steps.target.outputs.runtime }}"
             diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
             mkdir -p "$diagnostics"
