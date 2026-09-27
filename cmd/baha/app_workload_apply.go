@@ -20,6 +20,7 @@ type repositoryWorkloadExecution struct {
 	environment        map[string]string
 	composeFiles       []string
 	expectedServices   []string
+	workloadProtocols  map[string]string
 	beforeServices     map[string]struct{}
 	freshStart         bool
 	buildFingerprints  map[string]string
@@ -78,6 +79,10 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		}
 	}
 
+	workloadProtocols, err := repositoryWorkloadProtocols(workload)
+	if err != nil {
+		return nil, false, err
+	}
 	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve application workload build identity: %w", err)
@@ -95,6 +100,7 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		environment:        environment,
 		composeFiles:       composeFiles,
 		expectedServices:   expectedServices,
+		workloadProtocols:  workloadProtocols,
 		beforeServices:     beforeServices,
 		freshStart:         len(beforeStates) == 0,
 		buildFingerprints:  buildFingerprints,
@@ -226,7 +232,7 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 		if stateErr != nil {
 			lastErr = stateErr
 		} else {
-			exposures := inspectWorkloadExposures(verifyCtx, e.expectedServices, states, initState.Hostname)
+			exposures := inspectWorkloadExposures(verifyCtx, e.expectedServices, states, initState.Hostname, e.workloadProtocols)
 			services := attachWorkloadExposures(buildWorkloadServiceStatuses(e.expectedServices, states), exposures)
 			lastStatus = repositoryWorkloadStatus{Found: true, Workload: e.workload, Services: services, Exposures: exposures}
 			lastErr = workloadExposureReadinessError(exposures)
