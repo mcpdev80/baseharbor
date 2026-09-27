@@ -56,17 +56,17 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		"baseharbor.environment": strings.TrimSpace(environment),
 	}
 	desiredRealm := keycloakRealm{
-		Realm:                       realm,
-		Enabled:                     true,
-		DisplayName:                 "BaseHarbor operators (" + environment + ")",
-		SSLRequired:                 "external",
-		BruteForceProtected:         true,
-		RegistrationAllowed:         true,
-		ResetPasswordAllowed:        true,
-		RememberMe:                  false,
-		OTPPolicyType:               "totp",
-		WebAuthnPolicyRpEntityName:  "BaseHarbor",
-		WebAuthnPolicySignatureAlgorithms: []string{"ES256", "RS256"},
+		Realm:                                  realm,
+		Enabled:                                true,
+		DisplayName:                            "BaseHarbor operators (" + environment + ")",
+		SSLRequired:                            "external",
+		BruteForceProtected:                    true,
+		RegistrationAllowed:                    true,
+		ResetPasswordAllowed:                   true,
+		RememberMe:                             false,
+		OTPPolicyType:                          "totp",
+		WebAuthnPolicyRpEntityName:             "BaseHarbor",
+		WebAuthnPolicySignatureAlgorithms:      []string{"ES256", "RS256"},
 		WebAuthnPolicyPasswordlessRpEntityName: "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
 		Attributes: ownership,
@@ -93,9 +93,9 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		RedirectURIs:              []string{callback},
 		WebOrigins:                []string{"http://127.0.0.1:" + strconv.Itoa(callbackPort)},
 		Attributes: map[string]string{
-			"baseharbor.scope":       "operator",
-			"baseharbor.target":      strings.TrimSpace(target),
-			"baseharbor.environment": strings.TrimSpace(environment),
+			"baseharbor.scope":           "operator",
+			"baseharbor.target":          strings.TrimSpace(target),
+			"baseharbor.environment":     strings.TrimSpace(environment),
 			"pkce.code.challenge.method": "S256",
 		},
 	}
@@ -177,8 +177,8 @@ func operatorKeycloakAdmin(ctx context.Context, files KeycloakFiles) (*keycloakA
 	}
 	admin := &keycloakAdmin{
 		endpoint: files.AdminURL,
-		client: client,
-		user: values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
+		client:   client,
+		user:     values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
 		password: values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
 	}
 	if err := admin.login(ctx); err != nil {
@@ -198,4 +198,3 @@ func operatorClientID(environment string) string {
 func decodeJSON(value string, target any) error {
 	return json.Unmarshal([]byte(value), target)
 }
-
