@@ -38,11 +38,13 @@ type ProviderInstance struct {
 	SharingBoundary  string            `json:"sharing_boundary,omitempty"`
 	Ownership        ProviderOwnership `json:"ownership"`
 	OwnerApplication string            `json:"owner_application,omitempty"`
+	OwnerEnvironment string            `json:"owner_environment,omitempty"`
 	Reference        string            `json:"reference,omitempty"`
 }
 
 type ProviderBinding struct {
 	Resource           Resource `json:"resource"`
+	Environment        string   `json:"environment,omitempty"`
 	ProviderInstanceID string   `json:"provider_instance_id"`
 }
 
@@ -155,9 +157,14 @@ func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlac
 }
 
 func (r *Registry) Bind(resource Resource, providerInstanceID string) error {
+	return r.BindDeployment(resource, "", providerInstanceID)
+}
+
+func (r *Registry) BindDeployment(resource Resource, environment, providerInstanceID string) error {
 	if r == nil {
 		return errors.New("provider registry is nil")
 	}
+	environment = strings.TrimSpace(environment)
 	instance, ok := r.instance(providerInstanceID)
 	if !ok {
 		return fmt.Errorf("provider instance %q not found", providerInstanceID)
@@ -168,18 +175,23 @@ func (r *Registry) Bind(resource Resource, providerInstanceID string) error {
 	if !instance.Provider.Supports(resource.Kind) {
 		return fmt.Errorf("provider instance %q does not support capability %q", instance.ID, resource.Kind)
 	}
-	if instance.Scope == ScopeApplication && instance.OwnerApplication != resource.Application {
-		return fmt.Errorf("provider instance %q belongs to application %q, not %q", instance.ID, instance.OwnerApplication, resource.Application)
+	if instance.Scope == ScopeApplication {
+		if instance.OwnerApplication != resource.Application {
+			return fmt.Errorf("provider instance %q belongs to application %q, not %q", instance.ID, instance.OwnerApplication, resource.Application)
+		}
+		if ownerEnvironment := strings.TrimSpace(instance.OwnerEnvironment); ownerEnvironment != "" && environment != "" && ownerEnvironment != environment {
+			return fmt.Errorf("provider instance %q belongs to environment %q, not %q", instance.ID, ownerEnvironment, environment)
+		}
 	}
 	for _, binding := range r.Bindings {
-		if sameLogicalResource(binding.Resource, resource) {
+		if sameLogicalDeploymentResource(binding, resource, environment) {
 			if binding.ProviderInstanceID == providerInstanceID {
 				return nil
 			}
-			return fmt.Errorf("resource %s/%s/%s is already bound to provider instance %q", resource.Application, resource.Kind, resource.Name, binding.ProviderInstanceID)
+			return fmt.Errorf("resource %s/%s/%s/%s is already bound to provider instance %q", resource.Application, environment, resource.Kind, resource.Name, binding.ProviderInstanceID)
 		}
 	}
-	r.Bindings = append(r.Bindings, ProviderBinding{Resource: resource, ProviderInstanceID: providerInstanceID})
+	r.Bindings = append(r.Bindings, ProviderBinding{Resource: resource, Environment: environment, ProviderInstanceID: providerInstanceID})
 	return nil
 }
 
@@ -251,7 +263,11 @@ func (r *Registry) ReleaseManagedApplication(application string) {
 		}
 	}
 	r.Bindings = bindings
-	r.removeOwnedApplicationInstances(application)
+	r.removeUnboundOwnedApplicationInstances(application)
+}
+
+func (r *Registry) ReleaseManagedDeployment(application, environment string) {
+	r.releaseDeployment(application, environment, true)
 }
 
 func (r *Registry) ReleaseApplication(application string) {
@@ -266,14 +282,53 @@ func (r *Registry) ReleaseApplication(application string) {
 		}
 	}
 	r.Bindings = bindings
-	r.removeOwnedApplicationInstances(application)
+	r.removeUnboundOwnedApplicationInstances(application)
 }
 
-func (r *Registry) removeOwnedApplicationInstances(application string) {
+func (r *Registry) ReleaseApplicationDeployment(application, environment string) {
+	r.releaseDeployment(application, environment, false)
+}
+
+func (r *Registry) releaseDeployment(application, environment string, preserveExternal bool) {
+	if r == nil {
+		return
+	}
+	application = strings.TrimSpace(application)
+	environment = strings.TrimSpace(environment)
+	bindings := r.Bindings[:0]
+	for _, binding := range r.Bindings {
+		if binding.Resource.Application != application {
+			bindings = append(bindings, binding)
+			continue
+		}
+		bindingEnvironment := strings.TrimSpace(binding.Environment)
+		if bindingEnvironment != "" && bindingEnvironment != environment {
+			bindings = append(bindings, binding)
+			continue
+		}
+		if preserveExternal {
+			if instance, ok := r.instance(binding.ProviderInstanceID); ok && instance.Ownership == OwnershipExternal {
+				bindings = append(bindings, binding)
+			}
+		}
+	}
+	r.Bindings = bindings
+	r.removeUnboundOwnedApplicationInstances(application)
+}
+
+func (r *Registry) removeUnboundOwnedApplicationInstances(application string) {
+	referenced := make(map[string]struct{}, len(r.Bindings))
+	for _, binding := range r.Bindings {
+		referenced[binding.ProviderInstanceID] = struct{}{}
+	}
 	instances := r.Instances[:0]
 	for _, instance := range r.Instances {
-		if instance.Scope == ScopeApplication && instance.Ownership == OwnershipBaseHarbor && instance.OwnerApplication == application {
-			continue
+		if instance.Scope == ScopeApplication &&
+			instance.Ownership == OwnershipBaseHarbor &&
+			instance.OwnerApplication == application {
+			if _, stillReferenced := referenced[instance.ID]; !stillReferenced {
+				continue
+			}
 		}
 		instances = append(instances, instance)
 	}
@@ -304,9 +359,10 @@ func (r Registry) Validate() error {
 	}
 	seenResources := map[string]struct{}{}
 	for _, binding := range r.Bindings {
-		key := binding.Resource.Application + "\x00" + string(binding.Resource.Kind) + "\x00" + binding.Resource.Name
+		environment := strings.TrimSpace(binding.Environment)
+		key := binding.Resource.Application + "\x00" + environment + "\x00" + string(binding.Resource.Kind) + "\x00" + binding.Resource.Name
 		if _, exists := seenResources[key]; exists {
-			return fmt.Errorf("duplicate binding for resource %s/%s/%s", binding.Resource.Application, binding.Resource.Kind, binding.Resource.Name)
+			return fmt.Errorf("duplicate binding for resource %s/%s/%s/%s", binding.Resource.Application, environment, binding.Resource.Kind, binding.Resource.Name)
 		}
 		seenResources[key] = struct{}{}
 		instance, ok := r.instance(binding.ProviderInstanceID)
@@ -316,8 +372,13 @@ func (r Registry) Validate() error {
 		if binding.Resource.Provider != instance.Provider.Kind || !instance.Provider.Supports(binding.Resource.Kind) {
 			return fmt.Errorf("binding for %s/%s/%s is incompatible with provider instance %q", binding.Resource.Application, binding.Resource.Kind, binding.Resource.Name, instance.ID)
 		}
-		if instance.Scope == ScopeApplication && instance.OwnerApplication != binding.Resource.Application {
-			return fmt.Errorf("binding crosses application ownership boundary for provider instance %q", instance.ID)
+		if instance.Scope == ScopeApplication {
+			if instance.OwnerApplication != binding.Resource.Application {
+				return fmt.Errorf("binding crosses application ownership boundary for provider instance %q", instance.ID)
+			}
+			if ownerEnvironment := strings.TrimSpace(instance.OwnerEnvironment); ownerEnvironment != "" && environment != "" && ownerEnvironment != environment {
+				return fmt.Errorf("binding crosses environment ownership boundary for provider instance %q", instance.ID)
+			}
 		}
 	}
 	return nil
@@ -385,6 +446,10 @@ func (s RegistryStore) Save(registry Registry) error {
 		a, b := registry.Bindings[i].Resource, registry.Bindings[j].Resource
 		if a.Application != b.Application {
 			return a.Application < b.Application
+		}
+		ae, be := strings.TrimSpace(registry.Bindings[i].Environment), strings.TrimSpace(registry.Bindings[j].Environment)
+		if ae != be {
+			return ae < be
 		}
 		if a.Kind != b.Kind {
 			return a.Kind < b.Kind
@@ -471,6 +536,11 @@ func sameLogicalResource(a, b Resource) bool {
 	return a.Application == b.Application && a.Kind == b.Kind && a.Name == b.Name
 }
 
+func sameLogicalDeploymentResource(binding ProviderBinding, resource Resource, environment string) bool {
+	return sameLogicalResource(binding.Resource, resource) &&
+		strings.TrimSpace(binding.Environment) == strings.TrimSpace(environment)
+}
+
 func providerInstanceDistributionMetadataMissing(instance ProviderInstance) bool {
 	return strings.TrimSpace(instance.ProviderID) == "" &&
 		strings.TrimSpace(instance.ProviderVersion) == "" &&
@@ -486,7 +556,7 @@ func sameProviderInstanceWithoutDistribution(a, b ProviderInstance) bool {
 func sameProviderInstance(a, b ProviderInstance) bool {
 	if a.ID != b.ID || a.ProviderID != b.ProviderID || a.ProviderVersion != b.ProviderVersion || a.ProviderProtocol != b.ProviderProtocol ||
 		a.Provider.Kind != b.Provider.Kind || a.Scope != b.Scope ||
-		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.Reference != b.Reference ||
+		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.OwnerEnvironment != b.OwnerEnvironment || a.Reference != b.Reference ||
 		len(a.Provider.Capabilities) != len(b.Provider.Capabilities) {
 		return false
 	}
