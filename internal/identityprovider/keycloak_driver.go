@@ -17,6 +17,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
