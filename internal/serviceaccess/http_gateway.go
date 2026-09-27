@@ -409,6 +409,14 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode, den
     }
   }`
 	}
+	var denyBlock strings.Builder
+	for i, path := range denyPaths {
+		path = strings.TrimSpace(path)
+		if path == "" || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\r\n{}") {
+			continue
+		}
+		fmt.Fprintf(&denyBlock, "  @baseharbor_deny_%d path %s*\n  respond @baseharbor_deny_%d 404\n", i, path, i)
+	}
 	if authentication == AuthenticationToken {
 		authBlock = `  @unauthorized not header Authorization "Bearer {$BASEHARBOR_ACCESS_TOKEN}"
   respond @unauthorized 401
