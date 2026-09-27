@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -130,6 +131,18 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 				return c.runtimeErr
 			}
 			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, nil)
+		}},
+		{Name: "canonical development URLs", Run: func(ctx context.Context) error {
+			if !requiresDevelopmentGateway(m) {
+				return nil
+			}
+			hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, m)
+			if err != nil {
+				return err
+			}
+			verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			return devgateway.VerifyHosts(verifyCtx, c.resolved.Target.Name, hosts)
 		}},
 		{Name: "managed runtime definition", Run: func(context.Context) error {
 			if c.runtimeErr != nil {
