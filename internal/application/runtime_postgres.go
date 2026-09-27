@@ -333,8 +333,12 @@ func writeCacheUIComposeServices(b *strings.Builder) {
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
       - /data:rw,noexec,nosuid,nodev,mode=1777
       - /config:rw,noexec,nosuid,nodev,mode=1777
     ports:
