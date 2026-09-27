@@ -34,17 +34,17 @@ func applyApplicationEnvironmentOverride(m application.Manifest) (application.Ma
 }
 
 type resolvedApplication struct {
-	Target              deployment.ResolvedTarget
-	DeploymentIdentity  deployment.DeploymentIdentity
-	DeploymentRecord    *deployment.DeploymentRecord
-	Manifest            application.Manifest
-	ManifestPath        string
-	RepositoryRoot      string
-	TargetStateRoot     string
-	DeploymentStateRoot string
-	Store               application.Store
-	SourceAvailable     bool
-	FromRepository      bool
+	Target               deployment.ResolvedTarget
+	DeploymentIdentity   deployment.DeploymentIdentity
+	DeploymentRecord     *deployment.DeploymentRecord
+	Manifest             application.Manifest
+	ManifestPath         string
+	RepositoryRoot       string
+	TargetStateRoot      string
+	DeploymentStateRoot  string
+	Store                application.Store
+	SourceAvailable      bool
+	FromRepository       bool
 	IncompleteDeployment bool
 }
 
