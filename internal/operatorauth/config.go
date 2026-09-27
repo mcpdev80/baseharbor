@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	ErrConfigurationRequired = errors.New("operator OIDC configuration is required for managed environments")
+	ErrConfigurationRequired  = errors.New("operator OIDC configuration is required for managed environments")
 	ErrAuthenticationRequired = errors.New("authenticated BaseHarbor operator session is required")
 )
 
