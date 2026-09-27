@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func requiresDevelopmentGateway(m application.Manifest) bool {
@@ -21,6 +22,7 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 		return false
 	}
 	return len(m.Exposures) > 0 ||
+		application.HasExplicitWorkload(m) ||
 		m.Services.Identity ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
@@ -118,6 +120,44 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			}
 		}
 	}
+	if len(e.manifest.Exposures) == 0 && application.HasExplicitWorkload(e.manifest) {
+		selected, composePath, found, err := application.SelectedWorkloadServices(e.resolved.repositoryRoot(), e.manifest)
+		if err != nil {
+			return err
+		}
+		if found && len(selected) == 1 {
+			relative := composePath
+			if rel, relErr := filepath.Rel(e.resolved.repositoryRoot(), composePath); relErr == nil {
+				relative = rel
+			}
+			analysis, err := repositoryinspect.AnalyzeComposeFile(e.resolved.repositoryRoot(), relative)
+			if err != nil {
+				return err
+			}
+			var ports []int
+			for _, item := range analysis.Ports {
+				if item.Service != selected[0] {
+					continue
+				}
+				if port, ok := composeTargetPort(item.Value); ok {
+					ports = append(ports, port)
+				}
+			}
+			if len(ports) == 1 {
+				host, err := devaccess.ApplicationHost(target, e.manifest.Name, "api")
+				if err != nil {
+					return err
+				}
+				appRoutes = append(appRoutes, devgateway.Route{
+					Key: appOwner + "/workload-api",
+					Host: host,
+					Upstream: fmt.Sprintf("http://%s:%d", application.DevelopmentWorkloadAlias(e.manifest), ports[0]),
+					Network: application.DevelopmentWorkloadNetworkNameForProject(e.files.Project),
+				})
+			}
+		}
+	}
+
 	if len(e.manifest.Exposures) > 0 {
 		state, providerFiles, err := exposure.Load(e.files)
 		if err != nil {
