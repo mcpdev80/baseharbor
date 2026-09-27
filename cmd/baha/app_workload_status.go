@@ -142,6 +142,20 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 	return result
 }
 
+func terminalWorkloadServiceError(services []workloadServiceStatus) error {
+	var failures []string
+	for _, service := range services {
+		switch service.State {
+		case "exited", "dead":
+			failures = append(failures, service.Service+" "+formatWorkloadServiceStatus(service))
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return fmt.Errorf("application workload service terminated before readiness: %s", strings.Join(failures, "; "))
+}
+
 func attachWorkloadExposures(services []workloadServiceStatus, exposures []workloadExposureStatus) []workloadServiceStatus {
 	byService := make(map[string][]workloadExposureStatus)
 	for _, exposure := range exposures {
