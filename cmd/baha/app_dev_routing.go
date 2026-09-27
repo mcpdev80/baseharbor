@@ -30,6 +30,19 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 		m.Services.ObservabilityManagementUI
 }
 
+func requiresDevelopmentManagementAccess(m application.Manifest) bool {
+	if !devaccess.Enabled(m.Environment) {
+		return false
+	}
+	return m.Services.Identity ||
+		m.Services.SQLManagementUI ||
+		m.Services.CacheManagementUI ||
+		m.Services.ObjectStorageManagementUI ||
+		m.Services.SecretsManagementUI ||
+		m.Services.IdentityManagementUI ||
+		m.Services.ObservabilityManagementUI
+}
+
 func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
 	if !requiresDevelopmentGateway(e.manifest) {
 		return nil
