@@ -358,4 +358,90 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if len(deployments) != 0 {
 		return fmt.Errorf("target %q still owns %d deployment(s); destroy them before deleting the target", name, len(deployments))
 	}
-	root, err := deployment.TargetS
+	root, err := deployment.TargetStateRoot(name)
+	if err != nil {
+		return err
+	}
+	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
+		return fmt.Errorf("target %q still owns runtime state under %s; destroy or detach owned state before deleting the target", name, root)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	delete(cfg.Targets, name)
+	if cfg.DefaultTarget == name {
+		cfg.DefaultTarget = ""
+	}
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+	if err := os.Remove(root); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove empty target state directory: %w", err)
+	}
+	fmt.Fprintf(out, "Target %s deleted\n", name)
+	return nil
+}
+
+func targetRuntimeStateRoot(target deployment.ResolvedTarget) (string, error) {
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "runtime"), nil
+}
+
+func targetDataRoot(target deployment.ResolvedTarget) (string, error) {
+	return deployment.TargetStateRoot(target.Name)
+}
+
+func targetRuntimeProjectName(target deployment.ResolvedTarget) string {
+	return bhruntime.SharedProjectName(target.Name)
+}
+
+func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhruntime.Files, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	files, err := bhruntime.ExistingFilesForProject(root, targetRuntimeProjectName(target))
+	if err != nil {
+		return target, bhruntime.Files{}, err
+	}
+	return target, files, nil
+}
+
+func existingTargetRuntimeFiles(ctx context.Context) (bhruntime.Files, error) {
+	_, files, err := targetRuntimeFiles(ctx)
+	return files, err
+}
+
+func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deployment.ResolvedTarget, bhruntime.Files, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
+	}
+	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports)
+	if err != nil {
+		return target, bhruntime.Files{}, err
+	}
+	return target, files, nil
+}
+
+func detectComposeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.Compose, error) {
+	provider, err := bhruntime.DetectProviderForKind(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
+	if err != nil {
+		return bhruntime.Compose{}, err
+	}
+	compose, ok := provider.(bhruntime.Compose)
+	if !ok {
+		return bhruntime.Compose{}, fmt.Errorf("target %q runtime provider %q is not compatible with the local container lifecycle", target.Name, target.RuntimeProvider)
+	}
+	return compose, nil
+}
