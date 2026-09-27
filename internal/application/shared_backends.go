@@ -1127,7 +1127,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
         aliases:
           - %s
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=\\"$${POSTGRES_PASSWORD}\\" psql -h 127.0.0.1 -U baseharbor_admin -d postgres -tAc 'SELECT 1' | grep -q '^1$'"]
+      test: ["CMD-SHELL", "psql -U baseharbor_admin -d postgres -tAc 'SELECT 1' | grep -q '^1$'"]
       interval: 5s
       timeout: 5s
       retries: 12
