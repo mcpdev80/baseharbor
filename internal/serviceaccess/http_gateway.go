@@ -32,6 +32,7 @@ type HTTPGatewaySpec struct {
 	ContainerPort    int
 	Networks         []string
 	RequireClient    bool
+	DenyPaths        []string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
@@ -78,6 +79,14 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	default:
 		return HTTPGatewayFiles{}, fmt.Errorf("unsupported HTTP service gateway authentication %q", authentication)
 	}
+	var denyBlock strings.Builder
+	for i, path := range denyPaths {
+		path = strings.TrimSpace(path)
+		if path == "" || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\r\n{}") {
+			continue
+		}
+		fmt.Fprintf(&denyBlock, "  @baseharbor_deny_%d path %s*\n  respond @baseharbor_deny_%d 404\n", i, path, i)
+	}
 	if authentication == AuthenticationToken {
 		token, err := projectGatewayAuthToken(dir, policy.AuthTokenFile)
 		if err != nil {
@@ -85,7 +94,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		files.AuthToken = token
 	}
-	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication)
+	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -387,7 +396,7 @@ func WaitHTTPS(ctx context.Context, client *http.Client, endpoint, path string) 
 	}
 }
 
-func caddyfile(upstream string, port int, authentication AuthenticationMode) string {
+func caddyfile(upstream string, port int, authentication AuthenticationMode, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -411,7 +420,7 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode) str
 
 :%d {
   tls /certs/server.pem /certs/server-key.pem%s
-%s  reverse_proxy %s
+%s%s  reverse_proxy %s
 }
-`, port, tlsBlock, authBlock, upstream)
+`, port, tlsBlock, denyBlock.String(), authBlock, upstream)
 }
