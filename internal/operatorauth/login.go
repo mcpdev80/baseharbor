@@ -37,13 +37,17 @@ func interactiveFromContext(ctx context.Context) (Interactive, bool) {
 	return value, ok && value.Out != nil
 }
 
-func Login(ctx context.Context, cfg Config, out io.Writer) (*identity.Principal, error) {
+func Login(ctx context.Context, target, environment string, cfg Config, out io.Writer) (*identity.Principal, error) {
 	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("discover operator OIDC provider: %w", err)
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listenAddr := "127.0.0.1:0"
+	if cfg.CallbackPort > 0 {
+		listenAddr = fmt.Sprintf("127.0.0.1:%d", cfg.CallbackPort)
+	}
+	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, fmt.Errorf("open local OIDC callback: %w", err)
 	}
@@ -144,11 +148,13 @@ func Login(ctx context.Context, cfg Config, out io.Writer) (*identity.Principal,
 		expiry = time.Now().Add(10 * time.Minute)
 	}
 	session := Session{
-		Issuer:    principal.Issuer,
-		Subject:   principal.Subject,
-		ClientID:  cfg.ClientID,
-		IDToken:   rawIDToken,
-		ExpiresAt: expiry,
+		Target:      strings.TrimSpace(target),
+		Environment: strings.TrimSpace(environment),
+		Issuer:      principal.Issuer,
+		Subject:     principal.Subject,
+		ClientID:    cfg.ClientID,
+		IDToken:     rawIDToken,
+		ExpiresAt:   expiry,
 	}
 	if err := SaveSession(session); err != nil {
 		return nil, err
@@ -156,15 +162,14 @@ func Login(ctx context.Context, cfg Config, out io.Writer) (*identity.Principal,
 	return principal, nil
 }
 
-func Ensure(ctx context.Context, environment string) (context.Context, error) {
+func Ensure(ctx context.Context, target, environment string, cfg Config) (context.Context, error) {
 	if !EnforcementEnabled(ctx) || !ManagedEnvironment(environment) {
 		return ctx, nil
 	}
-	cfg, err := ConfigFromEnv()
-	if err != nil {
+	if err := cfg.Validate(); err != nil {
 		return ctx, err
 	}
-	principal, err := VerifySession(ctx, cfg)
+	principal, err := VerifySession(ctx, target, environment, cfg)
 	if err == nil {
 		setPrincipal(ctx, principal)
 		return identity.WithPrincipal(ctx, principal), nil
@@ -177,7 +182,7 @@ func Ensure(ctx context.Context, environment string) (context.Context, error) {
 	if !ok {
 		return ctx, ErrAuthenticationRequired
 	}
-	principal, err = Login(ctx, cfg, interactive.Out)
+	principal, err = Login(ctx, target, environment, cfg, interactive.Out)
 	if err != nil {
 		return ctx, err
 	}
