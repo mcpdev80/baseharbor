@@ -34,6 +34,38 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 		m.Services.Identity
 }
 
+func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]string, error) {
+	if !requiresDevelopmentGateway(m) {
+		return nil, nil
+	}
+	routes, err := devgateway.Routes(target)
+	if err != nil {
+		return nil, err
+	}
+	appOwner := "app/" + m.Name + "/" + m.Environment
+	seen := map[string]struct{}{}
+	var hosts []string
+	for _, route := range routes {
+		include := route.Owner == appOwner
+		if m.Services.SecretsManagementUI && route.Owner == "shared:openbao" {
+			include = true
+		}
+		if m.Services.ObservabilityManagementUI && route.Owner == "shared:prometheus" {
+			include = true
+		}
+		if !include {
+			continue
+		}
+		if _, ok := seen[route.Host]; ok {
+			continue
+		}
+		seen[route.Host] = struct{}{}
+		hosts = append(hosts, route.Host)
+	}
+	sort.Strings(hosts)
+	return hosts, nil
+}
+
 func (e *applicationApplyExecution) reconcileDevelopmentGateway(ctx context.Context) error {
 	if !devaccess.Enabled(e.manifest.Environment) {
 		return nil
