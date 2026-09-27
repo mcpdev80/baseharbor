@@ -50,16 +50,10 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
 		t.Fatalf("postgres provider distribution identity=%#v", pg)
 	}
-	if _, err := registry.ResolvePlacement(
-		capability.ProviderPostgreSQL,
-		capability.ProviderPlacement{
-			Scope:           capability.ScopeShared,
-			SharingBoundary: pgBoundary,
-			Ownership:       capability.OwnershipBaseHarbor,
-		},
-		"beta",
-	); err == nil {
-		t.Fatal("beta unexpectedly resolved PostgreSQL without an SQL binding")
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Application == "beta" && binding.Resource.Provider == capability.ProviderPostgreSQL {
+			t.Fatalf("beta unexpectedly has PostgreSQL binding %#v", binding)
+		}
 	}
 }
 
