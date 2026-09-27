@@ -148,13 +148,6 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if len(current.Routes) == 0 {
 		return nil
 	}
-	if _, err := os.Stat(files.Compose); errors.Is(err, os.ErrNotExist) {
-		if err := checkGatewayPort(); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o700); err != nil {
 		return err
 	}
@@ -204,7 +197,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		return fmt.Errorf("validate development gateway: %w", err)
 	}
 	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("start development gateway: %w", err)
+		return fmt.Errorf("start development gateway on local HTTPS port 443: %w", err)
 	}
 	return nil
 }
@@ -473,10 +466,3 @@ func projectReadable(source, target string) error {
 	return nil
 }
 
-func checkGatewayPort() error {
-	listener, err := net.Listen("tcp", "127.0.0.1:443")
-	if err != nil {
-		return fmt.Errorf("canonical development URLs require local HTTPS port 443: %w", err)
-	}
-	return listener.Close()
-}
