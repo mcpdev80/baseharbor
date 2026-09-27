@@ -120,10 +120,6 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		return Placement{}, err
 	}
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
-	prefix := ""
-	if namespace != "" {
-		prefix = namespace + "-"
-	}
 	switch p.Scope {
 	case capability.ScopeShared:
 		project := bhruntime.SharedProjectName(namespace)
