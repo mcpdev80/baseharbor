@@ -45,7 +45,11 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 		})
 	}
 	if application.HasIdentity(m) {
-		placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderKeycloak)
+		identityProvider, providerErr := application.IdentityProviderForDeployment()
+		if providerErr != nil {
+			return RecoverySelection{}, providerErr
+		}
+		placement, placementErr := application.ResolveProviderPlacement(m, identityProvider.Kind)
 		if placementErr != nil {
 			return RecoverySelection{}, placementErr
 		}
