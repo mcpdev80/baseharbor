@@ -488,6 +488,25 @@ func (c *applicationStatusCollection) collectLogsCheck(ctx context.Context) {
 	c.result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
 }
 
+func (c *applicationStatusCollection) collectCanonicalDevelopmentCheck(ctx context.Context) {
+	if !requiresDevelopmentGateway(c.manifest) {
+		return
+	}
+	hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, c.manifest)
+	if err != nil {
+		c.result.AddCheck("canonical-development-urls", false, err.Error())
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	err = devgateway.VerifyHosts(checkCtx, c.resolved.Target.Name, hosts)
+	cancel()
+	if err != nil {
+		c.result.AddCheck("canonical-development-urls", false, err.Error())
+		return
+	}
+	c.result.AddCheck("canonical-development-urls", true, fmt.Sprintf("%d canonical HTTPS endpoint(s) verified", len(hosts)))
+}
+
 func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) {
 	if len(c.manifest.Exposures) == 0 {
 		return
