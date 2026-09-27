@@ -313,7 +313,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
-      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,uid=5050,gid=5050,mode=0700
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
       - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
