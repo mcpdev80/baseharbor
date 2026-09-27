@@ -54,7 +54,7 @@ The guided flow may ask you to:
 - name application-owned secrets and mark them required or optional;
 - choose whether an application secret is generated, entered during first apply, or configured later;
 - confirm Runtime API permissions derived from concrete source evidence.
-- choose the Target-scoped development domain once (default `baseharbor.localhost`);
+- choose the Target-scoped development domain once (default `baha.localhost`);
 - accept or customize the single Target-scoped development management login used by selected local management surfaces.
 
 Before writing `baseharbor.yaml`, BaseHarbor shows a human-readable adoption summary. Raw YAML is secondary detail available with `--verbose`.
@@ -79,7 +79,7 @@ On the first run BaseHarbor may ask for information it cannot safely invent, for
 - a missing required application-secret value;
 - confirmation of a safe port fallback.
 
-For a development Target, BaseHarbor derives browser-facing URLs from the Target-scoped development domain. Internal random loopback ports remain runtime implementation detail. The default domain produces names such as `https://my-app-api.baseharbor.localhost` and `https://shared-openbao.baseharbor.localhost`.
+For a development Target, BaseHarbor derives browser-facing URLs from the Target-scoped development domain. Internal random loopback ports remain runtime implementation detail. The default domain produces names such as `https://my-app.baha.localhost` and `https://secrets.baha.localhost`.
 
 Interactive secret input disables terminal echo. Provider/runtime credentials are managed by BaseHarbor and are not requested from the developer.
 
