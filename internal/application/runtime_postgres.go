@@ -436,7 +436,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 	}
 	if m.Services.SQLManagementUI {
 		if values[PostgresUIEmailEnv] == "" {
-			values[PostgresUIEmailEnv] = "baseharbor@localhost"
+			values[PostgresUIEmailEnv] = "baseharbor@example.com"
 		}
 		if values[PostgresUIPasswordEnv] == "" {
 			value, err := randomApplicationSecret(24)
