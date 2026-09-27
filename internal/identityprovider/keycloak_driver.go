@@ -21,6 +21,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+type keycloakRuntimeEngine interface {
+	Engine() string
+}
+
 type KeycloakDriver struct {
 	runtime   KeycloakRuntime
 	app       application.Manifest
@@ -360,9 +364,26 @@ func (d *KeycloakDriver) publicBaseURL() (string, error) {
 	if !isDevelopmentIdentityEnvironment(d.app.Environment) {
 		return d.files.PublicURL, nil
 	}
-	host, err := devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
 	if err != nil {
 		return "", err
+	}
+	var host string
+	switch placement.Scope {
+	case capability.ScopeShared:
+		host, err = devaccess.SharedHost(d.targetName(), "identity")
+	case capability.ScopeApplication:
+		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	case capability.ScopeExternal:
+		return "", errors.New("external OIDC has no managed Keycloak public URL")
+	default:
+		return "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+	if err != nil {
+		return "", err
+	}
+	if engine, ok := d.runtime.(keycloakRuntimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
+		return "https://" + host + ":8443", nil
 	}
 	return devaccess.CanonicalURL(host), nil
 }
