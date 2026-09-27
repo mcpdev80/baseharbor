@@ -28,7 +28,7 @@ var (
 		Services:        []ServiceKind{ServiceSQL},
 		Capabilities:    []SpecificationID{SQLV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "sql", Class: InterfaceApplication, Protocol: "postgresql", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "sql", Class: InterfaceApplication, Protocol: "postgresql", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
 			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
@@ -41,7 +41,7 @@ var (
 		Services:        []ServiceKind{ServiceCache},
 		Capabilities:    []SpecificationID{KeyValueV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
 			{Name: "logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
@@ -54,7 +54,7 @@ var (
 		Services:        []ServiceKind{ServiceSecrets},
 		Capabilities:    []SpecificationID{SecretsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
-		Interfaces: []ProviderInterface{{Name: "api", Class: InterfaceManagement, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "api", Class: InterfaceManagement, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Backup: true, Restore: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
@@ -68,7 +68,7 @@ var (
 		Services:        []ServiceKind{ServiceExposure},
 		Capabilities:    []SpecificationID{ExposureHTTPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "ingress", Class: InterfaceApplication, Protocol: "http", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "ingress", Class: InterfaceApplication, Protocol: "http", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
@@ -82,7 +82,7 @@ var (
 		Services:        []ServiceKind{ServiceObjectStorage},
 		Capabilities:    []SpecificationID{ObjectStorageS3V1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
-		Interfaces: []ProviderInterface{{Name: "s3", Class: InterfaceApplication, Protocol: "s3", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "s3", Class: InterfaceApplication, Protocol: "s3", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
@@ -96,7 +96,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TelemetryOTLPV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
-		Interfaces: []ProviderInterface{{Name: "otlp", Class: InterfaceApplication, Protocol: "otlp", Intrinsic: true}, {Name: "health", Class: InterfaceHealth, Protocol: "http", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "otlp", Class: InterfaceApplication, Protocol: "otlp", Intrinsic: true}, {Name: "health", Class: InterfaceHealth, Protocol: "http", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "collector-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 8888, Path: "/metrics"},
@@ -110,7 +110,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{MetricsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceObservability, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceObservability, Protocol: "https", Optional: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "prometheus-metrics", Kind: ObservabilityMetrics, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
@@ -124,7 +124,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{LogsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "loki-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 3100, Path: "/metrics"},
@@ -138,7 +138,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TracesV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
-		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "tempo-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 3200, Path: "/metrics"},
@@ -152,7 +152,7 @@ var (
 		Services:        []ServiceKind{ServiceIdentity},
 		Capabilities:    []SpecificationID{IdentityOIDCV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}, {Name: "admin-api", Class: InterfaceManagement, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
+		Interfaces:      []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}, {Name: "admin-api", Class: InterfaceManagement, Protocol: "https", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "keycloak-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 9000, Path: "/metrics"},
@@ -166,7 +166,7 @@ var (
 		Services:        []ServiceKind{ServiceIdentity},
 		Capabilities:    []SpecificationID{IdentityOIDCV1.ID},
 		SupportedScopes: []ProviderScope{ScopeExternal},
-		Interfaces: []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
