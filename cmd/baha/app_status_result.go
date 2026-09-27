@@ -23,6 +23,7 @@ type applicationStatusResult struct {
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
 	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
+	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -51,6 +52,13 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 			if serviceTLSErr != nil || !serviceTLSLifecycleHealthy(serviceTLS) {
 				result.Ready = false
 			}
+		}
+	}
+
+	var managementUI []application.ManagementUISurface
+	if result.State != "not_applied" {
+		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
+			managementUI, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
 		}
 	}
 
@@ -85,6 +93,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ServiceTLS:      serviceTLS,
 		RuntimeArtifact: runtimeArtifact,
 		RuntimeDocsURL:  runtimeDocsURL,
+		ManagementUI:    managementUI,
 		tlsStatus:       tlsStatus,
 		tlsErr:          tlsErr,
 		serviceTLSErr:   serviceTLSErr,
