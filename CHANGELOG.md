@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
 - Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
 - Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
+- Target-scoped development access with one configurable domain (default `baseharbor.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
 
 ### Changed
 
@@ -22,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
 - Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
 - `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
+- Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
 
 ### Fixed
 
@@ -33,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
 - Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
 - Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
+- The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
 
 ## [0.4.16] - 2026-09-26
 
