@@ -142,7 +142,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/repositoryinspect -run '^TestAnalyzeComposeFileDetectsExplicitWorkloadHTTPSProtocol
+          go test ./internal/repositoryinspect -run TestAnalyzeComposeFileDetectsExplicitWorkloadHTTPSProtocol -count=1
+          go test ./cmd/baha -run TestDevelopmentWorkloadRoute -count=1
 
       - name: Verify Podman Quadlet runtime
         id: quadlet
@@ -255,137 +256,6 @@ jobs:
           Demo revision	success	${{ steps.demo_revision.outputs.demo_ref }}
           Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Skipped for workload-routing focused checks
           Cleanup	${{ steps.cleanup.outcome }}	Skipped for workload-routing focused checks
-          EOF
-          mkdir -p "$out/demo"
-          cp -a "$RUNNER_TEMP/targeted-demo-raw/." "$out/demo/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$out" \
-            "BaseHarbor Targeted Demo Evidence" \
-            "targeted/${{ steps.target.outputs.runtime }}/${{ steps.target.outputs.gate }}" \
-            "${{ steps.target.outputs.ref }}" \
-            "${{ steps.candidate.outputs.sha || github.sha }}" \
-            "$rows"
-
-      - name: Upload targeted gate evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: targeted-${{ steps.target.outputs.runtime }}-${{ steps.target.outputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/targeted-demo-evidence
-          if-no-files-found: error
-          retention-days: 30
- -count=1
-          go test ./cmd/baha -run '^TestDevelopmentWorkloadRoute' -count=1
-
-      - name: Verify Podman Quadlet runtime
-        id: quadlet
-        if: steps.target.outputs.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          podman info >/tmp/targeted-podman-info.txt
-
-          generator=""
-          for candidate in \
-            "$(command -v podman-system-generator 2>/dev/null || true)" \
-            /usr/lib/systemd/system-generators/podman-system-generator \
-            /usr/libexec/podman/quadlet
-          do
-            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-              generator="$candidate"
-              break
-            fi
-          done
-          test -n "$generator"
-          "$generator" --user --dryrun >/tmp/targeted-podman-quadlet-generator.txt
-
-          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
-          #!/bin/sh
-          echo "podman compose is forbidden in Podman Quadlet targeted validation" >&2
-          exit 97
-          EOF
-          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
-          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
-
-      - name: Run selected demo gate
-        id: demo
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
-          BASEHARBOR_TEST_RUNTIME: ${{ steps.target.outputs.runtime }}
-          DEMO_GATE: ${{ steps.target.outputs.gate }}
-          ARTIFACT_DIR: /tmp/baseharbor-demo-targeted
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/baseharbor-demo-targeted-repo "$ARTIFACT_DIR"
-          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted-repo
-          git -C /tmp/baseharbor-demo-targeted-repo fetch --depth 1 origin "${{ steps.demo_revision.outputs.demo_ref }}"
-          git -C /tmp/baseharbor-demo-targeted-repo checkout --detach FETCH_HEAD
-          test "$(git -C /tmp/baseharbor-demo-targeted-repo rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
-          cd /tmp/baseharbor-demo-targeted-repo
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
-
-      - name: Snapshot demo artifacts
-        id: snapshot
-        if: always()
-        shell: bash
-        run: |
-          rm -rf "$RUNNER_TEMP/targeted-demo-raw"
-          mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
-          cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
-
-          if [ "${{ steps.demo.outcome }}" != "success" ]; then
-            runtime="${{ steps.target.outputs.runtime }}"
-            diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
-            mkdir -p "$diagnostics"
-
-            "$runtime" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-            "$runtime" ps -a --format '{{.Names}}\t{{.Ports}}' | grep -E '(^|[[:space:]])(baseharbor-|bh-)|127\.0\.0\.1:443->' >"$diagnostics/baseharbor-ports.tsv" 2>&1 || true
-
-            mapfile -t ids < <("$runtime" ps -aq 2>/dev/null || true)
-            for id in "${ids[@]}"; do
-              meta=$("$runtime" inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "$id" 2>/dev/null || true)
-              IFS='|' read -r name docker_project podman_project <<< "$meta"
-              name="${name#/}"
-              project="$docker_project"
-              if [ -z "$project" ] || [ "$project" = "<no value>" ]; then project="$podman_project"; fi
-              case "$project:$name" in
-                baseharbor*:*|bh-*:*|*:baseharbor-*|*:bh-*) ;;
-                *) continue ;;
-              esac
-              [ -n "$name" ] || name="$id"
-              "$runtime" inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
-              "$runtime" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
-              "$runtime" logs --tail 300 "$id" \
-                | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
-                >"$diagnostics/$name.log" 2>&1 || true
-            done
-          fi
-
-      - name: Cleanup runtime state
-        id: cleanup
-        if: always()
-        shell: bash
-        timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
-
-      - name: Generate targeted gate evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/targeted-demo-evidence"
-          rows="$RUNNER_TEMP/targeted-demo-evidence.tsv"
-          cat >"$rows" <<EOF
-          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
-          Runtime reset	${{ steps.reset.outcome }}	Clean ${{ steps.target.outputs.runtime }} state
-          Podman Quadlet runtime	${{ steps.quadlet.outcome }}	Required for Podman; Compose provider blocked
-          Demo revision	success	${{ steps.demo_revision.outputs.demo_ref }}
-          Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Single targeted acceptance gate
-          Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF
           mkdir -p "$out/demo"
           cp -a "$RUNNER_TEMP/targeted-demo-raw/." "$out/demo/" 2>/dev/null || true
