@@ -459,6 +459,14 @@ func applicationExposureNetworkForRuntime(m Manifest, runtimeProject string) str
 	return ApplicationExposureNetworkName(m)
 }
 
+func ManagedWorkloadEnvironment(m Manifest, files RuntimeFiles) (map[string]string, error) {
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return nil, err
+	}
+	return containerRuntimeEnvironment(m, values)
+}
+
 func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[string]string, error) {
 	env := map[string]string{}
 	postgres := SQLInstanceNames(m)

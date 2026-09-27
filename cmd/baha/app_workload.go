@@ -64,6 +64,9 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	if err != nil {
 		return application.WorkloadSecurityReport{}, fmt.Errorf("render repository Compose for security preflight: %w", err)
 	}
+	if _, err := analyzeManagedServiceReferenceRewrites(resolved.Manifest, []byte(rendered), selected); err != nil {
+		return application.WorkloadSecurityReport{}, fmt.Errorf("managed service replacement would leave an unresolved repository reference: %w", err)
+	}
 	report, err := application.AnalyzeRenderedComposeSecurity(resolved.Manifest, []byte(rendered))
 	if err != nil {
 		return application.WorkloadSecurityReport{}, err
@@ -168,6 +171,7 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 
 type renderedComposeConfig struct {
 	Services map[string]struct {
+		Image       string         `json:"image"`
 		Environment map[string]any `json:"environment"`
 	} `json:"services"`
 }
@@ -220,6 +224,13 @@ func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compos
 
 func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string) ([]string, error) {
 	composeFiles := []string{workload.Compose, workload.Override}
+	rewriteOverride, enabled, err := materializeManagedServiceReferenceRewrite(ctx, compose, resolved, workload, files, environment)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		composeFiles = append(composeFiles, rewriteOverride)
+	}
 	plan, err := repositoryWorkloadBindingPlan(ctx, compose, resolved, workload, environment)
 	if err != nil {
 		return nil, err
