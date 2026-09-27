@@ -284,6 +284,41 @@ func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDi
 	return VerifySharedValkey(ctx, compose, dataDir, namespace, m)
 }
 
+func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string) error {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var result error
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		environment := entry.Name()
+		files := SharedBackendFilesAt(dataDir, namespace, environment)
+		if _, statErr := os.Stat(files.Compose); statErr == nil {
+			if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+				result = errors.Join(result, fmt.Errorf("destroy shared backend provider %s: %w", environment, err))
+				continue
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			result = errors.Join(result, statErr)
+			continue
+		}
+		if err := os.RemoveAll(files.Dir); err != nil {
+			result = errors.Join(result, err)
+		}
+	}
+	if result != nil {
+		return result
+	}
+	return os.RemoveAll(root)
+}
+
 func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
 	state, err := loadSharedBackendState(shared.State, m.Environment)
