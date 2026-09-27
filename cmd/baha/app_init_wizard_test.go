@@ -400,7 +400,7 @@ func TestPromptCapabilityListNonTTYKeepsDetectedDefaults(t *testing.T) {
 	input := strings.NewReader("\n")
 	appInitInput = input
 	reader := bufio.NewReader(input)
-	defaults := []bool{true, true, false, true, false, false, false}
+	defaults := []bool{true, true, false, true, false, false, false, false}
 
 	got, err := promptCapabilityList(reader, io.Discard, defaults, false)
 	if err != nil {
@@ -419,11 +419,11 @@ func TestPromptCapabilityListNonTTYAcceptsExplicitSelection(t *testing.T) {
 	appInitInput = input
 	reader := bufio.NewReader(input)
 
-	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 7), true)
+	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 8), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []bool{true, false, true, false, false, false, true}
+	want := []bool{true, false, true, false, false, false, true, false}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selection = %#v, want %#v", got, want)
 	}
