@@ -22,6 +22,7 @@ type composeService struct {
 	Ports                   []string
 	HealthCheck             bool
 	DatabaseBootstrap       bool
+	WorkloadProtocol        string
 }
 
 type composeDocument struct {
@@ -81,6 +82,9 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		}
 		if raw, ok := definition["healthcheck"]; ok && raw != nil {
 			item.HealthCheck = true
+		}
+		if raw, ok := definition["labels"]; ok {
+			item.WorkloadProtocol = composeBaseHarborWorkloadProtocol(raw)
 		}
 		if raw, ok := definition["volumes"]; ok {
 			item.DatabaseBootstrap = composeUsesDatabaseInitDirectory(raw)
@@ -269,4 +273,29 @@ func composePortValues(raw any) []string {
 		}
 	}
 	return ports
+}
+
+
+func composeBaseHarborWorkloadProtocol(raw any) string {
+	const key = "io.baseharbor.workload.protocol"
+	labels := map[string]string{}
+	switch typed := raw.(type) {
+	case map[string]any:
+		for name, value := range typed {
+			labels[strings.TrimSpace(name)] = strings.TrimSpace(fmt.Sprint(value))
+		}
+	case []any:
+		for _, entry := range typed {
+			value := strings.TrimSpace(fmt.Sprint(entry))
+			name, setting, ok := strings.Cut(value, "=")
+			if ok {
+				labels[strings.TrimSpace(name)] = strings.TrimSpace(setting)
+			}
+		}
+	}
+	protocol := strings.ToLower(strings.TrimSpace(labels[key]))
+	if protocol == "http" || protocol == "https" {
+		return protocol
+	}
+	return ""
 }
