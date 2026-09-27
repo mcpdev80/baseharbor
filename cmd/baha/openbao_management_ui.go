@@ -24,9 +24,9 @@ func openBaoManagementUISurface(files bhruntime.Files) (application.ManagementUI
 		return application.ManagementUISurface{}, err
 	}
 	return application.ManagementUISurface{
-		Service:        "secrets",
-		Purpose:        application.ProviderInterfaceAdministration,
-		URL:            endpoint + "/ui/",
+		Service: "secrets",
+		Purpose: application.ProviderInterfaceAdministration,
+		URL: endpoint + "/ui/",
 		Authentication: "openbao-native",
 	}, nil
 }
