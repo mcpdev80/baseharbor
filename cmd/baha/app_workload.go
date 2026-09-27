@@ -85,6 +85,37 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	return report, report.Error()
 }
 
+func preflightRepositoryWorkloadSecuritySource(resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
+	if !resolved.FromRepository {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	repositoryRoot := resolved.repositoryRoot()
+	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
+	if err != nil || !found {
+		return application.WorkloadSecurityReport{}, err
+	}
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, fmt.Errorf("read repository Compose for security preflight: %w", err)
+	}
+	report, err := application.AnalyzeComposeSecuritySource(resolved.Manifest, data)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	selectedSet := make(map[string]struct{}, len(selected))
+	for _, service := range selected {
+		selectedSet[service] = struct{}{}
+	}
+	filtered := report.Findings[:0]
+	for _, finding := range report.Findings {
+		if _, ok := selectedSet[finding.Service]; ok {
+			filtered = append(filtered, finding)
+		}
+	}
+	report.Findings = filtered
+	return report, report.Error()
+}
+
 func workloadSecurityPreflightEnvironment(m application.Manifest) map[string]string {
 	required := application.RequiredSecretNames(m)
 	if len(required) == 0 {
