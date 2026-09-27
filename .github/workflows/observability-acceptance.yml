@@ -56,6 +56,7 @@ jobs:
 
       - name: Reset persistent runner state
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Build runtime image from tested checkout
@@ -94,6 +95,7 @@ jobs:
       - name: Cleanup persistent runner state
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
   podman:
@@ -119,6 +121,7 @@ jobs:
 
       - name: Reset persistent runner state
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Build runtime image from tested checkout
@@ -185,4 +188,5 @@ jobs:
       - name: Cleanup persistent runner state
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
