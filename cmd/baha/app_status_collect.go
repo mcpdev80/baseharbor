@@ -234,7 +234,7 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
-	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI {
+	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI && !c.manifest.Services.SecretsManagementUI {
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -254,6 +254,18 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 	}
 	if c.manifest.Services.ObjectStorageManagementUI {
 		if err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name); err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		count++
+	}
+	if c.manifest.Services.SecretsManagementUI {
+		platformFiles, err := existingTargetRuntimeFiles(checkCtx)
+		if err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		if err := verifyOpenBaoManagementUI(checkCtx, platformFiles); err != nil {
 			c.result.AddCheck("management-ui", false, err.Error())
 			return
 		}
