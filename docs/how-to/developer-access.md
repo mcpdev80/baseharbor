@@ -2,6 +2,54 @@
 
 BaseHarbor provides a trusted-local developer access layer for day-to-day Compose workflows. The goal is to use logical application resource and workload names instead of generated ports, container names or OpenBao internals.
 
+## Canonical development URLs
+
+Each local development Target owns one development domain. The default is:
+
+```text
+baseharbor.localhost
+```
+
+The guided setup asks for this value once. Change or inspect it later with:
+
+```bash
+baha dev domain
+baha dev domain dev.example.internal
+```
+
+BaseHarbor derives browser-facing names automatically; applications do not carry these local names in `baseharbor.yaml`.
+
+```text
+<app>-api.<domain>
+<app>-pgadmin.<domain>
+<app>-cache.<domain>
+<app>-identity.<domain>
+<app>-identity-admin.<domain>
+
+shared-storage.<domain>
+shared-openbao.<domain>
+shared-prometheus.<domain>
+```
+
+A Target-scoped local HTTPS gateway owns the canonical browser entry points and routes to the already verified application/provider endpoints. The gateway certificate contains the active canonical hosts as DNS SANs and backend TLS is verified against BaseHarbor-managed trust. Random loopback ports remain runtime implementation details and are not normal developer-facing addresses.
+
+For an unambiguous repository workload with one selected service and one detected HTTP port, BaseHarbor automatically publishes the canonical `<app>-api.<domain>` route. Ambiguous workloads are not guessed and require explicit exposure intent.
+
+`baha status`, `baha doctor` and structured status output use canonical browser URLs in development. Internal loopback ports remain available only to lifecycle/readiness internals and verbose diagnostics.
+
+## Development management login
+
+A development Target also owns one management login when Identity or a management UI is selected. The default username is `developer`; BaseHarbor generates a strong password unless the guided setup receives an explicit password.
+
+```bash
+baha dev credentials
+baha dev credentials --reset
+```
+
+The same development identity is reconciled through managed OIDC when Identity is present. Provider UIs that require native authentication receive a provider-specific adapter using the same development credentials. Database passwords, S3 credentials, runtime identities and other service credentials remain separate least-privilege credentials.
+
+This convenience boundary applies only to `dev`. Test/prod continue to require individual operator OIDC identities and environment policy.
+
 ## Database and cache shells
 
 Inside an application repository:
