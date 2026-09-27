@@ -311,7 +311,7 @@ func (c runtimeBrokerComposeConfig) writeNetworks(b *strings.Builder) {
 	m := c.manifest
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
-	if application.HasManagedRuntimeServices(m) {
+	if application.HasApplicationScopedRuntimeServices(m) {
 		b.WriteString("    external: true\n")
 	}
 	fmt.Fprintf(b, "    name: %s\n", strconv.Quote(c.backendNetwork))
