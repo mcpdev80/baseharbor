@@ -280,7 +280,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		cancel()
 		detail := "object storage management UI reachable over TLS"
 		if devaccess.Enabled(c.manifest.Environment) {
-			if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "storage"); hostErr == nil {
+			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, "storage"); hostErr == nil {
 				detail = devaccess.CanonicalURL(host)
 			}
 		}
@@ -471,7 +471,11 @@ func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) 
 	}
 	if devaccess.Enabled(c.manifest.Environment) {
 		for _, route := range c.manifest.Exposures {
-			host, err := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, route.Name)
+			label := route.Name
+			if len(c.manifest.Exposures) == 1 {
+				label = "api"
+			}
+			host, err := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, label)
 			if err != nil {
 				c.result.AddCheck("managed-exposure/"+route.Name, false, err.Error())
 				continue
