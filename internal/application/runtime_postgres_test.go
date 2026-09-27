@@ -133,6 +133,7 @@ func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
 	for _, want := range []string{
 		"  postgres-ui:\n",
 		PostgresUIImage,
+		"PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py",
 		`127.0.0.1:${BASEHARBOR_POSTGRES_UI_HOST_PORT}:8443`,
 		"  cache-ui:\n",
 		"  cache-ui-access:\n",
