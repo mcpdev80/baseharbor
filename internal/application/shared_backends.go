@@ -50,8 +50,8 @@ type sharedPostgresResource struct {
 }
 
 type sharedValkeyResource struct {
-	Password string `json:"password"`
-	HostPort int    `json:"host_port"`
+	CredentialReference string `json:"credential_reference"`
+	HostPort             int    `json:"host_port"`
 }
 
 type SharedBackendFiles struct {
@@ -191,11 +191,16 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 					return false, err
 				}
 			}
-			password := values[valkeyRuntimeKey(instance, "PASSWORD")]
-			if password == "" {
-				return false, fmt.Errorf("shared Valkey application resource %s is missing password", instance)
+			ref, err := ensureSharedValkeyCredential(shared.Dir, sharedBackendApplicationKey(m), instance)
+			if err != nil {
+				return false, err
 			}
-			app.Cache[instance] = sharedValkeyResource{Password: password, HostPort: port}
+			password, err := readSharedBackendCredential(shared.Dir, ref)
+			if err != nil {
+				return false, err
+			}
+			app.Cache[instance] = sharedValkeyResource{CredentialReference: ref, HostPort: port}
+			values[valkeyRuntimeKey(instance, "PASSWORD")] = password
 			values[valkeyRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
 			values[valkeyContainerHostKey(instance)] = sharedValkeyAccessAlias(m, instance)
 		}
@@ -354,15 +359,32 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.Compose, dataDir,
 	if !ok {
 		return fmt.Errorf("shared Valkey application registration is missing")
 	}
+	appKey := sharedBackendApplicationKey(m)
 	for instance, resource := range app.Cache {
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared Valkey credential %s: %w", instance, err)
+		}
 		service := sharedValkeyService(m, instance)
-		script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(resource.Password))
+		script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(password))
 		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
 		}
 		if strings.TrimSpace(out) != "PONG" {
 			return fmt.Errorf("verify shared Valkey %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+		for otherKey, otherApp := range state.Applications {
+			if otherKey == appKey {
+				continue
+			}
+			for otherInstance := range otherApp.Cache {
+				otherService := sharedValkeyServiceFor(otherApp.Application, otherApp.Environment, otherInstance)
+				deny := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h %s -p 6379 ping", shellQuote(password), shellQuote(otherService))
+				if denyOut, denyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", deny); denyErr == nil && strings.TrimSpace(denyOut) == "PONG" {
+					return fmt.Errorf("shared Valkey isolation failed: %s/%s can authenticate to %s/%s", app.Application, instance, otherApp.Application, otherInstance)
+				}
+			}
 		}
 	}
 	return nil
@@ -836,6 +858,10 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 		sort.Strings(instances)
 		for _, instance := range instances {
 			resource := app.Cache[instance]
+			password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+			if err != nil {
+				return err
+			}
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(app.Application), sharedBackendToken(instance))
 			valkeyPolicy, err := serviceaccess.Resolve(state.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
@@ -855,7 +881,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 			}
 			connections = append(connections, map[string]any{
 				"label": label, "host": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
-				"port": 6379, "username": "default", "password": resource.Password, "dbIndex": 0,
+				"port": 6379, "username": "default", "password": password, "dbIndex": 0,
 				"tls": map[string]any{
 					"ca":         []string{strings.TrimSpace(string(caData))},
 					"servername": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
@@ -991,8 +1017,12 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		for instance, resource := range app.Cache {
+			password, err := readSharedBackendCredential(files.Dir, resource.CredentialReference)
+			if err != nil {
+				return err
+			}
 			fmt.Fprintf(&env, "%s=%d\n", sharedValkeyPortEnvFor(app.Application, app.Environment, instance), resource.HostPort)
-			fmt.Fprintf(&env, "%s=%s\n", sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance), resource.Password)
+			fmt.Fprintf(&env, "%s=%s\n", sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance), password)
 		}
 	}
 	if err := writeOwnerOnlyFile(files.Env, []byte(env.String())); err != nil {
@@ -1341,6 +1371,35 @@ func postgresIdentifierWithHash(base, identity string) string {
 		base = base[:maxBase]
 	}
 	return strings.Trim(base, "_") + suffix
+}
+
+func ensureSharedValkeyCredential(root, owner, instance string) (string, error) {
+	token := sharedBackendToken(owner)
+	if token == "" {
+		token = "application"
+	}
+	name := token
+	if strings.TrimSpace(instance) != "" {
+		name += "-" + sharedBackendToken(instance)
+	}
+	ref := filepath.ToSlash(filepath.Join("credentials", "valkey", name+".password"))
+	path := filepath.Join(root, filepath.FromSlash(ref))
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) != "" {
+		return ref, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	password, err := sharedBackendSecret(32)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", err
+	}
+	if err := writeOwnerOnlyFile(path, []byte(password+"\n")); err != nil {
+		return "", err
+	}
+	return ref, nil
 }
 
 func ensureSharedPostgresCredential(root, owner, instance string) (string, error) {
