@@ -54,6 +54,8 @@ The guided flow may ask you to:
 - name application-owned secrets and mark them required or optional;
 - choose whether an application secret is generated, entered during first apply, or configured later;
 - confirm Runtime API permissions derived from concrete source evidence.
+- choose the Target-scoped development domain once (default `baseharbor.localhost`);
+- accept or customize the single Target-scoped development management login used by selected local management surfaces.
 
 Before writing `baseharbor.yaml`, BaseHarbor shows a human-readable adoption summary. Raw YAML is secondary detail available with `--verbose`.
 
@@ -77,6 +79,8 @@ On the first run BaseHarbor may ask for information it cannot safely invent, for
 - a missing required application-secret value;
 - confirmation of a safe port fallback.
 
+For a development Target, BaseHarbor derives browser-facing URLs from the Target-scoped development domain. Internal random loopback ports remain runtime implementation detail. The default domain produces names such as `https://my-app-api.baseharbor.localhost` and `https://shared-openbao.baseharbor.localhost`.
+
 Interactive secret input disables terminal echo. Provider/runtime credentials are managed by BaseHarbor and are not requested from the developer.
 
 The same `baha up` operation continues after these decisions and converges managed infrastructure, workload bindings and readiness. After successful OpenBao bootstrap, BaseHarbor persists only the recovery-file path reference on the effective Target. Later `baha up` runs automatically reuse that reference to unseal the shared OpenBao provider when the file is available.
@@ -92,6 +96,15 @@ baha doctor
 ```
 
 A successful BaseHarbor operation means the relevant capability was verified, not merely that a container started.
+
+For local development, `status` and `doctor` report canonical HTTPS URLs rather than internal `127.0.0.1:<port>` addresses. Inspect or change the Target-scoped local access settings explicitly with:
+
+```bash
+baha dev domain
+baha dev credentials
+```
+
+`baha dev credentials` is an explicit secret-reveal command. Normal status, doctor, plan and evidence output never prints the password.
 
 ## Advanced and automation commands
 
