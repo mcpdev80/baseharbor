@@ -647,3 +647,22 @@ func TestInspectFailsClosedOnComposeExtends(t *testing.T) {
 		t.Fatalf("Inspect error = %v, want explicit extends failure", err)
 	}
 }
+
+func TestAnalyzeComposeFileDetectsExplicitWorkloadHTTPSProtocol(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  demo-app:
+    image: example/demo
+    labels:
+      io.baseharbor.workload.protocol: "https"
+    ports:
+      - "8080:8080"
+`)
+	analysis, err := AnalyzeComposeFile(root, "compose.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := analysis.WorkloadProtocols["demo-app"]; got != "https" {
+		t.Fatalf("WorkloadProtocols[demo-app] = %q, want https", got)
+	}
+}
