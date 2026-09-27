@@ -74,7 +74,8 @@ jobs:
               runtime-validation/targeted-docker) runtime="docker" ;;
               *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
             esac
-            gate="${INPUT_GATE##* }"
+            gate="$(printf '%s\n' "$INPUT_GATE" | awk '{print $(NF-1)}')"
+            demo_ref="$(printf '%s\n' "$INPUT_GATE" | awk '{print $NF}')"
             ref="$GITHUB_SHA"
           fi
 
