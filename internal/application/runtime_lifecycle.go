@@ -42,6 +42,15 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
+	if m.Services.SQLManagementUI {
+		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
+	}
+	if m.Services.CacheManagementUI {
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},
+		)
+	}
 	return resources
 }
 
