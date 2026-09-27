@@ -350,7 +350,7 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}
 	if requiresDevelopmentGateway(e.manifest) {
 		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
-			return e.reconcileDevelopmentGateway(ctx)
+			return e.reconcileDevelopmentCanonicalRoutes(ctx)
 		}); err != nil {
 			return err
 		}
