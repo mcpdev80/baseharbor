@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -131,6 +132,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
 		ContainerPort:    publicPort,
 		Networks:         []string{"identity-consumer", "identity-internal"},
+		NetworkAliases:   []string{devaccess.ProviderAlias(files.Project, "identity")},
 		DenyPaths:        []string{"/admin"},
 	}
 	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, publicPolicy, filepath.Join(dir, "public"), publicSpec)
@@ -149,6 +151,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_ADMIN_PORT",
 		ContainerPort:    9443,
 		Networks:         []string{"identity-internal"},
+		NetworkAliases:   []string{devaccess.ProviderAlias(files.Project, "identity-admin")},
 	}
 	adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(dir, "admin"), adminSpec)
 	if err != nil {
