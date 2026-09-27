@@ -2,11 +2,11 @@ package devgateway
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"crypto/tls"
-	"crypto/x509"
 	"net"
 	"net/http"
 	"os"
