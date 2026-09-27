@@ -36,13 +36,13 @@ func TestSessionIsTargetAndEnvironmentScopedAndExpires(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
 
 	session := Session{
-		Target: "local",
+		Target:      "local",
 		Environment: "test",
-		Issuer: "https://id.example.test",
-		Subject: "operator-1",
-		ClientID: "baseharbor-cli",
-		IDToken: "opaque-test-token",
-		ExpiresAt: time.Now().Add(5 * time.Minute),
+		Issuer:      "https://id.example.test",
+		Subject:     "operator-1",
+		ClientID:    "baseharbor-cli",
+		IDToken:     "opaque-test-token",
+		ExpiresAt:   time.Now().Add(5 * time.Minute),
 	}
 	if err := SaveSession(session); err != nil {
 		t.Fatal(err)
