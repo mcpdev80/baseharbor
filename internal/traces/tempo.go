@@ -120,6 +120,10 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		return Placement{}, err
 	}
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	prefix := ""
+	if namespace != "" {
+		prefix = namespace + "-"
+	}
 	switch p.Scope {
 	case capability.ScopeShared:
 		project := bhruntime.SharedProjectName(namespace)
@@ -346,10 +350,6 @@ func DestroyAllSharedProviders(ctx context.Context, runtime Runtime) error {
 func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
-	prefix := ""
-	if namespace != "" {
-		prefix = namespace + "-"
-	}
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
