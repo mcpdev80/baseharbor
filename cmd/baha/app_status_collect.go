@@ -299,7 +299,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 				service = "cache"
 			}
 			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, service); hostErr == nil {
-				detail = devaccess.CanonicalURL(host)
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 			}
 		}
 		record(result.Name, result.Err, detail)
@@ -315,7 +315,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 				service = "pgadmin"
 			}
 			if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, service); hostErr == nil {
-				detail = devaccess.CanonicalURL(host)
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 			}
 		}
 		record(result.Name, result.Err, detail)
@@ -336,7 +336,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "storage")
 				}
 				if hostErr == nil {
-					detail = devaccess.CanonicalURL(host)
+					detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 				}
 			}
 		}
@@ -353,7 +353,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		detail := "OpenBao management UI reachable over TLS"
 		if devaccess.Enabled(c.manifest.Environment) {
 			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, "openbao"); hostErr == nil {
-				detail = devaccess.CanonicalURL(host)
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 			}
 		}
 		record("openbao", err, detail)
@@ -382,7 +382,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity")
 					}
 					if hostErr == nil {
-						loginDetail = devaccess.CanonicalURL(host)
+						loginDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 					}
 				}
 			}
@@ -405,7 +405,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin")
 					}
 					if hostErr == nil {
-						adminDetail = devaccess.CanonicalURL(host)
+						adminDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 					}
 				}
 			}
@@ -428,7 +428,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "prometheus")
 				}
 				if hostErr == nil {
-					detail = devaccess.CanonicalURL(host)
+					detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
 				}
 			}
 		}
@@ -597,7 +597,7 @@ func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) 
 				c.result.AddCheck("managed-exposure/"+route.Name, false, err.Error())
 				continue
 			}
-			c.result.AddCheck("managed-exposure/"+route.Name, true, devaccess.CanonicalURL(host))
+			c.result.AddCheck("managed-exposure/"+route.Name, true, devgateway.URLForTarget(c.resolved.Target.Name, host))
 		}
 		return
 	}
