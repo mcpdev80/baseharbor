@@ -64,6 +64,24 @@ func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]st
 	return hosts, nil
 }
 
+func developmentWorkloadRoute(appOwner, host, upstreamHost, network string, files application.RuntimeFiles, service string, port int, protocol string) devgateway.Route {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol == "" {
+		protocol = "http"
+	}
+	route := devgateway.Route{
+		Key:      appOwner + "/workload-api",
+		Host:     host,
+		Upstream: fmt.Sprintf("%s://%s:%d", protocol, upstreamHost, port),
+		Network:  network,
+	}
+	if protocol == "https" {
+		route.TrustFile = filepath.Join(files.Bindings, "runtime-identity", "ca.pem")
+		route.ServerName = service
+	}
+	return route
+}
+
 func requiresDevelopmentGateway(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
@@ -258,21 +276,16 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				if err != nil {
 					return err
 				}
-				protocol := strings.ToLower(strings.TrimSpace(analysis.WorkloadProtocols[selected[0]]))
-				if protocol == "" {
-					protocol = "http"
-				}
-				route := devgateway.Route{
-					Key: appOwner + "/workload-api",
-					Host: host,
-					Upstream: fmt.Sprintf("%s://%s:%d", protocol, application.DevelopmentWorkloadAlias(e.manifest), ports[0]),
-					Network: application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
-				}
-				if protocol == "https" {
-					route.TrustFile = filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem")
-					route.ServerName = selected[0]
-				}
-				appRoutes = append(appRoutes, route)
+				appRoutes = append(appRoutes, developmentWorkloadRoute(
+					appOwner,
+					host,
+					application.DevelopmentWorkloadAlias(e.manifest),
+					application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
+					e.files,
+					selected[0],
+					ports[0],
+					analysis.WorkloadProtocols[selected[0]],
+				))
 			}
 		}
 	}
