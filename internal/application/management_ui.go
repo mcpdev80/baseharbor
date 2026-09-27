@@ -86,12 +86,12 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 	if err != nil {
 		return err
 	}
-	if m.Services.SQLManagementUI {
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		if err := ensurePostgresManagementUI(ctx, issuer, files, m, values); err != nil {
 			return err
 		}
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
 		if err := ensureCacheManagementUI(ctx, issuer, files, m, values); err != nil {
 			return err
 		}
