@@ -71,6 +71,13 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 				managementUI = append(managementUI, surface)
 			}
 		}
+		if resolved.Manifest.Services.SecretsManagementUI {
+			if platformFiles, platformErr := existingTargetRuntimeFiles(ctx); platformErr == nil {
+				if surface, surfaceErr := openBaoManagementUISurface(platformFiles); surfaceErr == nil {
+					managementUI = append(managementUI, surface)
+				}
+			}
+		}
 	}
 
 	var runtimeArtifact *runtimeArtifactObservation
