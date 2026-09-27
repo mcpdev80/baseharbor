@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -206,6 +207,27 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
 		return err
+	}
+	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.Identity {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("load developer access for OIDC: %w", err)
+		}
+		if err := activity(ctx, e.term, "Reconciling developer OIDC access", func(io.Writer) error {
+			_, err := identityprovider.EnsureManagedDevelopmentAccess(
+				ctx,
+				e.compose,
+				e.issuer,
+				e.resolved.TargetStateRoot,
+				e.resolved.Target.Name,
+				e.resolved.Target.Name,
+				credentials.Username,
+				credentials.Password,
+			)
+			return err
+		}); err != nil {
+			return err
+		}
 	}
 	if err := e.prepareApplicationSecrets(ctx); err != nil {
 		return err
