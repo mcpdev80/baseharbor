@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
@@ -238,6 +239,28 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			})
 		}
 	}
+	if application.RequiresRuntimeBroker(e.manifest) {
+		brokerFiles, err := runtimebroker.Existing(e.files)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(brokerFiles.DocsURL) != "" {
+			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "api")
+			if err != nil {
+				return err
+			}
+			appRoutes = append(appRoutes, devgateway.Route{
+				Key: appOwner + "/runtime-docs",
+				Host: host,
+				PathPrefix: "/swagger",
+				Upstream: "https://baseharbor-runtime:8081",
+				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile: filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem"),
+				ServerName: "baseharbor-runtime",
+			})
+		}
+	}
+
 	groups = append(groups, devgateway.OwnerRoutes{Owner: appOwner, Routes: appRoutes})
 
 	if e.manifest.Services.ObjectStorageManagementUI {
