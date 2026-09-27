@@ -13,15 +13,38 @@ func (m Manifest) YAML() string {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
 			writeServiceYAML(&b, "sql", m.Services.SQL, m.Services.SQLInstances)
+			writeManagementUIYAML(&b, m.Services.SQLManagementUI)
 		}
 		if m.Services.Cache || len(m.Services.CacheInstances) > 0 {
 			writeServiceYAML(&b, "cache", m.Services.Cache, m.Services.CacheInstances)
+			writeManagementUIYAML(&b, m.Services.CacheManagementUI)
 		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
+			writeManagementUIYAML(&b, m.Services.ObjectStorageManagementUI)
 		}
 		if m.Services.Secrets {
 			b.WriteString("  secrets:\n    enabled: true\n")
+			writeManagementUIYAML(&b, m.Services.SecretsManagementUI)
+		}
+		if m.Services.Identity {
+			b.WriteString("  identity:\n    enabled: true\n")
+			writeManagementUIYAML(&b, m.Services.IdentityManagementUI)
+		}
+	}
+	if m.Services.Identity {
+		b.WriteString("identity:\n")
+		writeStringListYAML(&b, "callback_paths", m.Identity.CallbackPaths, 2)
+		writeStringListYAML(&b, "logout_paths", m.Identity.LogoutPaths, 2)
+		writeStringListYAML(&b, "scopes", m.Identity.Scopes, 2)
+		writeStringListYAML(&b, "claims", m.Identity.Claims, 2)
+		if m.Identity.Authentication.MFA != "" || len(m.Identity.Authentication.Methods) > 0 || m.Identity.Authentication.Passwordless {
+			b.WriteString("  authentication:\n")
+			if m.Identity.Authentication.MFA != "" {
+				fmt.Fprintf(&b, "    mfa: %s\n", m.Identity.Authentication.MFA)
+			}
+			fmt.Fprintf(&b, "    passwordless: %t\n", m.Identity.Authentication.Passwordless)
+			writeStringListYAML(&b, "methods", m.Identity.Authentication.Methods, 4)
 		}
 	}
 	if len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0 {
@@ -127,8 +150,27 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage ||
+	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage || services.Identity ||
 		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+}
+
+func writeManagementUIYAML(b *strings.Builder, enabled bool) {
+	if enabled {
+		b.WriteString("    management_ui: true\n")
+	}
+}
+
+func writeStringListYAML(b *strings.Builder, field string, values []string, indent int) {
+	if len(values) == 0 {
+		return
+	}
+	items := append([]string(nil), values...)
+	sort.Strings(items)
+	prefix := strings.Repeat(" ", indent)
+	fmt.Fprintf(b, "%s%s:\n", prefix, field)
+	for _, value := range items {
+		fmt.Fprintf(b, "%s  - %s\n", prefix, value)
+	}
 }
 
 func writeObjectStorageYAML(b *strings.Builder, enabled bool, buckets map[string]ServiceInstance) {
