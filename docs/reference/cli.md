@@ -40,6 +40,9 @@ baha
 │   ├── delete
 │   ├── activate
 │   └── deactivate
+├── dev
+│   ├── domain
+│   └── credentials
 ├── config
 │   └── prompt
 ├── shell-init bash|zsh|fish
@@ -114,6 +117,26 @@ baha logout -e test
 The first interactive operation against an unconfigured test/prod boundary can guide initial managed-Keycloak or external-OIDC setup. Non-interactive execution never guesses this configuration and fails closed with remediation.
 
 Application-user identity, operator identity and provider-administrator credentials are separate boundaries.
+
+## Development domain and management access
+
+Local development keeps browser-facing routing and provider-administrator convenience in Target-scoped state rather than `baseharbor.yaml`.
+
+```bash
+baha dev domain
+baha dev domain DOMAIN
+
+baha dev credentials
+baha dev credentials --reset
+baha dev credentials --username USER
+baha dev credentials --password-file OWNER_ONLY_FILE
+```
+
+`baha dev domain` shows or changes the effective Target's development domain. The default is `baseharbor.localhost`. Canonical application hosts use `<app>-<service>.<domain>`; shared-provider surfaces use `shared-<service>.<domain>`.
+
+`baha dev credentials` is the explicit secret-reveal path for the Target-scoped development management account. The default username is `developer` and BaseHarbor generates a strong password unless one is explicitly installed from an owner-only file. Rotation is reconciled into selected management surfaces on the next `baha up`.
+
+These commands apply only to the local development convenience boundary. Test/prod operator authentication continues to use OIDC sessions and individual identities.
 
 ## Evidence export
 
