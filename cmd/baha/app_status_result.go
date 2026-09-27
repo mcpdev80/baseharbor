@@ -128,6 +128,48 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 
+	if devaccess.Enabled(resolved.Manifest.Environment) {
+		for i := range managementUI {
+			service := ""
+			switch managementUI[i].Service {
+			case "sql":
+				service = "pgadmin"
+			case "cache":
+				service = "cache"
+			case "object-storage":
+				service = "storage"
+			case "identity", "identity-login":
+				service = "identity"
+			case "identity-admin":
+				service = "identity-admin"
+			case "secrets":
+				if host, hostErr := devaccess.SharedHost(resolved.Target.Name, "openbao"); hostErr == nil {
+					managementUI[i].URL = devaccess.CanonicalURL(host)
+				}
+				continue
+			case "observability":
+				if placement, placementErr := metricsprovider.PlacementForAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); placementErr == nil {
+					var host string
+					var hostErr error
+					if placement.Scope == capability.ScopeShared {
+						host, hostErr = devaccess.SharedHost(resolved.Target.Name, "prometheus")
+					} else {
+						host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "prometheus")
+					}
+					if hostErr == nil {
+						managementUI[i].URL = devaccess.CanonicalURL(host)
+					}
+				}
+				continue
+			}
+			if service != "" {
+				if host, hostErr := devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, service); hostErr == nil {
+					managementUI[i].URL = devaccess.CanonicalURL(host)
+				}
+			}
+		}
+	}
+
 	var runtimeArtifact *runtimeArtifactObservation
 	var runtimeDocsURL string
 	if application.RequiresRuntimeBroker(resolved.Manifest) && result.State != "not_applied" {
