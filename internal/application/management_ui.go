@@ -66,6 +66,56 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 	return nil
 }
 
+func VerifyApplicationManagementUIs(ctx context.Context, m Manifest, files RuntimeFiles) error {
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	checks := []struct {
+		enabled bool
+		name    string
+		portKey string
+		dir     string
+		path    string
+	}{
+		{m.Services.SQLManagementUI, "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
+		{m.Services.CacheManagementUI, "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
+	}
+	for _, check := range checks {
+		if !check.enabled {
+			continue
+		}
+		portValue, err := requireRuntimeValue(values, check.portKey)
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(portValue)
+		if err != nil {
+			return fmt.Errorf("%s management UI has invalid host port: %w", check.name, err)
+		}
+		policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		material, err := serviceaccess.ExistingTLSMaterial(policy, check.dir)
+		if err != nil {
+			return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
+		}
+		client, err := serviceaccess.NewHTTPClient(material, false)
+		if err != nil {
+			return err
+		}
+		endpoint, err := serviceaccess.LoopbackHTTPSURL(port)
+		if err != nil {
+			return err
+		}
+		if err := serviceaccess.WaitHTTPS(ctx, client, endpoint, check.path); err != nil {
+			return fmt.Errorf("%s management UI is not ready: %w", check.name, err)
+		}
+	}
+	return nil
+}
+
 func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]ManagementUISurface, error) {
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
