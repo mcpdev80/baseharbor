@@ -6,6 +6,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
@@ -64,6 +65,11 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 		if identityUI, identityErr := identityprovider.KeycloakManagementSurfaces(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name); identityErr == nil {
 			managementUI = append(managementUI, identityUI...)
+		}
+		if resolved.Manifest.Services.ObjectStorageManagementUI {
+			if surface, surfaceErr := objectstorage.ManagementUISurfaceAt(resolved.TargetStateRoot, resolved.Target.Name); surfaceErr == nil {
+				managementUI = append(managementUI, surface)
+			}
 		}
 	}
 
