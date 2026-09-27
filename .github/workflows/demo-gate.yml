@@ -60,6 +60,7 @@ jobs:
       - name: Reset runtime state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
 
       - name: Run demo gate
@@ -85,6 +86,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
 
       - name: Generate gate evidence
