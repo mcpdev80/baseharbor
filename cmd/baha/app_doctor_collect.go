@@ -52,6 +52,7 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		State:           "ready",
 		Healthy:         true,
 		Checks:          []preflight.Result{},
+		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, m.Environment),
 		manifest:        m,
 	}
 
@@ -89,6 +90,12 @@ func (c *applicationDoctorCollector) runChecks(ctx context.Context) {
 func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 	m := c.manifest
 	return []preflight.Check{
+		{Name: "operator authentication", Run: func(context.Context) error {
+			if c.result.OperatorAuth.Status == "DEGRADED" || c.result.OperatorAuth.Status == "NOT_CONFIGURED" {
+				return fmt.Errorf("%s", c.result.OperatorAuth.Detail)
+			}
+			return nil
+		}},
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
