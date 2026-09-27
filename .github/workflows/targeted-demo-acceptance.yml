@@ -10,6 +10,10 @@ on:
         required: true
         default: develop
         type: string
+      demo_ref:
+        description: Exact baseharbor-demo commit SHA to test
+        required: true
+        type: string
       runtime:
         description: Container runtime
         required: true
@@ -50,6 +54,7 @@ jobs:
     env:
       INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
       INPUT_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || '' }}
+      INPUT_DEMO_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_ref || '' }}
       INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}
 
     steps:
@@ -61,6 +66,7 @@ jobs:
           runtime="$INPUT_RUNTIME"
           gate="$INPUT_GATE"
           ref="$INPUT_REF"
+          demo_ref="$INPUT_DEMO_REF"
 
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             case "$GITHUB_REF_NAME" in
@@ -74,9 +80,12 @@ jobs:
 
           case "$runtime" in docker|podman) ;; *) echo "Unsupported runtime: $runtime" >&2; exit 2 ;; esac
           test -n "$gate"
+          test -n "$demo_ref"
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
           printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
           printf 'gate=%s\n' "$gate" >> "$GITHUB_OUTPUT"
           printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+          printf 'demo_ref=%s\n' "$demo_ref" >> "$GITHUB_OUTPUT"
 
       - name: Checkout BaseHarbor
         id: checkout
@@ -142,7 +151,10 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf /tmp/baseharbor-demo-targeted-repo "$ARTIFACT_DIR"
-          git clone --depth 1 --branch main https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted-repo
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted-repo
+          git -C /tmp/baseharbor-demo-targeted-repo fetch --depth 1 origin "${{ steps.target.outputs.demo_ref }}"
+          git -C /tmp/baseharbor-demo-targeted-repo checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/baseharbor-demo-targeted-repo rev-parse HEAD)" = "${{ steps.target.outputs.demo_ref }}"
           cd /tmp/baseharbor-demo-targeted-repo
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
@@ -175,6 +187,7 @@ jobs:
           Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
           Runtime reset	${{ steps.reset.outcome }}	Clean ${{ steps.target.outputs.runtime }} state
           Podman Quadlet runtime	${{ steps.quadlet.outcome }}	Required for Podman; Compose provider blocked
+          Demo revision	success	${{ steps.target.outputs.demo_ref }}
           Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Single targeted acceptance gate
           Cleanup	${{ steps.cleanup.outcome }}	Runner returned to clean state
           EOF
