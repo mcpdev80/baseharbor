@@ -10,6 +10,10 @@ on:
         required: true
         default: develop
         type: string
+      demo_ref:
+        description: Exact baseharbor-demo commit SHA to test
+        required: true
+        type: string
   push:
     branches:
       - 'runtime-validation/demo/**'
@@ -22,9 +26,45 @@ permissions:
   contents: read
 
 jobs:
+  resolve_demo:
+    name: resolve-demo-revision
+    runs-on: ubuntu-latest
+    outputs:
+      demo_ref: ${{ steps.demo.outputs.demo_ref }}
+    steps:
+      - name: Checkout BaseHarbor metadata
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+          fetch-depth: 0
+      - name: Resolve immutable demo revision
+        id: demo
+        shell: bash
+        env:
+          INPUT_DEMO_REF: ${{ inputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            demo_ref="$INPUT_DEMO_REF"
+          else
+            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+            test -n "$version"
+            file="docs/releases/v${version}.demo-ref"
+            test -s "$file"
+            demo_ref="$(tr -d '[:space:]' < "$file")"
+          fi
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "demo_ref must be an exact 40-character commit SHA" >&2
+            exit 2
+          }
+          echo "demo_ref=$demo_ref" >> "$GITHUB_OUTPUT"
+
   catalog:
     name: demo-revision
+    needs: resolve_demo
     uses: ./.github/workflows/demo-gate-catalog.yml
+    with:
+      ref: ${{ needs.resolve_demo.outputs.demo_ref }}
 
   docker:
     name: Docker · full acceptance suite
