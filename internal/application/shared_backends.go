@@ -283,6 +283,10 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.Compose, data
 		if err := verifySharedPostgresDatabaseOwnership(ctx, compose, shared, app.Environment, resource); err != nil {
 			return fmt.Errorf("verify shared PostgreSQL %s ownership: %w", instance, err)
 		}
+		adminDBDeny := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d postgres -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username))
+		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", adminDBDeny); err == nil {
+			return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to provider administration database postgres", app.Application, instance)
+		}
 		for otherKey, otherApp := range state.Applications {
 			if otherKey == appKey {
 				continue
@@ -340,7 +344,7 @@ func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPo
 	if strings.TrimSpace(out) != resource.Username {
 		return fmt.Errorf("database %q owner is %q, expected %q", resource.Database, strings.TrimSpace(out), resource.Username)
 	}
-	roleQuery := fmt.Sprintf("SELECT rolname FROM pg_roles WHERE rolname=%s AND rolsuper=false AND rolcreatedb=false AND rolcreaterole=false AND rolreplication=false AND rolbypassrls=false", quotePostgresLiteral(resource.Username))
+	roleQuery := fmt.Sprintf("SELECT r.rolname FROM pg_roles r WHERE r.rolname=%s AND r.rolsuper=false AND r.rolcreatedb=false AND r.rolcreaterole=false AND r.rolreplication=false AND r.rolbypassrls=false AND r.rolinherit=false AND NOT EXISTS (SELECT 1 FROM pg_auth_members am WHERE am.member=r.oid OR am.roleid=r.oid)", quotePostgresLiteral(resource.Username))
 	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
 	if err != nil {
 		return err
