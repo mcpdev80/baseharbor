@@ -45,6 +45,12 @@ func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]st
 		if m.Services.Identity && route.Owner == "shared/keycloak" {
 			include = true
 		}
+		if m.Services.SQLManagementUI && route.Owner == "shared/postgresql" {
+			include = true
+		}
+		if m.Services.CacheManagementUI && route.Owner == "shared/valkey" {
+			include = true
+		}
 		if !include {
 			continue
 		}
@@ -100,30 +106,74 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 	groups := []devgateway.OwnerRoutes{}
 
 	if e.manifest.Services.SQLManagementUI {
-		host, err := devaccess.ApplicationHost(target, e.manifest.Name, "pgadmin")
+		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderPostgreSQL)
 		if err != nil {
 			return err
 		}
-		appRoutes = append(appRoutes, devgateway.Route{
-			Key: appOwner + "/pgadmin", Host: host,
-			Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
-			Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-			TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
-			ServerName: "localhost",
-		})
+		if placement.Scope == capability.ScopeShared {
+			host, err := devaccess.SharedHost(target, "pgadmin")
+			if err != nil {
+				return err
+			}
+			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, target, e.manifest.Environment)
+			groups = append(groups, devgateway.OwnerRoutes{
+				Owner: "shared/postgresql",
+				Routes: []devgateway.Route{{
+					Key: "shared/postgresql", Host: host,
+					Upstream: "https://shared-pgadmin:8443",
+					Network: shared.Network,
+					TrustFile: filepath.Join(shared.Dir, "management-ui", "postgres", "pki", "ca.pem"),
+					ServerName: "localhost",
+				}},
+			})
+		} else {
+			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "pgadmin")
+			if err != nil {
+				return err
+			}
+			appRoutes = append(appRoutes, devgateway.Route{
+				Key: appOwner + "/pgadmin", Host: host,
+				Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
+				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
+				ServerName: "localhost",
+			})
+		}
 	}
 	if e.manifest.Services.CacheManagementUI {
-		host, err := devaccess.ApplicationHost(target, e.manifest.Name, "cache")
+		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderValkey)
 		if err != nil {
 			return err
 		}
-		appRoutes = append(appRoutes, devgateway.Route{
-			Key: appOwner + "/cache", Host: host,
-			Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
-			Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-			TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
-			ServerName: "localhost",
-		})
+		if placement.Scope == capability.ScopeShared {
+			host, err := devaccess.SharedHost(target, "cache")
+			if err != nil {
+				return err
+			}
+			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, target, e.manifest.Environment)
+			groups = append(groups, devgateway.OwnerRoutes{
+				Owner: "shared/valkey",
+				Routes: []devgateway.Route{{
+					Key: "shared/valkey", Host: host,
+					Upstream: "https://shared-cache-ui-access:8443",
+					Network: shared.Network,
+					TrustFile: filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
+					ServerName: "localhost",
+				}},
+			})
+		} else {
+			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "cache")
+			if err != nil {
+				return err
+			}
+			appRoutes = append(appRoutes, devgateway.Route{
+				Key: appOwner + "/cache", Host: host,
+				Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
+				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
+				ServerName: "localhost",
+			})
+		}
 	}
 	if e.manifest.Services.Identity {
 		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderKeycloak)
