@@ -104,6 +104,11 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
 	}
+	if HasSharedBackends(m) {
+		files.ApplicationEnv = filepath.Join(files.Dir, "application.env")
+		files.Bindings = filepath.Join(files.Dir, "bindings")
+		return files, nil
+	}
 	contract, err := EnsureRuntimeContract(m, files)
 	if err != nil {
 		return RuntimeFiles{}, err
