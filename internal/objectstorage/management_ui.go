@@ -188,6 +188,33 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
 	return strings.Replace(base, marker, replacement, 1)
 }
 
+func ApplyDevelopmentManagementUICredentialsAt(ctx context.Context, runtime Runtime, dataDir, namespace, username, password string) error {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return errors.New("SeaweedFS development management UI credentials are incomplete")
+	}
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
+	if err != nil {
+		return err
+	}
+	values, err := readProviderValues(files.Env)
+	if err != nil {
+		return err
+	}
+	values[seaweedAdminUserEnv] = username
+	values[seaweedAdminPasswordEnv] = password
+	if err := writeEnv(files.Env, values); err != nil {
+		return err
+	}
+	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("validate SeaweedFS developer management access: %w", err)
+	}
+	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("apply SeaweedFS developer management access: %w", err)
+	}
+	return nil
+}
+
 func ManagementUISurfaceAt(dataDir, namespace string) (application.ManagementUISurface, error) {
 	files, err := ExistingProviderFilesAt(dataDir, namespace)
 	if err != nil {
