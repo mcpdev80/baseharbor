@@ -204,8 +204,9 @@ jobs:
             for id in $("$runtime" ps -aq --filter name=baseharbor 2>/dev/null); do
               name=$("$runtime" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
               [ -n "$name" ] || name="$id"
-              "$runtime" inspect "$id" >"$diagnostics/$name.inspect.json" 2>&1 || true
-              "$runtime" logs --tail 300 "$id" >"$diagnostics/$name.log" 2>&1 || true
+              "$runtime" inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
+              "$runtime" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
+              "$runtime" logs --tail 300 "$id"                 | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g'                 >"$diagnostics/$name.log" 2>&1 || true
             done
           fi
 
