@@ -235,6 +235,9 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 			exposures := inspectWorkloadExposures(verifyCtx, e.expectedServices, states, initState.Hostname, e.workloadProtocols)
 			services := attachWorkloadExposures(buildWorkloadServiceStatuses(e.expectedServices, states), exposures)
 			lastStatus = repositoryWorkloadStatus{Found: true, Workload: e.workload, Services: services, Exposures: exposures}
+			if terminalErr := terminalWorkloadServiceError(services); terminalErr != nil {
+				return terminalErr
+			}
 			lastErr = workloadExposureReadinessError(exposures)
 		}
 		if lastErr == nil && lastStatus.Ready() {
