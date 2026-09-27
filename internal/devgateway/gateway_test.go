@@ -31,6 +31,8 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 	})
 	got := renderCaddyfile(routes)
 	for _, want := range []string{
+		":443 {",
+		":8443 {",
 		"host demo-api.baseharbor.localhost",
 		"path /swagger /swagger/*",
 		"uri strip_prefix /swagger",
@@ -119,5 +121,36 @@ func TestURLForRuntimeUsesRuntimePortBeforeGatewayStateExists(t *testing.T) {
 	}
 	if got := URLForRuntime(target, "auth.baha.localhost", testRuntime{engine: "podman"}); got != "https://auth.baha.localhost:8443" {
 		t.Fatalf("podman canonical URL = %q", got)
+	}
+}
+
+
+func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.T) {
+	files := Files{
+		Caddyfile: "/tmp/Caddyfile",
+		Cert:      "/tmp/server.pem",
+		Key:       "/tmp/server-key.pem",
+	}
+	routes := []Route{{
+		Owner:    "shared/keycloak",
+		Key:      "shared/keycloak/login",
+		Host:     "auth.baha.localhost",
+		Upstream: "https://identity:9443",
+		Network:  "identity-consumer",
+	}}
+	got := renderCompose(files, routes, nil, 8443)
+	for _, want := range []string{
+		"cap_drop: [\"ALL\"]",
+		"cap_add: [\"NET_BIND_SERVICE\"]",
+		"security_opt: [\"no-new-privileges:true\"]",
+		"127.0.0.1:8443:8443",
+		"auth.baha.localhost",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("gateway Compose missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "privileged: true") {
+		t.Fatalf("gateway Compose became privileged:\n%s", got)
 	}
 }
