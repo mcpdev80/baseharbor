@@ -214,6 +214,22 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 			return
 		}
 		c.result.AddCheck("postgres", true, fmt.Sprintf("%d app-isolated database resource(s) ready on shared Target provider", len(application.SQLInstanceNames(c.manifest))))
+		resources, err := application.SharedPostgresResourcesAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest)
+		if err != nil {
+			c.result.AddCheck("postgres/resources", false, err.Error())
+			return
+		}
+		for _, resource := range resources {
+			detail := fmt.Sprintf(
+				"scope=%s owner=%s database=%s role=%s credential_scope=%s",
+				resource.ProviderScope,
+				resource.Owner,
+				resource.Database,
+				resource.Role,
+				resource.CredentialScope,
+			)
+			c.result.AddCheck("postgres/"+resource.Instance, true, detail)
+		}
 		c.result.AddCheck("postgres/isolation", true, "shared provider ownership, application role boundaries and cross-application access isolation verified")
 		return
 	}
