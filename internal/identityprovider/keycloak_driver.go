@@ -382,12 +382,17 @@ func keycloakPublicHTTPClient(files KeycloakFiles) (*http.Client, error) {
 	return &http.Client{Transport: transport, Timeout: 10 * time.Second}, nil
 }
 
+const identityEndpointReadyTimeout = 90 * time.Second
+
 func waitIdentityEndpoint(ctx context.Context, client *http.Client, endpoint string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, identityEndpointReadyTimeout)
+	defer cancel()
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	var last error
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		req, err := http.NewRequestWithContext(waitCtx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return err
 		}
@@ -402,11 +407,14 @@ func waitIdentityEndpoint(ctx context.Context, client *http.Client, endpoint str
 			last = err
 		}
 		select {
-		case <-ctx.Done():
-			if last != nil {
-				return last
+		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-			return ctx.Err()
+			if last != nil {
+				return fmt.Errorf("identity endpoint readiness timeout after %s: %w", identityEndpointReadyTimeout, last)
+			}
+			return fmt.Errorf("identity endpoint readiness timeout after %s", identityEndpointReadyTimeout)
 		case <-ticker.C:
 		}
 	}
