@@ -95,6 +95,24 @@ func CanonicalURL(host string) string {
 	return "https://" + strings.TrimSpace(host)
 }
 
+func ApplicationAlias(app, service string) string {
+	app = normalizeHostToken(app)
+	service = normalizeHostToken(service)
+	if app == "" || service == "" {
+		return ""
+	}
+	return "bh-dev-" + app + "-" + service
+}
+
+func ProviderAlias(project, service string) string {
+	project = normalizeHostToken(project)
+	service = normalizeHostToken(service)
+	if project == "" || service == "" {
+		return ""
+	}
+	return "bh-dev-" + project + "-" + service
+}
+
 func normalizeDomain(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.TrimSuffix(value, ".")
