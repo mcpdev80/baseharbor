@@ -254,11 +254,13 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
 	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
 	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
+	identityNetworkName := scopedWorkloadNetworkName("baseharbor-identity", namespace)
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
+	serviceBindings := managedRuntime || HasIdentity(m)
 	runtimeBroker := RequiresRuntimeBroker(m)
 	backendNetwork := managedRuntime || runtimeBroker
 	objectStorage := HasObjectStorage(m)
@@ -273,6 +275,14 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	}
 	hasRuntimeObjectStorage := len(runtimeObjectStorageServices) > 0
 	telemetryManaged := HasOTLPTelemetry(m) && values["OTLP_PROVIDER"] == string(capability.ProviderOTelCollector)
+	identityManaged := false
+	if HasIdentity(m) {
+		provider, err := referenceCapabilityProvider(capability.Identity)
+		if err != nil {
+			return "", err
+		}
+		identityManaged = provider.Kind == capability.ProviderKeycloak
+	}
 	metricsServices := map[string]struct{}{}
 	metricsNetworkName := ""
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || HasRuntimeMetricsPermissions(m)
@@ -314,10 +324,11 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
-		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || identityManaged || metricsSource || exposed
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
 		hasBackendTLS := managedRuntime
+		hasServiceBindings := serviceBindings
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -331,10 +342,29 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			for key, value := range env {
 				serviceEnv[key] = value
 			}
-			if managedRuntime {
+			if serviceBindings {
 				serviceEnv["SERVICE_BINDING_ROOT"] = workloadServiceBindingRoot
 			}
-			if HasOTLPTelemetry(m) {
+			if HasIdentity(m) {
+		issuer, err := requireRuntimeValue(values, "IDENTITY_CONTAINER_ISSUER")
+		if err != nil {
+			return nil, err
+		}
+		clientID, err := requireRuntimeValue(values, "IDENTITY_CLIENT_ID")
+		if err != nil {
+			return nil, err
+		}
+		env["OIDC_ISSUER"] = issuer
+		env["OIDC_CLIENT_ID"] = clientID
+		if len(m.Identity.Scopes) > 0 {
+			env["OIDC_SCOPES"] = strings.Join(m.Identity.Scopes, " ")
+		}
+		if strings.TrimSpace(values["IDENTITY_CLIENT_SECRET"]) != "" {
+			env["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
+		}
+	}
+
+	if HasOTLPTelemetry(m) {
 				serviceEnv["OTEL_SERVICE_NAME"] = service
 				serviceEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])
 			}
@@ -347,9 +377,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
-		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS {
+		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS || hasServiceBindings {
 			b.WriteString("    volumes:\n")
-			if hasBackendTLS {
+			if hasServiceBindings {
 				projection := workloadServiceBindingProjectionDir(runtime)
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(projection+":"+workloadServiceBindingRoot+":ro"))
 			}
@@ -388,6 +418,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				if telemetryManaged {
 					b.WriteString("      - baseharbor-telemetry\n")
 				}
+				if identityManaged {
+					b.WriteString("      - baseharbor-identity\n")
+				}
 				continue
 			}
 			if backendNetwork {
@@ -398,6 +431,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			}
 			if telemetryManaged {
 				b.WriteString("      baseharbor-telemetry: {}\n")
+			}
+			if identityManaged {
+				b.WriteString("      baseharbor-identity: {}\n")
 			}
 			if metricsSource {
 				b.WriteString("      baseharbor-metrics:\n")
@@ -411,7 +447,7 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			}
 		}
 	}
-	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || len(metricsServices) > 0 || len(exposedServices) > 0 {
+	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || identityManaged || len(metricsServices) > 0 || len(exposedServices) > 0 {
 		b.WriteString("networks:\n")
 		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
@@ -424,6 +460,10 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		if telemetryManaged {
 			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetworkName))
+		}
+		if identityManaged {
+			b.WriteString("  baseharbor-identity:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(identityNetworkName))
 		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
