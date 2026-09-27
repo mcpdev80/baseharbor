@@ -202,7 +202,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "object_storage", "secrets", "identity":
+	case "sql", "cache", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -332,6 +332,8 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 			p.manifest.Services.SecretsManagementUI = enabled
 		case "identity":
 			p.manifest.Services.IdentityManagementUI = enabled
+		case "observability":
+			p.manifest.Services.ObservabilityManagementUI = enabled
 		}
 		return nil
 	}
@@ -346,6 +348,10 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.Secrets = enabled
 	case "identity":
 		p.manifest.Services.Identity = enabled
+	case "observability":
+		if enabled {
+			return fmt.Errorf("line %d: observability is selected by telemetry/metrics/logs/traces; only management_ui is valid here", lineNo)
+		}
 	}
 	return nil
 }
