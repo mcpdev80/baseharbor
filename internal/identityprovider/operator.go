@@ -113,6 +113,31 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	return ManagedOperatorOIDC{Issuer: issuerURL, ClientID: clientID, CallbackPort: callbackPort}, nil
 }
 
+func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, username, password string) (ManagedOperatorOIDC, error) {
+	managed, err := EnsureManagedOperatorOIDC(ctx, runtime, issuer, dataDir, namespace, target, "dev")
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	app := application.Manifest{
+		Version:     application.CurrentVersion,
+		Name:        "operator-access",
+		Environment: "dev",
+		Services:    application.Services{Identity: true},
+	}
+	files, err := ExistingKeycloakFilesAt(app, dataDir, namespace)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	admin, err := operatorKeycloakAdmin(ctx, files)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if err := admin.reconcileUser(ctx, operatorRealm("dev"), username, password, true); err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	return managed, nil
+}
+
 func FinalizeManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment string) error {
 	app := application.Manifest{
 		Version:     application.CurrentVersion,
