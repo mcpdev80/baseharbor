@@ -563,13 +563,40 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 		return nil
 	}
 	if len(app.SQL) > 0 {
+		placement, found, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPostgreSQL)
+		if err != nil {
+			return fmt.Errorf("verify shared PostgreSQL provider ownership: %w", err)
+		}
+		if !found || placement.Scope != capability.ScopeShared || placement.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("refuse shared PostgreSQL destroy: registered provider ownership is missing or not BaseHarbor-shared")
+		}
+	}
+	if len(app.Cache) > 0 {
+		placement, found, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderValkey)
+		if err != nil {
+			return fmt.Errorf("verify shared Valkey provider ownership: %w", err)
+		}
+		if !found || placement.Scope != capability.ScopeShared || placement.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("refuse shared Valkey destroy: registered provider ownership is missing or not BaseHarbor-shared")
+		}
+	}
+	if len(app.SQL) > 0 {
 		if err := verifySharedPostgresStateOwnership(state, key); err != nil {
 			return fmt.Errorf("refuse shared PostgreSQL destroy: %w", err)
 		}
-		for instance, resource := range app.SQL {
+		instances := make([]string, 0, len(app.SQL))
+		for instance := range app.SQL {
+			instances = append(instances, instance)
+		}
+		sort.Strings(instances)
+		for _, instance := range instances {
+			resource := app.SQL[instance]
 			if err := verifySharedPostgresDatabaseOwnership(ctx, compose, shared, m.Environment, resource); err != nil {
 				return fmt.Errorf("refuse shared PostgreSQL destroy for %s: %w", instance, err)
 			}
+		}
+		for _, instance := range instances {
+			resource := app.SQL[instance]
 			terminate := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid()", quotePostgresLiteral(resource.Database))
 			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
 				return fmt.Errorf("terminate shared PostgreSQL connections for %s: %w", instance, err)
