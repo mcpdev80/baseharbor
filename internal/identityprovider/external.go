@@ -85,7 +85,7 @@ func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err != nil {
 		return err
 	}
-	return application.MaterializeIdentityBinding(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret)
+	return application.MaterializeIdentityBinding(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, strings.TrimSpace(os.Getenv(ExternalCAFileEnv)))
 }
 
 func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
