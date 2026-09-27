@@ -27,7 +27,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: PostgreSQL,
 		Services:        []ServiceKind{ServiceSQL},
 		Capabilities:    []SpecificationID{SQLV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Interfaces: []ProviderInterface{{Name: "sql", Class: InterfaceApplication, Protocol: "postgresql", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
@@ -40,7 +40,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: Valkey,
 		Services:        []ServiceKind{ServiceCache},
 		Capabilities:    []SpecificationID{KeyValueV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Interfaces: []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
