@@ -40,7 +40,7 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			Scope:     capability.ScopeShared,
 			Ownership: capability.OwnershipBaseHarbor,
 		}, nil
-	case capability.ProviderExternalOTLP:
+	case capability.ProviderExternalOTLP, capability.ProviderExternalOIDC:
 		return capability.ProviderPlacement{
 			Scope:             capability.ScopeExternal,
 			Ownership:         capability.OwnershipExternal,
