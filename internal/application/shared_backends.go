@@ -326,6 +326,7 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 				UpstreamPort:     6379,
 				PublishedPortEnv: sharedValkeyPortEnv(m, instance),
 				ContainerPort:    6379,
+				Network:          "shared-backend",
 			})
 			if err != nil {
 				return fmt.Errorf("prepare shared Valkey TLS for %s: %w", instance, err)
@@ -505,6 +506,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		UpstreamPort:     6379,
 		PublishedPortEnv: portEnv,
 		ContainerPort:    6379,
+		Network:          "shared-backend",
 	}))
 }
 
