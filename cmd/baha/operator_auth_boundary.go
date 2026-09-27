@@ -120,9 +120,9 @@ func bootstrapExternalOperatorOIDC(reader *bufio.Reader, out interface{ Write([]
 	}
 	cfg := operatorauth.Config{
 		Provider: "external-oidc",
-		Issuer: strings.TrimRight(strings.TrimSpace(issuer), "/"),
+		Issuer:   strings.TrimRight(strings.TrimSpace(issuer), "/"),
 		ClientID: strings.TrimSpace(clientID),
-		Scopes: []string{"openid", "profile", "email"},
+		Scopes:   []string{"openid", "profile", "email"},
 	}
 	if err := cfg.Validate(); err != nil {
 		return operatorauth.Config{}, err
@@ -132,10 +132,10 @@ func bootstrapExternalOperatorOIDC(reader *bufio.Reader, out interface{ Write([]
 
 func operatorAuthRuntimeConfig(stored deployment.OperatorAuthEnvironmentConfig) (operatorauth.Config, error) {
 	cfg := operatorauth.Config{
-		Provider: strings.TrimSpace(stored.Provider),
-		Issuer: strings.TrimRight(strings.TrimSpace(stored.Issuer), "/"),
-		ClientID: strings.TrimSpace(stored.ClientID),
-		Scopes: append([]string(nil), stored.Scopes...),
+		Provider:     strings.TrimSpace(stored.Provider),
+		Issuer:       strings.TrimRight(strings.TrimSpace(stored.Issuer), "/"),
+		ClientID:     strings.TrimSpace(stored.ClientID),
+		Scopes:       append([]string(nil), stored.Scopes...),
 		CallbackPort: stored.CallbackPort,
 	}
 	if len(cfg.Scopes) == 0 {
