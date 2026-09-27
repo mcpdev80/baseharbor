@@ -18,6 +18,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -370,12 +371,18 @@ func verifyRuntimeBrokerDocs(ctx context.Context, docsURL string, files applicat
 	return nil
 }
 
-func printRuntimeBrokerDocs(out io.Writer, files application.RuntimeFiles) {
+func printRuntimeBrokerDocs(out io.Writer, target string, m application.Manifest, files application.RuntimeFiles) {
 	brokerFiles, err := runtimebroker.Existing(files)
 	if err != nil || strings.TrimSpace(brokerFiles.DocsURL) == "" {
 		return
 	}
-	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", brokerFiles.DocsURL)
+	url := strings.TrimSpace(brokerFiles.DocsURL)
+	if devaccess.Enabled(m.Environment) {
+		if host, hostErr := devaccess.ApplicationHost(target, m.Name, "api"); hostErr == nil {
+			url = devaccess.CanonicalURL(host) + "/swagger/"
+		}
+	}
+	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", url)
 }
 
 func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
