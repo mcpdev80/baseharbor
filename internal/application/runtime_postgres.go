@@ -522,26 +522,6 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	if values[S3TLSHostCAEnv] != "" {
 		fmt.Fprintf(&b, "%s=%s\n", S3TLSHostCAEnv, values[S3TLSHostCAEnv])
 	}
-	if m.Services.SQLManagementUI {
-		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
-			if values[key] == "" {
-				return fmt.Errorf("application runtime environment is missing %s", key)
-			}
-		}
-		if err := validatePortValue(values[PostgresUIHostPortEnv], PostgresUIHostPortEnv); err != nil {
-			return err
-		}
-	}
-	if m.Services.CacheManagementUI {
-		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
-			if values[key] == "" {
-				return fmt.Errorf("application runtime environment is missing %s", key)
-			}
-		}
-		if err := validatePortValue(values[CacheUIHostPortEnv], CacheUIHostPortEnv); err != nil {
-			return err
-		}
-	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
 			key := s3RuntimeKey(bucket, suffix)
@@ -598,6 +578,26 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 		}
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if err := validatePortValue(values[portKey], portKey); err != nil {
+			return err
+		}
+	}
+	if m.Services.SQLManagementUI {
+		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[PostgresUIHostPortEnv], PostgresUIHostPortEnv); err != nil {
+			return err
+		}
+	}
+	if m.Services.CacheManagementUI {
+		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[CacheUIHostPortEnv], CacheUIHostPortEnv); err != nil {
 			return err
 		}
 	}
