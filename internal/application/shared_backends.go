@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -362,6 +363,66 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.Compose, dataDir,
 		}
 	}
 	return nil
+}
+
+func VerifySharedManagementUIChecks(ctx context.Context, dataDir, namespace string, m Manifest) []ManagementUICheckResult {
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		var results []ManagementUICheckResult
+		if m.Services.SQLManagementUI && UsesSharedPostgreSQL(m) {
+			results = append(results, ManagementUICheckResult{Name: "pgadmin", Err: err})
+		}
+		if m.Services.CacheManagementUI && UsesSharedValkey(m) {
+			results = append(results, ManagementUICheckResult{Name: "redis-commander", Err: err})
+		}
+		return results
+	}
+	checks := []struct {
+		enabled bool
+		name string
+		port int
+		dir string
+		path string
+	}{
+		{m.Services.SQLManagementUI && UsesSharedPostgreSQL(m), "pgadmin", state.PostgresUIHostPort, filepath.Join(shared.Dir, "management-ui", "postgres", "pki"), "/misc/ping"},
+		{m.Services.CacheManagementUI && UsesSharedValkey(m), "redis-commander", state.CacheUIHostPort, filepath.Join(shared.Dir, "management-ui", "cache", "pki"), "/"},
+	}
+	var results []ManagementUICheckResult
+	for _, check := range checks {
+		if !check.enabled {
+			continue
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		checkErr := func() error {
+			if check.port < 1 || check.port > 65535 {
+				return fmt.Errorf("%s shared management UI has invalid host port", check.name)
+			}
+			policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			material, err := serviceaccess.ExistingTLSMaterial(policy, check.dir)
+			if err != nil {
+				return fmt.Errorf("inspect shared %s management UI TLS: %w", check.name, err)
+			}
+			client, err := serviceaccess.NewHTTPClient(material, false)
+			if err != nil {
+				return err
+			}
+			endpoint, err := serviceaccess.LoopbackHTTPSURL(check.port)
+			if err != nil {
+				return err
+			}
+			if err := serviceaccess.WaitHTTPS(checkCtx, client, endpoint, check.path); err != nil {
+				return fmt.Errorf("shared %s management UI is not ready: %w", check.name, err)
+			}
+			return nil
+		}()
+		cancel()
+		results = append(results, ManagementUICheckResult{Name: check.name, Err: checkErr})
+	}
+	return results
 }
 
 func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
