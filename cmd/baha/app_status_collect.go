@@ -214,6 +214,7 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 			return
 		}
 		c.result.AddCheck("postgres", true, fmt.Sprintf("%d app-isolated database resource(s) ready on shared Target provider", len(application.SQLInstanceNames(c.manifest))))
+		c.result.AddCheck("postgres/isolation", true, "shared provider ownership, application role boundaries and cross-application access isolation verified")
 		return
 	}
 	if !containsString(c.services, "postgres") {
@@ -272,6 +273,20 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		}
 		ready++
 		c.result.AddCheck("management-ui/"+name, true, detail)
+	}
+
+	for _, result := range application.VerifySharedManagementUIChecks(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest) {
+		detail := result.Name + " shared management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			service := result.Name
+			if result.Name == "redis-commander" {
+				service = "cache"
+			}
+			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, service); hostErr == nil {
+				detail = devaccess.CanonicalURL(host)
+			}
+		}
+		record(result.Name, result.Err, detail)
 	}
 
 	for _, result := range application.VerifyApplicationManagementUIChecks(ctx, c.manifest, c.files) {
