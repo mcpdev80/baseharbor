@@ -19,9 +19,9 @@ import (
 
 const (
 	managementUIConsumersFile = "management-ui-consumers.json"
-	seaweedAdminPortEnv        = "BASEHARBOR_SEAWEEDFS_ADMIN_PORT"
-	seaweedAdminUserEnv        = "BASEHARBOR_SEAWEEDFS_ADMIN_USER"
-	seaweedAdminPasswordEnv    = "BASEHARBOR_SEAWEEDFS_ADMIN_PASSWORD"
+	seaweedAdminPortEnv       = "BASEHARBOR_SEAWEEDFS_ADMIN_PORT"
+	seaweedAdminUserEnv       = "BASEHARBOR_SEAWEEDFS_ADMIN_USER"
+	seaweedAdminPasswordEnv   = "BASEHARBOR_SEAWEEDFS_ADMIN_PASSWORD"
 )
 
 type managementUIConsumers struct {
@@ -203,7 +203,7 @@ func ManagementUISurfaceAt(dataDir, namespace string) (application.ManagementUIS
 	}
 	return application.ManagementUISurface{
 		Service: "object-storage", Purpose: application.ProviderInterfaceManagement,
-		URL: "https://127.0.0.1:" + strconv.Itoa(port) + "/",
+		URL:            "https://127.0.0.1:" + strconv.Itoa(port) + "/",
 		Authentication: "seaweedfs-native",
 	}, nil
 }
@@ -244,4 +244,3 @@ func readProviderValues(path string) (map[string]string, error) {
 	}
 	return parseEnv(data)
 }
-
