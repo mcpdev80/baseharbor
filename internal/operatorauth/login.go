@@ -157,7 +157,7 @@ func Login(ctx context.Context, cfg Config, out io.Writer) (*identity.Principal,
 }
 
 func Ensure(ctx context.Context, environment string) (context.Context, error) {
-	if !ManagedEnvironment(environment) {
+	if !EnforcementEnabled(ctx) || !ManagedEnvironment(environment) {
 		return ctx, nil
 	}
 	cfg, err := ConfigFromEnv()
@@ -166,6 +166,7 @@ func Ensure(ctx context.Context, environment string) (context.Context, error) {
 	}
 	principal, err := VerifySession(ctx, cfg)
 	if err == nil {
+		setPrincipal(ctx, principal)
 		return identity.WithPrincipal(ctx, principal), nil
 	}
 	if !errors.Is(err, ErrAuthenticationRequired) {
@@ -180,6 +181,7 @@ func Ensure(ctx context.Context, environment string) (context.Context, error) {
 	if err != nil {
 		return ctx, err
 	}
+	setPrincipal(ctx, principal)
 	return identity.WithPrincipal(ctx, principal), nil
 }
 
