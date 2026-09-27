@@ -1267,7 +1267,7 @@ func writeSharedPostgresUICompose(b *strings.Builder) {
       - "127.0.0.1:${SHARED_POSTGRES_UI_HOST_PORT}:8443"
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
-      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,uid=5050,gid=5050,mode=0700
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,mode=1777
     volumes:
       - ./management-ui/postgres/password:/run/baseharbor/password:ro
       - ./management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
