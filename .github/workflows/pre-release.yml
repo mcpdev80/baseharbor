@@ -15,9 +15,8 @@ on:
         default: develop
         type: string
       demo_ref:
-        description: Exact baseharbor-demo ref or commit SHA to validate
+        description: Exact baseharbor-demo commit SHA to validate
         required: true
-        default: 92eff5ca71336fa4dbe8cc4d1caf665c83370535
         type: string
   push:
     branches:
