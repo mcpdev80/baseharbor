@@ -167,6 +167,12 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		writeValkeyComposeService(&b, instance)
 		b.WriteString(valkeyGatewayCompose(instance))
 	}
+	if m.Services.SQLManagementUI {
+		writePostgresUIComposeService(&b, m)
+	}
+	if m.Services.CacheManagementUI {
+		writeCacheUIComposeServices(&b)
+	}
 	b.WriteString("\nvolumes:\n")
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
