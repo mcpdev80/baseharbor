@@ -386,7 +386,7 @@ func (d *KeycloakDriver) publicBaseURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return devgateway.URLForTarget(d.targetName(), host), nil
+	return devgateway.URLForRuntime(d.targetName(), host, d.runtime), nil
 }
 
 func (d *KeycloakDriver) publicIssuerURL() (string, error) {
