@@ -199,7 +199,7 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 		return err
 	}
 	d.discovery = discovery
-	return application.MaterializeIdentityBinding(d.app, d.appFiles, string(capability.ProviderKeycloak), discovery, d.clientID, d.clientSecret)
+	return application.MaterializeIdentityBinding(d.app, d.appFiles, string(capability.ProviderKeycloak), discovery, d.clientID, d.clientSecret, d.files.PublicAccess.Material.CA)
 }
 
 func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.Binding, origins []string) error {
