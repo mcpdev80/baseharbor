@@ -43,7 +43,11 @@ Application-facing identity is separate from the control-plane tenant-resolution
 
 The managed Keycloak reference provider creates an isolated application/environment identity scope and client, derives redirect/logout URIs from realized application exposure, configures portable authentication requirements and verifies the resulting provider state. External OIDC is supported as an authentication-only provider when provisioning is not available.
 
-Applications consume standard issuer/discovery/JWKS/client metadata. Provider administration credentials are never projected into the workload.
+Applications consume standard issuer/discovery/JWKS/client metadata. When the issuer uses BaseHarbor-managed or explicitly configured private PKI, the identity binding also projects the trust bundle as a file. Compatibility environment variables include `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_SCOPES`, optional `OIDC_CLIENT_SECRET_FILE` and optional `OIDC_CA_FILE`. The same trust bundle is available in the Service Binding identity directory as `ca.crt`.
+
+Applications are expected to use their normal OIDC/OAuth2 library and configure its HTTPS client with the supplied trust file when one is present. BaseHarbor does not replace the application's OIDC client library.
+
+Provider administration credentials are never projected into the workload.
 
 ## Operator authentication
 
