@@ -83,7 +83,7 @@ Kubernetes / OpenShift planned
 - Portable application intent with provider-neutral capability boundaries.
 - PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
 - Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
-- Canonical local development URLs through one Target-scoped domain (default `baseharbor.localhost`) instead of exposing random loopback ports as normal developer UX.
+- Canonical local development URLs through one Target-scoped domain (default `baha.localhost`) instead of exposing random loopback ports as normal developer UX.
 - One Target-scoped development management login reused across selected local management surfaces; managed OIDC becomes the central development identity when Identity is present, with provider-native adapters only where required.
 - Environment-aware operator access: trusted local operation in dev; authenticated OIDC operator access in test/prod.
 - A canonical guided developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
@@ -91,21 +91,24 @@ Kubernetes / OpenShift planned
 - Plan, preflight, policy and explicit apply remain available for automation and troubleshooting.
 - Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
 - Provider placement for application-scoped, shared or externally managed infrastructure.
+- Resource-efficient shared providers as the normal BaseHarbor model: one Target-owned provider can serve many applications while databases, cache resources, credentials, bindings and destroy ownership remain application-isolated.
 - Machine-readable results and a versioned local MCP interface for agent workflows.
 
 ## Local development access
 
 For `dev`, BaseHarbor keeps local access predictable without changing the portable application contract.
 
-The effective Target owns one development domain, defaulting to `baseharbor.localhost`. Browser-facing application and provider surfaces receive deterministic HTTPS names such as:
+The effective Target owns one development domain, defaulting to `baha.localhost`. Browser-facing application and provider surfaces receive deterministic HTTPS names such as:
 
 ```text
-my-app-api.baseharbor.localhost
-my-app-pgadmin.baseharbor.localhost
-my-app-identity.baseharbor.localhost
-shared-openbao.baseharbor.localhost
-shared-prometheus.baseharbor.localhost
+my-app.baha.localhost
+pgadmin.baha.localhost
+auth.baha.localhost
+secrets.baha.localhost
+metrics.baha.localhost
 ```
+
+The default reference placement is shared wherever the bundled provider can safely isolate applications. PostgreSQL uses one Target-owned provider with per-application databases and roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources. Dedicated `application` placement remains available when an isolated provider instance is explicitly required.
 
 A Target-scoped development account defaults to username `developer` with a generated strong password. BaseHarbor reuses that identity across selected development management surfaces. When managed Identity is present, the same developer identity is reconciled through OIDC; providers that require native authentication receive an adapter using the same development credentials.
 
