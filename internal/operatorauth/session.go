@@ -95,6 +95,36 @@ func ClearSession(target, environment string) error {
 	return nil
 }
 
+type SessionObservation struct {
+	Present     bool      `json:"present"`
+	Valid       bool      `json:"valid"`
+	Target      string    `json:"target,omitempty"`
+	Environment string    `json:"environment,omitempty"`
+	Issuer      string    `json:"issuer,omitempty"`
+	Subject     string    `json:"subject,omitempty"`
+	ClientID    string    `json:"client_id,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at,omitempty"`
+}
+
+func ObserveSession(target, environment string, cfg Config) (SessionObservation, error) {
+	session, err := LoadSession(target, environment)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, ErrAuthenticationRequired) {
+		return SessionObservation{}, nil
+	}
+	if err != nil {
+		return SessionObservation{}, err
+	}
+	observation := SessionObservation{
+		Present: true, Target: session.Target, Environment: session.Environment,
+		Issuer: session.Issuer, Subject: session.Subject, ClientID: session.ClientID,
+		ExpiresAt: session.ExpiresAt,
+	}
+	observation.Valid = session.ValidAt(time.Now()) &&
+		session.Issuer == strings.TrimRight(strings.TrimSpace(cfg.Issuer), "/") &&
+		session.ClientID == strings.TrimSpace(cfg.ClientID)
+	return observation, nil
+}
+
 func VerifySession(ctx context.Context, target, environment string, cfg Config) (*identity.Principal, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
