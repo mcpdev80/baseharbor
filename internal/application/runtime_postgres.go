@@ -511,8 +511,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	}
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
-			fmt.Fprintf(&b, "%s=%s
-", key, values[key])
+			fmt.Fprintf(&b, "%s=%s\\n", key, values[key])
 		}
 	}
 	if m.Services.CacheManagementUI {
