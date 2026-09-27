@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
@@ -20,7 +22,13 @@ func ensureOperatorAuthForBoundary(ctx context.Context, target, environment stri
 		return err
 	}
 	_, err = operatorauth.Ensure(ctx, target, environment, cfg)
-	return err
+	if err != nil {
+		return err
+	}
+	if cfg.Provider == "managed-keycloak" {
+		return finalizeManagedOperatorKeycloak(ctx, target, environment)
+	}
+	return nil
 }
 
 func resolveStoredOperatorAuthBoundary(target, environment string) (operatorauth.Config, bool, error) {
@@ -157,4 +165,76 @@ func persistOperatorAuthBoundary(target, environment string, cfg operatorauth.Co
 		return err
 	}
 	return nil
+}
+
+
+func bootstrapManagedOperatorKeycloak(ctx context.Context, target, environment string) (operatorauth.Config, error) {
+	configured, err := deployment.LoadConfig()
+	if err != nil {
+		return operatorauth.Config{}, err
+	}
+	resolvedTarget, err := configured.ResolveTarget(target, "")
+	if err != nil {
+		return operatorauth.Config{}, err
+	}
+	compose, err := detectComposeForTarget(ctx, resolvedTarget)
+	if err != nil {
+		return operatorauth.Config{}, err
+	}
+	platformFiles, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return operatorauth.Config{}, errors.New("managed operator Keycloak requires the BaseHarbor control plane to be ready; run 'baha up --control-plane-only' first or choose an external OIDC provider")
+	}
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	status, err := issuer.Status(ctx)
+	if err != nil || !status.Ready {
+		if err != nil {
+			return operatorauth.Config{}, fmt.Errorf("managed operator Keycloak requires ready BaseHarbor PKI: %w", err)
+		}
+		return operatorauth.Config{}, errors.New("managed operator Keycloak requires ready BaseHarbor PKI")
+	}
+	dataDir, err := deployment.TargetStateRoot(target)
+	if err != nil {
+		return operatorauth.Config{}, err
+	}
+	managed, err := identityprovider.EnsureManagedOperatorOIDC(ctx, compose, issuer, dataDir, target, target, environment)
+	if err != nil {
+		return operatorauth.Config{}, err
+	}
+	cfg := operatorauth.Config{
+		Provider:     "managed-keycloak",
+		Issuer:       managed.Issuer,
+		ClientID:     managed.ClientID,
+		Scopes:       []string{"openid", "profile", "email"},
+		CallbackPort: managed.CallbackPort,
+	}
+	if err := cfg.Validate(); err != nil {
+		return operatorauth.Config{}, err
+	}
+	return cfg, nil
+}
+
+func finalizeManagedOperatorKeycloak(ctx context.Context, target, environment string) error {
+	configured, err := deployment.LoadConfig()
+	if err != nil {
+		return err
+	}
+	resolvedTarget, err := configured.ResolveTarget(target, "")
+	if err != nil {
+		return err
+	}
+	compose, err := detectComposeForTarget(ctx, resolvedTarget)
+	if err != nil {
+		return err
+	}
+	platformFiles, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return err
+	}
+	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	dataDir, err := deployment.TargetStateRoot(target)
+	if err != nil {
+		return err
+	}
+	return identityprovider.FinalizeManagedOperatorOIDC(ctx, compose, issuer, dataDir, target, target, environment)
 }
