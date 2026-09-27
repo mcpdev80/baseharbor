@@ -248,7 +248,19 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 	if lastErr != nil {
 		return fmt.Errorf("verify application workload readiness after %s: %w", repositoryWorkloadReadinessTimeout, lastErr)
 	}
-	return fmt.Errorf("application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d", repositoryWorkloadReadinessTimeout, lastStatus.ReadyCount(), len(e.expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+	var serviceDetails []string
+	for _, service := range lastStatus.Services {
+		serviceDetails = append(serviceDetails, service.Service+"="+formatWorkloadServiceStatus(service))
+	}
+	return fmt.Errorf(
+		"application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d; observed: %s",
+		repositoryWorkloadReadinessTimeout,
+		lastStatus.ReadyCount(),
+		len(e.expectedServices),
+		lastStatus.ExposureReadyCount(),
+		len(lastStatus.Exposures),
+		strings.Join(serviceDetails, ", "),
+	)
 }
 
 func (e *repositoryWorkloadExecution) recordReady(out io.Writer, status repositoryWorkloadStatus) error {
