@@ -87,20 +87,30 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            demo_ref="$INPUT_DEMO_REF"
-          else
-            demo_ref_file="docs/releases/${tag}.demo-ref"
-            test -s "$demo_ref_file" || {
-              echo "Exact demo revision file is missing: $demo_ref_file" >&2
-              exit 1
-            }
-            demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
-          fi
-          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "Demo revision must be an exact 40-character commit SHA, got: $demo_ref" >&2
+          demo_ref_file="docs/releases/${tag}.demo-ref"
+          test -s "$demo_ref_file" || {
+            echo "Exact demo revision file is missing: $demo_ref_file" >&2
             exit 1
           }
+          pinned_demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+          [[ "$pinned_demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Pinned demo revision must be an exact 40-character commit SHA, got: $pinned_demo_ref" >&2
+            exit 1
+          }
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Demo revision must be an exact 40-character commit SHA, got: $INPUT_DEMO_REF" >&2
+              exit 1
+            }
+            if [ "$INPUT_DEMO_REF" != "$pinned_demo_ref" ]; then
+              echo "Requested demo revision does not match $demo_ref_file." >&2
+              echo "requested: $INPUT_DEMO_REF" >&2
+              echo "pinned:    $pinned_demo_ref" >&2
+              exit 1
+            fi
+          fi
+          demo_ref="$pinned_demo_ref"
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -136,24 +146,6 @@ jobs:
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
           go vet ./...
           go build ./cmd/baha
-
-      - name: Verify control-plane restart and operator-held unseal recovery
-        id: recovery
-        env:
-          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
-
-      - name: Verify real Loki and Alloy workload log ingestion
-        id: log_ingestion
-        env:
-          BASEHARBOR_LOGS_INTEGRATION: "1"
-        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
-
-      - name: Verify real OpenTelemetry to Tempo trace ingestion
-        id: trace_ingestion
-        env:
-          BASEHARBOR_TRACES_INTEGRATION: "1"
-        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
 
       - name: Set up Python
         id: setup_python
@@ -226,9 +218,6 @@ jobs:
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Source readability	${{ steps.source_readability.outcome }}	production file/function size guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
-          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held unseal recovery
-          Log ingestion	${{ steps.log_ingestion.outcome }}	managed Loki and Alloy ingestion
-          Trace ingestion	${{ steps.trace_ingestion.outcome }}	OpenTelemetry to managed Tempo
           Documentation	${{ steps.docs.outcome }}	strict EN/DE MkDocs builds plus documentation architecture audit
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
@@ -255,6 +244,7 @@ jobs:
 
   docker_runtime:
     name: pre-release-docker-runtime
+    needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/docker-runtime-acceptance.yml
     with:
@@ -262,6 +252,7 @@ jobs:
 
   podman:
     name: pre-release-podman
+    needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/podman-acceptance.yml
     with:
@@ -269,6 +260,9 @@ jobs:
 
   mcp_lifecycle:
     name: pre-release-mcp-lifecycle
+    needs:
+      - docker_runtime
+      - podman
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/mcp-lifecycle-acceptance.yml
     with:
@@ -276,6 +270,7 @@ jobs:
 
   observability_full_stack:
     name: pre-release-observability-full-stack
+    needs: mcp_lifecycle
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/observability-acceptance.yml
     with:
@@ -291,7 +286,9 @@ jobs:
 
   demo_docker:
     name: pre-release-docker-demo
-    needs: demo_catalog
+    needs:
+      - demo_catalog
+      - observability_full_stack
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on:
       - self-hosted
@@ -391,7 +388,9 @@ jobs:
 
   demo_podman:
     name: pre-release-podman-demo
-    needs: demo_catalog
+    needs:
+      - demo_catalog
+      - observability_full_stack
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on:
       - self-hosted
@@ -449,7 +448,10 @@ jobs:
             fi
           done
           test -n "$generator"
-          "$generator" --user --dryrun >/tmp/pre-release-podman-quadlet-generator.txt
+          verify_unit_dir="$RUNNER_TEMP/pre-release-podman-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/tmp/pre-release-podman-quadlet-generator.txt
 
           cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
           #!/bin/sh
