@@ -86,6 +86,7 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		}
 		return results
 	}
+
 	checks := []struct {
 		enabled bool
 		name    string
@@ -96,45 +97,47 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		{m.Services.SQLManagementUI, "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
 		{m.Services.CacheManagementUI, "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
 	}
+
 	results := make([]ManagementUICheckResult, 0, len(checks))
 	for _, check := range checks {
 		if !check.enabled {
 			continue
 		}
-		result := ManagementUICheckResult{Name: check.name}
+
 		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		portValue, checkErr := requireRuntimeValue(values, check.portKey)
-		if checkErr == nil {
-			var port int
-			port, checkErr = strconv.Atoi(portValue)
-			if checkErr != nil {
-				checkErr = fmt.Errorf("%s management UI has invalid host port: %w", check.name, checkErr)
-			} else {
-				var policy serviceaccess.Policy
-				policy, checkErr = serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
-				if checkErr == nil {
-					var material serviceaccess.TLSMaterial
-					material, checkErr = serviceaccess.ExistingTLSMaterial(policy, check.dir)
-					if checkErr != nil {
-						checkErr = fmt.Errorf("inspect %s management UI TLS: %w", check.name, checkErr)
-					} else {
-						var client *http.Client
-						client, checkErr = serviceaccess.NewHTTPClient(material, false)
-						if checkErr == nil {
-							var endpoint string
-							endpoint, checkErr = serviceaccess.LoopbackHTTPSURL(port)
-							if checkErr == nil {
-								if err := serviceaccess.WaitHTTPS(checkCtx, client, endpoint, check.path); err != nil {
-									checkErr = fmt.Errorf("%s management UI is not ready: %w", check.name, err)
-								}
-							}
-						}
-					}
+		checkErr := func() error {
+			portValue, err := requireRuntimeValue(values, check.portKey)
+			if err != nil {
+				return err
 			}
-		}
+			port, err := strconv.Atoi(portValue)
+			if err != nil {
+				return fmt.Errorf("%s management UI has invalid host port: %w", check.name, err)
+			}
+			policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			material, err := serviceaccess.ExistingTLSMaterial(policy, check.dir)
+			if err != nil {
+				return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
+			}
+			client, err := serviceaccess.NewHTTPClient(material, false)
+			if err != nil {
+				return err
+			}
+			endpoint, err := serviceaccess.LoopbackHTTPSURL(port)
+			if err != nil {
+				return err
+			}
+			if err := serviceaccess.WaitHTTPS(checkCtx, client, endpoint, check.path); err != nil {
+				return fmt.Errorf("%s management UI is not ready: %w", check.name, err)
+			}
+			return nil
+		}()
 		cancel()
-		result.Err = checkErr
-		results = append(results, result)
+
+		results = append(results, ManagementUICheckResult{Name: check.name, Err: checkErr})
 	}
 	return results
 }
