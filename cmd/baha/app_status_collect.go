@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -122,6 +123,7 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
 	c.collectObjectStorageCheck(ctx)
+	c.collectIdentityCheck(ctx)
 	c.collectTelemetryCheck(ctx)
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
@@ -153,6 +155,31 @@ func (c *applicationStatusCollection) collectObjectStorageCheck(ctx context.Cont
 		return
 	}
 	c.result.AddCheck("object-storage", true, fmt.Sprintf("%d bucket(s) passed authenticated S3 Put/Get", len(application.ObjectStorageBucketNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectIdentityCheck(ctx context.Context) {
+	if !application.HasIdentity(c.manifest) {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := verifyExistingManagedIdentity(checkCtx, c.compose, c.resolved, nil); err != nil {
+		c.result.AddCheck("identity/oidc", false, err.Error())
+		return
+	}
+	bindings, err := application.CapabilityBindings(c.manifest)
+	if err != nil {
+		c.result.AddCheck("identity/oidc", false, err.Error())
+		return
+	}
+	provider := "unknown"
+	for _, binding := range bindings {
+		if binding.Resource.Kind == capability.Identity {
+			provider = string(binding.Resource.Provider)
+			break
+		}
+	}
+	c.result.AddCheck("identity/oidc", true, "OIDC discovery, binding and provider state verified via "+provider)
 }
 
 func (c *applicationStatusCollection) collectTelemetryCheck(ctx context.Context) {
