@@ -201,7 +201,7 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 		EmailVerified: true,
 		Credentials: []keycloakUserCredential{{Type: "password", Value: password, Temporary: false}},
 		Attributes: map[string][]string{
-			"baseharbor.scope": {"developer-access"},
+			"baseharbor.scope": []string{"developer-access"},
 		},
 	}
 
