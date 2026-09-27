@@ -204,6 +204,16 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
+	pruned, changed, err := pruneUnavailableTrustRoutes(current.Routes)
+	if err != nil {
+		return err
+	}
+	if changed {
+		current.Routes = pruned
+		if err := saveState(files.State, current); err != nil {
+			return err
+		}
+	}
 	if len(current.Routes) == 0 {
 		if _, statErr := os.Stat(files.Compose); statErr == nil {
 			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
@@ -467,6 +477,24 @@ func saveState(path string, value state) error {
 		return err
 	}
 	return nil
+}
+
+func pruneUnavailableTrustRoutes(routes []Route) ([]Route, bool, error) {
+	out := make([]Route, 0, len(routes))
+	changed := false
+	for _, route := range routes {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(route.Upstream)), "https://") {
+			if _, err := os.Stat(strings.TrimSpace(route.TrustFile)); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					changed = true
+					continue
+				}
+				return nil, false, fmt.Errorf("inspect development gateway trust for %s: %w", route.Key, err)
+			}
+		}
+		out = append(out, route)
+	}
+	return out, changed, nil
 }
 
 func validateRoute(route Route) error {
