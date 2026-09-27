@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -14,8 +15,44 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
+
+func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]string, error) {
+	if !requiresDevelopmentGateway(m) {
+		return nil, nil
+	}
+	routes, err := devgateway.Routes(target)
+	if err != nil {
+		return nil, err
+	}
+	appOwner := "app/" + m.Name + "/" + m.Environment
+	seen := map[string]struct{}{}
+	var hosts []string
+	for _, route := range routes {
+		include := route.Owner == appOwner || strings.HasPrefix(route.Owner, appOwner+"/")
+		if m.Services.ObjectStorageManagementUI && route.Owner == "shared/object-storage" {
+			include = true
+		}
+		if m.Services.SecretsManagementUI && route.Owner == "shared/openbao" {
+			include = true
+		}
+		if m.Services.ObservabilityManagementUI && route.Owner == "shared/prometheus" {
+			include = true
+		}
+		if !include {
+			continue
+		}
+		if _, ok := seen[route.Host]; ok {
+			continue
+		}
+		seen[route.Host] = struct{}{}
+		hosts = append(hosts, route.Host)
+	}
+	sort.Strings(hosts)
+	return hosts, nil
+}
 
 func requiresDevelopmentGateway(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
@@ -204,36 +241,55 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 	groups = append(groups, devgateway.OwnerRoutes{Owner: appOwner, Routes: appRoutes})
 
 	if e.manifest.Services.ObjectStorageManagementUI {
-		files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target)
+		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderSeaweedFS)
 		if err != nil {
 			return err
 		}
-		host, err := devaccess.SharedHost(target, "storage")
-		if err != nil {
-			return err
+		if placement.Scope != capability.ScopeExternal {
+			files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target)
+			if err != nil {
+				return err
+			}
+			var host string
+			owner := appOwner
+			key := appOwner + "/storage"
+			if placement.Scope == capability.ScopeShared {
+				host, err = devaccess.SharedHost(target, "storage")
+				owner = "shared/object-storage"
+				key = owner
+			} else {
+				host, err = devaccess.ApplicationHost(target, e.manifest.Name, "storage")
+			}
+			if err != nil {
+				return err
+			}
+			groups = append(groups, devgateway.OwnerRoutes{
+				Owner: owner,
+				Routes: []devgateway.Route{{
+					Key: key, Host: host,
+					Upstream: "https://seaweedfs-admin-access:9443",
+					Network: files.Network,
+					TrustFile: filepath.Join(files.Dir, "management-ui", "service-access", "pki", "ca.pem"),
+					ServerName: "localhost",
+				}},
+			})
 		}
-		groups = append(groups, devgateway.OwnerRoutes{
-			Owner: "shared/object-storage",
-			Routes: []devgateway.Route{{
-				Key: "shared/object-storage", Host: host,
-				Upstream: "https://seaweedfs-admin-access:9443",
-				Network: files.Network,
-				TrustFile: filepath.Join(files.Dir, "management-ui", "service-access", "pki", "ca.pem"),
-				ServerName: "localhost",
-			}},
-		})
 	}
 	if e.manifest.Services.SecretsManagementUI {
 		host, err := devaccess.SharedHost(target, "openbao")
 		if err != nil {
 			return err
 		}
+		resourceProject := strings.TrimSpace(e.platformFiles.ResourceProject)
+		if resourceProject == "" {
+			resourceProject = strings.TrimSpace(e.platformFiles.Project)
+		}
 		groups = append(groups, devgateway.OwnerRoutes{
 			Owner: "shared/openbao",
 			Routes: []devgateway.Route{{
 				Key: "shared/openbao", Host: host,
 				Upstream: "https://openbao-access:8443",
-				Network: e.platformFiles.Project + "_default",
+				Network: bhruntime.ControlPlaneNetworkName(resourceProject),
 				TrustFile: filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
 				ServerName: "localhost",
 			}},
@@ -267,7 +323,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				Routes: []devgateway.Route{{
 					Key: key, Host: host,
 					Upstream: "https://" + service + ":8443",
-					Network: placement.Project + "_publish",
+					Network: metrics.PublishNetworkName(placement.Project),
 					TrustFile: filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
 					ServerName: "localhost",
 				}},
