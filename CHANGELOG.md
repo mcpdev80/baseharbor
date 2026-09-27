@@ -10,9 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
+- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, managed/private issuer trust projection through `OIDC_CA_FILE`, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
 - Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
-- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao and managed identity, with semantic interface classification and secure local TLS access.
+- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
 
 ### Changed
 
