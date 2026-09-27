@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -276,6 +277,16 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				if err != nil {
 					return err
 				}
+				protocol := strings.ToLower(strings.TrimSpace(analysis.WorkloadProtocols[selected[0]]))
+				if protocol == "https" {
+					ca := filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem")
+					if info, statErr := os.Stat(ca); statErr != nil || !info.Mode().IsRegular() {
+						if statErr != nil {
+							return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s: %w", selected[0], ca, statErr)
+						}
+						return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s to be a regular file", selected[0], ca)
+					}
+				}
 				appRoutes = append(appRoutes, developmentWorkloadRoute(
 					appOwner,
 					host,
@@ -284,7 +295,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 					e.files,
 					selected[0],
 					ports[0],
-					analysis.WorkloadProtocols[selected[0]],
+					protocol,
 				))
 			}
 		}
