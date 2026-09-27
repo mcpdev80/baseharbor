@@ -22,14 +22,19 @@ import (
 )
 
 const (
-	stateVersion = 1
-	gatewayPort  = 443
+	stateVersion         = 1
+	gatewayPort          = 443
+	rootlessGatewayPort  = 8443
 )
 
 type Runtime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
 	DestroyProject(context.Context, string, string, string) error
+}
+
+type runtimeEngine interface {
+	Engine() string
 }
 
 type Route struct {
@@ -49,8 +54,9 @@ type OwnerRoutes struct {
 }
 
 type state struct {
-	Version int     `json:"version"`
-	Routes  []Route `json:"routes"`
+	Version  int     `json:"version"`
+	HostPort int     `json:"host_port,omitempty"`
+	Routes   []Route `json:"routes"`
 }
 
 type Files struct {
@@ -255,20 +261,52 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(renderCompose(files, current.Routes, trustTargets)), 0o600); err != nil {
+	hostPort := gatewayHostPort(runtime)
+	current.HostPort = hostPort
+	if err := saveState(files.State, current); err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(renderCompose(files, current.Routes, trustTargets, hostPort)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate development gateway: %w", err)
 	}
 	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("start development gateway on local HTTPS port 443: %w", err)
+		return fmt.Errorf("start development gateway on local HTTPS port %d: %w", hostPort, err)
 	}
 	return nil
 }
 
 func URL(host string) string {
-	return "https://" + strings.TrimSpace(host)
+	return canonicalURL(host, gatewayPort)
+}
+
+func URLForTarget(target, host string) string {
+	files, err := FilesFor(target)
+	if err != nil {
+		return URL(host)
+	}
+	current, err := loadState(files.State)
+	if err != nil {
+		return URL(host)
+	}
+	return canonicalURL(host, current.HostPort)
+}
+
+func canonicalURL(host string, port int) string {
+	host = strings.TrimSpace(host)
+	if port == 0 || port == gatewayPort {
+		return "https://" + host
+	}
+	return "https://" + host + ":" + strconv.Itoa(port)
+}
+
+func gatewayHostPort(runtime Runtime) int {
+	if engine, ok := runtime.(runtimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
+		return rootlessGatewayPort
+	}
+	return gatewayPort
 }
 
 func Routes(target string) ([]Route, error) {
@@ -317,7 +355,7 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 			continue
 		}
 		seen[route.Host] = struct{}{}
-		if err := verifyRoute(ctx, roots, route); err != nil {
+		if err := verifyRoute(ctx, roots, route, current.HostPort); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -329,7 +367,7 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 	return errors.Join(errs...)
 }
 
-func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route) error {
+func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int) error {
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -338,11 +376,11 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route) error {
 			ServerName: route.Host,
 		},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, network, "127.0.0.1:443")
+			return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))
 		},
 	}
 	client := &http.Client{Transport: transport}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URL(route.Host)+"/", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, canonicalURL(route.Host, hostPort)+"/", nil)
 	if err != nil {
 		return fmt.Errorf("%s: %w", route.Host, err)
 	}
@@ -401,6 +439,9 @@ func loadState(path string) (state, error) {
 	}
 	if value.Version != stateVersion {
 		return state{}, fmt.Errorf("unsupported development gateway route state version %d", value.Version)
+	}
+	if value.HostPort == 0 {
+		value.HostPort = gatewayPort
 	}
 	value.Routes = normalizedRoutes(value.Routes)
 	return value, nil
@@ -513,7 +554,7 @@ func renderCaddyfile(routes []Route) string {
 	return b.String()
 }
 
-func renderCompose(files Files, routes []Route, trustTargets map[string]string) string {
+func renderCompose(files Files, routes []Route, trustTargets map[string]string, hostPort int) string {
 	networks := map[string]string{}
 	routeNetwork := map[string]string{}
 	for _, route := range routes {
@@ -533,7 +574,7 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string) 
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
-	b.WriteString("    ports:\n      - \"127.0.0.1:443:8443\"\n")
+	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:8443\"\n", hostPort)
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %q\n", files.Caddyfile+":/etc/caddy/Caddyfile:ro")
 	fmt.Fprintf(&b, "      - %q\n", files.Cert+":/certs/server.pem:ro")
