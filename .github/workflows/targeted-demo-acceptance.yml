@@ -192,10 +192,17 @@ jobs:
           git -C /tmp/baseharbor-demo-targeted-repo checkout --detach FETCH_HEAD
           test "$(git -C /tmp/baseharbor-demo-targeted-repo rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
           cd /tmp/baseharbor-demo-targeted-repo
-          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-            BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-            ARTIFACT_DIR="$ARTIFACT_DIR" \
-            bash scripts/acceptance.sh "$DEMO_GATE"
+          if [ "$DEMO_GATE" = "release-focused" ]; then
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash scripts/acceptance.sh identity security backup-restore full-destroy
+          else
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash scripts/acceptance.sh "$DEMO_GATE"
+          fi
 
       - name: Snapshot demo artifacts
         id: snapshot
