@@ -139,6 +139,8 @@ func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
 		"  cache-ui-access:\n",
 		CacheUIImage,
 		`127.0.0.1:${BASEHARBOR_CACHE_UI_HOST_PORT}:8443`,
+		"/run/baseharbor/caddy",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime compose missing requested management UI %q:\n%s", want, got)
