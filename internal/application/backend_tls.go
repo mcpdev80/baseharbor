@@ -48,6 +48,7 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
+	if !UsesSharedPostgreSQL(m) {
 	for _, instance := range SQLInstanceNames(m) {
 		policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
 		if err != nil {
@@ -74,6 +75,8 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 		}
 		values[postgresTLSCAKey(instance)] = ca
 	}
+	}
+	if !UsesSharedValkey(m) {
 	for _, instance := range CacheInstanceNames(m) {
 		policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
 		if err != nil {
@@ -99,6 +102,7 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			return err
 		}
 		values[valkeyTLSCAKey(instance)] = ca
+	}
 	}
 	return writeRuntimeEnv(files.Env, m, values)
 }
