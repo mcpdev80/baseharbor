@@ -79,14 +79,6 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	default:
 		return HTTPGatewayFiles{}, fmt.Errorf("unsupported HTTP service gateway authentication %q", authentication)
 	}
-	var denyBlock strings.Builder
-	for i, path := range denyPaths {
-		path = strings.TrimSpace(path)
-		if path == "" || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\r\n{}") {
-			continue
-		}
-		fmt.Fprintf(&denyBlock, "  @baseharbor_deny_%d path %s*\n  respond @baseharbor_deny_%d 404\n", i, path, i)
-	}
 	if authentication == AuthenticationToken {
 		token, err := projectGatewayAuthToken(dir, policy.AuthTokenFile)
 		if err != nil {
