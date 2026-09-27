@@ -108,6 +108,8 @@ secrets.baha.localhost
 metrics.baha.localhost
 ```
 
+Docker serves these canonical development hosts on HTTPS port 443. Rootless Podman uses the fixed unprivileged HTTPS port 8443 and reports that port in canonical URLs; no host sysctl change is required.
+
 The default reference placement is shared wherever the bundled provider can safely isolate applications. PostgreSQL uses one Target-owned provider with per-application databases and roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources. Dedicated `application` placement remains available when an isolated provider instance is explicitly required.
 
 A Target-scoped development account defaults to username `developer` with a generated strong password. BaseHarbor reuses that identity across selected development management surfaces. When managed Identity is present, the same developer identity is reconciled through OIDC; providers that require native authentication receive an adapter using the same development credentials.
