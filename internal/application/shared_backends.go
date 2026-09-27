@@ -245,19 +245,90 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.Compose, data
 	if err != nil {
 		return err
 	}
-	app, ok := state.Applications[sharedBackendApplicationKey(m)]
+	appKey := sharedBackendApplicationKey(m)
+	app, ok := state.Applications[appKey]
 	if !ok {
 		return fmt.Errorf("shared PostgreSQL application registration is missing")
 	}
+	if err := verifySharedPostgresStateOwnership(state, appKey); err != nil {
+		return err
+	}
 	for instance, resource := range app.SQL {
-		script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(resource.Password), shellQuote(resource.Username), shellQuote(resource.Database))
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
+		}
+		script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(resource.Database))
 		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
 		if err != nil {
-			return fmt.Errorf("verify shared PostgreSQL %s: %w", instance, err)
+			return fmt.Errorf("verify shared PostgreSQL %s with application credential: %w", instance, err)
 		}
 		if strings.TrimSpace(out) != "1" {
 			return fmt.Errorf("verify shared PostgreSQL %s: unexpected query result %q", instance, strings.TrimSpace(out))
 		}
+		if err := verifySharedPostgresDatabaseOwnership(ctx, compose, shared, app.Environment, resource); err != nil {
+			return fmt.Errorf("verify shared PostgreSQL %s ownership: %w", instance, err)
+		}
+		for otherKey, otherApp := range state.Applications {
+			if otherKey == appKey {
+				continue
+			}
+			for otherInstance, other := range otherApp.SQL {
+				deny := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(other.Database))
+				if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", deny); err == nil {
+					return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to %s/%s database %s", app.Application, instance, otherApp.Application, otherInstance, other.Database)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func verifySharedPostgresStateOwnership(state sharedBackendState, ownerKey string) error {
+	app, ok := state.Applications[ownerKey]
+	if !ok {
+		return fmt.Errorf("shared PostgreSQL owner %q is not registered", ownerKey)
+	}
+	seenDB := map[string]string{}
+	seenRole := map[string]string{}
+	for key, registered := range state.Applications {
+		for instance, resource := range registered.SQL {
+			resourceKey := key + "/" + instance
+			if strings.TrimSpace(resource.Database) == "" || strings.TrimSpace(resource.Username) == "" || strings.TrimSpace(resource.CredentialReference) == "" {
+				return fmt.Errorf("shared PostgreSQL resource %s has incomplete ownership metadata", resourceKey)
+			}
+			if previous, exists := seenDB[resource.Database]; exists && previous != resourceKey {
+				return fmt.Errorf("shared PostgreSQL database %q has ambiguous owners %s and %s", resource.Database, previous, resourceKey)
+			}
+			seenDB[resource.Database] = resourceKey
+			if previous, exists := seenRole[resource.Username]; exists && previous != resourceKey {
+				return fmt.Errorf("shared PostgreSQL role %q has ambiguous owners %s and %s", resource.Username, previous, resourceKey)
+			}
+			seenRole[resource.Username] = resourceKey
+		}
+	}
+	if len(app.SQL) == 0 {
+		return errors.New("shared PostgreSQL owner registration contains no SQL resources")
+	}
+	return nil
+}
+
+func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, environment string, resource sharedPostgresResource) error {
+	query := fmt.Sprintf("SELECT r.rolname FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba WHERE d.datname=%s", quotePostgresLiteral(resource.Database))
+	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(out) != resource.Username {
+		return fmt.Errorf("database %q owner is %q, expected %q", resource.Database, strings.TrimSpace(out), resource.Username)
+	}
+	roleQuery := fmt.Sprintf("SELECT rolname FROM pg_roles WHERE rolname=%s AND rolsuper=false AND rolcreatedb=false AND rolcreaterole=false AND rolreplication=false AND rolbypassrls=false", quotePostgresLiteral(resource.Username))
+	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(role) != resource.Username {
+		return fmt.Errorf("application role %q is missing or has elevated privileges", resource.Username)
 	}
 	return nil
 }
@@ -346,13 +417,27 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 		return nil
 	}
 	if len(app.SQL) > 0 {
-		for _, resource := range app.SQL {
-			script := fmt.Sprintf("psql -U baseharbor_admin -d postgres -v ON_ERROR_STOP=1 -c %s -c %s",
-				shellQuote(fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", quotePostgresIdent(resource.Database))),
-				shellQuote(fmt.Sprintf("DROP ROLE IF EXISTS %s", quotePostgresIdent(resource.Username))),
-			)
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script); err != nil {
-				return fmt.Errorf("release shared PostgreSQL application resources: %w", err)
+		if err := verifySharedPostgresStateOwnership(state, key); err != nil {
+			return fmt.Errorf("refuse shared PostgreSQL destroy: %w", err)
+		}
+		for instance, resource := range app.SQL {
+			if err := verifySharedPostgresDatabaseOwnership(ctx, compose, shared, m.Environment, resource); err != nil {
+				return fmt.Errorf("refuse shared PostgreSQL destroy for %s: %w", instance, err)
+			}
+			terminate := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid()", quotePostgresLiteral(resource.Database))
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
+				return fmt.Errorf("terminate shared PostgreSQL connections for %s: %w", instance, err)
+			}
+			dropDB := fmt.Sprintf("DROP DATABASE %s", quotePostgresIdent(resource.Database))
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropDB); err != nil {
+				return fmt.Errorf("drop shared PostgreSQL database for %s: %w", instance, err)
+			}
+			dropRole := fmt.Sprintf("DROP ROLE %s", quotePostgresIdent(resource.Username))
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropRole); err != nil {
+				return fmt.Errorf("drop shared PostgreSQL role for %s: %w", instance, err)
+			}
+			if err := removeSharedBackendCredential(shared.Dir, resource.CredentialReference); err != nil {
+				return fmt.Errorf("remove shared PostgreSQL credential for %s: %w", instance, err)
 			}
 		}
 	}
@@ -1184,6 +1269,17 @@ func readSharedBackendCredential(root, reference string) (string, error) {
 		return "", errors.New("shared backend credential is empty")
 	}
 	return value, nil
+}
+
+func removeSharedBackendCredential(root, reference string) error {
+	reference = filepath.Clean(filepath.FromSlash(strings.TrimSpace(reference)))
+	if reference == "." || filepath.IsAbs(reference) || strings.HasPrefix(reference, ".."+string(filepath.Separator)) {
+		return errors.New("shared backend credential reference is invalid")
+	}
+	if err := os.Remove(filepath.Join(root, reference)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func sharedBackendSecret(size int) (string, error) {
