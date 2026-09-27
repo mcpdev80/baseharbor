@@ -43,11 +43,11 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
-	Runtime      RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
-	Access       TargetAccess                             `yaml:"access" json:"access"`
-	Scope        string                                   `yaml:"scope,omitempty" json:"scope,omitempty"`
-	OpenBao      OpenBaoTargetConfig                      `yaml:"openbao,omitempty" json:"openbao,omitempty"`
-	OperatorAuth map[string]OperatorAuthEnvironmentConfig `yaml:"operator-auth,omitempty" json:"operator_auth,omitempty"`
+	Runtime      RuntimeDefinition                         `yaml:"runtime" json:"runtime"`
+	Access       TargetAccess                              `yaml:"access" json:"access"`
+	Scope        string                                    `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao      OpenBaoTargetConfig                       `yaml:"openbao,omitempty" json:"openbao,omitempty"`
+	OperatorAuth map[string]OperatorAuthEnvironmentConfig  `yaml:"operator-auth,omitempty" json:"operator_auth,omitempty"`
 }
 
 type PromptConfig struct {
