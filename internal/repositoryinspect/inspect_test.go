@@ -75,10 +75,10 @@ func TestInspectReportsPossibleEndpointConfiguration(t *testing.T) {
 	assertFindingConfidence(t, result, "database.sql", ConfidencePossible)
 }
 
-func TestInspectDoesNotGuessBetweenMultipleComposeFiles(t *testing.T) {
+func TestInspectPrefersSingleRootComposeOverNestedProject(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", "services:\n  api:\n    image: example/api\n")
-	writeTestFile(t, root, "deploy/docker-compose.yml", "services:\n  worker:\n    image: example/worker\n")
+	writeTestFile(t, root, "companion-app/compose.yaml", "services:\n  worker:\n    image: example/worker\n")
 
 	result, err := Inspect(context.Background(), root)
 	if err != nil {
@@ -87,11 +87,28 @@ func TestInspectDoesNotGuessBetweenMultipleComposeFiles(t *testing.T) {
 	if len(result.ComposeCandidates) != 2 {
 		t.Fatalf("ComposeCandidates = %#v", result.ComposeCandidates)
 	}
+	if result.SelectedCompose != "compose.yaml" {
+		t.Fatalf("SelectedCompose = %q, want root compose.yaml", result.SelectedCompose)
+	}
+	if got := strings.Join(result.WorkloadServices, ","); got != "api" {
+		t.Fatalf("WorkloadServices = %q, want api", got)
+	}
+}
+
+func TestInspectDoesNotGuessBetweenMultipleRootComposeFiles(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", "services:\n  api:\n    image: example/api\n")
+	writeTestFile(t, root, "docker-compose.yml", "services:\n  worker:\n    image: example/worker\n")
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result.SelectedCompose != "" {
-		t.Fatalf("SelectedCompose = %q, want empty on ambiguity", result.SelectedCompose)
+		t.Fatalf("SelectedCompose = %q, want empty on root ambiguity", result.SelectedCompose)
 	}
 	if len(result.WorkloadServices) != 0 {
-		t.Fatalf("WorkloadServices = %#v, want none on ambiguity", result.WorkloadServices)
+		t.Fatalf("WorkloadServices = %#v, want none on root ambiguity", result.WorkloadServices)
 	}
 }
 
