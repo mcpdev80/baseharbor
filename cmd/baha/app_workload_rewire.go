@@ -244,4 +244,3 @@ func materializeManagedServiceReferenceRewrite(
 	}
 	return path, true, nil
 }
-
