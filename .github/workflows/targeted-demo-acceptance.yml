@@ -132,6 +132,7 @@ jobs:
       - name: Reset runtime state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
 
       - name: Verify Podman Quadlet runtime
@@ -198,6 +199,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
 
       - name: Generate targeted gate evidence
