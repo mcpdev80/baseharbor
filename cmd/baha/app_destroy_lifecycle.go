@@ -322,11 +322,14 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 	}
 	if application.HasObjectStorage(m) {
-		driver := objectstorage.NewDriver(e.compose, m, e.files, nil)
+		driver := objectstorage.NewDriverAt(e.compose, m, e.files, nil, e.resolved.TargetStateRoot, e.resolved.Target.Name)
 		for _, bucket := range application.ObjectStorageBucketNames(m) {
 			if err := driver.DestroyBucket(ctx, bucket); err != nil {
 				return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
 			}
+		}
+		if err := objectstorage.UnregisterManagementUIConsumerAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, m); err != nil {
+			return fmt.Errorf("remove object-storage management UI registration: %w", err)
 		}
 	}
 	if m.Services.Secrets && e.destroyOpenBaoScope {
