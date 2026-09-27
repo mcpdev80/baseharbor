@@ -12,21 +12,21 @@ import (
 )
 
 type guidedInitSelection struct {
-	name                 string
-	environment          string
-	compose              string
-	workloadServices     []string
-	selected             []bool
-	sqlInstances         []string
-	cacheInstances       []string
-	objectStorageBuckets []string
-	secretPolicies             []guidedSecretPolicy
-	sqlManagementUI            bool
-	cacheManagementUI          bool
-	objectStorageManagementUI  bool
-	secretsManagementUI        bool
-	identityManagementUI       bool
-	observabilityManagementUI  bool
+	name                      string
+	environment               string
+	compose                   string
+	workloadServices          []string
+	selected                  []bool
+	sqlInstances              []string
+	cacheInstances            []string
+	objectStorageBuckets      []string
+	secretPolicies            []guidedSecretPolicy
+	sqlManagementUI           bool
+	cacheManagementUI         bool
+	objectStorageManagementUI bool
+	secretsManagementUI       bool
+	identityManagementUI      bool
+	observabilityManagementUI bool
 }
 
 func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (guidedInitSelection, error) {
@@ -112,27 +112,39 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	if appInitReaderIsRealTerminal(appInitInput) {
 		if selection.selected[0] {
 			selection.sqlManagementUI, err = promptOptionalYesNo(reader, out, "PostgreSQL management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 		if selection.selected[1] {
 			selection.cacheManagementUI, err = promptOptionalYesNo(reader, out, "Cache management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 		if selection.selected[2] {
 			selection.objectStorageManagementUI, err = promptOptionalYesNo(reader, out, "Object storage management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 		if selection.selected[3] {
 			selection.secretsManagementUI, err = promptOptionalYesNo(reader, out, "Secrets management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 		if selection.selected[4] {
 			selection.identityManagementUI, err = promptOptionalYesNo(reader, out, "Identity management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 		if selection.selected[5] || selection.selected[6] || selection.selected[7] {
 			selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI?", false)
-			if err != nil { return selection, err }
+			if err != nil {
+				return selection, err
+			}
 		}
 
 	}
