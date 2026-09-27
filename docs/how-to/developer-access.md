@@ -36,6 +36,17 @@ A Target-scoped local HTTPS gateway owns the canonical browser entry points and 
 
 For an unambiguous repository workload with one selected service and one detected HTTP port, BaseHarbor automatically publishes the canonical `<app>.<domain>` route. Ambiguous workloads are not guessed and require explicit exposure intent.
 
+The developer owns the workload transport. If a Compose workload serves HTTPS internally, declare that explicitly on the workload service:
+
+```yaml
+services:
+  api:
+    labels:
+      io.baseharbor.workload.protocol: "https"
+```
+
+Supported values are `http` and `https`. An invalid declared value fails closed. For `https`, the development gateway uses the BaseHarbor-projected workload CA and the Compose service name as TLS SNI; it never disables certificate verification. Omitting the label preserves the conventional HTTP workload default. BaseHarbor-managed provider and control-plane services are unaffected by this workload choice and keep their mandatory TLS boundaries.
+
 `baha status`, `baha doctor` and structured status output use canonical browser URLs in development. Internal loopback ports remain available only to lifecycle/readiness internals and verbose diagnostics.
 
 ## Development management login
