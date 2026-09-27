@@ -8,11 +8,13 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
@@ -234,51 +236,81 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
-	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI && !c.manifest.Services.SecretsManagementUI && !c.manifest.Services.ObservabilityManagementUI {
+	if !c.manifest.Services.SQLManagementUI &&
+		!c.manifest.Services.CacheManagementUI &&
+		!c.manifest.Services.ObjectStorageManagementUI &&
+		!c.manifest.Services.SecretsManagementUI &&
+		!c.manifest.Services.IdentityManagementUI &&
+		!c.manifest.Services.ObservabilityManagementUI {
 		return
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	count := 0
-	if c.manifest.Services.SQLManagementUI || c.manifest.Services.CacheManagementUI {
-		if err := application.VerifyApplicationManagementUIs(checkCtx, c.manifest, c.files); err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
-			return
-		}
-		surfaces, err := application.ApplicationManagementUISurfaces(c.manifest, c.files)
+
+	selected := 0
+	ready := 0
+	record := func(name string, err error, detail string) {
+		selected++
 		if err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
+			c.result.AddCheck("management-ui/"+name, false, err.Error())
 			return
 		}
-		count += len(surfaces)
+		ready++
+		c.result.AddCheck("management-ui/"+name, true, detail)
 	}
+
+	for _, result := range application.VerifyApplicationManagementUIChecks(ctx, c.manifest, c.files) {
+		detail := result.Name + " reachable over TLS"
+		record(result.Name, result.Err, detail)
+	}
+
 	if c.manifest.Services.ObjectStorageManagementUI {
-		if err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name); err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
-			return
-		}
-		count++
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name)
+		cancel()
+		record("object-storage", err, "object storage management UI reachable over TLS")
 	}
+
 	if c.manifest.Services.SecretsManagementUI {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		platformFiles, err := existingTargetRuntimeFiles(checkCtx)
+		if err == nil {
+			err = verifyOpenBaoManagementUI(checkCtx, platformFiles)
+		}
+		cancel()
+		record("openbao", err, "OpenBao management UI reachable over TLS")
+	}
+
+	if c.manifest.Services.IdentityManagementUI {
+		files, err := identityprovider.ExistingKeycloakFilesAt(c.manifest, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 		if err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
-			return
+			record("identity-login", err, "")
+			record("identity-admin", err, "")
+		} else {
+			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			client, checkErr := serviceaccess.NewHTTPClient(files.PublicAccess.Material, false)
+			if checkErr == nil {
+				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.PublicURL, "/")
+			}
+			cancel()
+			record("identity-login", checkErr, "Keycloak user-facing identity UI reachable over TLS")
+
+			checkCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			client, checkErr = serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
+			if checkErr == nil {
+				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.AdminURL, "/")
+			}
+			cancel()
+			record("identity-admin", checkErr, "Keycloak administration UI reachable over TLS")
 		}
-		if err := verifyOpenBaoManagementUI(checkCtx, platformFiles); err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
-			return
-		}
-		count++
 	}
+
 	if c.manifest.Services.ObservabilityManagementUI {
-		if err := metricsprovider.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
-			c.result.AddCheck("management-ui", false, err.Error())
-			return
-		}
-		count++
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := metricsprovider.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest)
+		cancel()
+		record("prometheus", err, "Prometheus management UI reachable over TLS")
 	}
-	c.result.AddCheck("management-ui", true, fmt.Sprintf("%d selected management UI surface(s) reachable over TLS", count))
+
+	c.result.AddCheck("management-ui", ready == selected, fmt.Sprintf("%d/%d selected management UI surface(s) reachable", ready, selected))
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
