@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
 - Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
 - Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
-- Target-scoped development access with one configurable domain (default `baseharbor.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
+- Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
 
 ### Changed
 
@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Shared PostgreSQL now separates one BaseHarbor-internal `baseharbor_admin` provider identity from per-application database roles and credentials. Provider-admin credentials never enter workload bindings, environment contracts, status, doctor or evidence.
 - Shared PostgreSQL reconciliation hardens database/schema/public privileges, verifies application-role ownership and denies cross-application database access; destroy fails closed unless protected provider state and live PostgreSQL ownership agree.
+- Shared PostgreSQL application roles are `NOINHERIT`, receive no provider-role memberships, cannot connect to provider administration databases, and restores authenticate with the protected application credential rather than a provider-admin or local-trust shortcut.
 - Shared PostgreSQL backup/restore remains application-scoped and derives the exact database set from protected application registrations; sibling databases, roles and credentials are never part of another application's recovery operation.
 - Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
 - Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
