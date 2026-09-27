@@ -28,13 +28,13 @@ type KeycloakDriver struct {
 	dataDir   string
 	namespace string
 
-	files        KeycloakFiles
-	origins      []string
-	realm        string
-	clientID     string
+	files       KeycloakFiles
+	origins     []string
+	realm       string
+	clientID    string
 	clientSecret string
-	discovery    application.IdentityDiscovery
-	provisioned  bool
+	discovery   application.IdentityDiscovery
+	provisioned bool
 }
 
 func NewKeycloakDriver(runtime KeycloakRuntime, app application.Manifest, appFiles application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *KeycloakDriver {
@@ -56,9 +56,7 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 	seen := map[string]struct{}{}
 	for _, raw := range origins {
 		raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-		if raw == "" {
-			continue
-		}
+		if raw == "" { continue }
 		u, err := url.Parse(raw)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" || u.Fragment != "" {
 			return fmt.Errorf("identity application origin %q is invalid", raw)
@@ -66,9 +64,7 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 		if !isDevelopmentIdentityEnvironment(d.app.Environment) && u.Scheme != "https" {
 			return fmt.Errorf("managed identity requires HTTPS application origins outside development")
 		}
-		if _, ok := seen[raw]; ok {
-			continue
-		}
+		if _, ok := seen[raw]; ok { continue }
 		seen[raw] = struct{}{}
 		normalized = append(normalized, raw)
 	}
@@ -112,13 +108,9 @@ func (d *KeycloakDriver) Preflight(_ context.Context, resource capability.Resour
 }
 
 func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
-	if d.provisioned {
-		return nil
-	}
+	if d.provisioned { return nil }
 	files, err := EnsureKeycloakFilesAt(ctx, d.app, d.issuer, d.dataDir, d.namespace)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	d.files = files
 	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Keycloak provider: %w", err)
@@ -127,30 +119,24 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		return fmt.Errorf("start Keycloak provider: %w", err)
 	}
 	admin, err := d.adminClient(ctx)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	ownership := keycloakOwnership(d.app)
 	realm := keycloakRealm{
 		Realm: d.realm, Enabled: true,
 		DisplayName: "BaseHarbor " + d.app.Name + " (" + d.app.Environment + ")",
 		SSLRequired: "external", BruteForceProtected: true,
 		RegistrationAllowed: false, ResetPasswordAllowed: true, RememberMe: true,
-		OTPPolicyType:                                 "totp",
-		WebAuthnPolicyRpEntityName:                    "BaseHarbor",
-		WebAuthnPolicySignatureAlgorithms:             []string{"ES256", "RS256"},
-		WebAuthnPolicyPasswordlessRpEntityName:        "BaseHarbor",
+		OTPPolicyType: "totp",
+		WebAuthnPolicyRpEntityName: "BaseHarbor",
+		WebAuthnPolicySignatureAlgorithms: []string{"ES256", "RS256"},
+		WebAuthnPolicyPasswordlessRpEntityName: "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
 		Attributes: ownership,
 	}
-	if err := admin.reconcileRealm(ctx, realm); err != nil {
-		return err
-	}
+	if err := admin.reconcileRealm(ctx, realm); err != nil { return err }
 
 	secret, err := d.ensureClientSecret()
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	d.clientSecret = secret
 	redirects := identityURIs(d.origins, binding.Identity.CallbackPaths)
 	logouts := identityURIs(d.origins, binding.Identity.LogoutPaths)
@@ -163,8 +149,8 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	}
 	client := keycloakClient{
 		ClientID: d.clientID,
-		Name:     "BaseHarbor " + d.app.Name + " " + d.app.Environment,
-		Enabled:  true, Protocol: "openid-connect",
+		Name: "BaseHarbor " + d.app.Name + " " + d.app.Environment,
+		Enabled: true, Protocol: "openid-connect",
 		PublicClient: false, StandardFlowEnabled: true,
 		DirectAccessGrantsEnabled: false, ServiceAccountsEnabled: false,
 		Secret: secret, RedirectURIs: redirects,
@@ -172,9 +158,7 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		Attributes: attributes,
 	}
 	clientUUID, err := admin.reconcileClient(ctx, d.realm, client)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	if err := admin.reconcileClientScopes(ctx, d.realm, clientUUID, binding.Identity.Scopes, binding.Identity.Claims); err != nil {
 		return err
 	}
@@ -186,18 +170,12 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 }
 
 func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	if !d.provisioned {
-		return errors.New("Keycloak identity was not provisioned")
-	}
+	if !d.provisioned { return errors.New("Keycloak identity was not provisioned") }
 	client, err := keycloakPublicHTTPClient(d.files)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	issuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
 	discovery, err := FetchDiscovery(ctx, client, issuer)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	d.discovery = discovery
 	return application.MaterializeIdentityBinding(d.app, d.appFiles, string(capability.ProviderKeycloak), discovery, d.clientID, d.clientSecret)
 }
@@ -215,28 +193,18 @@ func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.
 }
 
 func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, binding capability.Binding) error {
-	if binding.Identity == nil {
-		return errors.New("identity binding is required")
-	}
+	if binding.Identity == nil { return errors.New("identity binding is required") }
 	client, err := keycloakPublicHTTPClient(d.files)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	issuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
 	discovery, err := FetchDiscovery(ctx, client, issuer)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	if discovery.Issuer != d.discovery.Issuer && d.discovery.Issuer != "" {
 		return errors.New("Keycloak issuer drift detected")
 	}
-	if err := application.VerifyIdentityBinding(d.app, d.appFiles); err != nil {
-		return err
-	}
+	if err := application.VerifyIdentityBinding(d.app, d.appFiles); err != nil { return err }
 	admin, err := d.adminClient(ctx)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	return admin.verifyManagedIdentity(ctx, d.realm, keycloakOwnership(d.app), d.clientID, identityURIs(d.origins, binding.Identity.CallbackPaths), identityURIs(d.origins, binding.Identity.LogoutPaths), binding.Identity.MFA, binding.Identity.Methods, binding.Identity.Passwordless)
 }
 
@@ -252,16 +220,12 @@ func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
 		d.files = files
 	}
 	admin, err := d.adminClient(ctx)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	if err := admin.deleteRealm(ctx, d.realm, keycloakOwnership(d.app)); err != nil {
 		return err
 	}
 	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	if placement.Scope == capability.ScopeApplication {
 		if err := d.runtime.DestroyProject(ctx, d.files.Project, d.files.Compose, d.files.Env); err != nil {
 			return fmt.Errorf("destroy app-scoped Keycloak provider: %w", err)
@@ -274,52 +238,36 @@ func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
 
 func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error) {
 	client, err := serviceaccess.NewHTTPClient(d.files.AdminAccess.Material, false)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	if err := waitIdentityEndpoint(ctx, client, d.files.AdminURL+"/realms/master/.well-known/openid-configuration"); err != nil {
 		return nil, fmt.Errorf("wait for Keycloak admin endpoint: %w", err)
 	}
 	values, err := readProtectedEnv(d.files.Env)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	admin := &keycloakAdmin{
 		endpoint: d.files.AdminURL, client: client,
-		user:     values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
+		user: values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
 		password: values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
 	}
-	if err := admin.login(ctx); err != nil {
-		return nil, err
-	}
+	if err := admin.login(ctx); err != nil { return nil, err }
 	return admin, nil
 }
 
 func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 	dir := filepath.Join(d.files.Dir, "scopes", d.realm)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
+	if err := os.MkdirAll(dir, 0o700); err != nil { return "", err }
 	path := filepath.Join(dir, "client-secret")
 	if data, err := os.ReadFile(path); err == nil {
 		value := strings.TrimSpace(string(data))
-		if value == "" || strings.ContainsAny(value, "\r\n") {
-			return "", errors.New("stored Keycloak client secret is invalid")
-		}
+		if value == "" || strings.ContainsAny(value, "\r\n") { return "", errors.New("stored Keycloak client secret is invalid") }
 		return value, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
 	value, err := randomIdentitySecret(32)
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(path, []byte(value+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", err
-	}
+	if err != nil { return "", err }
+	if err := os.WriteFile(path, []byte(value+"\n"), 0o600); err != nil { return "", err }
+	if err := os.Chmod(path, 0o600); err != nil { return "", err }
 	return value, nil
 }
 
@@ -333,7 +281,7 @@ func keycloakClientID(app application.Manifest) string {
 
 func keycloakOwnership(app application.Manifest) map[string]string {
 	return map[string]string{
-		"baseharbor.owner":       "baseharbor",
+		"baseharbor.owner": "baseharbor",
 		"baseharbor.application": app.Name,
 		"baseharbor.environment": app.Environment,
 	}
@@ -364,16 +312,12 @@ func isDevelopmentIdentityEnvironment(environment string) bool {
 
 func keycloakPublicHTTPClient(files KeycloakFiles) (*http.Client, error) {
 	pem, err := os.ReadFile(files.PublicAccess.Material.CA)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem) {
-		return nil, errors.New("Keycloak public CA contains no certificates")
-	}
+	if !pool.AppendCertsFromPEM(pem) { return nil, errors.New("Keycloak public CA contains no certificates") }
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	transport := &http.Transport{
-		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, ServerName: keycloakPublicHost},
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, ServerName: keycloakPublicHost},
 		TLSHandshakeTimeout: 5 * time.Second,
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", strconv.Itoa(files.PublicPort)))
@@ -388,24 +332,18 @@ func waitIdentityEndpoint(ctx context.Context, client *http.Client, endpoint str
 	var last error
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 		resp, err := client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
-			if resp.StatusCode < 500 {
-				return nil
-			}
+			if resp.StatusCode < 500 { return nil }
 			last = fmt.Errorf("HTTP %d", resp.StatusCode)
 		} else {
 			last = err
 		}
 		select {
 		case <-ctx.Done():
-			if last != nil {
-				return last
-			}
+			if last != nil { return last }
 			return ctx.Err()
 		case <-ticker.C:
 		}
