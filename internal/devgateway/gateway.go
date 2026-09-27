@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -365,7 +366,28 @@ func Verify(ctx context.Context, target string) error {
 	for _, route := range routes {
 		hosts = append(hosts, route.Host)
 	}
-	return VerifyHosts(ctx, target, hosts)
+
+	verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		if err := VerifyHosts(verifyCtx, target, hosts); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+		select {
+		case <-verifyCtx.Done():
+			if last != nil {
+				return last
+			}
+			return verifyCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func loadState(path string) (state, error) {
@@ -508,7 +530,7 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string) 
 	b.WriteString("    image: docker.io/library/caddy:2.11.4-alpine\n")
 	b.WriteString("    restart: unless-stopped\n    user: \"65532:65532\"\n    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /data:rw,noexec,nosuid,nodev\n      - /config:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n")
+	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	b.WriteString("    ports:\n      - \"127.0.0.1:443:8443\"\n")
