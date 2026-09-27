@@ -128,6 +128,43 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 	return Reconcile(ctx, runtime, issuer, target)
 }
 
+func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target, owner string, routes []Route) error {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return errors.New("development gateway route owner is required")
+	}
+	files, err := FilesFor(target)
+	if err != nil {
+		return err
+	}
+	current, err := loadState(files.State)
+	if errors.Is(err, os.ErrNotExist) {
+		current = state{Version: stateVersion}
+	} else if err != nil {
+		return err
+	}
+	byKey := map[string]Route{}
+	for _, route := range current.Routes {
+		byKey[route.Key] = route
+	}
+	for _, route := range routes {
+		route.Owner = owner
+		if err := validateRoute(route); err != nil {
+			return err
+		}
+		byKey[route.Key] = route
+	}
+	current.Routes = current.Routes[:0]
+	for _, route := range byKey {
+		current.Routes = append(current.Routes, route)
+	}
+	current.Routes = normalizedRoutes(current.Routes)
+	if err := saveState(files.State, current); err != nil {
+		return err
+	}
+	return Reconcile(ctx, runtime, issuer, target)
+}
+
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
 	groups := make([]OwnerRoutes, 0, len(owners))
 	for _, owner := range owners {
