@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
@@ -60,6 +61,9 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if result.State != "not_applied" {
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
 			managementUI, _ = application.ApplicationManagementUISurfaces(resolved.Manifest, files)
+		}
+		if identityUI, identityErr := identityprovider.KeycloakManagementSurfaces(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name); identityErr == nil {
+			managementUI = append(managementUI, identityUI...)
 		}
 	}
 
