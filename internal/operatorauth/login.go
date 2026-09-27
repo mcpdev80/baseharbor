@@ -22,19 +22,24 @@ import (
 )
 
 type Interactive struct {
+	In     io.Reader
 	Out    io.Writer
 	ErrOut io.Writer
 }
 
 type interactiveKey struct{}
 
-func WithInteractive(ctx context.Context, out, errOut io.Writer) context.Context {
-	return context.WithValue(ctx, interactiveKey{}, Interactive{Out: out, ErrOut: errOut})
+func WithInteractive(ctx context.Context, in io.Reader, out, errOut io.Writer) context.Context {
+	return context.WithValue(ctx, interactiveKey{}, Interactive{In: in, Out: out, ErrOut: errOut})
+}
+
+func InteractiveFromContext(ctx context.Context) (Interactive, bool) {
+	value, ok := ctx.Value(interactiveKey{}).(Interactive)
+	return value, ok && value.Out != nil
 }
 
 func interactiveFromContext(ctx context.Context) (Interactive, bool) {
-	value, ok := ctx.Value(interactiveKey{}).(Interactive)
-	return value, ok && value.Out != nil
+	return InteractiveFromContext(ctx)
 }
 
 func Login(ctx context.Context, target, environment string, cfg Config, out io.Writer) (*identity.Principal, error) {
