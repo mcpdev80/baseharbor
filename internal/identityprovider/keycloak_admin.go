@@ -79,6 +79,28 @@ type requiredAction struct {
 	Priority      int    `json:"priority,omitempty"`
 }
 
+type keycloakUserCredential struct {
+	Type      string `json:"type"`
+	Value     string `json:"value"`
+	Temporary bool   `json:"temporary"`
+}
+
+type keycloakUser struct {
+	ID            string                    `json:"id,omitempty"`
+	Username      string                    `json:"username"`
+	Email         string                    `json:"email,omitempty"`
+	Enabled       bool                      `json:"enabled"`
+	EmailVerified bool                      `json:"emailVerified,omitempty"`
+	Credentials   []keycloakUserCredential  `json:"credentials,omitempty"`
+	Attributes    map[string][]string       `json:"attributes,omitempty"`
+}
+
+type keycloakRole struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+
 func (a *keycloakAdmin) login(ctx context.Context) error {
 	form := url.Values{}
 	form.Set("grant_type", "password")
@@ -144,6 +166,116 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 		}
 	default:
 		return fmt.Errorf("inspect Keycloak realm: HTTP %d", status)
+	}
+	return nil
+}
+
+func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, password string, realmAdmin bool) error {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return fmt.Errorf("Keycloak development user credentials are incomplete")
+	}
+	query := url.Values{}
+	query.Set("username", username)
+	query.Set("exact", "true")
+	path := "/admin/realms/" + url.PathEscape(realm) + "/users?" + query.Encode()
+	status, body, err := a.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("inspect Keycloak user %s: HTTP %d: %s", username, status, body)
+	}
+	var users []keycloakUser
+	if err := json.Unmarshal([]byte(body), &users); err != nil {
+		return fmt.Errorf("decode Keycloak user lookup: %w", err)
+	}
+	if len(users) > 1 {
+		return fmt.Errorf("Keycloak user %q is ambiguous", username)
+	}
+
+	desired := keycloakUser{
+		Username: username,
+		Email: username + "@baseharbor.local",
+		Enabled: true,
+		EmailVerified: true,
+		Credentials: []keycloakUserCredential{{Type: "password", Value: password, Temporary: false}},
+		Attributes: map[string][]string{
+			"baseharbor.scope": {"developer-access"},
+		},
+	}
+
+	userID := ""
+	if len(users) == 0 {
+		status, body, err = a.do(ctx, http.MethodPost, "/admin/realms/"+url.PathEscape(realm)+"/users", desired)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusCreated {
+			return fmt.Errorf("create Keycloak development user: HTTP %d: %s", status, body)
+		}
+		status, body, err = a.do(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK {
+			return fmt.Errorf("resolve Keycloak development user: HTTP %d: %s", status, body)
+		}
+		users = nil
+		if err := json.Unmarshal([]byte(body), &users); err != nil || len(users) != 1 {
+			return fmt.Errorf("resolve Keycloak development user")
+		}
+		userID = users[0].ID
+	} else {
+		userID = users[0].ID
+		desired.ID = userID
+		status, body, err = a.do(ctx, http.MethodPut, "/admin/realms/"+url.PathEscape(realm)+"/users/"+url.PathEscape(userID), desired)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusNoContent {
+			return fmt.Errorf("update Keycloak development user: HTTP %d: %s", status, body)
+		}
+	}
+
+	if !realmAdmin {
+		return nil
+	}
+	return a.ensureRealmAdminRole(ctx, realm, userID)
+}
+
+func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID string) error {
+	query := url.Values{}
+	query.Set("clientId", "realm-management")
+	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("resolve Keycloak realm-management client: HTTP %d: %s", status, body)
+	}
+	var clients []keycloakClient
+	if err := json.Unmarshal([]byte(body), &clients); err != nil || len(clients) != 1 {
+		return fmt.Errorf("resolve Keycloak realm-management client")
+	}
+	clientID := clients[0].ID
+	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("resolve Keycloak realm-admin role: HTTP %d: %s", status, body)
+	}
+	var role keycloakRole
+	if err := json.Unmarshal([]byte(body), &role); err != nil {
+		return err
+	}
+	status, body, err = a.do(ctx, http.MethodPost, "/admin/realms/"+url.PathEscape(realm)+"/users/"+url.PathEscape(userID)+"/role-mappings/clients/"+url.PathEscape(clientID), []keycloakRole{role})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusConflict {
+		return fmt.Errorf("grant Keycloak realm-admin role: HTTP %d: %s", status, body)
 	}
 	return nil
 }
