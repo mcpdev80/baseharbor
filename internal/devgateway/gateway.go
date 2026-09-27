@@ -357,7 +357,13 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string) 
 			continue
 		}
 		seen[logical] = true
-		fmt.Fprintf(&b, "      %s: {}\n", logical)
+		fmt.Fprintf(&b, "      %s:\n", logical)
+		b.WriteString("        aliases:\n")
+		for _, candidate := range routes {
+			if routeNetwork[candidate.Key] == logical {
+				fmt.Fprintf(&b, "          - %q\n", candidate.Host)
+			}
+		}
 	}
 	b.WriteString("\nnetworks:\n")
 	actuals := make([]string, 0, len(networks))
