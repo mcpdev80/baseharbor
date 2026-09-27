@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
@@ -252,6 +253,57 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 	}
 	if !strings.Contains(got, "user: \"65532:65532\"") {
 		t.Fatalf("runtime broker compose missing explicit non-root identity:\n%s", got)
+	}
+}
+
+func TestComposeYAMLSharedOnlyBackendsOwnBrokerNetwork(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), "shared")
+	m := application.New("demo", "dev", true, true, false)
+	files := application.RuntimeFiles{
+		ResourceProject: "baseharbor-demo-docker-demo-dev",
+		Namespace:       "demo-docker",
+	}
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+
+	got, err := composeYAMLForRuntime(
+		m,
+		files,
+		mtls,
+		write("runtime-token"),
+		"",
+		write("permissions.json"),
+		write("service-tokens.json"),
+		"baseharbor-runtime:test",
+		"",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := "name: \"baseharbor-demo-docker-demo-dev_default\""
+	if !strings.Contains(got, backend) {
+		t.Fatalf("runtime broker compose missing expected backend network %q:\n%s", backend, got)
+	}
+	backendBlock := "  backend:\n    name: \"baseharbor-demo-docker-demo-dev_default\""
+	if !strings.Contains(got, backendBlock) {
+		t.Fatalf("shared-only runtime broker must create its backend network instead of declaring it external:\n%s", got)
 	}
 }
 
