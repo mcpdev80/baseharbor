@@ -277,6 +277,37 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 	}
 }
 
+func (d *Driver) ReconcileWorkloadTransport(ctx context.Context) error {
+	if !d.provisioned {
+		return errors.New("managed exposure must be provisioned before workload transport reconciliation")
+	}
+	running, err := d.compose.RunningServicesProject(ctx, ProjectNameForRuntime(d.manifest, d.runtime), d.files.Compose, d.files.Env)
+	if err != nil {
+		return fmt.Errorf("inspect managed exposure before workload transport reconciliation: %w", err)
+	}
+	state, changed, err := d.ensureFiles()
+	if err != nil {
+		return err
+	}
+	d.state = state
+	if !changed {
+		return nil
+	}
+	d.changed = true
+	if err := d.compose.ConfigProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		return fmt.Errorf("validate managed exposure workload transport: %w", err)
+	}
+	if len(running) > 0 {
+		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+			return fmt.Errorf("restart managed exposure for workload transport: %w", err)
+		}
+	}
+	if err := d.compose.UpProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		return fmt.Errorf("start managed exposure after workload transport reconciliation: %w", err)
+	}
+	return nil
+}
+
 func (d *Driver) State() State { return d.state }
 
 func Load(runtime application.RuntimeFiles) (State, Files, error) {
@@ -387,7 +418,9 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 		requirement := d.planned[name]
 		workloadProtocol := "http"
 		if runtimeAuthorizedService(d.manifest, requirement.Service) {
-			workloadProtocol = "https"
+			if info, err := os.Stat(filepath.Join(application.RuntimeMTLSHostDir(d.runtime), "ca.pem")); err == nil && info.Mode().IsRegular() {
+				workloadProtocol = "https"
+			}
 		}
 		route := Route{
 			Name: name, Service: requirement.Service, TargetPort: requirement.TargetPort,
