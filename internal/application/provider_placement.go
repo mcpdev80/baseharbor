@@ -30,7 +30,12 @@ func ProviderExternalReferenceEnv(provider capability.ProviderKind) string {
 
 func DefaultProviderPlacement(provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	switch provider {
-	case capability.ProviderPostgreSQL, capability.ProviderValkey, capability.ProviderCaddy:
+	case capability.ProviderPostgreSQL, capability.ProviderValkey:
+		return capability.ProviderPlacement{
+			Scope:     capability.ScopeShared,
+			Ownership: capability.OwnershipBaseHarbor,
+		}, nil
+	case capability.ProviderCaddy:
 		return capability.ProviderPlacement{
 			Scope:     capability.ScopeApplication,
 			Ownership: capability.OwnershipBaseHarbor,
@@ -65,7 +70,7 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 // Portable application intent never participates in this decision. Defaults are
 // deliberately simple; advanced users can override supported placement fields
 // through the generic provider policy namespace.
-func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
+func ResolveProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	placement, err := DefaultProviderPlacement(provider)
 	if err != nil {
 		return capability.ProviderPlacement{}, err
@@ -87,8 +92,22 @@ func ResolveProviderPlacement(_ Manifest, provider capability.ProviderKind) (cap
 	if raw := strings.TrimSpace(os.Getenv(ProviderSharingBoundaryEnv(provider))); raw != "" {
 		placement.SharingBoundary = raw
 	}
-	if placement.SharingBoundary != "" && provider != capability.ProviderPrometheus && provider != capability.ProviderLoki && provider != capability.ProviderKeycloak {
-		return capability.ProviderPlacement{}, fmt.Errorf("%s is not supported by the current %s adapter; named shared boundaries are implemented for Prometheus and Loki only", ProviderSharingBoundaryEnv(provider), provider)
+	if placement.Scope == capability.ScopeShared &&
+		placement.SharingBoundary == "" &&
+		(provider == capability.ProviderPostgreSQL || provider == capability.ProviderValkey) {
+		environment := strings.ToLower(strings.TrimSpace(m.Environment))
+		if environment == "" {
+			environment = "dev"
+		}
+		placement.SharingBoundary = "environment:" + environment
+	}
+	if placement.SharingBoundary != "" &&
+		provider != capability.ProviderPrometheus &&
+		provider != capability.ProviderLoki &&
+		provider != capability.ProviderKeycloak &&
+		provider != capability.ProviderPostgreSQL &&
+		provider != capability.ProviderValkey {
+		return capability.ProviderPlacement{}, fmt.Errorf("%s is not supported by the current %s adapter", ProviderSharingBoundaryEnv(provider), provider)
 	}
 	if raw := strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(provider))); raw != "" {
 		placement.ExternalReference = raw
