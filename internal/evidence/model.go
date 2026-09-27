@@ -25,8 +25,12 @@ const (
 )
 
 type Actor struct {
-	Interface string `json:"interface"`
-	Identity  string `json:"identity,omitempty"`
+	Interface string   `json:"interface"`
+	Identity  string   `json:"identity,omitempty"`
+	Issuer    string   `json:"issuer,omitempty"`
+	Subject   string   `json:"subject,omitempty"`
+	Assurance string   `json:"assurance,omitempty"`
+	Methods   []string `json:"authentication_methods,omitempty"`
 }
 
 type Record struct {
@@ -74,6 +78,8 @@ type AuditEvent struct {
 	Placement          string    `json:"placement,omitempty"`
 	Ownership          string    `json:"ownership,omitempty"`
 	PolicyResult       string    `json:"policy_result,omitempty"`
+	AuthorizationResult string   `json:"authorization_result,omitempty"`
+	CorrelationID      string    `json:"correlation_id,omitempty"`
 	LifecycleResult    string    `json:"lifecycle_result,omitempty"`
 	VerificationResult string    `json:"verification_result,omitempty"`
 	Outcome            string    `json:"outcome"`
@@ -129,8 +135,18 @@ func NewAuditEvent(ctx context.Context, target, application, environment, operat
 		Operation:     strings.TrimSpace(operation),
 		Outcome:       strings.TrimSpace(outcome),
 	}
+	event.CorrelationID = auditCorrelationID(event)
 	event.ID = auditEventID(event)
 	return event
+}
+
+func auditCorrelationID(event AuditEvent) string {
+	copy := event
+	copy.ID = ""
+	copy.CorrelationID = ""
+	data, _ := json.Marshal(copy)
+	sum := sha256.Sum256(append([]byte("correlation:"), data...))
+	return hex.EncodeToString(sum[:12])
 }
 
 func (e AuditEvent) Validate() error {
