@@ -180,7 +180,10 @@ jobs:
             fi
           done
           test -n "$generator"
-          "$generator" --user --dryrun >/tmp/targeted-podman-quadlet-generator.txt
+          verify_units="$RUNNER_TEMP/targeted-quadlet-verify"
+          rm -rf "$verify_units"
+          mkdir -p "$verify_units"
+          QUADLET_UNIT_DIRS="$verify_units" "$generator" --user --dryrun >/tmp/targeted-podman-quadlet-generator.txt
 
           cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
           #!/bin/sh
