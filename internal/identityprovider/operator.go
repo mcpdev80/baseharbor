@@ -75,9 +75,26 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		return ManagedOperatorOIDC{}, err
 	}
 
-	callbackPort, err := allocateIdentityPort(map[int]struct{}{files.PublicPort: {}, files.AdminPort: {}})
+	values, err := readProtectedEnv(files.Env)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
+	}
+	callbackKey := "BASEHARBOR_OPERATOR_" + strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(environment), "-", "_")) + "_CALLBACK_PORT"
+	callbackPort := 0
+	if raw := strings.TrimSpace(values[callbackKey]); raw != "" {
+		callbackPort, err = parseIdentityPort(raw)
+		if err != nil {
+			return ManagedOperatorOIDC{}, fmt.Errorf("invalid managed operator callback port: %w", err)
+		}
+	} else {
+		callbackPort, err = allocateIdentityPort(map[int]struct{}{files.PublicPort: {}, files.AdminPort: {}})
+		if err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
+		values[callbackKey] = strconv.Itoa(callbackPort)
+		if err := writeProtectedEnv(files.Env, values); err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
 	}
 	clientID := operatorClientID(environment)
 	callback := "http://127.0.0.1:" + strconv.Itoa(callbackPort) + "/callback"
