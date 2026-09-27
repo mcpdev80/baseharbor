@@ -245,6 +245,9 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 	if len(m.Exposures) > 0 {
 		fmt.Fprintf(e.out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 	}
+	if application.HasSharedBackends(m) {
+		fmt.Fprintln(e.out, "  data:       application-owned logical SQL/cache resources removed; shared Target provider infrastructure preserved while still in use")
+	}
 	if application.HasIdentity(m) {
 		fmt.Fprintln(e.out, "  identity:   BaseHarbor-owned application/environment identity scope removed; shared provider infrastructure preserved")
 	}
@@ -308,6 +311,17 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
 		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
 			return err
+		}
+	}
+	if application.HasSharedBackends(m) {
+		if err := application.ReleaseSharedBackendApplication(
+			ctx,
+			e.compose,
+			e.resolved.TargetStateRoot,
+			e.resolved.Target.Name,
+			m,
+		); err != nil {
+			return fmt.Errorf("release application resources from shared data providers: %w", err)
 		}
 	}
 	if e.runtimeErr == nil {
