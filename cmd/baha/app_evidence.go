@@ -106,6 +106,18 @@ func collectApplicationEvidence(ctx context.Context, store application.Store, ap
 			Status: state, Resource: check.Name, Detail: check.Detail,
 		})
 	}
+	authResource := status.OperatorAuth.Mode
+	if status.OperatorAuth.Provider != "" {
+		authResource += "/" + status.OperatorAuth.Provider
+	}
+	authDetail := "status=" + status.OperatorAuth.Status + "; session=" + status.OperatorAuth.Session
+	if status.OperatorAuth.Principal != "" {
+		authDetail += "; principal=" + status.OperatorAuth.Principal
+	}
+	bundle.Observed = append(bundle.Observed, evidence.Record{
+		Kind: evidence.StateObserved, ID: "operator-auth",
+		Status: strings.ToLower(status.OperatorAuth.Status), Resource: authResource, Detail: authDetail,
+	})
 	if status.RuntimeArtifact != nil {
 		identity := status.RuntimeArtifact.Digest
 		if identity == "" {
