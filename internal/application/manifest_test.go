@@ -63,6 +63,7 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
 	m.Services.ObservabilityManagementUI = true
+	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"demo-app"}}
 	m.Metrics.Sources = []MetricsSourceRequirement{{Name: "application", Service: "demo-app", Port: 8080, Path: "/metrics"}}
 
 	rendered := m.YAML()
