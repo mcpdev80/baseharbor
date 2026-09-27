@@ -10,8 +10,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -127,7 +127,6 @@ func managedIdentityExposureOrigins(prepared *managedExposureExecution) ([]strin
 	}
 	return origins, nil
 }
-
 
 func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) error {
 	m := resolved.Manifest
