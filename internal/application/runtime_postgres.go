@@ -512,13 +512,13 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
 	for _, instance := range SQLInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := postgresRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
 	for _, instance := range CacheInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
