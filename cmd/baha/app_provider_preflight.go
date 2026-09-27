@@ -18,9 +18,16 @@ type managedProviderPreflightState struct {
 	telemetry     *managedTelemetryExecution
 	metrics       *managedMetricsExecution
 	logs          *managedLogsExecution
+	identity      *managedIdentityExecution
 }
 
 func requiresManagedServiceIssuer(m application.Manifest) bool {
+	if application.HasIdentity(m) {
+		provider, err := application.IdentityProviderForDeployment()
+		if err != nil || provider.Kind == capability.ProviderKeycloak {
+			return true
+		}
+	}
 	if application.HasManagedRuntimeServices(m) || requiresObjectStorageProviderAdmin(m) {
 		return true
 	}
@@ -81,6 +88,13 @@ func appendManagedProviderPreflights(
 			return err
 		}})
 	}
+	if application.HasIdentity(m) {
+		checks = append(checks, preflight.Check{Name: "managed identity provider", Run: func(ctx context.Context) error {
+			var err error
+			state.identity, err = prepareManagedIdentity(ctx, *compose, resolved, *issuer)
+			return err
+		}})
+	}
 	return checks
 }
 
@@ -126,6 +140,8 @@ func hasProviderCapabilityIntent(m application.Manifest, kind capability.Kind) b
 		return application.HasLogsCollection(m)
 	case capability.ExposureHTTP:
 		return len(m.Exposures) > 0
+	case capability.Identity:
+		return application.HasIdentity(m)
 	default:
 		return false
 	}
