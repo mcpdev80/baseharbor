@@ -205,7 +205,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 }
 
 func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, override string, found bool) error {
-	if !application.HasManagedRuntimeServices(m) {
+	if !application.HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
 	environment, err := application.RuntimeEnvironment(files)
