@@ -35,6 +35,7 @@ type Route struct {
 	Owner      string `json:"owner"`
 	Key        string `json:"key"`
 	Host       string `json:"host"`
+	PathPrefix string `json:"path_prefix,omitempty"`
 	Upstream   string `json:"upstream"`
 	Network    string `json:"network"`
 	TrustFile  string `json:"trust_file"`
@@ -434,6 +435,10 @@ func normalizedRoutes(routes []Route) []Route {
 		route.Owner = strings.TrimSpace(route.Owner)
 		route.Key = strings.TrimSpace(route.Key)
 		route.Host = strings.ToLower(strings.TrimSpace(route.Host))
+		route.PathPrefix = strings.TrimSpace(route.PathPrefix)
+		if route.PathPrefix != "" {
+			route.PathPrefix = "/" + strings.Trim(strings.TrimSpace(route.PathPrefix), "/")
+		}
 		route.Upstream = strings.TrimSpace(route.Upstream)
 		route.Network = strings.TrimSpace(route.Network)
 		route.TrustFile = strings.TrimSpace(route.TrustFile)
@@ -450,6 +455,9 @@ func normalizedRoutes(routes []Route) []Route {
 		if out[i].Host != out[j].Host {
 			return out[i].Host < out[j].Host
 		}
+		if len(out[i].PathPrefix) != len(out[j].PathPrefix) {
+			return len(out[i].PathPrefix) > len(out[j].PathPrefix)
+		}
 		return out[i].Key < out[j].Key
 	})
 	return out
@@ -459,8 +467,15 @@ func renderCaddyfile(routes []Route) string {
 	var b strings.Builder
 	b.WriteString("{\n  auto_https off\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n")
 	for i, route := range routes {
-		fmt.Fprintf(&b, "  @route%d host %s\n", i, route.Host)
+		fmt.Fprintf(&b, "  @route%d {\n    host %s\n", i, route.Host)
+		if route.PathPrefix != "" {
+			fmt.Fprintf(&b, "    path %s %s/*\n", route.PathPrefix, route.PathPrefix)
+		}
+		b.WriteString("  }\n")
 		fmt.Fprintf(&b, "  handle @route%d {\n", i)
+		if route.PathPrefix != "" {
+			fmt.Fprintf(&b, "    uri strip_prefix %s\n", route.PathPrefix)
+		}
 		if strings.HasPrefix(route.Upstream, "https://") {
 			fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
 			b.WriteString("      transport http {\n        tls\n")
