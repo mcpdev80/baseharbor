@@ -145,6 +145,12 @@ func appPlanCommand(store application.Store) *cli.Command {
 				return writeJSON(out, plan)
 			}
 			fmt.Fprintf(out, "Plan for %s (%s)\n", plan.Application, plan.Environment)
+			auth := collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)
+			fmt.Fprintf(out, "Operator access: %s · %s · %s", auth.Mode, auth.Status, auth.Session)
+			if auth.Provider != "" {
+				fmt.Fprintf(out, " · %s", auth.Provider)
+			}
+			fmt.Fprintln(out)
 			for i, action := range plan.Actions {
 				fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
 			}
