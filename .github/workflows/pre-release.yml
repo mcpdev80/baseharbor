@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate, for example v0.4.15 or v0.4.15.1
+        description: Release tag to validate, for example v0.4.17 or v0.4.17.1
         required: true
         type: string
       ref:
