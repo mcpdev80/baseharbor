@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"net"
 	"os"
 	"path/filepath"
@@ -207,14 +208,30 @@ func keycloakStateIdentity(app application.Manifest, placement capability.Provid
 	}
 }
 
+func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
+	canonicalURL = strings.TrimRight(strings.TrimSpace(canonicalURL), "/")
+	if canonicalURL == "" {
+		return errors.New("Keycloak canonical URL is required")
+	}
+	u, err := url.Parse(canonicalURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("Keycloak canonical URL %q must be an HTTPS URL without query or fragment", canonicalURL)
+	}
+	values, err := readProtectedEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = canonicalURL
+	return writeProtectedEnv(files.Env, values)
+}
+
 func keycloakCompose(app application.Manifest, files KeycloakFiles, publicSpec, adminSpec serviceaccess.HTTPGatewaySpec) string {
 	publicGateway := serviceaccess.HTTPGatewayComposeService(files.PublicAccess, publicSpec)
 	adminGateway := serviceaccess.HTTPGatewayComposeService(files.AdminAccess, adminSpec)
 	hostnameCommand := ""
-	hostnameEnvironment := "      KC_HOSTNAME: https://%s:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}\n"
+	hostnameEnvironment := "      KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}\n"
 	if devaccess.Enabled(app.Environment) {
 		hostnameCommand = "      - --hostname-strict=false\n"
-		hostnameEnvironment = ""
 	}
 	return fmt.Sprintf(`services:
   keycloak-db:
