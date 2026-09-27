@@ -49,60 +49,60 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 		return err
 	}
 	if !UsesSharedPostgreSQL(m) {
-	for _, instance := range SQLInstanceNames(m) {
-		policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
+		for _, instance := range SQLInstanceNames(m) {
+			policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			root := backendAccessRoot(files, "postgresql", instance)
+			material, err := serviceaccess.EnsureTLSMaterial(
+				ctx,
+				issuer,
+				policy,
+				filepath.Join(root, "service-access", "pki"),
+				runtimeServiceName("postgres", instance),
+				"127.0.0.1",
+			)
+			if err != nil {
+				return fmt.Errorf("prepare PostgreSQL native TLS for %s: %w", instance, err)
+			}
+			if err := projectPostgresServerMaterial(root, material); err != nil {
+				return fmt.Errorf("project PostgreSQL native TLS for %s: %w", instance, err)
+			}
+			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[postgresTLSCAKey(instance)] = ca
 		}
-		root := backendAccessRoot(files, "postgresql", instance)
-		material, err := serviceaccess.EnsureTLSMaterial(
-			ctx,
-			issuer,
-			policy,
-			filepath.Join(root, "service-access", "pki"),
-			runtimeServiceName("postgres", instance),
-			"127.0.0.1",
-		)
-		if err != nil {
-			return fmt.Errorf("prepare PostgreSQL native TLS for %s: %w", instance, err)
-		}
-		if err := projectPostgresServerMaterial(root, material); err != nil {
-			return fmt.Errorf("project PostgreSQL native TLS for %s: %w", instance, err)
-		}
-		ca, err := projectBackendCA(files, "postgres", instance, material.CA)
-		if err != nil {
-			return err
-		}
-		values[postgresTLSCAKey(instance)] = ca
-	}
 	}
 	if !UsesSharedValkey(m) {
-	for _, instance := range CacheInstanceNames(m) {
-		policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
+		for _, instance := range CacheInstanceNames(m) {
+			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			root := backendAccessRoot(files, "valkey", instance)
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
+				ServiceName:      valkeyAccessService(instance),
+				UpstreamHost:     runtimeServiceName("valkey", instance),
+				UpstreamPort:     6379,
+				PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
+				ContainerPort:    6379,
+			})
+			if err != nil {
+				return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
+			}
+			material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+			if err != nil {
+				return err
+			}
+			ca, err := projectBackendCA(files, "valkey", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[valkeyTLSCAKey(instance)] = ca
 		}
-		root := backendAccessRoot(files, "valkey", instance)
-		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName:      valkeyAccessService(instance),
-			UpstreamHost:     runtimeServiceName("valkey", instance),
-			UpstreamPort:     6379,
-			PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    6379,
-		})
-		if err != nil {
-			return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
-		}
-		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
-		if err != nil {
-			return err
-		}
-		ca, err := projectBackendCA(files, "valkey", instance, material.CA)
-		if err != nil {
-			return err
-		}
-		values[valkeyTLSCAKey(instance)] = ca
-	}
 	}
 	return writeRuntimeEnv(files.Env, m, values)
 }
