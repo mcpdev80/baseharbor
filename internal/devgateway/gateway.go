@@ -322,6 +322,20 @@ func URLForTarget(target, host string) string {
 	return canonicalURL(host, current.HostPort)
 }
 
+// URLForRuntime returns the effective canonical gateway URL before or after
+// gateway state exists. Persisted state remains authoritative; on first
+// reconciliation the runtime determines the same deterministic host port that
+// Reconcile will persist (Docker 443, rootless Podman 8443).
+func URLForRuntime(target, host string, runtime Runtime) string {
+	files, err := FilesFor(target)
+	if err == nil {
+		if current, loadErr := loadState(files.State); loadErr == nil {
+			return canonicalURL(host, current.HostPort)
+		}
+	}
+	return canonicalURL(host, gatewayHostPort(runtime))
+}
+
 func canonicalURL(host string, port int) string {
 	host = strings.TrimSpace(host)
 	if port == 0 || port == gatewayPort {
