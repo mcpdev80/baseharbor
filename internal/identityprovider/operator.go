@@ -2,6 +2,7 @@ package identityprovider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -199,4 +199,3 @@ func decodeJSON(value string, target any) error {
 	return json.Unmarshal([]byte(value), target)
 }
 
-var _ bhruntime.Compose
