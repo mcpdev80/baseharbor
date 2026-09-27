@@ -38,7 +38,7 @@ fi`
 
 	script := `IFS= read -r PASSWORD
 test -n "$PASSWORD"
-exec bao write auth/baseharbor-dev/users/` + username + ` password="$PASSWORD" policies=baseharbor-manager token_no_default_policy=true`
+exec bao write auth/baseharbor-dev/users/` + username + ` password="$PASSWORD" policies=baseharbor-manager`
 	if _, err := execWithTokenPayload(ctx, executor, files, token, script, password); err != nil {
 		return fmt.Errorf("reconcile OpenBao development user: %w", err)
 	}
