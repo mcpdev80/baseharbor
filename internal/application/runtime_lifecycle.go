@@ -23,7 +23,7 @@ func ExpectedRuntimeResourcesForProject(m Manifest, project string) []bhruntime.
 }
 
 func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourceProject string) []bhruntime.ProjectResource {
-	if !HasManagedRuntimeServices(m) {
+	if !HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(resourceProject)}}
