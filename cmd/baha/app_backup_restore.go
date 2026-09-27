@@ -162,6 +162,14 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	}
 	m := restoreData.manifest
 
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if err := ensureOperatorAuthForBoundary(ctx, target.Name, m.Environment); err != nil {
+		return err
+	}
+
 	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
 		return err
