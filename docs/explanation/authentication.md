@@ -49,6 +49,21 @@ Applications are expected to use their normal OIDC/OAuth2 library and configure 
 
 Provider administration credentials are never projected into the workload.
 
+## Development management identity
+
+Local development has a separate convenience boundary for browser-facing provider administration.
+
+Each development Target owns one management account, default username `developer`, with a strong generated password. When managed application Identity is present, BaseHarbor reconciles that developer identity through managed OIDC as the central development identity. Provider UIs that cannot consume OIDC directly may receive the same Target-scoped credentials through a provider-native adapter.
+
+This does not merge application-user identity, BaseHarbor operator identity and provider implementation credentials into one security domain. It is a local-development UX layer only:
+
+- the credential is Target-scoped, not application-manifest state;
+- normal status, doctor, plan, logs, audit and evidence never reveal the password;
+- provider/runtime service credentials remain separate least-privilege credentials;
+- test and prod never reuse the shared development credential.
+
+Use `baha dev credentials` only when the local development secret must be explicitly revealed or rotated.
+
 ## Operator authentication
 
 BaseHarbor operator identity is a third boundary and is not interchangeable with application-user identity.
