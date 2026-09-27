@@ -541,6 +541,13 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			}
 		}
 	}
+	if HasIdentity(m) {
+		for _, key := range []string{"IDENTITY_CONTAINER_ISSUER", "IDENTITY_CLIENT_ID", "IDENTITY_CLIENT_SECRET", "IDENTITY_CA_FILE"} {
+			if values[key] != "" {
+				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+			}
+		}
+	}
 	return b.String()
 }
 
