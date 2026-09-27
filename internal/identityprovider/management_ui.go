@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -60,17 +61,27 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 		return KeycloakFiles{}, err
 	}
 
+	publicURL := "https://" + keycloakPublicHost + ":" + strconv.Itoa(publicPort)
+	canonicalPublicURL := publicURL
+	if devaccess.Enabled(app.Environment) {
+		host, err := devaccess.ApplicationHost(namespace, app.Name, "identity")
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		canonicalPublicURL = devaccess.CanonicalURL(host)
+	}
 	return KeycloakFiles{
-		Dir:             dir,
-		Compose:         filepath.Join(dir, "compose.yaml"),
-		Env:             envPath,
-		Project:         project,
-		ConsumerNetwork: consumer,
-		InternalNetwork: consumer + "-internal",
-		PublicPort:      publicPort,
-		AdminPort:       adminPort,
-		PublicURL:       "https://" + keycloakPublicHost + ":" + strconv.Itoa(publicPort),
-		AdminURL:        "https://127.0.0.1:" + strconv.Itoa(adminPort),
+		Dir:                dir,
+		Compose:            filepath.Join(dir, "compose.yaml"),
+		Env:                envPath,
+		Project:            project,
+		ConsumerNetwork:    consumer,
+		InternalNetwork:    consumer + "-internal",
+		PublicPort:         publicPort,
+		AdminPort:          adminPort,
+		PublicURL:          publicURL,
+		CanonicalPublicURL: canonicalPublicURL,
+		AdminURL:           "https://127.0.0.1:" + strconv.Itoa(adminPort),
 		PublicAccess: serviceaccess.HTTPGatewayFiles{
 			Dir:       filepath.Join(dir, "public", "service-access"),
 			Caddyfile: filepath.Join(dir, "public", "service-access", "Caddyfile"),
@@ -110,7 +121,7 @@ func KeycloakManagementSurfaces(app application.Manifest, dataDir, namespace str
 	return []application.ManagementUISurface{
 		{
 			Service: "identity-login", Purpose: application.ProviderInterfaceUserFacing,
-			URL: files.PublicURL, Authentication: "oidc",
+			URL: files.CanonicalPublicURL, Authentication: "oidc",
 		},
 		{
 			Service: "identity-admin", Purpose: application.ProviderInterfaceAdministration,
