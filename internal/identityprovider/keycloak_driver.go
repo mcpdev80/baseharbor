@@ -481,7 +481,7 @@ func keycloakPublicHTTPClient(files KeycloakFiles) (*http.Client, error) {
 	return &http.Client{Transport: transport, Timeout: 10 * time.Second}, nil
 }
 
-const identityEndpointReadyTimeout = 90 * time.Second
+const identityEndpointReadyTimeout = 2 * time.Minute
 
 func waitIdentityEndpoint(ctx context.Context, client *http.Client, endpoint string) error {
 	waitCtx, cancel := context.WithTimeout(ctx, identityEndpointReadyTimeout)
