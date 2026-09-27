@@ -265,6 +265,15 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 	if err := checkRequiredApplicationSecrets(ctx, e.compose, e.platformFiles, e.manifest, e.files); err != nil {
 		return fmt.Errorf("required secrets check failed: %w", err)
 	}
+	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.SecretsManagementUI {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("load developer access for OpenBao: %w", err)
+		}
+		if err := openbao.EnsureDevelopmentUserpass(ctx, e.compose, e.platformFiles, credentials.Username, credentials.Password); err != nil {
+			return fmt.Errorf("reconcile OpenBao developer access: %w", err)
+		}
+	}
 	return nil
 }
 
