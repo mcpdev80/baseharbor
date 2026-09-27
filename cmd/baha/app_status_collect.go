@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -428,12 +429,30 @@ func (c *applicationStatusCollection) collectRequiredSecretChecks(ctx context.Co
 func (c *applicationStatusCollection) collectWorkloadChecks() {
 	if c.workloadStatus.Found {
 		for _, service := range c.workloadStatus.Services {
-			c.result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
+			detail := formatWorkloadServiceStatus(service)
+			if devaccess.Enabled(c.manifest.Environment) {
+				detail = service.State
+				if service.Health != "" {
+					detail += " health=" + service.Health
+				}
+			}
+			c.result.AddCheck("workload/"+service.Service, service.Ready, detail)
 		}
 		if c.workloadErr != nil {
 			c.result.AddCheck("workload", false, c.workloadErr.Error())
 		} else {
 			c.result.AddCheck("workload", c.workloadStatus.Ready(), fmt.Sprintf("%d/%d selected Compose service(s) ready", c.workloadStatus.ReadyCount(), len(c.workloadStatus.Services)))
+		}
+		if devaccess.Enabled(c.manifest.Environment) {
+			if routes, err := devgateway.Routes(c.resolved.Target.Name); err == nil {
+				key := "app/" + c.manifest.Name + "/" + c.manifest.Environment + "/workload-api"
+				for _, route := range routes {
+					if route.Key == key {
+						c.result.AddCheck("api", true, devgateway.URL(route.Host))
+						break
+					}
+				}
+			}
 		}
 		return
 	}
