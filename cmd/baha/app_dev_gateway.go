@@ -19,6 +19,20 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+func requiresDevelopmentGateway(m application.Manifest) bool {
+	if !devaccess.Enabled(m.Environment) {
+		return false
+	}
+	return len(m.Exposures) > 0 ||
+		m.Services.SQLManagementUI ||
+		m.Services.CacheManagementUI ||
+		m.Services.ObjectStorageManagementUI ||
+		m.Services.SecretsManagementUI ||
+		m.Services.IdentityManagementUI ||
+		m.Services.ObservabilityManagementUI ||
+		m.Services.Identity
+}
+
 func (e *applicationApplyExecution) reconcileDevelopmentGateway(ctx context.Context) error {
 	if !devaccess.Enabled(e.manifest.Environment) {
 		return nil
