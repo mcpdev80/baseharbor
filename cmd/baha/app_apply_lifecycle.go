@@ -331,7 +331,7 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 		}); err != nil {
 			return err
 		}
-		printRuntimeBrokerDocs(e.out, e.files)
+		printRuntimeBrokerDocs(e.out, e.resolved.Target.Name, e.manifest, e.files)
 	}
 	if err := activity(ctx, e.term, "Verifying trace ingestion", func(progress io.Writer) error {
 		return verifyManagedTracesAfterTelemetry(ctx, progress, e.providers.traces)
