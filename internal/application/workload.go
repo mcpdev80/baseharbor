@@ -368,6 +368,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				if strings.TrimSpace(values["IDENTITY_CLIENT_SECRET"]) != "" {
 					serviceEnv["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
 				}
+				if strings.TrimSpace(values["IDENTITY_CA_FILE"]) != "" {
+					serviceEnv["OIDC_CA_FILE"] = "/run/baseharbor/service-bindings/identity/ca.crt"
+				}
 			}
 			if HasOTLPTelemetry(m) {
 				serviceEnv["OTEL_SERVICE_NAME"] = service
