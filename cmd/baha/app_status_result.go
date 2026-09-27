@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -82,6 +84,46 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		if resolved.Manifest.Services.ObservabilityManagementUI {
 			if surface, surfaceErr := metricsprovider.ManagementUISurfaceAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); surfaceErr == nil {
 				managementUI = append(managementUI, surface)
+			}
+		}
+	}
+
+	if devaccess.Enabled(resolved.Manifest.Environment) {
+		for i := range managementUI {
+			var host string
+			var hostErr error
+			switch managementUI[i].Service {
+			case "sql":
+				host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "pgadmin")
+			case "cache":
+				host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "cache")
+			case "object-storage":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderSeaweedFS)
+				if placementErr != nil {
+					hostErr = placementErr
+				} else if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(resolved.Target.Name, "storage")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "storage")
+				}
+			case "secrets":
+				host, hostErr = devaccess.SharedHost(resolved.Target.Name, "openbao")
+			case "identity-login":
+				host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity")
+			case "identity-admin":
+				host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity-admin")
+			case "observability":
+				placement, placementErr := metricsprovider.PlacementForAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest)
+				if placementErr != nil {
+					hostErr = placementErr
+				} else if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(resolved.Target.Name, "prometheus")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, hostErr = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "prometheus")
+				}
+			}
+			if hostErr == nil && strings.TrimSpace(host) != "" {
+				managementUI[i].URL = devaccess.CanonicalURL(host)
 			}
 		}
 	}
