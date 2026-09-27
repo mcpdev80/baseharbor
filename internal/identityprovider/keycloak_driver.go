@@ -126,6 +126,13 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		return err
 	}
 	d.files = files
+	publicBase, err := d.publicBaseURL()
+	if err != nil {
+		return err
+	}
+	if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+		return err
+	}
 	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Keycloak provider: %w", err)
 	}
@@ -142,10 +149,6 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		realmAttributes[key] = value
 	}
 	if isDevelopmentIdentityEnvironment(d.app.Environment) {
-		publicBase, err := d.publicBaseURL()
-		if err != nil {
-			return err
-		}
 		realmAttributes["frontendUrl"] = publicBase
 	}
 	realm := keycloakRealm{
