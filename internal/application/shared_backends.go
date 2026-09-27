@@ -313,7 +313,11 @@ func verifySharedPostgresStateOwnership(state sharedBackendState, ownerKey strin
 	return nil
 }
 
-func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, environment string, resource sharedPostgresResource) error {
+type sharedPostgresExecRuntime interface {
+	ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error)
+}
+
+func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPostgresExecRuntime, shared SharedBackendFiles, environment string, resource sharedPostgresResource) error {
 	query := fmt.Sprintf("SELECT r.rolname FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba WHERE d.datname=%s", quotePostgresLiteral(resource.Database))
 	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
 	if err != nil {
