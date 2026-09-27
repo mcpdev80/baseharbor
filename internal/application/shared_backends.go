@@ -53,12 +53,13 @@ type sharedValkeyResource struct {
 }
 
 type SharedBackendFiles struct {
-	Dir     string
-	Compose string
-	Env     string
-	State   string
-	Project string
-	Network string
+	Dir             string
+	Compose         string
+	Env             string
+	State           string
+	Project         string
+	ResourceProject string
+	Network         string
 }
 
 func SharedBackendNetworkName(namespace, environment string) string {
@@ -81,8 +82,9 @@ func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendF
 		Compose: filepath.Join(dir, "compose.yaml"),
 		Env:     filepath.Join(dir, "provider.env"),
 		State:   filepath.Join(dir, "state.json"),
-		Project: bhruntime.SharedProjectName(namespace),
-		Network: SharedBackendNetworkName(namespace, environment),
+		Project:         bhruntime.SharedProjectName(namespace),
+		ResourceProject: bhruntime.SharedResourceProjectName(namespace),
+		Network:         SharedBackendNetworkName(namespace, environment),
 	}
 }
 
@@ -689,13 +691,13 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("volumes:\n")
 	if hasPostgres {
-		fmt.Fprintf(&b, "  shared-postgres-data:\n    name: %s-%s-postgres-data\n", bhruntime.SharedResourceProjectName(""), sharedBackendToken(state.Environment))
+		fmt.Fprintf(&b, "  shared-postgres-data:\n    name: %s-%s-postgres-data\n", files.ResourceProject, sharedBackendToken(state.Environment))
 	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		for instance := range app.Cache {
 			service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
-			fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-data\n", service, service, sharedBackendToken(state.Environment))
+			fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-%s-data\n", service, files.ResourceProject, sharedBackendToken(state.Environment), service)
 		}
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
