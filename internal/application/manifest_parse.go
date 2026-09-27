@@ -266,7 +266,9 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 				p.manifest.Identity.Authentication.MFA = value
 			case "passwordless":
 				enabled, err := strconv.ParseBool(value)
-				if err != nil { return fmt.Errorf("line %d: invalid identity passwordless value", lineNo) }
+				if err != nil {
+					return fmt.Errorf("line %d: invalid identity passwordless value", lineNo)
+				}
 				p.manifest.Identity.Authentication.Passwordless = enabled
 			case "methods":
 				p.identityField = "authentication-methods"
@@ -277,7 +279,9 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 		}
 		if strings.HasPrefix(trim, "- ") {
 			value := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
-			if value == "" { return fmt.Errorf("line %d: identity list value is empty", lineNo) }
+			if value == "" {
+				return fmt.Errorf("line %d: identity list value is empty", lineNo)
+			}
 			switch p.identityField {
 			case "callback_paths":
 				p.manifest.Identity.CallbackPaths = append(p.manifest.Identity.CallbackPaths, value)
@@ -292,6 +296,7 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 			}
 			return nil
 		}
+		return fmt.Errorf("line %d: invalid identity structure", lineNo)
 	default:
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
@@ -411,7 +416,9 @@ func (p *manifestYAMLParser) parseIndent6(lineNo int, trim string) error {
 	}
 	if p.section == "identity" && p.identityField == "authentication-methods" && strings.HasPrefix(trim, "- ") {
 		value := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
-		if value == "" { return fmt.Errorf("line %d: identity authentication method is empty", lineNo) }
+		if value == "" {
+			return fmt.Errorf("line %d: identity authentication method is empty", lineNo)
+		}
 		p.manifest.Identity.Authentication.Methods = append(p.manifest.Identity.Authentication.Methods, value)
 		return nil
 	}
