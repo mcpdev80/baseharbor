@@ -369,6 +369,13 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}); err != nil {
 		return err
 	}
+	if requiresDevelopmentGateway(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
+			return e.reconcileDevelopmentGateway(ctx)
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
