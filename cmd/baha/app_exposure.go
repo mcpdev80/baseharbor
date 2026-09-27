@@ -84,6 +84,11 @@ func convergeManagedExposure(ctx context.Context, out io.Writer, prepared *manag
 	if err := provisionManagedExposure(ctx, prepared); err != nil {
 		return err
 	}
+	if prepared != nil {
+		if err := prepared.driver.ReconcileWorkloadTransport(ctx); err != nil {
+			return err
+		}
+	}
 	return verifyManagedExposure(ctx, out, prepared)
 }
 
