@@ -152,10 +152,10 @@ func persistOperatorAuthBoundary(target, environment string, cfg operatorauth.Co
 		return err
 	}
 	err := deployment.SetOperatorAuthForTargetEnvironment(target, environment, deployment.OperatorAuthEnvironmentConfig{
-		Provider: cfg.Provider,
-		Issuer: cfg.Issuer,
-		ClientID: cfg.ClientID,
-		Scopes: append([]string(nil), cfg.Scopes...),
+		Provider:     cfg.Provider,
+		Issuer:       cfg.Issuer,
+		ClientID:     cfg.ClientID,
+		Scopes:       append([]string(nil), cfg.Scopes...),
 		CallbackPort: cfg.CallbackPort,
 	})
 	if err != nil {
@@ -166,7 +166,6 @@ func persistOperatorAuthBoundary(target, environment string, cfg operatorauth.Co
 	}
 	return nil
 }
-
 
 func bootstrapManagedOperatorKeycloak(ctx context.Context, target, environment string) (operatorauth.Config, error) {
 	configured, err := deployment.LoadConfig()
