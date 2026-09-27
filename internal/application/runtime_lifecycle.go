@@ -27,6 +27,7 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		return nil
 	}
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(resourceProject)}}
+	if !UsesSharedPostgreSQL(m) {
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		resources = append(resources,
@@ -34,6 +35,8 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
+	}
+	if !UsesSharedValkey(m) {
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		resources = append(resources,
@@ -42,10 +45,11 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
-	if m.Services.SQLManagementUI {
+	}
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-1"},
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},
