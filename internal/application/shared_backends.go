@@ -227,6 +227,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 		return false, fmt.Errorf("start shared backend runtime: %w", err)
 	}
 	if UsesSharedPostgreSQL(m) {
+		if err := waitSharedPostgresReady(ctx, compose, shared, m.Environment); err != nil {
+			return false, err
+		}
 		if err := reconcileSharedPostgresApplication(ctx, compose, shared, app); err != nil {
 			return false, err
 		}
@@ -881,6 +884,46 @@ func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func waitSharedPostgresReady(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, environment string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		out, err := compose.ExecProject(
+			waitCtx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			sharedPostgresService(environment),
+			"psql",
+			"-U", "baseharbor_admin",
+			"-d", "postgres",
+			"-tAc", "SELECT 1",
+		)
+		if err == nil && strings.TrimSpace(out) == "1" {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("unexpected readiness result %q", strings.TrimSpace(out))
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("wait for shared PostgreSQL readiness: %w", lastErr)
+			}
+			return fmt.Errorf("wait for shared PostgreSQL readiness: %w", waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
