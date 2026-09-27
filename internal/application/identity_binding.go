@@ -21,7 +21,7 @@ type IdentityDiscovery struct {
 	EndSessionEndpoint    string
 }
 
-func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string, discovery IdentityDiscovery, clientID, clientSecret string) error {
+func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string, discovery IdentityDiscovery, clientID, clientSecret, trustBundlePath string) error {
 	if !m.Services.Identity {
 		return fmt.Errorf("identity binding requires services.identity enabled")
 	}
@@ -62,6 +62,16 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	if clientSecret != "" {
 		entries["client-secret"] = clientSecret
 	}
+	if strings.TrimSpace(trustBundlePath) != "" {
+		trust, err := os.ReadFile(filepath.Clean(trustBundlePath))
+		if err != nil {
+			return fmt.Errorf("read identity trust bundle: %w", err)
+		}
+		if len(strings.TrimSpace(string(trust))) == 0 {
+			return fmt.Errorf("identity trust bundle is empty")
+		}
+		entries["ca.crt"] = string(trust)
+	}
 	for name, value := range entries {
 		if err := capabilityBindingEntryName(name); err != nil {
 			return err
@@ -96,6 +106,11 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	} else {
 		delete(runtimeValues, "IDENTITY_CLIENT_SECRET")
 	}
+	if strings.TrimSpace(trustBundlePath) != "" {
+		runtimeValues["IDENTITY_CA_FILE"] = filepath.Join(binding, "ca.crt")
+	} else {
+		delete(runtimeValues, "IDENTITY_CA_FILE")
+	}
 	if err := writeRuntimeEnv(files.Env, m, runtimeValues); err != nil {
 		return err
 	}
@@ -111,6 +126,9 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	}
 	if clientSecret != "" {
 		values["OIDC_CLIENT_SECRET_FILE"] = filepath.Join(binding, "client-secret")
+	}
+	if strings.TrimSpace(trustBundlePath) != "" {
+		values["OIDC_CA_FILE"] = filepath.Join(binding, "ca.crt")
 	}
 	if err := writeApplicationEnvValues(files.ApplicationEnv, values); err != nil {
 		return err
@@ -165,9 +183,8 @@ func capabilityBindingEntryName(name string) error {
 	switch name {
 	case "type", "provider", "uri":
 		return nil
-	case "client-secret":
-		// The secret file name is intentionally capability-local and never
-		// confused with the standard username/password entries.
+	case "client-secret", "ca.crt":
+		// Capability-local credential/trust material remains file-based.
 		return nil
 	default:
 		if !strings.HasPrefix(name, "oidc.") {
