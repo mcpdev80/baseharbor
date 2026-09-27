@@ -32,7 +32,7 @@ Discover infrastructure requirements from code, dependencies, Compose files, por
 Keep infrastructure intent portable instead of coupling the app to a specific implementation.
 
 **Use standard interfaces**  
-PostgreSQL · Redis/Valkey · S3 · HTTP · OTLP · environment variables · files
+PostgreSQL · Redis/Valkey · S3 · HTTP · OIDC/OAuth2 · OTLP · environment variables · files
 
 **Zero-trust by default**  
 Least privilege · scoped credentials · explicit trust boundaries · fail-closed behavior
@@ -81,7 +81,9 @@ Kubernetes / OpenShift planned
 
 - Repository inspection with **Detected / Suggested / Possible** evidence.
 - Portable application intent with provider-neutral capability boundaries.
-- PostgreSQL, Valkey/Redis, S3, secrets, HTTP exposure, metrics, logs, traces and OTLP.
+- PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
+- Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
+- Environment-aware operator access: trusted local operation in dev; authenticated OIDC operator access in test/prod.
 - A canonical guided developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
 - First-class deployment Targets with XDG-backed configuration and target-scoped runtime/deployment state.
 - Plan, preflight, policy and explicit apply remain available for automation and troubleshooting.
@@ -99,6 +101,8 @@ Current behavior includes:
 - scoped application/runtime credentials;
 - bucket-scoped S3 credentials;
 - application-scoped runtime identities;
+- standard OIDC application identity with file-based trust material for managed/private issuers;
+- authenticated BaseHarbor operator boundaries for test/prod, separate from application-user identity;
 - explicit directional cross-application connectivity;
 - protected deployment state;
 - real protocol/data-flow readiness checks;
@@ -126,6 +130,9 @@ services:
     buckets:
       uploads: {}
 
+  identity:
+    enabled: true
+
 secrets:
   required:
     - name: APP_SECRET
@@ -139,6 +146,10 @@ REDIS_URL
 VALKEY_URL
 S3_ENDPOINT
 S3_BUCKET
+OIDC_ISSUER
+OIDC_CLIENT_ID
+OIDC_CLIENT_SECRET_FILE
+OIDC_CA_FILE
 APP_SECRET
 ```
 
