@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -253,24 +254,49 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		return ProviderFiles{}, caErr
 	}
 
-	port := ""
+	values := map[string]string{}
 	if data, err := os.ReadFile(files.Env); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
-			if key, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok && key == "BASEHARBOR_PROMETHEUS_PORT" {
-				port = strings.TrimSpace(value)
+			if key, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok && strings.TrimSpace(key) != "" {
+				values[strings.TrimSpace(key)] = value
 			}
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return ProviderFiles{}, err
 	}
+	port := strings.TrimSpace(values["BASEHARBOR_PROMETHEUS_PORT"])
 	if port == "" {
 		value, err := allocatePort()
 		if err != nil {
 			return ProviderFiles{}, err
 		}
 		port = strconv.Itoa(value)
+		values["BASEHARBOR_PROMETHEUS_PORT"] = port
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_PROMETHEUS_PORT="+port+"\n"), 0o600); err != nil {
+
+	accessEnvironment := prometheusAccessEnvironment(m, registrations)
+	if accessEnvironment == "dev" && m.Services.ObservabilityManagementUI {
+		target := strings.TrimSpace(namespace)
+		if target == "" {
+			target = "local"
+		}
+		credentials, err := devaccess.Ensure(target, m.Environment)
+		if err != nil {
+			return ProviderFiles{}, fmt.Errorf("prepare Prometheus developer access: %w", err)
+		}
+		values["BASEHARBOR_PROMETHEUS_UI_USER"] = credentials.Username
+		values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] = credentials.Password
+	}
+	var envBuilder strings.Builder
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		fmt.Fprintf(&envBuilder, "%s=%s\n", key, values[key])
+	}
+	if err := os.WriteFile(files.Env, []byte(envBuilder.String()), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.WriteFile(files.Config, []byte(prometheusConfig(registrations, hasRuntimeCA, providerSources)), 0o644); err != nil {
@@ -279,11 +305,15 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	accessPolicy, err := serviceaccess.Resolve(prometheusAccessEnvironment(m, registrations), "prometheus", serviceaccess.AuthenticationMTLS)
+	accessPolicy, err := serviceaccess.Resolve(accessEnvironment, "prometheus", serviceaccess.AuthenticationMTLS)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
 	accessSpec := prometheusAccessSpec()
+	if accessEnvironment == "dev" && values["BASEHARBOR_PROMETHEUS_UI_USER"] != "" && values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] != "" {
+		accessSpec.BasicAuthUsername = values["BASEHARBOR_PROMETHEUS_UI_USER"]
+		accessSpec.BasicAuthPassword = values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"]
+	}
 	if placement.Scope == capability.ScopeApplication {
 		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
 	}
