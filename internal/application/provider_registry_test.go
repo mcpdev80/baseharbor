@@ -32,7 +32,15 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 		t.Fatalf("shared=%#v", shared)
 	}
 	pgBoundary := "environment:production"
-	pg, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "alpha", pgBoundary)
+	pg, err := registry.ResolvePlacement(
+		capability.ProviderPostgreSQL,
+		capability.ProviderPlacement{
+			Scope:           capability.ScopeShared,
+			SharingBoundary: pgBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		"alpha",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +50,15 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
 		t.Fatalf("postgres provider distribution identity=%#v", pg)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "beta", pgBoundary); err == nil {
+	if _, err := registry.ResolvePlacement(
+		capability.ProviderPostgreSQL,
+		capability.ProviderPlacement{
+			Scope:           capability.ScopeShared,
+			SharingBoundary: pgBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		"beta",
+	); err == nil {
 		t.Fatal("beta unexpectedly resolved PostgreSQL without an SQL binding")
 	}
 }
@@ -222,7 +238,15 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		t.Fatalf("unrelated metrics policy broke database-only provider registration: %v", err)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, m.Name, "environment:production"); err != nil {
+	if _, err := registry.ResolvePlacement(
+		capability.ProviderPostgreSQL,
+		capability.ProviderPlacement{
+			Scope:           capability.ScopeShared,
+			SharingBoundary: "environment:production",
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		m.Name,
+	); err != nil {
 		t.Fatalf("shared PostgreSQL provider not registered: %v", err)
 	}
 }
