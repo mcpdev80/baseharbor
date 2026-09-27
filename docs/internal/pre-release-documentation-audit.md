@@ -133,9 +133,20 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 9. Mandatory pre-release gate
 
-Run `.github/workflows/pre-release.yml` for the exact target tag and exact candidate SHA.
+Do not start the complete pre-release matrix until implementation, release-scoped issues, canonical docs, README, CHANGELOG, release notes and the external `baseharbor-demo` are complete for the candidate.
 
-The gate must prove:
+Run `.github/workflows/pre-release.yml` once for the exact target tag and exact candidate SHA as the release-wide baseline.
+
+If that baseline finds failures:
+- [ ] Do not repeatedly rerun the complete pre-release matrix.
+- [ ] Fix one failed area at a time.
+- [ ] Prefer local or isolated validation first where practical.
+- [ ] Rerun only the failed job, gate or smallest relevant acceptance workflow until that area is green.
+- [ ] Do not start another complete pre-release run while any known failing area is still unproven.
+- [ ] After every previously failing area is individually green, run the complete pre-release matrix once more.
+- [ ] Treat only that final complete green run as the immutable release approval/evidence.
+
+The final gate must prove:
 
 - [ ] Release tag format.
 - [ ] Changelog release section exists.
