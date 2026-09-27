@@ -517,10 +517,16 @@ func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) 
 		return
 	}
 	if devaccess.Enabled(c.manifest.Environment) {
+		publicCount := 0
+		for _, route := range c.manifest.Exposures {
+			if !strings.EqualFold(route.Visibility, "internal") {
+				publicCount++
+			}
+		}
 		for _, route := range c.manifest.Exposures {
 			label := route.Name
-			if len(c.manifest.Exposures) == 1 {
-				label = "api"
+			if !strings.EqualFold(route.Visibility, "internal") {
+				label = devaccess.ExposureService(route.Name, publicCount)
 			}
 			host, err := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, label)
 			if err != nil {
