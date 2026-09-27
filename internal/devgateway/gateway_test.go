@@ -1,6 +1,7 @@
 package devgateway
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -56,5 +57,30 @@ func TestNormalizedRoutesOrdersSpecificPathBeforeHostFallback(t *testing.T) {
 	}
 	if routes[0].Key != "swagger" || routes[0].PathPrefix != "/swagger" {
 		t.Fatalf("specific path route was not ordered first: %#v", routes)
+	}
+}
+
+
+type testRuntime struct {
+	engine string
+}
+
+func (r testRuntime) Engine() string { return r.engine }
+func (testRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
+func (testRuntime) UpProject(context.Context, string, string, string) error { return nil }
+func (testRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
+
+func TestGatewayHostPortUsesUnprivilegedPortForPodman(t *testing.T) {
+	if got := gatewayHostPort(testRuntime{engine: "docker"}); got != 443 {
+		t.Fatalf("docker gateway port = %d, want 443", got)
+	}
+	if got := gatewayHostPort(testRuntime{engine: "podman"}); got != 8443 {
+		t.Fatalf("podman gateway port = %d, want 8443", got)
+	}
+	if got := canonicalURL("demo.baha.localhost", 443); got != "https://demo.baha.localhost" {
+		t.Fatalf("docker canonical URL = %q", got)
+	}
+	if got := canonicalURL("demo.baha.localhost", 8443); got != "https://demo.baha.localhost:8443" {
+		t.Fatalf("podman canonical URL = %q", got)
 	}
 }
