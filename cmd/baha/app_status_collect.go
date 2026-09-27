@@ -280,8 +280,17 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		cancel()
 		detail := "object storage management UI reachable over TLS"
 		if devaccess.Enabled(c.manifest.Environment) {
-			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, "storage"); hostErr == nil {
-				detail = devaccess.CanonicalURL(host)
+			if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderSeaweedFS); placementErr == nil && placement.Scope != capability.ScopeExternal {
+				var host string
+				var hostErr error
+				if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "storage")
+				} else {
+					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "storage")
+				}
+				if hostErr == nil {
+					detail = devaccess.CanonicalURL(host)
+				}
 			}
 		}
 		record("object-storage", err, detail)
