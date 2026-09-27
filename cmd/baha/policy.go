@@ -121,10 +121,15 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 	}
 
 	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
-	if err != nil {
+	var report application.WorkloadSecurityReport
+	var reportErr error
+	if errors.Is(err, bhruntime.ErrRuntimeNotFound) {
+		report, reportErr = preflightRepositoryWorkloadSecuritySource(resolved)
+	} else if err != nil {
 		return policy.Result{}, err
+	} else {
+		report, reportErr = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 	}
-	report, reportErr := preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
 	if reportErr != nil && !report.Denied() {
 		return policy.Result{}, reportErr
 	}
