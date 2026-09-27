@@ -33,6 +33,7 @@ type HTTPGatewaySpec struct {
 	PublishedPortEnv  string
 	ContainerPort     int
 	Networks          []string
+	NetworkAliases    []string
 	RequireClient     bool
 	DenyPaths         []string
 	BasicAuthUsername string
@@ -274,16 +275,39 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 			if network == "" {
 				continue
 			}
+			var aliases []string
 			if i == 0 && aliasable {
-				fmt.Fprintf(&b, "      %s:\n", network)
-				b.WriteString("        aliases:\n")
-				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(alias))
-			} else {
+				aliases = append(aliases, alias)
+			}
+			if i == 0 {
+				for _, candidate := range spec.NetworkAliases {
+					candidate = strings.TrimSpace(candidate)
+					if candidate != "" && !containsGatewayAlias(aliases, candidate) {
+						aliases = append(aliases, candidate)
+					}
+				}
+			}
+			if len(aliases) == 0 {
 				fmt.Fprintf(&b, "      %s: {}\n", network)
+				continue
+			}
+			fmt.Fprintf(&b, "      %s:\n", network)
+			b.WriteString("        aliases:\n")
+			for _, candidate := range aliases {
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(candidate))
 			}
 		}
 	}
 	return b.String()
+}
+
+func containsGatewayAlias(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, error) {
