@@ -666,3 +666,17 @@ func TestAnalyzeComposeFileDetectsExplicitWorkloadHTTPSProtocol(t *testing.T) {
 		t.Fatalf("WorkloadProtocols[demo-app] = %q, want https", got)
 	}
 }
+
+func TestAnalyzeComposeFileRejectsInvalidExplicitWorkloadProtocol(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  demo-app:
+    image: example/demo
+    labels:
+      io.baseharbor.workload.protocol: "htps"
+`)
+	_, err := AnalyzeComposeFile(root, "compose.yaml")
+	if err == nil || !strings.Contains(err.Error(), "must be http or https") {
+		t.Fatalf("AnalyzeComposeFile error = %v", err)
+	}
+}
