@@ -83,6 +83,8 @@ Kubernetes / OpenShift planned
 - Portable application intent with provider-neutral capability boundaries.
 - PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
 - Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
+- Canonical local development URLs through one Target-scoped domain (default `baseharbor.localhost`) instead of exposing random loopback ports as normal developer UX.
+- One Target-scoped development management login reused across selected local management surfaces; managed OIDC becomes the central development identity when Identity is present, with provider-native adapters only where required.
 - Environment-aware operator access: trusted local operation in dev; authenticated OIDC operator access in test/prod.
 - A canonical guided developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
 - First-class deployment Targets with XDG-backed configuration and target-scoped runtime/deployment state.
@@ -90,6 +92,33 @@ Kubernetes / OpenShift planned
 - Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
 - Provider placement for application-scoped, shared or externally managed infrastructure.
 - Machine-readable results and a versioned local MCP interface for agent workflows.
+
+## Local development access
+
+For `dev`, BaseHarbor keeps local access predictable without changing the portable application contract.
+
+The effective Target owns one development domain, defaulting to `baseharbor.localhost`. Browser-facing application and provider surfaces receive deterministic HTTPS names such as:
+
+```text
+my-app-api.baseharbor.localhost
+my-app-pgadmin.baseharbor.localhost
+my-app-identity.baseharbor.localhost
+shared-openbao.baseharbor.localhost
+shared-prometheus.baseharbor.localhost
+```
+
+A Target-scoped development account defaults to username `developer` with a generated strong password. BaseHarbor reuses that identity across selected development management surfaces. When managed Identity is present, the same developer identity is reconciled through OIDC; providers that require native authentication receive an adapter using the same development credentials.
+
+Use the explicit commands when you need to inspect or change local development access:
+
+```bash
+baha dev domain
+baha dev domain dev.example.internal
+baha dev credentials
+baha dev credentials --reset
+```
+
+The password is never printed by normal `status`, `doctor`, plan or evidence output. Test and prod do not use this shared development credential; they keep the authenticated operator-OIDC boundary.
 
 ## Security is behavior
 
