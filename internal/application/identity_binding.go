@@ -85,6 +85,21 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 		}
 	}
 
+	runtimeValues, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	runtimeValues["IDENTITY_CONTAINER_ISSUER"] = discovery.Issuer
+	runtimeValues["IDENTITY_CLIENT_ID"] = clientID
+	if clientSecret != "" {
+		runtimeValues["IDENTITY_CLIENT_SECRET"] = clientSecret
+	} else {
+		delete(runtimeValues, "IDENTITY_CLIENT_SECRET")
+	}
+	if err := writeRuntimeEnv(files.Env, m, runtimeValues); err != nil {
+		return err
+	}
+
 	values, err := loadApplicationEnvValues(files.ApplicationEnv)
 	if err != nil {
 		return err
