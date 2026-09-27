@@ -51,7 +51,7 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 	entries = append(entries, recoveryMetadata)
 
 	if selection.HasSelected(applicationbackup.StateSQL) {
-		dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
+		dumps, err := application.DumpPostgresInstancesAt(ctx, compose, m, files, resolved.TargetStateRoot, resolved.Target.Name)
 		if err != nil {
 			return err
 		}
