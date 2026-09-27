@@ -84,7 +84,11 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 			item.HealthCheck = true
 		}
 		if raw, ok := definition["labels"]; ok {
-			item.WorkloadProtocol = composeBaseHarborWorkloadProtocol(raw)
+			protocol, err := composeBaseHarborWorkloadProtocol(raw)
+			if err != nil {
+				return nil, fmt.Errorf("Compose service %q: %w", name, err)
+			}
+			item.WorkloadProtocol = protocol
 		}
 		if raw, ok := definition["volumes"]; ok {
 			item.DatabaseBootstrap = composeUsesDatabaseInitDirectory(raw)
@@ -276,7 +280,7 @@ func composePortValues(raw any) []string {
 }
 
 
-func composeBaseHarborWorkloadProtocol(raw any) string {
+func composeBaseHarborWorkloadProtocol(raw any) (string, error) {
 	const key = "io.baseharbor.workload.protocol"
 	labels := map[string]string{}
 	switch typed := raw.(type) {
@@ -293,9 +297,15 @@ func composeBaseHarborWorkloadProtocol(raw any) string {
 			}
 		}
 	}
-	protocol := strings.ToLower(strings.TrimSpace(labels[key]))
-	if protocol == "http" || protocol == "https" {
-		return protocol
+	rawProtocol, declared := labels[key]
+	if !declared {
+		return "", nil
 	}
-	return ""
+	protocol := strings.ToLower(strings.TrimSpace(rawProtocol))
+	switch protocol {
+	case "http", "https":
+		return protocol, nil
+	default:
+		return "", fmt.Errorf("%s must be http or https, got %q", key, rawProtocol)
+	}
 }
