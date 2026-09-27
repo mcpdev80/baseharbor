@@ -125,6 +125,7 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectObjectStorageCheck(ctx)
 	c.collectIdentityCheck(ctx)
 	c.collectTelemetryCheck(ctx)
+	c.collectIdentityCheck(ctx)
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
@@ -194,6 +195,28 @@ func (c *applicationStatusCollection) collectTelemetryCheck(ctx context.Context)
 		return
 	}
 	c.result.AddCheck("telemetry/otlp", true, "real OTLP HTTP/protobuf export accepted")
+}
+
+func (c *applicationStatusCollection) collectIdentityCheck(ctx context.Context) {
+	if !application.HasIdentity(c.manifest) {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := verifyExistingManagedIdentity(checkCtx, c.compose, c.resolved, c.files); err != nil {
+		c.result.AddCheck("identity", false, err.Error())
+		return
+	}
+	policy, err := application.ResolveIdentityPolicy(c.manifest)
+	if err != nil {
+		c.result.AddCheck("identity", false, err.Error())
+		return
+	}
+	detail := "OIDC discovery, client, binding and authentication policy verified"
+	if policy.MFA == "required" {
+		detail += "; MFA required"
+	}
+	c.result.AddCheck("identity", true, detail)
 }
 
 func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
