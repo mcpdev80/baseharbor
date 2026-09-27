@@ -344,22 +344,22 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		fmt.Fprintf(&b, "  %s:\n", service)
 		if hasEnvironment {
 			b.WriteString("    environment:\n")
-			serviceEnv := make(map[string]string, len(env)+3)
+			serviceEnv := make(map[string]string, len(env)+6)
 			for key, value := range env {
 				serviceEnv[key] = value
 			}
 			if serviceBindings {
 				serviceEnv["SERVICE_BINDING_ROOT"] = workloadServiceBindingRoot
 			}
-				if HasIdentity(m) {
+			if HasIdentity(m) {
 				issuer, err := requireRuntimeValue(values, "IDENTITY_CONTAINER_ISSUER")
-		if err != nil {
-			return "", err
-		}
+				if err != nil {
+					return "", err
+				}
 				clientID, err := requireRuntimeValue(values, "IDENTITY_CLIENT_ID")
-		if err != nil {
-			return "", err
-		}
+				if err != nil {
+					return "", err
+				}
 				serviceEnv["OIDC_ISSUER"] = issuer
 				serviceEnv["OIDC_CLIENT_ID"] = clientID
 				if len(m.Identity.Scopes) > 0 {
@@ -369,9 +369,7 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 					serviceEnv["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
 				}
 			}
-	}
-
-	if HasOTLPTelemetry(m) {
+			if HasOTLPTelemetry(m) {
 				serviceEnv["OTEL_SERVICE_NAME"] = service
 				serviceEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, service, values["OTLP_PROVIDER"])
 			}
