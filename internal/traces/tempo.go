@@ -374,14 +374,16 @@ func DestroyAllSharedProvidersAt(ctx context.Context, runtime Runtime, dataDir, 
 		_ = observability.Remove("tempo:" + project)
 		return nil
 	}
-	if err := destroyAt(root, "baseharbor-"+prefix+"traces"); err != nil {
+	sharedProject := bhruntime.SharedProjectName(namespace)
+	if err := destroyAt(root, sharedProject); err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if err := destroyAt(filepath.Join(root, entry.Name()), "baseharbor-"+prefix+"traces-"+entry.Name()); err != nil {
+		project := sharedProject + "-" + entry.Name()
+		if err := destroyAt(filepath.Join(root, entry.Name()), project); err != nil {
 			return err
 		}
 	}
