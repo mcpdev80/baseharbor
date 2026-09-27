@@ -130,6 +130,10 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	return bindings, nil
 }
 
+func IdentityProviderForDeployment() (capability.Provider, error) {
+	return referenceCapabilityProvider(capability.Identity)
+}
+
 func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, error) {
 	switch kind {
 	case capability.SQL:
