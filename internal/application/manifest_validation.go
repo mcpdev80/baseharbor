@@ -405,8 +405,8 @@ func validateObservabilityUIPreference(m Manifest) error {
 	if !m.Services.ObservabilityManagementUI {
 		return nil
 	}
-	if !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) && !HasTraceSignal(m) {
-		return errors.New("services.observability.management_ui requires telemetry, metrics, logs or traces")
+	if !HasMetricsSources(m) {
+		return errors.New("services.observability.management_ui requires managed metrics because Prometheus is the current browser-capable observability surface")
 	}
 	return nil
 }
