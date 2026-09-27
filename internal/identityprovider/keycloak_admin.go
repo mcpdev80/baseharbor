@@ -116,13 +116,13 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 		if !keycloakRealmOwnedBy(current, desired.Attributes) {
 			return fmt.Errorf("Keycloak realm %q exists but is not owned by this BaseHarbor application/environment", desired.Realm)
 		}
-		status, body, err := a.do(ctx, http.MethodPut, path, desired)
+		status, body, err = a.do(ctx, http.MethodPut, path, desired)
 		if err != nil { return err }
 		if status != http.StatusNoContent {
 			return fmt.Errorf("update Keycloak realm: HTTP %d: %s", status, body)
 		}
 	case http.StatusNotFound:
-		status, body, err := a.do(ctx, http.MethodPost, "/admin/realms", desired)
+		status, body, err = a.do(ctx, http.MethodPost, "/admin/realms", desired)
 		if err != nil { return err }
 		if status != http.StatusCreated {
 			return fmt.Errorf("create Keycloak realm: HTTP %d: %s", status, body)
