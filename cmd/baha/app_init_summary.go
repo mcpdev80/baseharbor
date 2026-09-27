@@ -135,6 +135,28 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+		fmt.Fprintln(out, "\nManagement UIs")
+		if m.Services.SQLManagementUI {
+			fmt.Fprintln(out, "  PostgreSQL    pgAdmin")
+		}
+		if m.Services.CacheManagementUI {
+			fmt.Fprintln(out, "  Cache         Redis Commander")
+		}
+		if m.Services.ObjectStorageManagementUI {
+			fmt.Fprintln(out, "  Object Storage provider administration UI")
+		}
+		if m.Services.SecretsManagementUI {
+			fmt.Fprintln(out, "  Secrets       OpenBao UI")
+		}
+		if m.Services.IdentityManagementUI {
+			fmt.Fprintln(out, "  Identity      provider administration UI")
+		}
+		if m.Services.ObservabilityManagementUI {
+			fmt.Fprintln(out, "  Observability Prometheus UI")
+		}
+	}
+
 	if application.HasMetricsSources(m) || application.HasOTLPTelemetry(m) || application.HasLogsCollection(m) {
 		fmt.Fprintln(out, "\nObservability")
 		if application.HasMetricsSources(m) {
