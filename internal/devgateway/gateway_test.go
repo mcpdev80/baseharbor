@@ -5,22 +5,37 @@ import (
 	"testing"
 )
 
-func TestRenderCaddyUsesCanonicalHostAndVerifiedUpstreamTLS(t *testing.T) {
-	routes := []Route{{
-		Owner: "app/demo/dev",
-		Key: "app:demo:pgadmin",
-		Host: "demo-pgadmin.baseharbor.localhost",
-		Upstream: "https://bh-dev-demo-pgadmin:8443",
-		Network: "baseharbor-local-demo-dev_default",
-		TrustFile: "/tmp/ca.pem",
-		ServerName: "localhost",
-	}}
-	got := renderCaddy(routes)
+func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T) {
+	routes := normalizedRoutes([]Route{
+		{
+			Owner: "app/demo/dev",
+			Key: "app:demo:api:swagger",
+			Host: "demo-api.baseharbor.localhost",
+			PathPrefix: "/swagger",
+			Upstream: "https://baseharbor-runtime:8081",
+			Network: "baseharbor-local-demo-dev_default",
+			TrustFile: "/tmp/runtime-ca.pem",
+			ServerName: "baseharbor-runtime",
+		},
+		{
+			Owner: "app/demo/dev",
+			Key: "app:demo:api",
+			Host: "demo-api.baseharbor.localhost",
+			Upstream: "https://bh-dev-demo-api:8443",
+			Network: "baseharbor-local-demo-dev_default",
+			TrustFile: "/tmp/app-ca.pem",
+			ServerName: "localhost",
+		},
+	})
+	got := renderCaddyfile(routes)
 	for _, want := range []string{
-		"https://demo-pgadmin.baseharbor.localhost:8443",
-		"reverse_proxy https://bh-dev-demo-pgadmin:8443",
-		"tls_trust_pool file /trust/route-00.pem",
-		"tls_server_name localhost",
+		"host demo-api.baseharbor.localhost",
+		"path /swagger /swagger/*",
+		"uri strip_prefix /swagger",
+		"reverse_proxy https://baseharbor-runtime:8081",
+		"tls_trust_pool file /trust/route-000.pem",
+		"tls_server_name baseharbor-runtime",
+		"reverse_proxy https://bh-dev-demo-api:8443",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("Caddyfile missing %q:\n%s", want, got)
@@ -31,12 +46,15 @@ func TestRenderCaddyUsesCanonicalHostAndVerifiedUpstreamTLS(t *testing.T) {
 	}
 }
 
-func TestNormalizedRoutesRejectHostCollisions(t *testing.T) {
-	_, err := normalizedRoutes([]Route{
-		{Owner:"app/a/dev", Key:"a", Host:"same.baseharbor.localhost", Network:"a", Upstream:"https://a", TrustFile:"/a"},
-		{Owner:"app/b/dev", Key:"b", Host:"same.baseharbor.localhost", Network:"b", Upstream:"https://b", TrustFile:"/b"},
+func TestNormalizedRoutesOrdersSpecificPathBeforeHostFallback(t *testing.T) {
+	routes := normalizedRoutes([]Route{
+		{Key: "fallback", Host: "demo-api.baseharbor.localhost", Upstream: "http://app:8080", Network: "app"},
+		{Key: "swagger", Host: "demo-api.baseharbor.localhost", PathPrefix: "/swagger", Upstream: "http://docs:8081", Network: "app"},
 	})
-	if err == nil {
-		t.Fatal("expected canonical host collision to fail")
+	if len(routes) != 2 {
+		t.Fatalf("normalized routes = %d, want 2", len(routes))
+	}
+	if routes[0].Key != "swagger" || routes[0].PathPrefix != "/swagger" {
+		t.Fatalf("specific path route was not ordered first: %#v", routes)
 	}
 }
