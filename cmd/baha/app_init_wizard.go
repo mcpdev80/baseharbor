@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"io"
 	"os"
