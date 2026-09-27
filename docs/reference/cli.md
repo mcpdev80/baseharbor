@@ -722,7 +722,20 @@ Interactive password entry disables terminal echo, requires confirmation and nev
 
 See [backup-and-restore.md](backup-and-restore.md).
 
-## Application updates
+## Development source convergence and application updates
+
+For local development, the current working tree is valid application source. A commit or push is not required before running changed code:
+
+```bash
+# edit application source
+baha up
+```
+
+When the existing application is READY and both the portable application contract plus protected deployment-control state still match the last verified deployment, `baha up` takes a workload-only fast path. It reuses the workload build/config fingerprints to rebuild only build-changed services, recreate only configuration-changed services, wait for service and HTTP/TLS readiness, and then verify overall application readiness. Uncommitted source changes are intentionally accepted on this path.
+
+Changes to `baseharbor.yaml`, protected deployment-control state, an unhealthy/unavailable deployment, or any state that cannot safely prove workload-only convergence use the normal full reconciliation path.
+
+`baha app update` has a different purpose: advancing repository source from its configured Git upstream.
 
 Read-only Git update inspection:
 
