@@ -134,7 +134,7 @@ jobs:
         if: steps.target.outputs.gate != 'workload-routing'
         shell: bash
         timeout-minutes: 3
-run: |
+        run: |
           set -euo pipefail
           worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
@@ -257,7 +257,7 @@ run: |
         if: always() && steps.target.outputs.gate != 'workload-routing'
         shell: bash
         timeout-minutes: 3
-run: |
+        run: |
           set -euo pipefail
           worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
