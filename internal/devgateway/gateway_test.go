@@ -109,3 +109,15 @@ func TestPruneUnavailableTrustRoutesDropsOnlyStaleHTTPSRoutes(t *testing.T) {
 		t.Fatalf("unexpected remaining routes: %#v", got)
 	}
 }
+
+
+func TestURLForRuntimeUsesRuntimePortBeforeGatewayStateExists(t *testing.T) {
+	target := "missing-target-" + strings.ReplaceAll(t.Name(), "/", "-")
+
+	if got := URLForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}); got != "https://auth.baha.localhost" {
+		t.Fatalf("docker canonical URL = %q", got)
+	}
+	if got := URLForRuntime(target, "auth.baha.localhost", testRuntime{engine: "podman"}); got != "https://auth.baha.localhost:8443" {
+		t.Fatalf("podman canonical URL = %q", got)
+	}
+}
