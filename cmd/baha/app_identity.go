@@ -117,13 +117,20 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 	state := prepared.driver.State()
 	seen := map[string]struct{}{}
 	var origins []string
+	publicCount := 0
+	for _, route := range state.Routes {
+		if !strings.EqualFold(route.Visibility, "internal") {
+			publicCount++
+		}
+	}
 	for _, route := range state.Routes {
 		if strings.EqualFold(route.Visibility, "internal") {
 			continue
 		}
 		var origin string
 		if identity != nil && devaccess.Enabled(identity.manifest.Environment) {
-			host, err := devaccess.ApplicationHost(identity.target, identity.manifest.Name, route.Name)
+			service := devaccess.ExposureService(route.Name, publicCount)
+			host, err := devaccess.ApplicationHost(identity.target, identity.manifest.Name, service)
 			if err != nil {
 				return nil, err
 			}
@@ -176,13 +183,20 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Compos
 				return fmt.Errorf("load managed exposure for identity verification: %w", err)
 			}
 			seen := map[string]struct{}{}
+			publicCount := 0
+			for _, route := range state.Routes {
+				if !strings.EqualFold(route.Visibility, "internal") {
+					publicCount++
+				}
+			}
 			for _, route := range state.Routes {
 				if strings.EqualFold(route.Visibility, "internal") {
 					continue
 				}
 				origin := ""
 				if devaccess.Enabled(m.Environment) {
-					host, err := devaccess.ApplicationHost(resolved.Target.Name, m.Name, route.Name)
+					service := devaccess.ExposureService(route.Name, publicCount)
+					host, err := devaccess.ApplicationHost(resolved.Target.Name, m.Name, service)
 					if err != nil {
 						return err
 					}
