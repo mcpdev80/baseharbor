@@ -206,14 +206,21 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 	if !c.manifest.Services.SQL {
 		return
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
+	defer cancel()
+	if application.UsesSharedPostgreSQL(c.manifest) {
+		if err := application.VerifySharedPostgreSQL(checkCtx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
+			c.result.AddCheck("postgres", false, "shared provider readiness failed: "+err.Error())
+			return
+		}
+		c.result.AddCheck("postgres", true, fmt.Sprintf("%d app-isolated database resource(s) ready on shared Target provider", len(application.SQLInstanceNames(c.manifest))))
+		return
+	}
 	if !containsString(c.services, "postgres") {
 		c.result.AddCheck("postgres", false, "not running")
 		return
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
-	err := application.VerifyPostgresRuntime(checkCtx, c.compose, c.manifest, c.files)
-	cancel()
-	if err != nil {
+	if err := application.VerifyPostgresRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
 		c.result.AddCheck("postgres", false, "one or more instances failed readiness")
 		return
 	}
@@ -224,14 +231,21 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 	if !c.manifest.Services.Cache {
 		return
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
+	defer cancel()
+	if application.UsesSharedValkey(c.manifest) {
+		if err := application.VerifySharedValkey(checkCtx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
+			c.result.AddCheck("valkey", false, "shared provider readiness failed: "+err.Error())
+			return
+		}
+		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated cache resource(s) ready on shared Target provider", len(application.CacheInstanceNames(c.manifest))))
+		return
+	}
 	if !containsString(c.services, "valkey") {
 		c.result.AddCheck("valkey", false, "not running")
 		return
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
-	err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files)
-	cancel()
-	if err != nil {
+	if err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
 		c.result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
 		return
 	}
