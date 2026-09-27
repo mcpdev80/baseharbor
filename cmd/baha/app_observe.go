@@ -42,6 +42,7 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	collection.collectWorkloadChecks()
 	collection.collectLogsCheck(statusCtx)
 	collection.collectExposureCheck(statusCtx)
+	collection.collectCanonicalDevelopmentCheck(statusCtx)
 	return collection.result, nil
 }
 
