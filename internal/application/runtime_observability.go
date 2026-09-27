@@ -12,11 +12,15 @@ import (
 
 func ManagedRuntimeProviderServiceNames(m Manifest) []string {
 	services := make([]string, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
-	for _, instance := range SQLInstanceNames(m) {
-		services = append(services, runtimeServiceName("postgres", instance))
+	if !UsesSharedPostgreSQL(m) {
+		for _, instance := range SQLInstanceNames(m) {
+			services = append(services, runtimeServiceName("postgres", instance))
+		}
 	}
-	for _, instance := range CacheInstanceNames(m) {
-		services = append(services, runtimeServiceName("valkey", instance))
+	if !UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			services = append(services, runtimeServiceName("valkey", instance))
+		}
 	}
 	return services
 }
@@ -37,10 +41,18 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 		project = RuntimeProjectName(m)
 	}
 
-	if err := reconcileRuntimeProviderObservability(m, project, "postgres", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, SQLInstanceNames(m), logsEnabled, tracesEnabled); err != nil {
+	postgresInstances := SQLInstanceNames(m)
+	if UsesSharedPostgreSQL(m) {
+		postgresInstances = nil
+	}
+	valkeyInstances := CacheInstanceNames(m)
+	if UsesSharedValkey(m) {
+		valkeyInstances = nil
+	}
+	if err := reconcileRuntimeProviderObservability(m, project, "postgres", capability.ProviderPostgreSQL, capability.PostgreSQLIntegration, postgresInstances, logsEnabled, tracesEnabled); err != nil {
 		return err
 	}
-	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, CacheInstanceNames(m), logsEnabled, tracesEnabled)
+	return reconcileRuntimeProviderObservability(m, project, "valkey", capability.ProviderValkey, capability.ValkeyIntegration, valkeyInstances, logsEnabled, tracesEnabled)
 }
 
 func reconcileRuntimeProviderObservability(
