@@ -83,6 +83,21 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 				}
 			}
 		}
+		if resource.Kind == capability.Identity {
+			policy, err := ResolveIdentityPolicy(m)
+			if err != nil {
+				return nil, err
+			}
+			binding.Identity = &capability.IdentityBinding{
+				CallbackPaths: append([]string(nil), m.Identity.CallbackPaths...),
+				LogoutPaths: append([]string(nil), m.Identity.LogoutPaths...),
+				Scopes: append([]string(nil), m.Identity.Scopes...),
+				Claims: append([]string(nil), m.Identity.Claims...),
+				MFA: policy.MFA,
+				Methods: append([]string(nil), policy.Methods...),
+				Passwordless: policy.Passwordless,
+			}
+		}
 		if resource.Kind == capability.Logs {
 			binding.Workload = "service/" + resource.Name
 			binding.Logs = &capability.LogsBinding{
