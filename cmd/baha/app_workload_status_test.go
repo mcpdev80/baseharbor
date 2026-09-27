@@ -223,3 +223,14 @@ func TestWorkloadExposureSchemeForServiceFallsBackWhenUndeclared(t *testing.T) {
 		t.Fatalf("scheme=%q ok=%v, want %q,%v", got, ok, want, wantOK)
 	}
 }
+
+
+func TestTerminalWorkloadServiceError(t *testing.T) {
+	if err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "api", State: "running", Ready: false}}); err != nil {
+		t.Fatalf("running service must remain retryable: %v", err)
+	}
+	err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "demo-app", State: "exited", Health: "unhealthy"}})
+	if err == nil || !strings.Contains(err.Error(), "demo-app exited health=unhealthy") {
+		t.Fatalf("expected terminal service detail, got %v", err)
+	}
+}
