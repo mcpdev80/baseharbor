@@ -17,7 +17,11 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	timeout := 2 * time.Minute
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
+		timeout = 3 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if _, err := bhruntime.DetectCompose(ctx); err != nil {
 		t.Skipf("compose runtime unavailable: %v", err)
