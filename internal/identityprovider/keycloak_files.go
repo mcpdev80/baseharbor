@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	KeycloakImage      = "quay.io/keycloak/keycloak:26.7.4"
-	KeycloakService    = "keycloak"
+	KeycloakImage = "quay.io/keycloak/keycloak:26.7.4"
+	KeycloakService = "keycloak"
 	keycloakPublicHost = "identity.localhost"
 )
 
@@ -68,10 +68,10 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		return KeycloakFiles{}, err
 	}
 	files := KeycloakFiles{
-		Dir:             dir,
-		Compose:         filepath.Join(dir, "compose.yaml"),
-		Env:             filepath.Join(dir, "runtime.env"),
-		Project:         project,
+		Dir: dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env: filepath.Join(dir, "runtime.env"),
+		Project: project,
 		ConsumerNetwork: consumer,
 		InternalNetwork: consumer + "-internal",
 	}
@@ -84,32 +84,22 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	}
 	if values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"] == "" {
 		port, err := allocateIdentityPort(nil)
-		if err != nil {
-			return KeycloakFiles{}, err
-		}
+		if err != nil { return KeycloakFiles{}, err }
 		values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"] = strconv.Itoa(port)
 	}
 	publicPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 	if values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] == "" {
 		port, err := allocateIdentityPort(map[int]struct{}{publicPort: {}})
-		if err != nil {
-			return KeycloakFiles{}, err
-		}
+		if err != nil { return KeycloakFiles{}, err }
 		values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(port)
 	}
 	adminPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"])
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD"} {
 		if strings.TrimSpace(values[key]) == "" {
 			secret, err := randomIdentitySecret(32)
-			if err != nil {
-				return KeycloakFiles{}, err
-			}
+			if err != nil { return KeycloakFiles{}, err }
 			values[key] = secret
 		}
 	}
@@ -121,39 +111,31 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	}
 
 	publicPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 	publicPolicy.ServerName = keycloakPublicHost
 	publicSpec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "keycloak-public",
-		Upstream:         "http://keycloak:8080",
+		ServiceName: "keycloak-public",
+		Upstream: "http://keycloak:8080",
 		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
-		ContainerPort:    publicPort,
-		Networks:         []string{"identity-consumer", "identity-internal"},
-		DenyPaths:        []string{"/admin"},
+		ContainerPort: publicPort,
+		Networks: []string{"identity-consumer", "identity-internal"},
+		DenyPaths: []string{"/admin"},
 	}
 	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, publicPolicy, filepath.Join(dir, "public"), publicSpec)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 
 	adminPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-admin", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 	adminPolicy.ServerName = "localhost"
 	adminSpec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "keycloak-admin",
-		Upstream:         "http://keycloak:8080",
+		ServiceName: "keycloak-admin",
+		Upstream: "http://keycloak:8080",
 		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_ADMIN_PORT",
-		ContainerPort:    9443,
-		Networks:         []string{"identity-internal"},
+		ContainerPort: 9443,
+		Networks: []string{"identity-internal"},
 	}
 	adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(dir, "admin"), adminSpec)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	if err != nil { return KeycloakFiles{}, err }
 
 	files.PublicPort = publicPort
 	files.AdminPort = adminPort
@@ -252,27 +234,19 @@ networks:
 }
 
 func randomIdentitySecret(bytes int) (string, error) {
-	if bytes < 16 {
-		return "", errors.New("identity secret length is too small")
-	}
+	if bytes < 16 { return "", errors.New("identity secret length is too small") }
 	value := make([]byte, bytes)
-	if _, err := rand.Read(value); err != nil {
-		return "", err
-	}
+	if _, err := rand.Read(value); err != nil { return "", err }
 	return hex.EncodeToString(value), nil
 }
 
 func allocateIdentityPort(exclude map[int]struct{}) (int, error) {
 	for attempt := 0; attempt < 16; attempt++ {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return 0, fmt.Errorf("allocate identity port: %w", err)
-		}
+		if err != nil { return 0, fmt.Errorf("allocate identity port: %w", err) }
 		port := l.Addr().(*net.TCPAddr).Port
 		_ = l.Close()
-		if _, used := exclude[port]; used {
-			continue
-		}
+		if _, used := exclude[port]; used { continue }
 		return port, nil
 	}
 	return 0, errors.New("allocate unique identity port")
@@ -288,15 +262,11 @@ func parseIdentityPort(value string) (int, error) {
 
 func readProtectedEnv(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	values := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
+		if line == "" || strings.HasPrefix(line, "#") { continue }
 		key, value, ok := strings.Cut(line, "=")
 		if !ok || strings.TrimSpace(key) == "" {
 			return nil, errors.New("invalid protected provider environment")
@@ -308,26 +278,16 @@ func readProtectedEnv(path string) (map[string]string, error) {
 
 func writeProtectedEnv(path string, values map[string]string) error {
 	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
+	for key := range values { keys = append(keys, key) }
 	sortStrings(keys)
 	var b strings.Builder
 	for _, key := range keys {
 		fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil { return err }
+	if err := os.Chmod(tmp, 0o600); err != nil { _ = os.Remove(tmp); return err }
+	if err := os.Rename(tmp, path); err != nil { _ = os.Remove(tmp); return err }
 	return nil
 }
 
