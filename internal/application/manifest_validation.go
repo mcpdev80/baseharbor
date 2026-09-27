@@ -45,6 +45,9 @@ func (m Manifest) Validate() error {
 	if err := validateIdentityRequirements(m); err != nil {
 		return err
 	}
+	if err := validateObservabilityUIPreference(m); err != nil {
+		return err
+	}
 	if (len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0) && !m.Services.Secrets {
 		return fmt.Errorf("secret requirements need services.secrets enabled")
 	}
@@ -386,10 +389,25 @@ func validateManagementUIPreferences(services Services) error {
 		{"object_storage", services.ObjectStorage || len(services.ObjectStorageBuckets) > 0, services.ObjectStorageManagementUI},
 		{"secrets", services.Secrets, services.SecretsManagementUI},
 		{"identity", services.Identity, services.IdentityManagementUI},
+		{"observability", true, services.ObservabilityManagementUI},
 	} {
 		if item.ui && !item.enabled {
 			return fmt.Errorf("services.%s.management_ui requires the service to be enabled", item.name)
 		}
+	}
+	if services.ObservabilityManagementUI {
+		// The concrete observability capability check happens against the full
+		// manifest below; this helper only validates service-local dependencies.
+	}
+	return nil
+}
+
+func validateObservabilityUIPreference(m Manifest) error {
+	if !m.Services.ObservabilityManagementUI {
+		return nil
+	}
+	if !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) && !HasTraceSignal(m) {
+		return errors.New("services.observability.management_ui requires telemetry, metrics, logs or traces")
 	}
 	return nil
 }
