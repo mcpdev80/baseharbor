@@ -477,7 +477,14 @@ func execWithTokenPayload(ctx context.Context, executor Executor, files bhruntim
 	const prefix = `IFS= read -r BAO_TOKEN
 export BAO_TOKEN
 `
-	input := []byte(token + "\n" + payload)
+	inputText := token + "\n"
+	if payload != "" {
+		inputText += payload
+		if !strings.HasSuffix(inputText, "\n") {
+			inputText += "\n"
+		}
+	}
+	input := []byte(inputText)
 	return executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
 }
 
