@@ -201,12 +201,25 @@ jobs:
             mkdir -p "$diagnostics"
 
             "$runtime" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-            for id in $("$runtime" ps -aq --filter name=baseharbor 2>/dev/null); do
-              name=$("$runtime" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+            "$runtime" ps -a --format '{{.Names}}\t{{.Ports}}' | grep -E '(^|[[:space:]])(baseharbor-|bh-)|127\.0\.0\.1:443->' >"$diagnostics/baseharbor-ports.tsv" 2>&1 || true
+
+            mapfile -t ids < <("$runtime" ps -aq 2>/dev/null || true)
+            for id in "${ids[@]}"; do
+              meta=$("$runtime" inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "$id" 2>/dev/null || true)
+              IFS='|' read -r name docker_project podman_project <<< "$meta"
+              name="${name#/}"
+              project="$docker_project"
+              if [ -z "$project" ] || [ "$project" = "<no value>" ]; then project="$podman_project"; fi
+              case "$project:$name" in
+                baseharbor*:*|bh-*:*|*:baseharbor-*|*:bh-*) ;;
+                *) continue ;;
+              esac
               [ -n "$name" ] || name="$id"
               "$runtime" inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
               "$runtime" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
-              "$runtime" logs --tail 300 "$id"                 | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g'                 >"$diagnostics/$name.log" 2>&1 || true
+              "$runtime" logs --tail 300 "$id" \
+                | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
+                >"$diagnostics/$name.log" 2>&1 || true
             done
           fi
 
