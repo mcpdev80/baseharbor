@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -37,6 +38,14 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
+	canonicalBase, err := managedOperatorCanonicalBaseURL(runtime, namespace)
+	if err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	if err := SetKeycloakCanonicalURL(files, canonicalBase); err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	files.CanonicalPublicURL = canonicalBase
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return ManagedOperatorOIDC{}, fmt.Errorf("validate managed operator Keycloak: %w", err)
 	}
@@ -123,11 +132,23 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	issuerURL := files.PublicURL + "/realms/" + url.PathEscape(realm)
-	if _, err := FetchDiscovery(ctx, publicClient, issuerURL); err != nil {
+	endpointIssuer := files.PublicURL + "/realms/" + url.PathEscape(realm)
+	issuerURL := files.CanonicalPublicURL + "/realms/" + url.PathEscape(realm)
+	if _, err := FetchDiscoveryAt(ctx, publicClient, endpointIssuer, issuerURL); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	return ManagedOperatorOIDC{Issuer: issuerURL, ClientID: clientID, CallbackPort: callbackPort}, nil
+}
+
+func managedOperatorCanonicalBaseURL(runtime KeycloakRuntime, namespace string) (string, error) {
+	host, err := devaccess.SharedHost(namespace, "identity")
+	if err != nil {
+		return "", err
+	}
+	if engine, ok := runtime.(keycloakRuntimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
+		return "https://" + host + ":8443", nil
+	}
+	return devaccess.CanonicalURL(host), nil
 }
 
 func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, username, password string) (ManagedOperatorOIDC, error) {
