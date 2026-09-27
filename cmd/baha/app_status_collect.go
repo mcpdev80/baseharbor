@@ -514,7 +514,7 @@ func (c *applicationStatusCollection) collectWorkloadChecks() {
 				key := "app/" + c.manifest.Name + "/" + c.manifest.Environment + "/workload-api"
 				for _, route := range routes {
 					if route.Key == key {
-						c.result.AddCheck("api", true, devgateway.URL(route.Host))
+						c.result.AddCheck("api", true, devgateway.URLForTarget(c.resolved.Target.Name, route.Host))
 						break
 					}
 				}
