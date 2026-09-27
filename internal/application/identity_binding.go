@@ -22,11 +22,18 @@ type IdentityDiscovery struct {
 }
 
 func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string, discovery IdentityDiscovery, clientID, clientSecret, trustBundlePath string) error {
+	return MaterializeIdentityBindingWithWorkloadDiscovery(m, files, provider, discovery, discovery, clientID, clientSecret, trustBundlePath)
+}
+
+func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFiles, provider string, discovery, workloadDiscovery IdentityDiscovery, clientID, clientSecret, trustBundlePath string) error {
 	if !m.Services.Identity {
 		return fmt.Errorf("identity binding requires services.identity enabled")
 	}
 	if err := validateIdentityDiscovery(discovery); err != nil {
 		return err
+	}
+	if err := validateIdentityDiscovery(workloadDiscovery); err != nil {
+		return fmt.Errorf("workload identity discovery: %w", err)
 	}
 	provider = strings.TrimSpace(provider)
 	clientID = strings.TrimSpace(clientID)
@@ -39,28 +46,27 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	if err := os.MkdirAll(binding, 0o700); err != nil {
 		return fmt.Errorf("create identity binding: %w", err)
 	}
-	entries := map[string]string{
-		"type":                        "oidc",
-		"provider":                    provider,
-		"uri":                         discovery.Issuer,
-		"oidc.issuer":                 discovery.Issuer,
-		"oidc.authorization-endpoint": discovery.AuthorizationEndpoint,
-		"oidc.token-endpoint":         discovery.TokenEndpoint,
-		"oidc.userinfo-endpoint":      discovery.UserinfoEndpoint,
-		"oidc.jwks-uri":               discovery.JWKSURI,
-		"oidc.client-id":              clientID,
-	}
+	entries := identityBindingEntries(provider, discovery, clientID)
+	workloadEntries := identityBindingEntries(provider, workloadDiscovery, clientID)
 	if discovery.EndSessionEndpoint != "" {
 		entries["oidc.end-session-endpoint"] = discovery.EndSessionEndpoint
 	}
+	if workloadDiscovery.EndSessionEndpoint != "" {
+		workloadEntries["oidc.end-session-endpoint"] = workloadDiscovery.EndSessionEndpoint
+	}
 	if len(m.Identity.Scopes) > 0 {
-		entries["oidc.scopes"] = strings.Join(m.Identity.Scopes, " ")
+		value := strings.Join(m.Identity.Scopes, " ")
+		entries["oidc.scopes"] = value
+		workloadEntries["oidc.scopes"] = value
 	}
 	if len(m.Identity.Claims) > 0 {
-		entries["oidc.claims"] = strings.Join(m.Identity.Claims, " ")
+		value := strings.Join(m.Identity.Claims, " ")
+		entries["oidc.claims"] = value
+		workloadEntries["oidc.claims"] = value
 	}
 	if clientSecret != "" {
 		entries["client-secret"] = clientSecret
+		workloadEntries["client-secret"] = clientSecret
 	}
 	if strings.TrimSpace(trustBundlePath) != "" {
 		trust, err := os.ReadFile(filepath.Clean(trustBundlePath))
@@ -71,6 +77,7 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 			return fmt.Errorf("identity trust bundle is empty")
 		}
 		entries["ca.crt"] = string(trust)
+		workloadEntries["ca.crt"] = string(trust)
 	}
 	for name, value := range entries {
 		if err := capabilityBindingEntryName(name); err != nil {
@@ -85,7 +92,7 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	if err := os.MkdirAll(workload, 0o755); err != nil {
 		return fmt.Errorf("create workload identity binding: %w", err)
 	}
-	for name, value := range entries {
+	for name, value := range workloadEntries {
 		path := filepath.Join(workload, name)
 		if err := os.WriteFile(path, []byte(value+"\n"), 0o444); err != nil {
 			return fmt.Errorf("project workload identity binding %s: %w", name, err)
@@ -99,7 +106,7 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	if err != nil {
 		return err
 	}
-	runtimeValues["IDENTITY_CONTAINER_ISSUER"] = discovery.Issuer
+	runtimeValues["IDENTITY_CONTAINER_ISSUER"] = workloadDiscovery.Issuer
 	runtimeValues["IDENTITY_CLIENT_ID"] = clientID
 	if clientSecret != "" {
 		runtimeValues["IDENTITY_CLIENT_SECRET"] = clientSecret
@@ -119,7 +126,7 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 	if err != nil {
 		return err
 	}
-	values["OIDC_ISSUER"] = discovery.Issuer
+	values["OIDC_ISSUER"] = workloadDiscovery.Issuer
 	values["OIDC_CLIENT_ID"] = clientID
 	if len(m.Identity.Scopes) > 0 {
 		values["OIDC_SCOPES"] = strings.Join(m.Identity.Scopes, " ")
@@ -134,6 +141,20 @@ func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string,
 		return err
 	}
 	return nil
+}
+
+func identityBindingEntries(provider string, discovery IdentityDiscovery, clientID string) map[string]string {
+	return map[string]string{
+		"type":                        "oidc",
+		"provider":                    provider,
+		"uri":                         discovery.Issuer,
+		"oidc.issuer":                 discovery.Issuer,
+		"oidc.authorization-endpoint": discovery.AuthorizationEndpoint,
+		"oidc.token-endpoint":         discovery.TokenEndpoint,
+		"oidc.userinfo-endpoint":      discovery.UserinfoEndpoint,
+		"oidc.jwks-uri":               discovery.JWKSURI,
+		"oidc.client-id":              clientID,
+	}
 }
 
 func VerifyIdentityBinding(m Manifest, files RuntimeFiles) error {
