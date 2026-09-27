@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -64,11 +65,16 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 	publicURL := "https://" + keycloakPublicHost + ":" + strconv.Itoa(publicPort)
 	canonicalPublicURL := publicURL
 	if devaccess.Enabled(app.Environment) {
-		host, err := devaccess.ApplicationHost(namespace, app.Name, "identity")
+		var host string
+		if placement.Scope == capability.ScopeShared {
+			host, err = devaccess.SharedHost(namespace, "identity")
+		} else {
+			host, err = devaccess.ApplicationHost(namespace, app.Name, "identity")
+		}
 		if err != nil {
 			return KeycloakFiles{}, err
 		}
-		canonicalPublicURL = devaccess.CanonicalURL(host)
+		canonicalPublicURL = devgateway.URLForTarget(namespace, host)
 	}
 	return KeycloakFiles{
 		Dir:                dir,
