@@ -1022,7 +1022,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
 		return err
 	}
-	caddy := ":8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy shared-cache-ui:8081\n}\n"
+	caddy := "{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy shared-cache-ui:8081\n}\n"
 	return os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644)
 }
 
