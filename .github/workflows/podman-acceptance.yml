@@ -64,6 +64,7 @@ jobs:
       - name: Reset persistent runner state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Verify Podman Quadlet runner
@@ -171,6 +172,7 @@ jobs:
 
       - name: Reset runtime state before integration tests
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Run runtime integration tests serially
@@ -232,6 +234,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Generate Podman evidence
