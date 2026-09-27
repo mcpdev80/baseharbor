@@ -28,6 +28,7 @@ const (
 type Runtime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
+	DestroyProject(context.Context, string, string, string) error
 }
 
 type Route struct {
@@ -127,6 +128,19 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 	return Reconcile(ctx, runtime, issuer, target)
 }
 
+func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
+	groups := make([]OwnerRoutes, 0, len(owners))
+	for _, owner := range owners {
+		if strings.TrimSpace(owner) != "" {
+			groups = append(groups, OwnerRoutes{Owner: owner})
+		}
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return ReplaceRoutes(ctx, runtime, issuer, target, groups...)
+}
+
 func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string) error {
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
@@ -146,6 +160,18 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		return err
 	}
 	if len(current.Routes) == 0 {
+		if _, statErr := os.Stat(files.Compose); statErr == nil {
+			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+				return fmt.Errorf("stop empty development gateway: %w", err)
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return statErr
+		}
+		for _, path := range []string{files.Compose, files.Env, files.Caddyfile} {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o700); err != nil {
