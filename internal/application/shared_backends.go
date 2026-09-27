@@ -224,8 +224,8 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 	return true, nil
 }
 
-func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
-	if !HasSharedBackends(m) {
+func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	if !UsesSharedPostgreSQL(m) {
 		return nil
 	}
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
@@ -235,34 +235,53 @@ func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDi
 	}
 	app, ok := state.Applications[sharedBackendApplicationKey(m)]
 	if !ok {
-		return fmt.Errorf("shared backend application registration is missing")
+		return fmt.Errorf("shared PostgreSQL application registration is missing")
 	}
-	if UsesSharedPostgreSQL(m) {
-		for instance, resource := range app.SQL {
-			script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(resource.Password), shellQuote(resource.Username), shellQuote(resource.Database))
-			out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
-			if err != nil {
-				return fmt.Errorf("verify shared PostgreSQL %s: %w", instance, err)
-			}
-			if strings.TrimSpace(out) != "1" {
-				return fmt.Errorf("verify shared PostgreSQL %s: unexpected query result %q", instance, strings.TrimSpace(out))
-			}
+	for instance, resource := range app.SQL {
+		script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(resource.Password), shellQuote(resource.Username), shellQuote(resource.Database))
+		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
+		if err != nil {
+			return fmt.Errorf("verify shared PostgreSQL %s: %w", instance, err)
 		}
-	}
-	if UsesSharedValkey(m) {
-		for instance, resource := range app.Cache {
-			service := sharedValkeyService(m, instance)
-			script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(resource.Password))
-			out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
-			if err != nil {
-				return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
-			}
-			if strings.TrimSpace(out) != "PONG" {
-				return fmt.Errorf("verify shared Valkey %s: unexpected PING result %q", instance, strings.TrimSpace(out))
-			}
+		if strings.TrimSpace(out) != "1" {
+			return fmt.Errorf("verify shared PostgreSQL %s: unexpected query result %q", instance, strings.TrimSpace(out))
 		}
 	}
 	return nil
+}
+
+func VerifySharedValkey(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	if !UsesSharedValkey(m) {
+		return nil
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return err
+	}
+	app, ok := state.Applications[sharedBackendApplicationKey(m)]
+	if !ok {
+		return fmt.Errorf("shared Valkey application registration is missing")
+	}
+	for instance, resource := range app.Cache {
+		service := sharedValkeyService(m, instance)
+		script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(resource.Password))
+		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
+		if err != nil {
+			return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify shared Valkey %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	if err := VerifySharedPostgreSQL(ctx, compose, dataDir, namespace, m); err != nil {
+		return err
+	}
+	return VerifySharedValkey(ctx, compose, dataDir, namespace, m)
 }
 
 func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
