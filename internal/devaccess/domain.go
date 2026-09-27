@@ -11,7 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-const DefaultDomain = "baseharbor.localhost"
+const DefaultDomain = "baha.localhost"
 
 var domainLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
 
@@ -76,6 +76,9 @@ func ApplicationHost(target, app, service string) (string, error) {
 	if app == "" || service == "" {
 		return "", errors.New("application canonical host requires app and service")
 	}
+	if service == "api" {
+		return app + "." + domain, nil
+	}
 	return app + "-" + service + "." + domain, nil
 }
 
@@ -88,7 +91,17 @@ func SharedHost(target, service string) (string, error) {
 	if service == "" {
 		return "", errors.New("shared canonical host requires service")
 	}
-	return "shared-" + service + "." + domain, nil
+	switch service {
+	case "openbao":
+		service = "secrets"
+	case "prometheus":
+		service = "metrics"
+	case "identity":
+		service = "auth"
+	case "identity-admin":
+		service = "auth-admin"
+	}
+	return service + "." + domain, nil
 }
 
 func ExposureService(routeName string, publicExposureCount int) string {
