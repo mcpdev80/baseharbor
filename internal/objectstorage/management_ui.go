@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,7 +38,9 @@ func RegisterManagementUIConsumerAt(dataDir, namespace string, app application.M
 		return err
 	}
 	state, err := loadManagementUIConsumers(dir)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
+		state = managementUIConsumers{Version: 1}
+	} else if err != nil {
 		return err
 	}
 	key := app.Name + "/" + app.Environment
@@ -244,4 +245,3 @@ func readProviderValues(path string) (map[string]string, error) {
 	return parseEnv(data)
 }
 
-var _ = http.StatusOK
