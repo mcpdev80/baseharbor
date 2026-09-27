@@ -164,7 +164,12 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	files.PublicURL = fmt.Sprintf("https://%s:%d", keycloakPublicHost, publicPort)
 	files.CanonicalPublicURL = files.PublicURL
 	if devaccess.Enabled(app.Environment) {
-		host, err := devaccess.ApplicationHost(namespace, app.Name, "identity")
+		var host string
+		if placement.Scope == capability.ScopeShared {
+			host, err = devaccess.SharedHost(namespace, "identity")
+		} else {
+			host, err = devaccess.ApplicationHost(namespace, app.Name, "identity")
+		}
 		if err != nil {
 			return KeycloakFiles{}, err
 		}
