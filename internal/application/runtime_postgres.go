@@ -324,6 +324,7 @@ func writeCacheUIComposeServices(b *strings.Builder) {
     volumes:
       - ./providers/management-ui/cache/http-password:/run/baseharbor/http-password:ro
       - ./providers/management-ui/cache/local.json:/redis-commander/config/local.json:ro
+      - ./providers/management-ui/cache/local-production.json:/redis-commander/config/local-production.json:ro
 
   cache-ui-access:
     image: ` + UIProxyImage + `
