@@ -22,18 +22,25 @@ type discoveryDocument struct {
 }
 
 func FetchDiscovery(ctx context.Context, client *http.Client, issuer string) (application.IdentityDiscovery, error) {
-	issuer = strings.TrimRight(strings.TrimSpace(issuer), "/")
-	if issuer == "" {
+	return FetchDiscoveryAt(ctx, client, issuer, issuer)
+}
+
+func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, expectedIssuer string) (application.IdentityDiscovery, error) {
+	endpointIssuer = strings.TrimRight(strings.TrimSpace(endpointIssuer), "/")
+	expectedIssuer = strings.TrimRight(strings.TrimSpace(expectedIssuer), "/")
+	if endpointIssuer == "" || expectedIssuer == "" {
 		return application.IdentityDiscovery{}, fmt.Errorf("OIDC issuer is required")
 	}
-	u, err := url.Parse(issuer)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return application.IdentityDiscovery{}, fmt.Errorf("OIDC issuer must be an HTTPS URL without query or fragment")
+	for label, value := range map[string]string{"endpoint issuer": endpointIssuer, "expected issuer": expectedIssuer} {
+		u, err := url.Parse(value)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+			return application.IdentityDiscovery{}, fmt.Errorf("OIDC %s must be an HTTPS URL without query or fragment", label)
+		}
 	}
 	if client == nil {
 		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issuer+"/.well-known/openid-configuration", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointIssuer+"/.well-known/openid-configuration", nil)
 	if err != nil {
 		return application.IdentityDiscovery{}, err
 	}
@@ -53,11 +60,11 @@ func FetchDiscovery(ctx context.Context, client *http.Client, issuer string) (ap
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return application.IdentityDiscovery{}, fmt.Errorf("decode OIDC discovery: %w", err)
 	}
-	if strings.TrimRight(strings.TrimSpace(doc.Issuer), "/") != issuer {
-		return application.IdentityDiscovery{}, fmt.Errorf("OIDC discovery issuer %q does not match configured issuer %q", doc.Issuer, issuer)
+	if strings.TrimRight(strings.TrimSpace(doc.Issuer), "/") != expectedIssuer {
+		return application.IdentityDiscovery{}, fmt.Errorf("OIDC discovery issuer %q does not match configured issuer %q", doc.Issuer, expectedIssuer)
 	}
 	result := application.IdentityDiscovery{
-		Issuer:                issuer,
+		Issuer:                expectedIssuer,
 		AuthorizationEndpoint: strings.TrimSpace(doc.AuthorizationEndpoint),
 		TokenEndpoint:         strings.TrimSpace(doc.TokenEndpoint),
 		UserinfoEndpoint:      strings.TrimSpace(doc.UserinfoEndpoint),
