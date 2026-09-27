@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -18,12 +19,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const sharedBackendStateVersion = 1
+const sharedBackendStateVersion = 2
 
 type sharedBackendState struct {
 	Version               int                              `json:"version"`
 	Environment           string                           `json:"environment"`
-	PostgresAdminPassword string                           `json:"postgres_admin_password,omitempty"`
+	PostgresAdminCredential string                        `json:"postgres_admin_credential,omitempty"`
 	PostgresHostPort      int                              `json:"postgres_host_port,omitempty"`
 	PostgresUIHostPort    int                              `json:"postgres_ui_host_port,omitempty"`
 	CacheUIHostPort       int                              `json:"cache_ui_host_port,omitempty"`
@@ -42,9 +43,9 @@ type sharedBackendAppState struct {
 }
 
 type sharedPostgresResource struct {
-	Database string `json:"database"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Database          string `json:"database"`
+	Username          string `json:"username"`
+	CredentialReference string `json:"credential_reference"`
 }
 
 type sharedValkeyResource struct {
@@ -142,11 +143,12 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 	}
 
 	if UsesSharedPostgreSQL(m) {
-		if state.PostgresAdminPassword == "" {
-			state.PostgresAdminPassword, err = sharedBackendSecret(32)
+		if state.PostgresAdminCredential == "" {
+			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
 			if err != nil {
 				return false, err
 			}
+			state.PostgresAdminCredential = ref
 		}
 		if state.PostgresHostPort == 0 {
 			state.PostgresHostPort, err = allocateLoopbackPort(nil)
@@ -155,15 +157,25 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 			}
 		}
 		for _, instance := range SQLInstanceNames(m) {
-			resource := sharedPostgresResource{
-				Database: values[postgresRuntimeKey(instance, "DB")],
-				Username: values[postgresRuntimeKey(instance, "USER")],
-				Password: values[postgresRuntimeKey(instance, "PASSWORD")],
+			database := sharedPostgresDatabaseName(m, instance)
+			username := sharedPostgresRoleName(m, instance)
+			ref, err := ensureSharedPostgresCredential(shared.Dir, sharedBackendApplicationKey(m), instance)
+			if err != nil {
+				return false, err
 			}
-			if resource.Database == "" || resource.Username == "" || resource.Password == "" {
-				return false, fmt.Errorf("shared PostgreSQL application resource %s is incomplete", instance)
+			password, err := readSharedBackendCredential(shared.Dir, ref)
+			if err != nil {
+				return false, err
+			}
+			resource := sharedPostgresResource{
+				Database: database,
+				Username: username,
+				CredentialReference: ref,
 			}
 			app.SQL[instance] = resource
+			values[postgresRuntimeKey(instance, "DB")] = database
+			values[postgresRuntimeKey(instance, "USER")] = username
+			values[postgresRuntimeKey(instance, "PASSWORD")] = password
 			values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
 			values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
 		}
@@ -726,14 +738,25 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.C
 	sort.Strings(instances)
 	for _, instance := range instances {
 		resource := app.SQL[instance]
-		sql := fmt.Sprintf("SELECT 'CREATE ROLE %s LOGIN PASSWORD %s' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s)\\gexec\nALTER ROLE %s WITH LOGIN PASSWORD %s;\nSELECT 'CREATE DATABASE %s OWNER %s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = %s)\\gexec\nALTER DATABASE %s OWNER TO %s;\n",
-			quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Password), quotePostgresLiteral(resource.Username),
-			quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Password),
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
+		}
+		sql := fmt.Sprintf("SELECT 'CREATE ROLE %s LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s)\\gexec\nALTER ROLE %s WITH LOGIN PASSWORD %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;\nSELECT 'CREATE DATABASE %s OWNER %s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = %s)\\gexec\nALTER DATABASE %s OWNER TO %s;\nREVOKE ALL ON DATABASE %s FROM PUBLIC;\nGRANT CONNECT, TEMPORARY ON DATABASE %s TO %s;\n",
+			quotePostgresIdent(resource.Username), quotePostgresLiteral(password), quotePostgresLiteral(resource.Username),
+			quotePostgresIdent(resource.Username), quotePostgresLiteral(password),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Database),
+			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
+			quotePostgresIdent(resource.Database),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
 		)
 		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
 			return fmt.Errorf("reconcile shared PostgreSQL resource %s: %w", instance, err)
+		}
+		harden := fmt.Sprintf("REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE, CREATE ON SCHEMA public TO %s; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC;",
+			quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username))
+		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
+			return fmt.Errorf("harden shared PostgreSQL resource %s: %w", instance, err)
 		}
 	}
 	return nil
@@ -741,7 +764,13 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.C
 
 func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendState) error {
 	var env strings.Builder
-	fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", state.PostgresAdminPassword)
+	if state.PostgresAdminCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.PostgresAdminCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", password)
+	}
 	if state.PostgresHostPort > 0 {
 		fmt.Fprintf(&env, "SHARED_POSTGRES_HOST_PORT=%d\n", state.PostgresHostPort)
 	}
@@ -1083,6 +1112,78 @@ func sharedBackendToken(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+func sharedPostgresDatabaseName(m Manifest, instance string) string {
+	base := "baha_" + sharedBackendToken(m.Name) + "_" + sharedBackendToken(m.Environment)
+	if instance != defaultServiceInstance {
+		base += "_" + sharedBackendToken(instance)
+	}
+	return postgresIdentifierWithHash(base, m.Name+"|"+m.Environment+"|"+instance+"|db")
+}
+
+func sharedPostgresRoleName(m Manifest, instance string) string {
+	base := "baha_" + sharedBackendToken(m.Name) + "_" + sharedBackendToken(m.Environment)
+	if instance != defaultServiceInstance {
+		base += "_" + sharedBackendToken(instance)
+	}
+	return postgresIdentifierWithHash(base, m.Name+"|"+m.Environment+"|"+instance+"|role")
+}
+
+func postgresIdentifierWithHash(base, identity string) string {
+	sum := sha256.Sum256([]byte(identity))
+	suffix := fmt.Sprintf("_%x", sum[:4])
+	base = strings.ReplaceAll(base, "-", "_")
+	maxBase := 63 - len(suffix)
+	if len(base) > maxBase {
+		base = base[:maxBase]
+	}
+	return strings.Trim(base, "_") + suffix
+}
+
+func ensureSharedPostgresCredential(root, owner, instance string) (string, error) {
+	token := sharedBackendToken(owner)
+	if token == "" {
+		token = "provider"
+	}
+	name := token
+	if strings.TrimSpace(instance) != "" {
+		name += "-" + sharedBackendToken(instance)
+	}
+	ref := filepath.ToSlash(filepath.Join("credentials", "postgres", name+".password"))
+	path := filepath.Join(root, filepath.FromSlash(ref))
+	if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) != "" {
+		return ref, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	password, err := sharedBackendSecret(32)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", err
+	}
+	if err := writeOwnerOnlyFile(path, []byte(password+"\n")); err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
+func readSharedBackendCredential(root, reference string) (string, error) {
+	reference = filepath.Clean(filepath.FromSlash(strings.TrimSpace(reference)))
+	if reference == "." || filepath.IsAbs(reference) || strings.HasPrefix(reference, ".."+string(filepath.Separator)) {
+		return "", errors.New("shared backend credential reference is invalid")
+	}
+	data, err := os.ReadFile(filepath.Join(root, reference))
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return "", errors.New("shared backend credential is empty")
+	}
+	return value, nil
 }
 
 func sharedBackendSecret(size int) (string, error) {
