@@ -377,12 +377,11 @@ func validateSecretKey(key string) error {
 	return nil
 }
 
-
 func validateManagementUIPreferences(services Services) error {
 	for _, item := range []struct {
-		name string
+		name    string
 		enabled bool
-		ui bool
+		ui      bool
 	}{
 		{"sql", services.SQL || len(services.SQLInstances) > 0, services.SQLManagementUI},
 		{"cache", services.Cache || len(services.CacheInstances) > 0, services.CacheManagementUI},
@@ -422,7 +421,7 @@ func validateIdentityRequirements(m Manifest) error {
 	}
 	for label, values := range map[string][]string{
 		"callback path": m.Identity.CallbackPaths,
-		"logout path": m.Identity.LogoutPaths,
+		"logout path":   m.Identity.LogoutPaths,
 	} {
 		seen := map[string]struct{}{}
 		for _, raw := range values {
