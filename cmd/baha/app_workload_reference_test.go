@@ -67,7 +67,7 @@ func TestAnalyzeManagedServiceReferenceRewritesFailsClosedOnAmbiguousManagedSQL(
 	rendered := []byte(`{
 	  "services": {
 	    "api": {"environment":{"DATABASE_DIRECT_URL":"postgresql://user:pass@database:5432/app"}},
-	    "database": {"environment":{}}
+	    "database": {"image":"postgres:16","environment":{}}
 	  }
 	}`)
 	_, err := analyzeManagedServiceReferenceRewrites(m, rendered, []string{"api"})
@@ -81,7 +81,7 @@ func TestAnalyzeManagedServiceReferenceRewritesFailsClosedOnUnsupportedReference
 	rendered := []byte(`{
 	  "services": {
 	    "api": {"environment":{"UPSTREAM":"http://database:8080"}},
-	    "database": {"environment":{}}
+	    "database": {"image":"postgres:16","environment":{}}
 	  }
 	}`)
 	_, err := analyzeManagedServiceReferenceRewrites(m, rendered, []string{"api"})
