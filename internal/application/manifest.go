@@ -59,27 +59,27 @@ type MetricsSourceRequirement struct {
 }
 
 type Services struct {
-	SQL                  bool
-	Cache                bool
-	Secrets              bool
-	ObjectStorage        bool
-	Identity             bool
-	SQLManagementUI      bool
-	CacheManagementUI    bool
-	SecretsManagementUI  bool
+	SQL                       bool
+	Cache                     bool
+	Secrets                   bool
+	ObjectStorage             bool
+	Identity                  bool
+	SQLManagementUI           bool
+	CacheManagementUI         bool
+	SecretsManagementUI       bool
 	ObjectStorageManagementUI bool
-	IdentityManagementUI bool
+	IdentityManagementUI      bool
 	ObservabilityManagementUI bool
-	SQLInstances         map[string]ServiceInstance
-	CacheInstances       map[string]ServiceInstance
-	ObjectStorageBuckets map[string]ServiceInstance
+	SQLInstances              map[string]ServiceInstance
+	CacheInstances            map[string]ServiceInstance
+	ObjectStorageBuckets      map[string]ServiceInstance
 }
 
 type IdentityRequirements struct {
-	CallbackPaths []string
-	LogoutPaths   []string
-	Scopes        []string
-	Claims        []string
+	CallbackPaths  []string
+	LogoutPaths    []string
+	Scopes         []string
+	Claims         []string
 	Authentication IdentityAuthenticationRequirements
 }
 
