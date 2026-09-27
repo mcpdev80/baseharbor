@@ -54,6 +54,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
+	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
 	if err := execution.recordVerifiedDeployment(ctx); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
