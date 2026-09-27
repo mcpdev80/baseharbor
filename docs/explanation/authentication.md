@@ -64,7 +64,7 @@ This does not merge application-user identity, BaseHarbor operator identity and 
 
 Use `baha dev credentials` only when the local development secret must be explicitly revealed or rotated.
 
-The same Target owns one development domain, default `baseharbor.localhost`. Browser-facing OIDC uses the canonical `https://<app>-identity.<domain>` issuer through the local development gateway. Workloads keep a separate internal issuer endpoint and trust projection, so a `.localhost` browser name is never incorrectly used as a container-local network address. Public/browser discovery and workload discovery describe the same realm/client contract while using the correct network endpoint for each side.
+The same Target owns one development domain, default `baha.localhost`. With the default shared Keycloak placement, browser-facing OIDC uses the canonical `https://auth.<domain>` issuer and `https://auth-admin.<domain>` administration surface through the local development gateway. An explicitly application-scoped Keycloak provider uses an application-qualified host. Workloads keep the appropriate internal provider endpoint and trust projection, so a `.localhost` browser name is never incorrectly used as a container-local network address. Public/browser discovery and workload discovery describe the same realm/client contract while using the correct network endpoint for each side.
 
 ## Operator authentication
 
