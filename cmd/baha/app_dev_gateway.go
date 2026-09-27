@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -44,8 +45,30 @@ func (e *applicationApplyExecution) reconcileDevelopmentGateway(ctx context.Cont
 	if len(routes) == 0 {
 		return nil
 	}
-	owner := e.manifest.Name + "/" + e.manifest.Environment
-	if err := devgateway.ReplaceOwnerRoutes(ctx, e.compose, e.issuer, e.resolved.Target.Name, owner, routes); err != nil {
+
+	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
+	groups := map[string][]devgateway.Route{appOwner: nil}
+	for _, route := range routes {
+		owner := appOwner
+		switch {
+		case strings.HasPrefix(route.Key, "shared:"):
+			owner = route.Key
+		case strings.HasPrefix(route.Key, "metrics:shared:"):
+			owner = "shared:prometheus"
+		}
+		groups[owner] = append(groups[owner], route)
+	}
+
+	owners := make([]string, 0, len(groups))
+	for owner := range groups {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+	desired := make([]devgateway.OwnerRoutes, 0, len(owners))
+	for _, owner := range owners {
+		desired = append(desired, devgateway.OwnerRoutes{Owner: owner, Routes: groups[owner]})
+	}
+	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, e.resolved.Target.Name, desired...); err != nil {
 		return fmt.Errorf("reconcile canonical development gateway: %w", err)
 	}
 	return nil
@@ -84,19 +107,32 @@ func (e *applicationApplyExecution) developmentGatewayRoutes() ([]devgateway.Rou
 		})
 	}
 	if m.Services.ObjectStorageManagementUI {
-		host, err := devaccess.ApplicationHost(target, m.Name, "storage")
+		placement, err := application.ResolveProviderPlacement(m, capability.ProviderSeaweedFS)
 		if err != nil { return nil, err }
-		files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target)
-		if err != nil { return nil, err }
-		policy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
-		if err != nil { return nil, err }
-		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "management-ui", "service-access", "pki"))
-		if err != nil { return nil, err }
-		routes = append(routes, devgateway.Route{
-			Key: "app:"+m.Name+":storage", Host: host, Network: files.Network,
-			Upstream: "https://seaweedfs-admin-access:9443",
-			TrustFile: material.CA, ServerName: material.ServerName,
-		})
+		if placement.Scope != capability.ScopeExternal {
+			var host string
+			if placement.Scope == capability.ScopeShared {
+				host, err = devaccess.SharedHost(target, "storage")
+			} else {
+				host, err = devaccess.ApplicationHost(target, m.Name, "storage")
+			}
+			if err != nil { return nil, err }
+			files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target)
+			if err != nil { return nil, err }
+			policy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
+			if err != nil { return nil, err }
+			material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "management-ui", "service-access", "pki"))
+			if err != nil { return nil, err }
+			key := "app:"+m.Name+":storage"
+			if placement.Scope == capability.ScopeShared {
+				key = "shared:storage"
+			}
+			routes = append(routes, devgateway.Route{
+				Key: key, Host: host, Network: files.Network,
+				Upstream: "https://seaweedfs-admin-access:9443",
+				TrustFile: material.CA, ServerName: material.ServerName,
+			})
+		}
 	}
 	if m.Services.SecretsManagementUI {
 		host, err := devaccess.SharedHost(target, "openbao")
