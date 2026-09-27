@@ -207,21 +207,32 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
-	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI {
+	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI {
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := application.VerifyApplicationManagementUIs(checkCtx, c.manifest, c.files); err != nil {
-		c.result.AddCheck("management-ui", false, err.Error())
-		return
+	count := 0
+	if c.manifest.Services.SQLManagementUI || c.manifest.Services.CacheManagementUI {
+		if err := application.VerifyApplicationManagementUIs(checkCtx, c.manifest, c.files); err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		surfaces, err := application.ApplicationManagementUISurfaces(c.manifest, c.files)
+		if err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		count += len(surfaces)
 	}
-	surfaces, err := application.ApplicationManagementUISurfaces(c.manifest, c.files)
-	if err != nil {
-		c.result.AddCheck("management-ui", false, err.Error())
-		return
+	if c.manifest.Services.ObjectStorageManagementUI {
+		if err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name); err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		count++
 	}
-	c.result.AddCheck("management-ui", true, fmt.Sprintf("%d selected management UI surface(s) reachable over TLS", len(surfaces)))
+	c.result.AddCheck("management-ui", true, fmt.Sprintf("%d selected management UI surface(s) reachable over TLS", count))
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
