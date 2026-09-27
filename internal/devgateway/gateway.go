@@ -186,6 +186,24 @@ func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Iss
 	return ReplaceRoutes(ctx, runtime, issuer, target, groups...)
 }
 
+func DestroyTarget(ctx context.Context, runtime Runtime, target string) error {
+	if runtime == nil {
+		return errors.New("development gateway runtime is required")
+	}
+	files, err := FilesFor(target)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(files.Compose); err == nil {
+		if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("destroy development gateway: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.RemoveAll(files.Dir)
+}
+
 func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string) error {
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
