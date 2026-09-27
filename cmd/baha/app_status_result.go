@@ -6,6 +6,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
@@ -76,6 +77,11 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 				if surface, surfaceErr := openBaoManagementUISurface(platformFiles); surfaceErr == nil {
 					managementUI = append(managementUI, surface)
 				}
+			}
+		}
+		if resolved.Manifest.Services.ObservabilityManagementUI {
+			if surface, surfaceErr := metricsprovider.ManagementUISurfaceAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); surfaceErr == nil {
+				managementUI = append(managementUI, surface)
 			}
 		}
 	}
