@@ -232,7 +232,6 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(c.manifest))))
 }
 
-
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
 	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI && !c.manifest.Services.SecretsManagementUI {
 		return
