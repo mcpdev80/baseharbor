@@ -123,7 +123,7 @@ func ProviderAlias(project, service string) string {
 func normalizeDomain(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.TrimSuffix(value, ".")
-	if value == "" || len(value) > 253 || strings.ContainsAny(value, "/:@ \\t\r\n") {
+	if value == "" || len(value) > 253 || strings.ContainsAny(value, "/:@ \t\r\n") {
 		return "", fmt.Errorf("invalid development domain %q", value)
 	}
 	labels := strings.Split(value, ".")
