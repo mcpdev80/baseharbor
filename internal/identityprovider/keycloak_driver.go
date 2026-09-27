@@ -17,7 +17,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -74,13 +73,6 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 		normalized = append(normalized, raw)
 	}
 	normalized = sortedUnique(normalized)
-	if isDevelopmentIdentityEnvironment(d.app.Environment) && len(normalized) == 1 {
-		host, err := devaccess.ApplicationHost(d.targetName(), d.app.Name, "api")
-		if err != nil {
-			return err
-		}
-		normalized = []string{devaccess.CanonicalURL(host)}
-	}
 	d.origins = normalized
 	return nil
 }
