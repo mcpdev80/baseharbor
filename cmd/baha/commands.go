@@ -137,6 +137,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 		targetCommand(),
+		devCommand(),
 		configCommand(),
 		shellInitCommand(),
 		promptCommand(),
