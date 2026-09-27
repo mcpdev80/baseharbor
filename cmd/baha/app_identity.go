@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -20,6 +21,8 @@ type managedIdentityExecution struct {
 	execution *capability.Execution
 	keycloak  *identityprovider.KeycloakDriver
 	provider  capability.ProviderKind
+	target    string
+	manifest  application.Manifest
 }
 
 func prepareManagedIdentity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
@@ -46,7 +49,11 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.Compose, reso
 
 	files := application.RuntimeFilesFor(resolved.Store, m)
 	var driver capability.Driver
-	prepared := &managedIdentityExecution{provider: identity.Resource.Provider}
+	prepared := &managedIdentityExecution{
+		provider: identity.Resource.Provider,
+		target: resolved.Target.Name,
+		manifest: m,
+	}
 	switch identity.Resource.Provider {
 	case capability.ProviderKeycloak:
 		keycloak := identityprovider.NewKeycloakDriver(compose, m, files, issuer, resolved.TargetStateRoot, files.Namespace)
@@ -85,7 +92,7 @@ func provisionAndVerifyManagedIdentity(ctx context.Context, out io.Writer, prepa
 		return nil
 	}
 	if prepared.keycloak != nil {
-		origins, err := managedIdentityExposureOrigins(exposure)
+		origins, err := managedIdentityExposureOrigins(prepared, exposure)
 		if err != nil {
 			return err
 		}
@@ -103,7 +110,7 @@ func provisionAndVerifyManagedIdentity(ctx context.Context, out io.Writer, prepa
 	return nil
 }
 
-func managedIdentityExposureOrigins(prepared *managedExposureExecution) ([]string, error) {
+func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared *managedExposureExecution) ([]string, error) {
 	if prepared == nil {
 		return nil, nil
 	}
@@ -114,11 +121,20 @@ func managedIdentityExposureOrigins(prepared *managedExposureExecution) ([]strin
 		if strings.EqualFold(route.Visibility, "internal") {
 			continue
 		}
-		host := strings.TrimSpace(state.Host)
-		if host == "" || route.PublishedPort < 1 {
-			return nil, fmt.Errorf("managed application exposure is incomplete for identity redirect resolution")
+		var origin string
+		if identity != nil && devaccess.Enabled(identity.manifest.Environment) {
+			host, err := devaccess.ApplicationHost(identity.target, identity.manifest.Name, route.Name)
+			if err != nil {
+				return nil, err
+			}
+			origin = devaccess.CanonicalURL(host)
+		} else {
+			host := strings.TrimSpace(state.Host)
+			if host == "" || route.PublishedPort < 1 {
+				return nil, fmt.Errorf("managed application exposure is incomplete for identity redirect resolution")
+			}
+			origin = route.Protocol + "://" + net.JoinHostPort(host, strconv.Itoa(route.PublishedPort))
 		}
-		origin := route.Protocol + "://" + net.JoinHostPort(host, strconv.Itoa(route.PublishedPort))
 		if _, ok := seen[origin]; ok {
 			continue
 		}
@@ -164,7 +180,16 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Compos
 				if strings.EqualFold(route.Visibility, "internal") {
 					continue
 				}
-				origin := route.Protocol + "://" + net.JoinHostPort(state.Host, strconv.Itoa(route.PublishedPort))
+				origin := ""
+				if devaccess.Enabled(m.Environment) {
+					host, err := devaccess.ApplicationHost(resolved.Target.Name, m.Name, route.Name)
+					if err != nil {
+						return err
+					}
+					origin = devaccess.CanonicalURL(host)
+				} else {
+					origin = route.Protocol + "://" + net.JoinHostPort(state.Host, strconv.Itoa(route.PublishedPort))
+				}
 				if _, ok := seen[origin]; ok {
 					continue
 				}
