@@ -69,6 +69,7 @@ type Services struct {
 	SecretsManagementUI  bool
 	ObjectStorageManagementUI bool
 	IdentityManagementUI bool
+	ObservabilityManagementUI bool
 	SQLInstances         map[string]ServiceInstance
 	CacheInstances       map[string]ServiceInstance
 	ObjectStorageBuckets map[string]ServiceInstance
