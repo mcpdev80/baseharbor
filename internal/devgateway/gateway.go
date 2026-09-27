@@ -588,29 +588,34 @@ func normalizedRoutes(routes []Route) []Route {
 
 func renderCaddyfile(routes []Route) string {
 	var b strings.Builder
-	b.WriteString("{\n  auto_https off\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n")
-	for i, route := range routes {
-		fmt.Fprintf(&b, "  @route%d {\n    host %s\n", i, route.Host)
-		if route.PathPrefix != "" {
-			fmt.Fprintf(&b, "    path %s %s/*\n", route.PathPrefix, route.PathPrefix)
+	b.WriteString("{\n  auto_https off\n}\n")
+	renderListener := func(port int) {
+		fmt.Fprintf(&b, "\n:%d {\n  tls /certs/server.pem /certs/server-key.pem\n", port)
+		for i, route := range routes {
+			fmt.Fprintf(&b, "  @route%d {\n    host %s\n", i, route.Host)
+			if route.PathPrefix != "" {
+				fmt.Fprintf(&b, "    path %s %s/*\n", route.PathPrefix, route.PathPrefix)
+			}
+			b.WriteString("  }\n")
+			fmt.Fprintf(&b, "  handle @route%d {\n", i)
+			if route.PathPrefix != "" {
+				fmt.Fprintf(&b, "    uri strip_prefix %s\n", route.PathPrefix)
+			}
+			if strings.HasPrefix(route.Upstream, "https://") {
+				fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
+				b.WriteString("      transport http {\n        tls\n")
+				fmt.Fprintf(&b, "        tls_trust_pool file /trust/route-%03d.pem\n", i)
+				fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
+				b.WriteString("      }\n    }\n")
+			} else {
+				fmt.Fprintf(&b, "    reverse_proxy %s\n", route.Upstream)
+			}
+			b.WriteString("  }\n")
 		}
-		b.WriteString("  }\n")
-		fmt.Fprintf(&b, "  handle @route%d {\n", i)
-		if route.PathPrefix != "" {
-			fmt.Fprintf(&b, "    uri strip_prefix %s\n", route.PathPrefix)
-		}
-		if strings.HasPrefix(route.Upstream, "https://") {
-			fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
-			b.WriteString("      transport http {\n        tls\n")
-			fmt.Fprintf(&b, "        tls_trust_pool file /trust/route-%03d.pem\n", i)
-			fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
-			b.WriteString("      }\n    }\n")
-		} else {
-			fmt.Fprintf(&b, "    reverse_proxy %s\n", route.Upstream)
-		}
-		b.WriteString("  }\n")
+		b.WriteString("  respond 404\n}\n")
 	}
-	b.WriteString("  respond 404\n}\n")
+	renderListener(443)
+	renderListener(8443)
 	return b.String()
 }
 
@@ -630,7 +635,7 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string, 
 	b.WriteString("services:\n  dev-gateway:\n")
 	b.WriteString("    image: docker.io/library/caddy:2.11.4-alpine\n")
 	b.WriteString("    restart: unless-stopped\n    user: \"65532:65532\"\n    read_only: true\n")
-	b.WriteString("    cap_drop: [\"ALL\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n    cap_add: [\"NET_BIND_SERVICE\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
