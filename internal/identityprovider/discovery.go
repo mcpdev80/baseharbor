@@ -66,9 +66,9 @@ func FetchDiscovery(ctx context.Context, client *http.Client, issuer string) (ap
 	}
 	for label, value := range map[string]string{
 		"authorization endpoint": result.AuthorizationEndpoint,
-		"token endpoint": result.TokenEndpoint,
-		"userinfo endpoint": result.UserinfoEndpoint,
-		"jwks uri": result.JWKSURI,
+		"token endpoint":         result.TokenEndpoint,
+		"userinfo endpoint":      result.UserinfoEndpoint,
+		"jwks uri":               result.JWKSURI,
 	} {
 		parsed, err := url.Parse(value)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
