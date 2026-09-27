@@ -20,6 +20,46 @@ func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
 	}
 }
 
+func TestCaddyfileSeparatesPublicAndWorkloadTransport(t *testing.T) {
+	got := caddyfile(Route{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "https",
+	})
+	for _, want := range []string{
+		"reverse_proxy https://web:8080",
+		"tls_trust_pool file /trust/workload-ca.pem",
+		"tls_server_name web",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("secure workload Caddyfile missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "tls_insecure_skip_verify") {
+		t.Fatalf("secure workload Caddyfile disabled TLS verification:\n%s", got)
+	}
+}
+
+func TestComposeMountsWorkloadTrustOnlyForSecureUpstream(t *testing.T) {
+	files := Files{Dir: "/tmp/provider"}
+	secure := State{Routes: []Route{{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "https", Visibility: "public", PublishedPort: 18080,
+	}}}
+	got := composeYAML(secure, files)
+	if !strings.Contains(got, "/tmp/provider/routes/public/workload-ca.pem:/trust/workload-ca.pem:ro") {
+		t.Fatalf("secure workload compose does not mount runtime trust:\n%s", got)
+	}
+
+	plain := State{Routes: []Route{{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "http", Visibility: "public", PublishedPort: 18080,
+	}}}
+	got = composeYAML(plain, files)
+	if strings.Contains(got, "workload-ca.pem") {
+		t.Fatalf("plain workload compose unexpectedly mounts runtime trust:\n%s", got)
+	}
+}
+
 func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t *testing.T) {
 	m := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
 	state := State{Version: 1, Project: ProjectName(m), Network: application.ApplicationExposureNetworkName(m), Routes: []Route{{Name: "public", Service: "web", TargetPort: 8080, Protocol: "http", PublishedPort: 18080}}}
