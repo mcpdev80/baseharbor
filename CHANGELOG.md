@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
 - Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
 - The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
+- Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
 
 ### Fixed
 
