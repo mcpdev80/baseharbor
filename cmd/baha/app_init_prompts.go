@@ -22,6 +22,13 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		"OTLP telemetry",
 		"Application logs",
 	}
+	if len(defaults) < len(labels) {
+		padded := make([]bool, len(labels))
+		copy(padded, defaults)
+		defaults = padded
+	} else if len(defaults) > len(labels) {
+		defaults = append([]bool(nil), defaults[:len(labels)]...)
+	}
 	if input, ok := appInitInput.(interface{ Fd() uintptr }); ok && term.IsTerminal(input.Fd()) {
 		return promptCapabilityTTY(reader, out, input.Fd(), labels, defaults, allowNone)
 	}
