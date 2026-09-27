@@ -38,7 +38,7 @@ func TestSharedPostgresIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 
 func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) {
 	state := sharedBackendState{
-		Version: sharedBackendStateVersion,
+		Version:                 sharedBackendStateVersion,
 		PostgresAdminCredential: "credentials/postgres/provider-admin.password",
 		Applications: map[string]sharedBackendAppState{
 			"app-a/dev": {
@@ -69,7 +69,6 @@ func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) 
 		t.Fatalf("verifySharedPostgresStateOwnership() role error = %v, want ambiguous owners", err)
 	}
 }
-
 
 func TestVerifySharedPostgresStateOwnershipRejectsProviderAdminLeakage(t *testing.T) {
 	state := sharedBackendState{
