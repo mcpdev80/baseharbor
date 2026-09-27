@@ -549,10 +549,24 @@ func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.Compose, 
 }
 
 func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	postgresPlacement, postgresFound, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPostgreSQL)
+	if err != nil {
+		return fmt.Errorf("inspect registered PostgreSQL placement before shared release: %w", err)
+	}
+	valkeyPlacement, valkeyFound, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderValkey)
+	if err != nil {
+		return fmt.Errorf("inspect registered Valkey placement before shared release: %w", err)
+	}
+	registeredShared := (postgresFound && postgresPlacement.Scope == capability.ScopeShared) ||
+		(valkeyFound && valkeyPlacement.Scope == capability.ScopeShared)
+	if !registeredShared {
+		return nil
+	}
+
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
 	state, err := loadSharedBackendState(shared.State, m.Environment)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return errors.New("refuse shared backend destroy: protected shared provider state is missing")
 	}
 	if err != nil {
 		return err
