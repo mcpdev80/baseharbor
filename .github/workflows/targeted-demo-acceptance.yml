@@ -134,7 +134,13 @@ jobs:
         if: steps.target.outputs.gate != 'workload-routing'
         shell: bash
         timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
+run: |
+          set -euo pipefail
+          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}" "demo-$worker_id"
 
       - name: Run focused workload routing checks
         id: focused
@@ -251,7 +257,13 @@ jobs:
         if: always() && steps.target.outputs.gate != 'workload-routing'
         shell: bash
         timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}"
+run: |
+          set -euo pipefail
+          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}" "demo-$worker_id"
 
       - name: Generate targeted gate evidence
         if: always()
