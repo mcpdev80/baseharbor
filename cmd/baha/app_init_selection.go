@@ -125,7 +125,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		selection.secretsManagementUI, err = promptYesNo(reader, out, "Secrets management UI?", false)
 		if err != nil { return selection, err }
 	}
-	if selection.selected[5] {
+	if selection.selected[4] {
 		selection.identityManagementUI, err = promptYesNo(reader, out, "Identity management UI?", false)
 		if err != nil { return selection, err }
 	}
@@ -216,7 +216,7 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 }
 
 func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection, m application.Manifest) (application.Manifest, error) {
-	if selection.selected[4] {
+	if selection.selected[5] {
 		service, port, ok := detectedMetricsTarget(d, selection.workloadServices)
 		if !ok {
 			var err error
