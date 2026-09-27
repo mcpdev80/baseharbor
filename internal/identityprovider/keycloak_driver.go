@@ -376,4 +376,38 @@ func keycloakPublicHTTPClient(files KeycloakFiles) (*http.Client, error) {
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, ServerName: keycloakPublicHost},
 		TLSHandshakeTimeout: 5 * time.Second,
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return d
+			return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", strconv.Itoa(files.PublicPort)))
+		},
+	}
+	return &http.Client{Transport: transport, Timeout: 10 * time.Second}, nil
+}
+
+func waitIdentityEndpoint(ctx context.Context, client *http.Client, endpoint string) error {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var last error
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode < 500 {
+				return nil
+			}
+			last = fmt.Errorf("HTTP %d", resp.StatusCode)
+		} else {
+			last = err
+		}
+		select {
+		case <-ctx.Done():
+			if last != nil {
+				return last
+			}
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
