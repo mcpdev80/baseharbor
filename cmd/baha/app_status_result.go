@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -108,7 +109,7 @@ func canonicalDevelopmentManagementSurfaces(resolved resolvedApplication, surfac
 			continue
 		}
 		if err == nil && strings.TrimSpace(host) != "" {
-			result[i].URL = devaccess.CanonicalURL(host)
+			result[i].URL = devgateway.URLForTarget(resolved.Target.Name, host)
 		}
 	}
 	return result
@@ -176,7 +177,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 				runtimeDocsURL = strings.TrimSpace(brokerFiles.DocsURL)
 				if devaccess.Enabled(resolved.Manifest.Environment) && runtimeDocsURL != "" {
 					if host, hostErr := devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "api"); hostErr == nil {
-						runtimeDocsURL = devaccess.CanonicalURL(host) + "/swagger/"
+						runtimeDocsURL = devgateway.URLForTarget(resolved.Target.Name, host) + "/swagger/"
 					}
 				}
 				runtimeArtifact = &runtimeArtifactObservation{
