@@ -54,7 +54,7 @@ func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer service
 		return err
 	}
 	if m.Services.SQLManagementUI {
-		values[PostgresUIEmailEnv] = username + "@baseharbor.local"
+		values[PostgresUIEmailEnv] = developmentPostgresUIEmail(username)
 		values[PostgresUIPasswordEnv] = password
 	}
 	if m.Services.CacheManagementUI {
@@ -65,6 +65,14 @@ func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer service
 		return err
 	}
 	return EnsureApplicationManagementUIs(ctx, issuer, files, m)
+}
+
+func developmentPostgresUIEmail(username string) string {
+	username = strings.TrimSpace(username)
+	if strings.Contains(username, "@") {
+		return username
+	}
+	return username + "@baseharbor.dev"
 }
 
 func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
