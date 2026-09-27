@@ -140,7 +140,16 @@ jobs:
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}" "demo-$worker_id"
+          if [ "${{ steps.target.outputs.runtime }}" = "podman" ]; then
+            # Quadlet generators scan the whole user unit directory. A stale
+            # BaseHarbor unit from a previous logical worker can therefore
+            # invalidate this worker before its own scope is even loaded.
+            # Self-hosted runners execute one job at a time, so clear all
+            # BaseHarbor-owned Podman state on this physical runner.
+            bash scripts/ci-runtime-reset.sh "podman"
+          else
+            bash scripts/ci-runtime-reset.sh "docker" "demo-$worker_id"
+          fi
 
       - name: Run focused workload routing checks
         id: focused
