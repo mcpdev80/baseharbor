@@ -132,7 +132,7 @@ baha dev credentials --username USER
 baha dev credentials --password-file OWNER_ONLY_FILE
 ```
 
-`baha dev domain` shows or changes the effective Target's development domain. The default is `baseharbor.localhost`. Canonical application hosts use `<app>-<service>.<domain>`; shared-provider surfaces use `shared-<service>.<domain>`.
+`baha dev domain` shows or changes the effective Target's development domain. The default is `baha.localhost`. The primary application API uses `<app>.<domain>`; additional application surfaces use `<app>-<service>.<domain>`. Shared-provider surfaces use short Target-scoped names such as `pgadmin.<domain>`, `secrets.<domain>`, `auth.<domain>` and `metrics.<domain>`.
 
 `baha dev credentials` is the explicit secret-reveal path for the Target-scoped development management account. The default username is `developer` and BaseHarbor generates a strong password unless one is explicitly installed from an owner-only file. Rotation is reconciled into selected management surfaces on the next `baha up`.
 
