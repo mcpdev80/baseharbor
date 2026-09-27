@@ -289,6 +289,9 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 	if err := os.Chmod(filepath.Join(dir, "local.json"), 0o644); err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
+		return err
+	}
 
 	caddy := ":8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy cache-ui:8081\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
