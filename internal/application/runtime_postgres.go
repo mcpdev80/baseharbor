@@ -89,6 +89,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := EnsureApplicationManagementUIs(ctx, issuer, files, m); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile application management UIs: %w", err)
+	}
 
 	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
 	if err != nil {
@@ -258,6 +261,84 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
 `, service, passwordKey, service, instance)
 }
 
+func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
+	b.WriteString(`  postgres-ui:
+    image: ` + PostgresUIImage + `
+    restart: unless-stopped
+    user: "5050:5050"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${` + PostgresUIEmailEnv + `}
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_ENABLE_TLS: "True"
+      PGADMIN_LISTEN_PORT: "8443"
+      PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGPASS_FILE: /run/baseharbor/pgpass
+    ports:
+      - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,uid=5050,gid=5050,mode=0700
+    volumes:
+      - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
+      - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
+      - ./providers/management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
+      - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
+`)
+	for _, instance := range SQLInstanceNames(m) {
+		token := envInstanceToken(instance)
+		fmt.Fprintf(b, "      - ./providers/management-ui/postgres/postgres-%s.ca.pem:/run/baseharbor/postgres-%s.ca.pem:ro\n", token, token)
+	}
+	b.WriteString("\n")
+}
+
+func writeCacheUIComposeServices(b *strings.Builder) {
+	b.WriteString(`  cache-ui:
+    image: ` + CacheUIImage + `
+    restart: unless-stopped
+    user: "redis"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HTTP_USER: ${` + CacheUIUserEnv + `}
+      HTTP_PASSWORD_FILE: /run/baseharbor/http-password
+      NOSAVE: "true"
+      NO_LOG_DATA: "true"
+      NODE_ENV: production
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    volumes:
+      - ./providers/management-ui/cache/http-password:/run/baseharbor/http-password:ro
+      - ./providers/management-ui/cache/local.json:/redis-commander/config/local.json:ro
+
+  cache-ui-access:
+    image: ` + UIProxyImage + `
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${` + CacheUIHostPortEnv + `}:8443"
+    volumes:
+      - ./providers/management-ui/cache/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./providers/management-ui/cache/server.pem:/certs/server.pem:ro
+      - ./providers/management-ui/cache/server-key.pem:/certs/server-key.pem:ro
+
+`)
+}
+
 func ensureRuntimeEnv(path string, m Manifest) error {
 	values := map[string]string{}
 	if data, err := os.ReadFile(path); err == nil {
@@ -346,6 +427,46 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	if m.Services.SQLManagementUI {
+		if values[PostgresUIEmailEnv] == "" {
+			values[PostgresUIEmailEnv] = "baseharbor@localhost"
+		}
+		if values[PostgresUIPasswordEnv] == "" {
+			value, err := randomApplicationSecret(24)
+			if err != nil {
+				return err
+			}
+			values[PostgresUIPasswordEnv] = value
+		}
+		if values[PostgresUIHostPortEnv] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[PostgresUIHostPortEnv] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
+	if m.Services.CacheManagementUI {
+		if values[CacheUIUserEnv] == "" {
+			values[CacheUIUserEnv] = "baseharbor"
+		}
+		if values[CacheUIPasswordEnv] == "" {
+			value, err := randomApplicationSecret(24)
+			if err != nil {
+				return err
+			}
+			values[CacheUIPasswordEnv] = value
+		}
+		if values[CacheUIHostPortEnv] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[CacheUIHostPortEnv] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		accessKey := s3RuntimeKey(bucket, "ACCESS_KEY_ID")
 		secretKey := s3RuntimeKey(bucket, "SECRET_ACCESS_KEY")
@@ -388,8 +509,40 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
+	if m.Services.SQLManagementUI {
+		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
+			fmt.Fprintf(&b, "%s=%s
+", key, values[key])
+		}
+	}
+	if m.Services.CacheManagementUI {
+		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
+			fmt.Fprintf(&b, "%s=%s
+", key, values[key])
+		}
+	}
 	if values[S3TLSHostCAEnv] != "" {
 		fmt.Fprintf(&b, "%s=%s\n", S3TLSHostCAEnv, values[S3TLSHostCAEnv])
+	}
+	if m.Services.SQLManagementUI {
+		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[PostgresUIHostPortEnv], PostgresUIHostPortEnv); err != nil {
+			return err
+		}
+	}
+	if m.Services.CacheManagementUI {
+		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[CacheUIHostPortEnv], CacheUIHostPortEnv); err != nil {
+			return err
+		}
 	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		for _, suffix := range []string{"ACCESS_KEY_ID", "SECRET_ACCESS_KEY"} {
