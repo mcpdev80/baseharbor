@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -101,6 +102,7 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			continue
 		}
 		result := ManagementUICheckResult{Name: check.name}
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		portValue, checkErr := requireRuntimeValue(values, check.portKey)
 		if checkErr == nil {
 			var port int
@@ -122,7 +124,7 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 							var endpoint string
 							endpoint, checkErr = serviceaccess.LoopbackHTTPSURL(port)
 							if checkErr == nil {
-								if err := serviceaccess.WaitHTTPS(ctx, client, endpoint, check.path); err != nil {
+								if err := serviceaccess.WaitHTTPS(checkCtx, client, endpoint, check.path); err != nil {
 									checkErr = fmt.Errorf("%s management UI is not ready: %w", check.name, err)
 								}
 							}
@@ -130,6 +132,7 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 					}
 			}
 		}
+		cancel()
 		result.Err = checkErr
 		results = append(results, result)
 	}
