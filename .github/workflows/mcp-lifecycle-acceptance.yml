@@ -54,6 +54,7 @@ jobs:
           cache: false
 
       - name: Reset persistent runner state
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Run generic-client lifecycle acceptance
@@ -92,6 +93,7 @@ jobs:
           cache: false
 
       - name: Reset persistent runner state
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Verify Quadlet-only runtime
