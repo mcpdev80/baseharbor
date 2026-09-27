@@ -64,3 +64,12 @@ Target/provider destroy removes the provider itself.
 This ownership rule applies consistently to databases, caches, object storage, secrets, identity and observability providers where their underlying products support safe multi-application realization.
 
 For normative requirements, see [Provider contract v1](../spec/provider-contract-v1.md).
+
+### PostgreSQL administration versus application access
+
+The shared PostgreSQL reference provider has one internal administration identity, `baseharbor_admin`, owned by the BaseHarbor control plane. It administers provider lifecycle only.
+
+Each registered SQL resource owns a distinct database, least-privilege role and protected credential reference. Application bindings contain only that resource's host, port, database, application role, application credential and trust material. Provider-global administration credentials never cross the provider boundary.
+
+Backup, restore and destroy resolve their resource set from the protected registration rather than enumerating or guessing provider objects. Ambiguous ownership fails closed.
+
