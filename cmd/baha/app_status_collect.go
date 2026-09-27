@@ -8,6 +8,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -259,6 +260,17 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 
 	for _, result := range application.VerifyApplicationManagementUIChecks(ctx, c.manifest, c.files) {
 		detail := result.Name + " reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			service := result.Name
+			if result.Name == "redis-commander" {
+				service = "cache"
+			} else if result.Name == "pgadmin" {
+				service = "pgadmin"
+			}
+			if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, service); hostErr == nil {
+				detail = devaccess.CanonicalURL(host)
+			}
+		}
 		record(result.Name, result.Err, detail)
 	}
 
@@ -266,7 +278,13 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name)
 		cancel()
-		record("object-storage", err, "object storage management UI reachable over TLS")
+		detail := "object storage management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "storage"); hostErr == nil {
+				detail = devaccess.CanonicalURL(host)
+			}
+		}
+		record("object-storage", err, detail)
 	}
 
 	if c.manifest.Services.SecretsManagementUI {
@@ -276,7 +294,13 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 			err = verifyOpenBaoManagementUI(checkCtx, platformFiles)
 		}
 		cancel()
-		record("openbao", err, "OpenBao management UI reachable over TLS")
+		detail := "OpenBao management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, "openbao"); hostErr == nil {
+				detail = devaccess.CanonicalURL(host)
+			}
+		}
+		record("openbao", err, detail)
 	}
 
 	if c.manifest.Services.IdentityManagementUI {
@@ -291,7 +315,13 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.PublicURL, "/")
 			}
 			cancel()
-			record("identity-login", checkErr, "Keycloak user-facing identity UI reachable over TLS")
+			loginDetail := "Keycloak user-facing identity UI reachable over TLS"
+			if devaccess.Enabled(c.manifest.Environment) {
+				if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity"); hostErr == nil {
+					loginDetail = devaccess.CanonicalURL(host)
+				}
+			}
+			record("identity-login", checkErr, loginDetail)
 
 			checkCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 			client, checkErr = serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
@@ -299,7 +329,13 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.AdminURL, "/")
 			}
 			cancel()
-			record("identity-admin", checkErr, "Keycloak administration UI reachable over TLS")
+			adminDetail := "Keycloak administration UI reachable over TLS"
+			if devaccess.Enabled(c.manifest.Environment) {
+				if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin"); hostErr == nil {
+					adminDetail = devaccess.CanonicalURL(host)
+				}
+			}
+			record("identity-admin", checkErr, adminDetail)
 		}
 	}
 
@@ -307,7 +343,22 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := metricsprovider.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest)
 		cancel()
-		record("prometheus", err, "Prometheus management UI reachable over TLS")
+		detail := "Prometheus management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if placement, placementErr := metricsprovider.PlacementForAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); placementErr == nil {
+				var host string
+				var hostErr error
+				if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "prometheus")
+				} else {
+					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "prometheus")
+				}
+				if hostErr == nil {
+					detail = devaccess.CanonicalURL(host)
+				}
+			}
+		}
+		record("prometheus", err, detail)
 	}
 
 	c.result.AddCheck("management-ui", ready == selected, fmt.Sprintf("%d/%d selected management UI surface(s) reachable", ready, selected))
@@ -416,6 +467,17 @@ func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) 
 	_, exposureErr := inspectManagedExposure(ctx, c.compose, c.manifest, c.files)
 	if exposureErr != nil {
 		c.result.AddCheck("managed-exposure", false, exposureErr.Error())
+		return
+	}
+	if devaccess.Enabled(c.manifest.Environment) {
+		for _, route := range c.manifest.Exposures {
+			host, err := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, route.Name)
+			if err != nil {
+				c.result.AddCheck("managed-exposure/"+route.Name, false, err.Error())
+				continue
+			}
+			c.result.AddCheck("managed-exposure/"+route.Name, true, devaccess.CanonicalURL(host))
+		}
 		return
 	}
 	c.result.AddCheck("managed-exposure", true, "configured exposure endpoints are ready")
