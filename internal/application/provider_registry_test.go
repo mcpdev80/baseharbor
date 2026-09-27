@@ -31,17 +31,18 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if shared.ID != "openbao/control-plane" {
 		t.Fatalf("shared=%#v", shared)
 	}
-	pg, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "alpha", "")
+	pgBoundary := "environment:production"
+	pg, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "alpha", pgBoundary)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pg.ID != "postgresql/shared" || pg.OwnerApplication != "" {
+	if pg.ID != sharedProviderInstanceID(capability.ProviderPostgreSQL, pgBoundary) || pg.OwnerApplication != "" {
 		t.Fatalf("postgres=%#v", pg)
 	}
 	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
 		t.Fatalf("postgres provider distribution identity=%#v", pg)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "beta", ""); err == nil {
+	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, "beta", pgBoundary); err == nil {
 		t.Fatal("beta unexpectedly resolved PostgreSQL without an SQL binding")
 	}
 }
@@ -221,7 +222,7 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		t.Fatalf("unrelated metrics policy broke database-only provider registration: %v", err)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, m.Name, ""); err != nil {
+	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeShared, m.Name, "environment:production"); err != nil {
 		t.Fatalf("shared PostgreSQL provider not registered: %v", err)
 	}
 }
@@ -306,8 +307,13 @@ func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) 
 		}
 		seen[binding.Environment] = binding.ProviderInstanceID
 	}
-	if seen["dev"] != "postgresql/shared" || seen["prod"] != "postgresql/shared" {
+	devID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:dev")
+	prodID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:prod")
+	if seen["dev"] != devID || seen["prod"] != prodID {
 		t.Fatalf("environment bindings=%#v", seen)
+	}
+	if devID == prodID {
+		t.Fatalf("shared PostgreSQL environments unexpectedly share provider instance %q", devID)
 	}
 
 	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
@@ -331,7 +337,7 @@ func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) 
 	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "prod" {
 		t.Fatalf("destroying dev changed prod binding: %#v", registry.Bindings)
 	}
-	if len(registry.Instances) != 1 || registry.Instances[0].ID != "postgresql/shared" || registry.Instances[0].OwnerEnvironment != "" {
+	if len(registry.Instances) != 1 || registry.Instances[0].ID != prodID || registry.Instances[0].OwnerEnvironment != "" {
 		t.Fatalf("destroying dev changed shared provider instance: %#v", registry.Instances)
 	}
 }
@@ -376,7 +382,8 @@ func TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile(t *test
 	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "dev" {
 		t.Fatalf("legacy binding was not migrated: %#v", registry.Bindings)
 	}
-	if len(registry.Instances) != 1 || registry.Instances[0].ID != "postgresql/shared" || registry.Instances[0].OwnerEnvironment != "" {
+	expectedID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:dev")
+	if len(registry.Instances) != 1 || registry.Instances[0].ID != expectedID || registry.Instances[0].OwnerEnvironment != "" {
 		t.Fatalf("shared provider instance changed during binding migration: %#v", registry.Instances)
 	}
 }
