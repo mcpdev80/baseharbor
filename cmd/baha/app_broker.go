@@ -19,6 +19,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
