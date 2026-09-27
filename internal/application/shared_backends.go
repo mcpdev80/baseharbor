@@ -25,6 +25,10 @@ type sharedBackendState struct {
 	Environment           string                           `json:"environment"`
 	PostgresAdminPassword string                           `json:"postgres_admin_password,omitempty"`
 	PostgresHostPort      int                              `json:"postgres_host_port,omitempty"`
+	PostgresUIHostPort    int                              `json:"postgres_ui_host_port,omitempty"`
+	CacheUIHostPort       int                              `json:"cache_ui_host_port,omitempty"`
+	ManagementUsername    string                           `json:"management_username,omitempty"`
+	ManagementPassword    string                           `json:"management_password,omitempty"`
 	Applications          map[string]sharedBackendAppState `json:"applications"`
 }
 
@@ -179,7 +183,13 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 	}
 	state.Applications[appKey] = app
 
+	if err := ensureSharedManagementUIState(&state, m, values); err != nil {
+		return false, err
+	}
 	if err := ensureSharedBackendTLS(ctx, issuer, shared, m, &state, files, values); err != nil {
+		return false, err
+	}
+	if err := ensureSharedManagementUIs(ctx, issuer, shared, m, state, values); err != nil {
 		return false, err
 	}
 	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
@@ -343,6 +353,243 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		}
 	}
 	return nil
+}
+
+func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values map[string]string) error {
+	if m.Services.SQLManagementUI && UsesSharedPostgreSQL(m) {
+		if state.PostgresUIHostPort == 0 {
+			port, err := allocateLoopbackPort(nil)
+			if err != nil {
+				return err
+			}
+			state.PostgresUIHostPort = port
+		}
+		values[PostgresUIHostPortEnv] = strconv.Itoa(state.PostgresUIHostPort)
+	}
+	if m.Services.CacheManagementUI && UsesSharedValkey(m) {
+		if state.CacheUIHostPort == 0 {
+			port, err := allocateLoopbackPort(nil)
+			if err != nil {
+				return err
+			}
+			state.CacheUIHostPort = port
+		}
+		values[CacheUIHostPortEnv] = strconv.Itoa(state.CacheUIHostPort)
+	}
+	if (m.Services.SQLManagementUI && UsesSharedPostgreSQL(m)) || (m.Services.CacheManagementUI && UsesSharedValkey(m)) {
+		username := strings.TrimSpace(values[CacheUIUserEnv])
+		if username == "" {
+			email := strings.TrimSpace(values[PostgresUIEmailEnv])
+			if at := strings.IndexByte(email, '@'); at > 0 {
+				username = email[:at]
+			}
+		}
+		password := strings.TrimSpace(values[CacheUIPasswordEnv])
+		if password == "" {
+			password = strings.TrimSpace(values[PostgresUIPasswordEnv])
+		}
+		if username == "" || password == "" {
+			return errors.New("shared backend management UI credentials are incomplete")
+		}
+		if state.ManagementUsername == "" {
+			state.ManagementUsername = username
+		}
+		if state.ManagementPassword == "" {
+			state.ManagementPassword = password
+		}
+		if state.ManagementUsername != username || state.ManagementPassword != password {
+			return errors.New("shared backend management UI credentials differ from Target-scoped developer access")
+		}
+		values[CacheUIUserEnv] = state.ManagementUsername
+		values[CacheUIPasswordEnv] = state.ManagementPassword
+		values[PostgresUIEmailEnv] = developmentPostgresUIEmail(state.ManagementUsername)
+		values[PostgresUIPasswordEnv] = state.ManagementPassword
+	}
+	return nil
+}
+
+func ensureSharedManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, m Manifest, state sharedBackendState, values map[string]string) error {
+	if m.Services.SQLManagementUI && UsesSharedPostgreSQL(m) {
+		if err := ensureSharedPostgresManagementUI(ctx, issuer, shared, m.Environment, state); err != nil {
+			return err
+		}
+	}
+	if m.Services.CacheManagementUI && UsesSharedValkey(m) {
+		if err := ensureSharedCacheManagementUI(ctx, issuer, shared, m.Environment, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureSharedPostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, environment string, state sharedBackendState) error {
+	dir := filepath.Join(shared.Dir, "management-ui", "postgres")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	policy, err := serviceaccess.Resolve(environment, "pgadmin", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), "localhost", "127.0.0.1", "shared-pgadmin")
+	if err != nil {
+		return err
+	}
+	if err := projectUIReadableFile(material.ServerCertificate, filepath.Join(dir, "server.cert")); err != nil {
+		return err
+	}
+	if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server.key")); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+		return err
+	}
+
+	postgresPolicy, err := serviceaccess.Resolve(environment, "postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postgresMaterial, err := serviceaccess.ExistingTLSMaterial(postgresPolicy, filepath.Join(shared.Dir, "postgresql", "service-access", "pki"))
+	if err != nil {
+		return err
+	}
+	caTarget := filepath.Join(dir, "postgres.ca.pem")
+	if err := projectUIReadableFile(postgresMaterial.CA, caTarget); err != nil {
+		return err
+	}
+
+	var pgpass strings.Builder
+	servers := map[string]any{"Servers": map[string]any{}}
+	serverMap := servers["Servers"].(map[string]any)
+	index := 1
+	appKeys := make([]string, 0, len(state.Applications))
+	for key := range state.Applications {
+		appKeys = append(appKeys, key)
+	}
+	sort.Strings(appKeys)
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		instances := make([]string, 0, len(app.SQL))
+		for instance := range app.SQL {
+			instances = append(instances, instance)
+		}
+		sort.Strings(instances)
+		for _, instance := range instances {
+			resource := app.SQL[instance]
+			fmt.Fprintf(&pgpass, "%s:5432:*:%s:%s\n", sharedPostgresAlias(), resource.Username, resource.Password)
+			label := app.Application
+			if instance != defaultServiceInstance {
+				label += " / " + instance
+			}
+			serverMap[strconv.Itoa(index)] = map[string]any{
+				"Name":          label,
+				"Group":         "BaseHarbor",
+				"Host":          sharedPostgresAlias(),
+				"Port":          5432,
+				"MaintenanceDB": resource.Database,
+				"Username":      resource.Username,
+				"SSLMode":       "verify-ca",
+				"PassFile":      "/run/baseharbor/pgpass",
+				"ConnectionParameters": map[string]any{
+					"sslmode":     "verify-ca",
+					"sslrootcert": "/run/baseharbor/postgres.ca.pem",
+					"passfile":    "/run/baseharbor/pgpass",
+				},
+			}
+			index++
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pgpass"), []byte(pgpass.String()), 0o644); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(servers, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "servers.json"), append(data, '\n'), 0o644)
+}
+
+func ensureSharedCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, environment string, state sharedBackendState) error {
+	dir := filepath.Join(shared.Dir, "management-ui", "cache")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	policy, err := serviceaccess.Resolve(environment, "redis-commander", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), "localhost", "127.0.0.1", "shared-cache-ui")
+	if err != nil {
+		return err
+	}
+	if err := projectUIReadableFile(material.ServerCertificate, filepath.Join(dir, "server.pem")); err != nil {
+		return err
+	}
+	if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+		return err
+	}
+
+	var connections []map[string]any
+	appKeys := make([]string, 0, len(state.Applications))
+	for key := range state.Applications {
+		appKeys = append(appKeys, key)
+	}
+	sort.Strings(appKeys)
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		instances := make([]string, 0, len(app.Cache))
+		for instance := range app.Cache {
+			instances = append(instances, instance)
+		}
+		sort.Strings(instances)
+		for _, instance := range instances {
+			resource := app.Cache[instance]
+			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(app.Application), sharedBackendToken(instance))
+			valkeyPolicy, err := serviceaccess.Resolve(environment, "valkey", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			valkeyMaterial, err := serviceaccess.ExistingTLSMaterial(valkeyPolicy, filepath.Join(root, "service-access", "pki"))
+			if err != nil {
+				return err
+			}
+			caData, err := os.ReadFile(valkeyMaterial.CA)
+			if err != nil {
+				return err
+			}
+			label := app.Application
+			if instance != defaultServiceInstance {
+				label += " / " + instance
+			}
+			connections = append(connections, map[string]any{
+				"label": label,
+				"host": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
+				"port": 6379,
+				"username": "default",
+				"password": resource.Password,
+				"dbIndex": 0,
+				"tls": map[string]any{
+					"ca": []string{strings.TrimSpace(string(caData))},
+					"servername": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
+				},
+			})
+		}
+	}
+	data, err := json.MarshalIndent(map[string]any{"connections": connections}, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "local.json"), append(data, '\n'), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
+		return err
+	}
+	caddy := ":8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy shared-cache-ui:8081\n}\n"
+	return os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644)
 }
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
