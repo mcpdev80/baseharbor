@@ -40,6 +40,12 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 		}
 	}
 
+	for _, m := range []Manifest{appA, appB} {
+		if err := ReconcileReferenceProviderRegistryAt(dataDir, m); err != nil {
+			t.Fatalf("ReconcileReferenceProviderRegistryAt(%s) error = %v", m.Name, err)
+		}
+	}
+
 	filesA, err := EnsureRuntime(ctx, issuer, store, appA)
 	if err != nil {
 		t.Fatalf("EnsureRuntime(appA) error = %v", err)
@@ -92,6 +98,9 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 	if err := ReleaseSharedBackendApplication(ctx, compose, dataDir, store.Namespace, appA); err != nil {
 		t.Fatalf("ReleaseSharedBackendApplication(appA) error = %v", err)
 	}
+	if err := ReleaseApplicationProviderRegistryAt(dataDir, appA); err != nil {
+		t.Fatalf("ReleaseApplicationProviderRegistryAt(appA) error = %v", err)
+	}
 	state, err = loadSharedBackendState(shared.State, "dev")
 	if err != nil {
 		t.Fatalf("load state after appA destroy: %v", err)
@@ -119,6 +128,9 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 
 	if err := ReleaseSharedBackendApplication(ctx, compose, dataDir, store.Namespace, appB); err != nil {
 		t.Fatalf("ReleaseSharedBackendApplication(appB) error = %v", err)
+	}
+	if err := ReleaseApplicationProviderRegistryAt(dataDir, appB); err != nil {
+		t.Fatalf("ReleaseApplicationProviderRegistryAt(appB) error = %v", err)
 	}
 	if _, err := os.Stat(shared.State); !os.IsNotExist(err) {
 		t.Fatalf("shared provider state still exists after last consumer destroy: err=%v", err)
