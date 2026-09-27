@@ -124,7 +124,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{LogsV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
-		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}, {Name: "visualization-ui", Class: InterfaceObservability, Protocol: "https", Optional: true}},
+		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "loki-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 3100, Path: "/metrics"},
