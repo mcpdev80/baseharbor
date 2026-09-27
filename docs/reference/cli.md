@@ -30,6 +30,9 @@ baha
 ├── plan
 ├── status
 ├── doctor
+├── login
+├── logout
+├── whoami
 ├── target
 │   ├── list
 │   ├── show
@@ -95,6 +98,22 @@ baha
 ```
 
 
+
+## Operator authentication
+
+Trusted local development does not require a BaseHarbor login. Protected environments use the effective Target/Environment OIDC operator boundary:
+
+```bash
+baha login -e test
+baha whoami -e test
+baha logout -e test
+```
+
+`login` uses Authorization Code + PKCE against the configured operator OIDC provider and persists only a short-lived owner-only local session. `whoami` verifies the current session and reports only secret-safe issuer/subject/assurance information. `logout` removes the local session for that Target/Environment.
+
+The first interactive operation against an unconfigured test/prod boundary can guide initial managed-Keycloak or external-OIDC setup. Non-interactive execution never guesses this configuration and fails closed with remediation.
+
+Application-user identity, operator identity and provider-administrator credentials are separate boundaries.
 
 ## Evidence export
 
