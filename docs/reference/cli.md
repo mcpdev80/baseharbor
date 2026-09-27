@@ -544,7 +544,7 @@ baha app init mailflow \
 
 If the name is omitted from the explicit path, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
 
-In v0.4, repository deployments initialize protected deployment/runtime state for the current Compose realization through the declarative input resolver. Interactive setup may request a **Public FQDN** and TLS mode. Existing/BYOC certificate mode accepts a source directory, validates the matching certificate/key pair and FQDN coverage, and normalizes the pair into owner-only BaseHarbor state. These deployment details do not become portable fields in `baseharbor.yaml`.
+In v0.4, repository deployments initialize protected deployment/runtime state for the current realization through the declarative input resolver. In `dev`, browser-facing names come only from the Target-scoped development domain and BaseHarbor manages local TLS automatically; `baha app init` does not ask for a second per-application Public FQDN. Change the local domain with `baha dev domain [DOMAIN]`. Test/prod keep explicit deployment-owned Public FQDN/TLS configuration, including Existing/BYOC certificate directories with certificate/key and hostname validation. None of these deployment details become portable fields in `baseharbor.yaml`.
 
 Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
 
