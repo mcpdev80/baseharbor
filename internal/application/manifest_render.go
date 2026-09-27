@@ -31,6 +31,10 @@ func (m Manifest) YAML() string {
 			b.WriteString("  identity:\n    enabled: true\n")
 			writeManagementUIYAML(&b, m.Services.IdentityManagementUI)
 		}
+		if m.Services.ObservabilityManagementUI {
+			b.WriteString("  observability:\n")
+			writeManagementUIYAML(&b, true)
+		}
 	}
 	if m.Services.Identity {
 		b.WriteString("identity:\n")
