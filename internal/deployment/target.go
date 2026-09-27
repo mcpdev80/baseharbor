@@ -34,11 +34,20 @@ type OpenBaoTargetConfig struct {
 	RecoveryFile string `yaml:"recovery-file,omitempty" json:"recovery_file,omitempty"`
 }
 
+type OperatorAuthEnvironmentConfig struct {
+	Provider     string   `yaml:"provider" json:"provider"`
+	Issuer       string   `yaml:"issuer" json:"issuer"`
+	ClientID     string   `yaml:"client-id" json:"client_id"`
+	Scopes       []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	CallbackPort int      `yaml:"callback-port,omitempty" json:"callback_port,omitempty"`
+}
+
 type TargetDefinition struct {
-	Runtime RuntimeDefinition   `yaml:"runtime" json:"runtime"`
-	Access  TargetAccess        `yaml:"access" json:"access"`
-	Scope   string              `yaml:"scope,omitempty" json:"scope,omitempty"`
-	OpenBao OpenBaoTargetConfig `yaml:"openbao,omitempty" json:"openbao,omitempty"`
+	Runtime      RuntimeDefinition                         `yaml:"runtime" json:"runtime"`
+	Access       TargetAccess                              `yaml:"access" json:"access"`
+	Scope        string                                    `yaml:"scope,omitempty" json:"scope,omitempty"`
+	OpenBao      OpenBaoTargetConfig                       `yaml:"openbao,omitempty" json:"openbao,omitempty"`
+	OperatorAuth map[string]OperatorAuthEnvironmentConfig  `yaml:"operator-auth,omitempty" json:"operator_auth,omitempty"`
 }
 
 type PromptConfig struct {
@@ -183,6 +192,31 @@ func (c Config) Validate() error {
 	for name, target := range c.Targets {
 		if err := ValidateTargetName(name); err != nil {
 			return err
+		}
+		for environment, auth := range target.OperatorAuth {
+			if !targetSlug.MatchString(strings.TrimSpace(environment)) {
+				return fmt.Errorf("target %q operator-auth environment %q is invalid", name, environment)
+			}
+			switch strings.TrimSpace(auth.Provider) {
+			case "external-oidc", "managed-keycloak":
+			default:
+				return fmt.Errorf("target %q environment %q operator-auth provider must be external-oidc or managed-keycloak", name, environment)
+			}
+			issuer := strings.TrimRight(strings.TrimSpace(auth.Issuer), "/")
+			if !strings.HasPrefix(issuer, "https://") || strings.ContainsAny(issuer, "\r\n") {
+				return fmt.Errorf("target %q environment %q operator-auth issuer must be HTTPS", name, environment)
+			}
+			if strings.TrimSpace(auth.ClientID) == "" || strings.ContainsAny(auth.ClientID, "\r\n") {
+				return fmt.Errorf("target %q environment %q operator-auth client-id is required", name, environment)
+			}
+			if auth.CallbackPort < 0 || auth.CallbackPort > 65535 {
+				return fmt.Errorf("target %q environment %q operator-auth callback-port is invalid", name, environment)
+			}
+			for _, scope := range auth.Scopes {
+				if strings.TrimSpace(scope) == "" || strings.ContainsAny(scope, " \t\r\n") {
+					return fmt.Errorf("target %q environment %q operator-auth scope %q is invalid", name, environment, scope)
+				}
+			}
 		}
 		if strings.TrimSpace(target.Runtime.Provider) == "" {
 			return fmt.Errorf("target %q requires runtime.provider", name)
