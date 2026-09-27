@@ -24,6 +24,7 @@ type applicationStatusResult struct {
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
 	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
+	OperatorAuth    operatorAuthObservation                       `json:"operator_auth"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -89,6 +90,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	}
 	return applicationStatusResult{
 		StatusResult:    result,
+		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 		TLS:             tlsObservation,
 		ServiceTLS:      serviceTLS,
 		RuntimeArtifact: runtimeArtifact,
