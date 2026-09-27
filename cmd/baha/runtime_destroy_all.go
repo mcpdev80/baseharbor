@@ -15,7 +15,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -456,6 +458,8 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 			*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: resource})
 		}
 	}
+	runCleanup("development-gateway", func() error { return devgateway.DestroyTarget(ctx, compose, target.Name) })
+	runCleanup("identity", func() error { return identityprovider.DestroyAllSharedKeycloakAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("runtime-executor", func() error { return runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("data-providers", func() error { return application.DestroyAllSharedBackendsAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("object-storage", func() error { return objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name) })
