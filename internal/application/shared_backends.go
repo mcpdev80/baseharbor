@@ -762,7 +762,11 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 		sort.Strings(instances)
 		for _, instance := range instances {
 			resource := app.SQL[instance]
-			fmt.Fprintf(&pgpass, "%s:5432:*:%s:%s\n", sharedPostgresAlias(), resource.Username, resource.Password)
+			password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+			if err != nil {
+				return fmt.Errorf("load shared PostgreSQL UI credential for %s/%s/%s: %w", app.Application, app.Environment, instance, err)
+			}
+			fmt.Fprintf(&pgpass, "%s:5432:*:%s:%s\n", sharedPostgresAlias(), resource.Username, password)
 			label := app.Application
 			if instance != defaultServiceInstance {
 				label += " / " + instance
