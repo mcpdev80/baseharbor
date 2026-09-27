@@ -258,12 +258,21 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				if err != nil {
 					return err
 				}
-				appRoutes = append(appRoutes, devgateway.Route{
+				protocol := strings.ToLower(strings.TrimSpace(analysis.WorkloadProtocols[selected[0]]))
+				if protocol == "" {
+					protocol = "http"
+				}
+				route := devgateway.Route{
 					Key: appOwner + "/workload-api",
 					Host: host,
-					Upstream: fmt.Sprintf("http://%s:%d", application.DevelopmentWorkloadAlias(e.manifest), ports[0]),
+					Upstream: fmt.Sprintf("%s://%s:%d", protocol, application.DevelopmentWorkloadAlias(e.manifest), ports[0]),
 					Network: application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
-				})
+				}
+				if protocol == "https" {
+					route.TrustFile = filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem")
+					route.ServerName = selected[0]
+				}
+				appRoutes = append(appRoutes, route)
 			}
 		}
 	}
