@@ -121,6 +121,30 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	}
 }
 
+func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	m.Services.SQLManagementUI = true
+	m.Services.CacheManagementUI = true
+
+	got, err := RuntimeComposeYAML(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"  postgres-ui:\n",
+		PostgresUIImage,
+		`127.0.0.1:${BASEHARBOR_POSTGRES_UI_HOST_PORT}:8443`,
+		"  cache-ui:\n",
+		"  cache-ui-access:\n",
+		CacheUIImage,
+		`127.0.0.1:${BASEHARBOR_CACHE_UI_HOST_PORT}:8443`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime compose missing requested management UI %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("legacy", "dev", true, true, false)
