@@ -21,7 +21,7 @@ func (m Manifest) Validate() error {
 	sql := SQLInstanceNames(m)
 	cache := CacheInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(sql) == 0 && len(cache) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	if len(sql) == 0 && len(cache) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range sql {
@@ -38,6 +38,12 @@ func (m Manifest) Validate() error {
 		if err := validateSlug("object-storage bucket name", name); err != nil {
 			return err
 		}
+	}
+	if err := validateManagementUIPreferences(m.Services); err != nil {
+		return err
+	}
+	if err := validateIdentityRequirements(m); err != nil {
+		return err
 	}
 	if (len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0) && !m.Services.Secrets {
 		return fmt.Errorf("secret requirements need services.secrets enabled")
@@ -363,6 +369,96 @@ func validateSecretKey(key string) error {
 		valid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.'
 		if !valid || (i == 0 && (r == '-' || r == '.')) {
 			return fmt.Errorf("invalid required secret key %q", key)
+		}
+	}
+	return nil
+}
+
+
+func validateManagementUIPreferences(services Services) error {
+	for _, item := range []struct {
+		name string
+		enabled bool
+		ui bool
+	}{
+		{"sql", services.SQL || len(services.SQLInstances) > 0, services.SQLManagementUI},
+		{"cache", services.Cache || len(services.CacheInstances) > 0, services.CacheManagementUI},
+		{"object_storage", services.ObjectStorage || len(services.ObjectStorageBuckets) > 0, services.ObjectStorageManagementUI},
+		{"secrets", services.Secrets, services.SecretsManagementUI},
+		{"identity", services.Identity, services.IdentityManagementUI},
+	} {
+		if item.ui && !item.enabled {
+			return fmt.Errorf("services.%s.management_ui requires the service to be enabled", item.name)
+		}
+	}
+	return nil
+}
+
+func validateIdentityRequirements(m Manifest) error {
+	if !m.Services.Identity {
+		if len(m.Identity.CallbackPaths) != 0 || len(m.Identity.LogoutPaths) != 0 || len(m.Identity.Scopes) != 0 || len(m.Identity.Claims) != 0 ||
+			strings.TrimSpace(m.Identity.Authentication.MFA) != "" || len(m.Identity.Authentication.Methods) != 0 || m.Identity.Authentication.Passwordless {
+			return errors.New("identity requirements need services.identity enabled")
+		}
+		return nil
+	}
+	for label, values := range map[string][]string{
+		"callback path": m.Identity.CallbackPaths,
+		"logout path": m.Identity.LogoutPaths,
+	} {
+		seen := map[string]struct{}{}
+		for _, raw := range values {
+			value := strings.TrimSpace(raw)
+			if value == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.ContainsAny(value, "?#\r\n\x00") {
+				return fmt.Errorf("identity %s %q must be an absolute path without scheme, host, query or fragment", label, raw)
+			}
+			if _, exists := seen[value]; exists {
+				return fmt.Errorf("duplicate identity %s %q", label, value)
+			}
+			seen[value] = struct{}{}
+		}
+	}
+	for label, values := range map[string][]string{"scope": m.Identity.Scopes, "claim": m.Identity.Claims} {
+		seen := map[string]struct{}{}
+		for _, raw := range values {
+			value := strings.TrimSpace(raw)
+			if value == "" || strings.ContainsAny(value, " \t\r\n") {
+				return fmt.Errorf("identity %s %q is invalid", label, raw)
+			}
+			if _, exists := seen[value]; exists {
+				return fmt.Errorf("duplicate identity %s %q", label, value)
+			}
+			seen[value] = struct{}{}
+		}
+	}
+	mfa := strings.ToLower(strings.TrimSpace(m.Identity.Authentication.MFA))
+	if mfa == "" {
+		mfa = "optional"
+	}
+	if mfa != "optional" && mfa != "required" && mfa != "disabled" {
+		return fmt.Errorf("identity authentication mfa must be optional, required or disabled")
+	}
+	seenMethods := map[string]struct{}{}
+	for _, raw := range m.Identity.Authentication.Methods {
+		method := strings.ToLower(strings.TrimSpace(raw))
+		switch method {
+		case "totp", "webauthn", "passkey":
+		default:
+			return fmt.Errorf("unsupported identity authentication method %q", raw)
+		}
+		if _, exists := seenMethods[method]; exists {
+			return fmt.Errorf("duplicate identity authentication method %q", method)
+		}
+		seenMethods[method] = struct{}{}
+	}
+	if mfa == "required" && len(seenMethods) == 0 {
+		return errors.New("identity authentication mfa=required needs at least one method")
+	}
+	if m.Identity.Authentication.Passwordless {
+		if _, ok := seenMethods["passkey"]; !ok {
+			if _, ok := seenMethods["webauthn"]; !ok {
+				return errors.New("identity passwordless authentication requires passkey or webauthn")
+			}
 		}
 	}
 	return nil
