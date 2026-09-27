@@ -135,6 +135,14 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
+	if isDevelopmentEnvironment(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+		fmt.Fprintln(out, "\nDeveloper management access")
+		fmt.Fprintln(out, "  Scope         target / dev")
+		fmt.Fprintln(out, "  Username      developer (default)")
+		fmt.Fprintln(out, "  Credentials   managed by BaseHarbor")
+		fmt.Fprintln(out, "  Reveal        baha dev credentials")
+	}
+
 	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		fmt.Fprintln(out, "\nManagement UIs")
 		if m.Services.SQLManagementUI {
