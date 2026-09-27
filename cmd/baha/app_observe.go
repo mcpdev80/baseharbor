@@ -170,7 +170,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			result, err := collectApplicationStatus(ctx, store, filtered)
+			result, err := collectApplicationStatusResult(ctx, store, filtered)
 			if err != nil {
 				return err
 			}
@@ -179,7 +179,24 @@ func appStatusCommand(store application.Store) *cli.Command {
 					return err
 				}
 			} else {
-				renderApplicationStatus(ctx, out, errOut, result)
+				renderApplicationStatusWithExtra(ctx, out, errOut, result.StatusResult, func(term *cli.Terminal) {
+					term.Section("Access")
+					term.Info("operator mode", result.OperatorAuth.Mode)
+					term.Info("operator status", result.OperatorAuth.Status)
+					term.Info("operator session", result.OperatorAuth.Session)
+					if result.OperatorAuth.Provider != "" {
+						term.Info("operator provider", result.OperatorAuth.Provider)
+					}
+					if result.OperatorAuth.Principal != "" {
+						term.Info("operator principal", result.OperatorAuth.Principal)
+					}
+					if len(result.ManagementUI) > 0 {
+						term.Section("Management UIs")
+						for _, surface := range result.ManagementUI {
+							term.Info(surface.Service, surface.URL+" · "+string(surface.Purpose)+" · "+surface.Authentication)
+						}
+					}
+				})
 			}
 			if result.State == "stopped" || result.State == "not_applied" {
 				return nil
