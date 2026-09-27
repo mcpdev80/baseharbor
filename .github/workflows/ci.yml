@@ -57,6 +57,7 @@ jobs:
       - name: Reset persistent runner state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Install validation tooling
@@ -138,6 +139,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Generate CI evidence
