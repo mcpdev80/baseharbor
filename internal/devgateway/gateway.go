@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"crypto/tls"
+	"crypto/x509"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -208,6 +211,67 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 
 func URL(host string) string {
 	return "https://" + strings.TrimSpace(host)
+}
+
+func Routes(target string) ([]Route, error) {
+	files, err := FilesFor(target)
+	if err != nil {
+		return nil, err
+	}
+	current, err := loadState(files.State)
+	if err != nil {
+		return nil, err
+	}
+	return append([]Route(nil), current.Routes...), nil
+}
+
+func Verify(ctx context.Context, target string) error {
+	files, err := FilesFor(target)
+	if err != nil {
+		return err
+	}
+	current, err := loadState(files.State)
+	if err != nil {
+		return err
+	}
+	caPEM, err := os.ReadFile(files.CA)
+	if err != nil {
+		return err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return errors.New("development gateway CA contains no certificates")
+	}
+	var errs []error
+	for _, route := range current.Routes {
+		dialer := &net.Dialer{}
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs: roots,
+				ServerName: route.Host,
+			},
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, "127.0.0.1:443")
+			},
+		}
+		client := &http.Client{Transport: transport}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, URL(route.Host)+"/", nil)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", route.Host, err))
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", route.Host, err))
+			continue
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 500 {
+			errs = append(errs, fmt.Errorf("%s returned HTTP %d", route.Host, resp.StatusCode))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func loadState(path string) (state, error) {
