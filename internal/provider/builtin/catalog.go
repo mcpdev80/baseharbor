@@ -48,6 +48,7 @@ func Catalog() ([]Descriptor, error) {
 		capability.ProviderPrometheus,
 		capability.ProviderLoki,
 		capability.ProviderTempo,
+		capability.ProviderKeycloak,
 	}
 	result := make([]Descriptor, 0, len(kinds))
 	for _, kind := range kinds {
