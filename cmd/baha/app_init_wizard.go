@@ -180,7 +180,7 @@ func detectedApplicationManifest(name, environment string, sql, cache, objectSto
 }
 
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
-	if quick && len(d.ComposeCandidates) > 1 {
+	if quick && len(d.ComposeCandidates) > 1 && strings.TrimSpace(d.Compose) == "" {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
 	if quick && len(d.AmbiguousServices) > 0 {
