@@ -154,7 +154,7 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage || services.Identity ||
+	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
 		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
