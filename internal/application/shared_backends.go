@@ -595,7 +595,7 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 	key := sharedBackendApplicationKey(m)
 	app, ok := state.Applications[key]
 	if !ok {
-		return nil
+		return fmt.Errorf("refuse shared backend destroy: registered shared provider application %q is missing from protected provider state", key)
 	}
 	if len(app.SQL) > 0 {
 		placement, found, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPostgreSQL)
