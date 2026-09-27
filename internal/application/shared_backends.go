@@ -353,22 +353,44 @@ func verifySharedPostgresStateOwnership(state sharedBackendState, ownerKey strin
 	if !ok {
 		return fmt.Errorf("shared PostgreSQL owner %q is not registered", ownerKey)
 	}
+	adminCredential := strings.TrimSpace(state.PostgresAdminCredential)
+	if adminCredential == "" {
+		return errors.New("shared PostgreSQL provider administrator credential reference is missing")
+	}
 	seenDB := map[string]string{}
 	seenRole := map[string]string{}
 	for key, registered := range state.Applications {
 		for instance, resource := range registered.SQL {
 			resourceKey := key + "/" + instance
-			if strings.TrimSpace(resource.Database) == "" || strings.TrimSpace(resource.Username) == "" || strings.TrimSpace(resource.CredentialReference) == "" {
+			database := strings.TrimSpace(resource.Database)
+			username := strings.TrimSpace(resource.Username)
+			credential := filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(resource.CredentialReference))))
+			if database == "" || username == "" || credential == "" || credential == "." {
 				return fmt.Errorf("shared PostgreSQL resource %s has incomplete ownership metadata", resourceKey)
 			}
-			if previous, exists := seenDB[resource.Database]; exists && previous != resourceKey {
-				return fmt.Errorf("shared PostgreSQL database %q has ambiguous owners %s and %s", resource.Database, previous, resourceKey)
+			if username == "baseharbor_admin" {
+				return fmt.Errorf("shared PostgreSQL resource %s illegally references provider administrator role", resourceKey)
 			}
-			seenDB[resource.Database] = resourceKey
-			if previous, exists := seenRole[resource.Username]; exists && previous != resourceKey {
-				return fmt.Errorf("shared PostgreSQL role %q has ambiguous owners %s and %s", resource.Username, previous, resourceKey)
+			if database == "postgres" || database == "template0" || database == "template1" {
+				return fmt.Errorf("shared PostgreSQL resource %s illegally references provider database %q", resourceKey, database)
 			}
-			seenRole[resource.Username] = resourceKey
+			if credential == filepath.ToSlash(filepath.Clean(filepath.FromSlash(adminCredential))) {
+				return fmt.Errorf("shared PostgreSQL resource %s illegally references provider administrator credential", resourceKey)
+			}
+			if !strings.HasPrefix(credential, "credentials/postgres/") || strings.HasPrefix(credential, "../") || filepath.IsAbs(filepath.FromSlash(credential)) {
+				return fmt.Errorf("shared PostgreSQL resource %s has invalid application credential reference %q", resourceKey, resource.CredentialReference)
+			}
+			if len(database) > 63 || len(username) > 63 {
+				return fmt.Errorf("shared PostgreSQL resource %s exceeds PostgreSQL identifier limit", resourceKey)
+			}
+			if previous, exists := seenDB[database]; exists && previous != resourceKey {
+				return fmt.Errorf("shared PostgreSQL database %q has ambiguous owners %s and %s", database, previous, resourceKey)
+			}
+			seenDB[database] = resourceKey
+			if previous, exists := seenRole[username]; exists && previous != resourceKey {
+				return fmt.Errorf("shared PostgreSQL role %q has ambiguous owners %s and %s", username, previous, resourceKey)
+			}
+			seenRole[username] = resourceKey
 		}
 	}
 	if len(app.SQL) == 0 {
@@ -1122,8 +1144,8 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.C
 		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
 			return fmt.Errorf("reconcile shared PostgreSQL resource %s: %w", instance, err)
 		}
-		harden := fmt.Sprintf("REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE, CREATE ON SCHEMA public TO %s; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC;",
-			quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username))
+		harden := fmt.Sprintf("REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE, CREATE ON SCHEMA public TO %s; REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TYPES FROM PUBLIC;",
+			quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username))
 		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
 			return fmt.Errorf("harden shared PostgreSQL resource %s: %w", instance, err)
 		}
