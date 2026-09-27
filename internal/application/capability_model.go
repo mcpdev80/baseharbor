@@ -2,6 +2,8 @@ package application
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
@@ -130,7 +132,15 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 	case capability.Logs:
 		return capability.Loki, nil
 	case capability.Identity:
-		return capability.Keycloak, nil
+		selection := strings.ToLower(strings.TrimSpace(os.Getenv("BASEHARBOR_IDENTITY_PROVIDER")))
+		switch selection {
+		case "", "keycloak":
+			return capability.Keycloak, nil
+		case "external", "external-oidc":
+			return capability.ExternalOIDC, nil
+		default:
+			return capability.Provider{}, fmt.Errorf("BASEHARBOR_IDENTITY_PROVIDER must be keycloak or external-oidc")
+		}
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}
