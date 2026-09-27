@@ -72,7 +72,7 @@ func (e Entry) Validate() error {
 		return fmt.Errorf("invalid backup entry name %q", e.Name)
 	}
 	switch e.Kind {
-	case "metadata", "postgres", "secrets":
+	case "metadata", "postgres", "secrets", "object-storage", "workload-storage", "observability":
 	default:
 		return fmt.Errorf("unsupported backup entry kind %q", e.Kind)
 	}
@@ -97,7 +97,7 @@ func validLogicalName(name string) bool {
 			return false
 		}
 	}
-	return strings.HasPrefix(name, "metadata/") || strings.HasPrefix(name, "postgres/") || strings.HasPrefix(name, "secrets/")
+	return strings.HasPrefix(name, "metadata/") || strings.HasPrefix(name, "postgres/") || strings.HasPrefix(name, "secrets/") || strings.HasPrefix(name, "object-storage/") || strings.HasPrefix(name, "workload-storage/") || strings.HasPrefix(name, "observability/")
 }
 
 func isLowerHex(value string) bool {

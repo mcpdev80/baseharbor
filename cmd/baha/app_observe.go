@@ -67,7 +67,7 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 		return
 	}
 
-	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "all requested components verified", false: "one or more components need attention"}[result.Ready])
+	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "BaseHarbor-managed capabilities, bindings and workload readiness verified", false: "one or more managed capabilities, bindings or workload checks need attention"}[result.Ready])
 
 	sections := map[string][]application.StatusCheck{}
 	order := []string{"Services", "Workload", "Observability", "Exposure", "Other"}

@@ -1,6 +1,7 @@
 package repositoryinspect
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -94,6 +95,107 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		result = append(result, item)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result, nil
+}
+
+type ReclaimableComposeVolume struct {
+	LogicalName string
+	RuntimeName string
+	Services    []string
+}
+
+type renderedComposeVolumeModel struct {
+	Services map[string]struct {
+		Image   string `json:"image"`
+		Volumes []struct {
+			Type   string `json:"type"`
+			Source string `json:"source"`
+			Target string `json:"target"`
+		} `json:"volumes"`
+	} `json:"services"`
+	Volumes map[string]struct {
+		Name     string `json:"name"`
+		External bool   `json:"external"`
+	} `json:"volumes"`
+}
+
+// ReclaimableReplacedInfrastructureVolumes returns only named volumes whose
+// rendered Compose ownership can be attributed exclusively to repository
+// PostgreSQL/Redis services that BaseHarbor replaced with managed capabilities.
+// Volumes shared with selected workload services, external volumes and
+// unrecognized infrastructure are intentionally excluded.
+func ReclaimableReplacedInfrastructureVolumes(rendered []byte, selected []string, managedSQL, managedCache bool) ([]ReclaimableComposeVolume, error) {
+	var model renderedComposeVolumeModel
+	if err := json.Unmarshal(rendered, &model); err != nil {
+		return nil, fmt.Errorf("decode rendered Compose volume model: %w", err)
+	}
+	selectedSet := make(map[string]struct{}, len(selected))
+	for _, service := range selected {
+		selectedSet[service] = struct{}{}
+	}
+
+	replaced := map[string]struct{}{}
+	for service, definition := range model.Services {
+		if _, keep := selectedSet[service]; keep {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(service))
+		image := strings.ToLower(strings.TrimSpace(definition.Image))
+		postgres := strings.Contains(name, "postgres") || strings.Contains(name, "postgresql") ||
+			strings.Contains(image, "postgres") || strings.Contains(image, "postgresql")
+		redis := strings.Contains(name, "redis") || strings.Contains(name, "valkey") ||
+			strings.Contains(image, "redis") || strings.Contains(image, "valkey")
+		if (postgres && managedSQL) || (redis && managedCache) {
+			replaced[service] = struct{}{}
+		}
+	}
+	if len(replaced) == 0 {
+		return nil, nil
+	}
+
+	consumers := map[string][]string{}
+	for service, definition := range model.Services {
+		for _, mount := range definition.Volumes {
+			if strings.TrimSpace(mount.Type) != "volume" {
+				continue
+			}
+			source := strings.TrimSpace(mount.Source)
+			if source == "" {
+				continue
+			}
+			if _, declared := model.Volumes[source]; !declared {
+				continue
+			}
+			consumers[source] = append(consumers[source], service)
+		}
+	}
+
+	var result []ReclaimableComposeVolume
+	for logical, definition := range model.Volumes {
+		if definition.External {
+			continue
+		}
+		usedBy := uniqueSorted(consumers[logical])
+		if len(usedBy) == 0 {
+			continue
+		}
+		onlyReplaced := true
+		for _, service := range usedBy {
+			if _, ok := replaced[service]; !ok {
+				onlyReplaced = false
+				break
+			}
+		}
+		if !onlyReplaced {
+			continue
+		}
+		result = append(result, ReclaimableComposeVolume{
+			LogicalName: logical,
+			RuntimeName: strings.TrimSpace(definition.Name),
+			Services:    usedBy,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].LogicalName < result[j].LogicalName })
 	return result, nil
 }
 

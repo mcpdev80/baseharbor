@@ -22,7 +22,11 @@ func appBackupCommandWithMetadata(store application.Store) *cli.Command {
 }
 
 func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
-	filtered, environment, err := extractApplicationEnvironment(args, "backup")
+	selectionFiltered, selectionArgs, err := extractRecoverySelectionArgs(args)
+	if err != nil {
+		return err
+	}
+	filtered, environment, err := extractApplicationEnvironment(selectionFiltered, "backup")
 	if err != nil {
 		return err
 	}
@@ -43,6 +47,12 @@ func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store ap
 		filtered = append(append([]string(nil), filtered...), "--output", outputPath)
 	}
 	backupArgs := append([]string(nil), filtered...)
+	for _, class := range selectionArgs.Include {
+		backupArgs = append(backupArgs, "--include-state", string(class))
+	}
+	for _, class := range selectionArgs.Exclude {
+		backupArgs = append(backupArgs, "--exclude-state", string(class))
+	}
 	if environment != "" {
 		backupArgs = append(backupArgs, "--environment", environment)
 	}
@@ -66,6 +76,13 @@ func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store ap
 	if payload.Manifest.Application != resolved.Manifest.Name || payload.Manifest.Environment != resolved.Manifest.Environment {
 		return fmt.Errorf("record successful backup metadata: archive identity does not match application")
 	}
+	recoveryManifest, found, err := applicationbackup.RecoveryManifestFromPayload(payload)
+	if err != nil {
+		return fmt.Errorf("record successful backup metadata: validate recovery manifest: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("record successful backup metadata: recovery manifest is missing")
+	}
 	absolutePath, err := filepath.Abs(outputPath)
 	if err != nil {
 		return fmt.Errorf("record successful backup metadata: resolve archive path: %w", err)
@@ -83,11 +100,13 @@ func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store ap
 		Environment:       resolved.Manifest.Environment,
 		CreatedAt:         payload.Manifest.CreatedAt,
 		ArchivePath:       absolutePath,
-		PostgresResources: application.SQLInstanceNames(resolved.Manifest),
+		PostgresResources: selectedRecoveryResources(recoveryManifest, applicationbackup.StateSQL),
 		IncludesSecrets:   includesSecrets,
+		Recovery:          recoveryContributorMetadata(recoveryManifest, true),
 	}
 	if err := resolved.Store.RecordLastBackup(metadata); err != nil {
 		return fmt.Errorf("record successful backup metadata: %w", err)
 	}
-	return nil
+	return recordApplicationAudit(ctx, resolved, "backup", "success", "verified", "encrypted recovery unit created and reopened successfully")
+
 }

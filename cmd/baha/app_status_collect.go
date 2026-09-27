@@ -48,6 +48,10 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 			Ready:           false,
 			Checks:          []application.StatusCheck{},
 		}
+		if resolved.IncompleteDeployment {
+			result.State = "incomplete"
+			result.AddCheck("deployment-state", false, "deployment convergence is incomplete; no final deployment record exists")
+		}
 		if resolved.FromRepository {
 			result.Manifest = resolved.ManifestPath
 		}
@@ -73,8 +77,11 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 		Environment:     m.Environment,
 		Project:         files.Project,
 		State:           "running",
-		Ready:           true,
+		Ready:           !resolved.IncompleteDeployment,
 		Checks:          []application.StatusCheck{},
+	}
+	if resolved.IncompleteDeployment {
+		result.AddCheck("deployment-state", false, "deployment convergence is incomplete; protected application state was recovered without a final deployment record")
 	}
 	if resolved.FromRepository {
 		result.Manifest = resolved.ManifestPath
@@ -116,9 +123,21 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
 	c.collectObjectStorageCheck(ctx)
 	c.collectTelemetryCheck(ctx)
+	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
+}
+
+func (c *applicationStatusCollection) collectServiceBindingCheck() {
+	if !application.HasManagedRuntimeServices(c.manifest) {
+		return
+	}
+	if err := application.VerifyWorkloadServiceBindings(c.manifest, c.files); err != nil {
+		c.result.AddCheck("service-bindings", false, err.Error())
+		return
+	}
+	c.result.AddCheck("service-bindings", true, "standard workload service bindings projected and verified")
 }
 
 func (c *applicationStatusCollection) collectObjectStorageCheck(ctx context.Context) {

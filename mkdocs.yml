@@ -105,6 +105,7 @@ nav:
           - Provider Contract v1: spec/provider-contract-v1.md
           - Reconciliation v1: spec/reconciliation-v1.md
           - Machine Interface v1: spec/machine-interface-v1.md
+          - Audit & Evidence v1: spec/audit-evidence-v1.md
           - Security invariants: spec/security-invariants.md
           - Input resolution: spec/input-resolution.md
           - Control-plane runtime: spec/control-plane-runtime.md

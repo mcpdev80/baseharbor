@@ -144,6 +144,39 @@ func TestGuidedInitDeterministicPathRequiresExplicitContract(t *testing.T) {
 	}
 }
 
+func TestGuidedInitDeterministicCapabilitiesFailClosedWhenRepositoryWorkloadExists(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(dir, "compose.yaml"), "services:\n  app:\n    image: example/app\n")
+	withWizardTestDir(t, dir)
+
+	var out bytes.Buffer
+	err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--cache"}, &out, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "repository workload evidence") {
+		t.Fatalf("expected unresolved workload failure, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, application.RepositoryManifestName)); !os.IsNotExist(statErr) {
+		t.Fatalf("manifest should not be written with unresolved repository workload, stat err=%v", statErr)
+	}
+}
+
+func TestGuidedInitDeterministicExplicitWorkloadSelectionSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(dir, "compose.yaml"), "services:\n  app:\n    image: example/app\n")
+	withWizardTestDir(t, dir)
+
+	var out bytes.Buffer
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--workload-compose", "compose.yaml", "--workload-service", "app"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := application.LoadManifestFile(filepath.Join(dir, application.RepositoryManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Workload.Compose != "compose.yaml" || len(m.Workload.Services) != 1 || m.Workload.Services[0] != "app" {
+		t.Fatalf("unexpected explicit workload: %#v", m.Workload)
+	}
+}
+
 func TestGuidedInitExplicitFlagsKeepDeterministicPath(t *testing.T) {
 	dir := t.TempDir()
 	withWizardTestDir(t, dir)

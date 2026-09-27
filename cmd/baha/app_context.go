@@ -34,17 +34,18 @@ func applyApplicationEnvironmentOverride(m application.Manifest) (application.Ma
 }
 
 type resolvedApplication struct {
-	Target              deployment.ResolvedTarget
-	DeploymentIdentity  deployment.DeploymentIdentity
-	DeploymentRecord    *deployment.DeploymentRecord
-	Manifest            application.Manifest
-	ManifestPath        string
-	RepositoryRoot      string
-	TargetStateRoot     string
-	DeploymentStateRoot string
-	Store               application.Store
-	SourceAvailable     bool
-	FromRepository      bool
+	Target               deployment.ResolvedTarget
+	DeploymentIdentity   deployment.DeploymentIdentity
+	DeploymentRecord     *deployment.DeploymentRecord
+	Manifest             application.Manifest
+	ManifestPath         string
+	RepositoryRoot       string
+	TargetStateRoot      string
+	DeploymentStateRoot  string
+	Store                application.Store
+	SourceAvailable      bool
+	FromRepository       bool
+	IncompleteDeployment bool
 }
 
 func (r resolvedApplication) repositoryRoot() string {
@@ -146,7 +147,7 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 }
 
 func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
-	records, err := deployment.ListDeployments(target.Name)
+	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -161,6 +162,26 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 		matches = append(matches, record)
 	}
 	if len(matches) == 0 {
+		var incomplete []deployment.DeploymentIdentity
+		for _, warning := range warnings {
+			stateErr, ok := deployment.DeploymentRecordState(warning)
+			if !ok || stateErr.Identity.Application != name {
+				continue
+			}
+			if environment != "" && stateErr.Identity.Environment != environment {
+				continue
+			}
+			incomplete = append(incomplete, stateErr.Identity)
+		}
+		if len(incomplete) == 1 {
+			return resolveIncompleteRegisteredApplication(target, targetRoot, incomplete[0], command)
+		}
+		if len(incomplete) > 1 && environment == "" {
+			return resolvedApplication{}, usageError(
+				"environment selection required for incomplete application "+name,
+				"Select one environment with -e/--environment before attempting recovery or cleanup.",
+			)
+		}
 		if environment == "" {
 			return resolvedApplication{}, fmt.Errorf("application %q has no registered deployment on target %q", name, target.Name)
 		}
@@ -224,6 +245,57 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 		return resolvedApplication{}, fmt.Errorf("validate applied intent for %s/%s/%s: %w", record.Identity.Target, record.Identity.Application, record.Identity.Environment, err)
 	}
 	return resolved, nil
+}
+
+func resolveIncompleteRegisteredApplication(target deployment.ResolvedTarget, targetRoot string, id deployment.DeploymentIdentity, command string) (resolvedApplication, error) {
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
+	m, manifestPath, err := store.Load(id.Application)
+	if err != nil {
+		return resolvedApplication{}, &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
+			Message:     fmt.Sprintf("incomplete deployment state for %s/%s/%s cannot be reconstructed safely", id.Target, id.Application, id.Environment),
+			Resource:    id.Target + "/" + id.Application + "/" + id.Environment,
+			Next:        "Run the operation from the repository source, or use 'baha destroy --all' for ownership-safe installation cleanup.",
+			Remediation: "operator_review",
+			Cause:       err,
+		}
+	}
+	if m.Name != id.Application || m.Environment != id.Environment {
+		return resolvedApplication{}, &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH",
+			Message:     fmt.Sprintf("protected application state does not match incomplete deployment identity %s/%s/%s", id.Target, id.Application, id.Environment),
+			Resource:    id.Target + "/" + id.Application + "/" + id.Environment,
+			Next:        "Inspect the protected deployment state before cleanup.",
+			Remediation: "operator_review",
+		}
+	}
+	if commandRequiresLiveSource(command) {
+		return resolvedApplication{}, &machine.Error{
+			Code:      machine.ErrorSourceMissing,
+			CauseCode: "INCOMPLETE_DEPLOYMENT_SOURCE",
+			Message:   fmt.Sprintf("incomplete deployment %s/%s/%s has no durable source record", id.Target, id.Application, id.Environment),
+			Resource:  id.Target + "/" + id.Application + "/" + id.Environment,
+			Next:      "Run the operation from the repository source so BaseHarbor can re-establish the deployment record.",
+		}
+	}
+	return resolvedApplication{
+		Target:               target,
+		DeploymentIdentity:   id,
+		Manifest:             m,
+		ManifestPath:         manifestPath,
+		TargetStateRoot:      targetRoot,
+		DeploymentStateRoot:  deploymentRoot,
+		Store:                store,
+		SourceAvailable:      false,
+		FromRepository:       false,
+		IncompleteDeployment: true,
+	}, nil
 }
 
 func commandRequiresLiveSource(command string) bool {
