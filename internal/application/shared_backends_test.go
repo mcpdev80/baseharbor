@@ -89,7 +89,7 @@ func TestSharedPostgresStateContainsCredentialReferencesNotSecrets(t *testing.T)
 	}
 
 	state := sharedBackendState{
-		Version: sharedBackendStateVersion,
+		Version:                 sharedBackendStateVersion,
 		PostgresAdminCredential: adminRef,
 		Applications: map[string]sharedBackendAppState{
 			"app-a/dev": {

@@ -23,15 +23,15 @@ import (
 const sharedBackendStateVersion = 2
 
 type sharedBackendState struct {
-	Version               int                              `json:"version"`
-	Environment           string                           `json:"environment"`
-	PostgresAdminCredential string                        `json:"postgres_admin_credential,omitempty"`
-	PostgresHostPort      int                              `json:"postgres_host_port,omitempty"`
-	PostgresUIHostPort    int                              `json:"postgres_ui_host_port,omitempty"`
-	CacheUIHostPort       int                              `json:"cache_ui_host_port,omitempty"`
-	ManagementUsername    string                           `json:"management_username,omitempty"`
-	ManagementPassword    string                           `json:"management_password,omitempty"`
-	Applications          map[string]sharedBackendAppState `json:"applications"`
+	Version                 int                              `json:"version"`
+	Environment             string                           `json:"environment"`
+	PostgresAdminCredential string                           `json:"postgres_admin_credential,omitempty"`
+	PostgresHostPort        int                              `json:"postgres_host_port,omitempty"`
+	PostgresUIHostPort      int                              `json:"postgres_ui_host_port,omitempty"`
+	CacheUIHostPort         int                              `json:"cache_ui_host_port,omitempty"`
+	ManagementUsername      string                           `json:"management_username,omitempty"`
+	ManagementPassword      string                           `json:"management_password,omitempty"`
+	Applications            map[string]sharedBackendAppState `json:"applications"`
 }
 
 type sharedBackendAppState struct {
@@ -44,8 +44,8 @@ type sharedBackendAppState struct {
 }
 
 type sharedPostgresResource struct {
-	Database          string `json:"database"`
-	Username          string `json:"username"`
+	Database            string `json:"database"`
+	Username            string `json:"username"`
 	CredentialReference string `json:"credential_reference"`
 }
 
@@ -80,10 +80,10 @@ func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendF
 	}
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends", env)
 	return SharedBackendFiles{
-		Dir:     dir,
-		Compose: filepath.Join(dir, "compose.yaml"),
-		Env:     filepath.Join(dir, "provider.env"),
-		State:   filepath.Join(dir, "state.json"),
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "provider.env"),
+		State:           filepath.Join(dir, "state.json"),
 		Project:         bhruntime.SharedProjectName(namespace),
 		ResourceProject: bhruntime.SharedResourceProjectName(namespace),
 		Network:         SharedBackendNetworkName(namespace, environment),
@@ -169,8 +169,8 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 				return false, err
 			}
 			resource := sharedPostgresResource{
-				Database: database,
-				Username: username,
+				Database:            database,
+				Username:            username,
 				CredentialReference: ref,
 			}
 			app.SQL[instance] = resource
@@ -380,10 +380,10 @@ func VerifySharedManagementUIChecks(ctx context.Context, dataDir, namespace stri
 	}
 	checks := []struct {
 		enabled bool
-		name string
-		port int
-		dir string
-		path string
+		name    string
+		port    int
+		dir     string
+		path    string
 	}{
 		{m.Services.SQLManagementUI && UsesSharedPostgreSQL(m), "pgadmin", state.PostgresUIHostPort, filepath.Join(shared.Dir, "management-ui", "postgres", "pki"), "/misc/ping"},
 		{m.Services.CacheManagementUI && UsesSharedValkey(m), "redis-commander", state.CacheUIHostPort, filepath.Join(shared.Dir, "management-ui", "cache", "pki"), "/"},
@@ -854,7 +854,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 				"label": label, "host": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
 				"port": 6379, "username": "default", "password": resource.Password, "dbIndex": 0,
 				"tls": map[string]any{
-					"ca": []string{strings.TrimSpace(string(caData))},
+					"ca":         []string{strings.TrimSpace(string(caData))},
 					"servername": sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
 				},
 			})
@@ -882,7 +882,6 @@ func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {
 	sort.Strings(keys)
 	return keys
 }
-
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
 	instances := make([]string, 0, len(app.SQL))
@@ -1232,7 +1231,9 @@ func sharedValkeyAccessServiceFor(application, environment, instance string) str
 	return sharedValkeyServiceFor(application, environment, instance) + "-access"
 }
 
-func sharedValkeyAccessAlias(m Manifest, instance string) string { return sharedValkeyAccessService(m, instance) }
+func sharedValkeyAccessAlias(m Manifest, instance string) string {
+	return sharedValkeyAccessService(m, instance)
+}
 
 func sharedValkeyPortEnv(m Manifest, instance string) string {
 	return sharedValkeyPortEnvFor(m.Name, m.Environment, instance)
@@ -1246,8 +1247,12 @@ func sharedValkeyPasswordEnvFor(application, environment, instance string) strin
 	return "SHARED_VALKEY_" + envInstanceToken(sharedBackendToken(application+"-"+environment+"-"+instance)) + "_PASSWORD"
 }
 
-func postgresContainerHostKey(instance string) string { return postgresRuntimeKey(instance, "CONTAINER_HOST") }
-func valkeyContainerHostKey(instance string) string   { return valkeyRuntimeKey(instance, "CONTAINER_HOST") }
+func postgresContainerHostKey(instance string) string {
+	return postgresRuntimeKey(instance, "CONTAINER_HOST")
+}
+func valkeyContainerHostKey(instance string) string {
+	return valkeyRuntimeKey(instance, "CONTAINER_HOST")
+}
 
 func sharedBackendToken(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))

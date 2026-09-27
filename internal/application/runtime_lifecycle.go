@@ -28,23 +28,23 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 	}
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(resourceProject)}}
 	if !UsesSharedPostgreSQL(m) {
-	for _, instance := range SQLInstanceNames(m) {
-		service := runtimeServiceName("postgres", instance)
-		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-		)
-	}
+		for _, instance := range SQLInstanceNames(m) {
+			service := runtimeServiceName("postgres", instance)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+			)
+		}
 	}
 	if !UsesSharedValkey(m) {
-	for _, instance := range CacheInstanceNames(m) {
-		service := runtimeServiceName("valkey", instance)
-		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-		)
-	}
+		for _, instance := range CacheInstanceNames(m) {
+			service := runtimeServiceName("valkey", instance)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+			)
+		}
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
