@@ -126,6 +126,7 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
+	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
 }
 
@@ -202,6 +203,25 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		return
 	}
 	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(c.manifest))))
+}
+
+
+func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
+	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := application.VerifyApplicationManagementUIs(checkCtx, c.manifest, c.files); err != nil {
+		c.result.AddCheck("management-ui", false, err.Error())
+		return
+	}
+	surfaces, err := application.ApplicationManagementUISurfaces(c.manifest, c.files)
+	if err != nil {
+		c.result.AddCheck("management-ui", false, err.Error())
+		return
+	}
+	c.result.AddCheck("management-ui", true, fmt.Sprintf("%d selected management UI surface(s) reachable over TLS", len(surfaces)))
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
