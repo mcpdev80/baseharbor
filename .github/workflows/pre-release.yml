@@ -35,6 +35,7 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
+      demo_ref: ${{ steps.release.outputs.demo_ref }}
 
     steps:
       - name: Checkout candidate source
@@ -55,6 +56,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DEMO_REF: ${{ inputs.demo_ref }}
         run: |
           set -euo pipefail
 
@@ -85,8 +87,24 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            demo_ref="$INPUT_DEMO_REF"
+          else
+            demo_ref_file="docs/releases/${tag}.demo-ref"
+            test -s "$demo_ref_file" || {
+              echo "Exact demo revision file is missing: $demo_ref_file" >&2
+              exit 1
+            }
+            demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+          fi
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Demo revision must be an exact 40-character commit SHA, got: $demo_ref" >&2
+            exit 1
+          }
+
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "demo_ref=$demo_ref" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         id: setup_go
@@ -203,7 +221,7 @@ jobs:
           set -euo pipefail
           rows="$RUNNER_TEMP/pre-release-source-evidence.tsv"
           cat >"$rows" <<EOF
-          Candidate resolution	${{ steps.release.outcome }}	release tag, changelog, release notes and develop/main-hotfix ancestry
+          Candidate resolution	${{ steps.release.outcome }}	release tag, changelog, release notes, exact demo SHA and develop/main-hotfix ancestry
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
           Source readability	${{ steps.source_readability.outcome }}	production file/function size guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
@@ -264,10 +282,11 @@ jobs:
 
   demo_catalog:
     name: pre-release-demo-catalog
+    needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/demo-gate-catalog.yml
     with:
-      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_ref || 'main' }}
+      ref: ${{ needs.validate.outputs.demo_ref }}
 
   demo_docker:
     name: pre-release-docker-demo
