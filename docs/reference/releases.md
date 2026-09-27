@@ -86,13 +86,14 @@ The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-
 4. Write human-readable release notes at `docs/releases/vX.Y.Z.md` (or `vX.Y.Z.H.md` for a v0.4 hotfix). They must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
 5. Review compatibility impact and select the documented release-version increment.
 6. Run local/Hugging Face validation first where practical.
-7. Run the mandatory GitHub pre-release workflow against the exact `develop` release-candidate SHA and fix/repeat on `develop` until the gate is green. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo acceptance suite on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
-8. The successful pre-release produces immutable approval/evidence containing the tested BaseHarbor SHA and external demo SHA.
-9. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
-10. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
-11. Create the immutable release tag on the resulting `main` release commit and push it.
-12. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
-13. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
+7. Only after implementation, documentation, CHANGELOG, README, release notes and the external `baseharbor-demo` are complete, run the mandatory GitHub pre-release workflow once against the exact release-candidate SHA. Treat this first complete run as the release-wide baseline. Pre-release must pin the exact `baseharbor-demo` revision and prove the complete external demo acceptance suite on Docker and Podman, including the pristine-repository guided human path `baha app init -> baha up -> READY`.
+8. If the complete pre-release baseline finds failures, do not repeatedly rerun the full matrix. Fix one failure area at a time and rerun only the failed job, gate or smallest relevant acceptance workflow until each previously failing area is proven green. Local or isolated validation remains preferred before GitHub CI where practical.
+9. Run the complete pre-release workflow again only after all previously failing areas have been proven individually green and the candidate is otherwise release-ready. This final complete run is the immutable release approval/evidence containing the tested BaseHarbor SHA and external demo SHA.
+10. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
+11. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
+12. Create the immutable release tag on the resulting `main` release commit and push it.
+13. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
+14. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
 
 Never move a published version tag. Fix a bad release with a new patch release.
 
