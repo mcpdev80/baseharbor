@@ -188,8 +188,25 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		}
 	}
 
-	if application.HasManagedRuntimeServices(e.manifest) {
+	if application.HasApplicationScopedRuntimeServices(e.manifest) {
 		if err := e.compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return err
+		}
+	}
+	if application.HasSharedBackends(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling shared data providers", func(progress io.Writer) error {
+			cli.ReportActivityDetail(progress, "reconciling Target-owned PostgreSQL/Valkey provider runtime")
+			_, err := application.ReconcileSharedBackends(
+				ctx,
+				e.compose,
+				e.issuer,
+				e.resolved.TargetStateRoot,
+				e.resolved.Target.Name,
+				e.manifest,
+				e.files,
+			)
+			return err
+		}); err != nil {
 			return err
 		}
 	}
@@ -286,6 +303,15 @@ func (e *applicationApplyExecution) verifyManagedRuntime(ctx context.Context) er
 		cli.ReportActivityDetail(progress, "checking managed service readiness")
 		for verifyCtx.Err() == nil {
 			verifyErr = verifyDesiredRuntimeServices(verifyCtx, e.compose, e.manifest, e.files)
+			if verifyErr == nil && application.HasSharedBackends(e.manifest) {
+				verifyErr = application.VerifySharedBackends(
+					verifyCtx,
+					e.compose,
+					e.resolved.TargetStateRoot,
+					e.resolved.Target.Name,
+					e.manifest,
+				)
+			}
 			if verifyErr == nil && e.manifest.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
 				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.compose, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
