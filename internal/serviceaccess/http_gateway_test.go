@@ -1,8 +1,9 @@
 package serviceaccess
 
 import (
-	"strings"
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,12 +18,16 @@ func TestCaddyfileRequiresClientCertificateWhenRequested(t *testing.T) {
 
 func TestHTTPClientDoesNotLoadOptionalClientIdentity(t *testing.T) {
 	dir := t.TempDir()
-	ca, cert, key := testGatewayTLSMaterial(t, dir)
-	material := TLSMaterial{
-		CA: ca, ServerCertificate: cert, ServerKey: key, ServerName: "localhost",
-		ClientCertificate: filepath.Join(dir, "missing-client.pem"),
-		ClientKey: filepath.Join(dir, "missing-client-key.pem"),
+	policy, err := Resolve("dev", "test-http-client", AuthenticationNative)
+	if err != nil {
+		t.Fatal(err)
 	}
+	material, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), policy, dir, "localhost", "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	material.ClientCertificate = filepath.Join(dir, "missing-client.pem")
+	material.ClientKey = filepath.Join(dir, "missing-client-key.pem")
 	if _, err := NewHTTPClient(material, false); err != nil {
 		t.Fatalf("optional client identity must be ignored when mTLS is not required: %v", err)
 	}
