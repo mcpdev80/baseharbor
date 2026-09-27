@@ -32,16 +32,17 @@ type KeycloakRuntime interface {
 }
 
 type KeycloakFiles struct {
-	Dir             string
-	Compose         string
-	Env             string
-	Project         string
-	ConsumerNetwork string
-	InternalNetwork string
-	PublicPort      int
-	AdminPort       int
-	PublicURL       string
-	AdminURL        string
+	Dir                string
+	Compose            string
+	Env                string
+	Project            string
+	ConsumerNetwork    string
+	InternalNetwork    string
+	PublicPort         int
+	AdminPort          int
+	PublicURL          string
+	CanonicalPublicURL string
+	AdminURL           string
 	PublicAccess    serviceaccess.HTTPGatewayFiles
 	AdminAccess     serviceaccess.HTTPGatewayFiles
 }
@@ -161,11 +162,19 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	files.PublicPort = publicPort
 	files.AdminPort = adminPort
 	files.PublicURL = fmt.Sprintf("https://%s:%d", keycloakPublicHost, publicPort)
+	files.CanonicalPublicURL = files.PublicURL
+	if devaccess.Enabled(app.Environment) {
+		host, err := devaccess.ApplicationHost(namespace, app.Name, "identity")
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		files.CanonicalPublicURL = devaccess.CanonicalURL(host)
+	}
 	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", adminPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
 
-	compose := keycloakCompose(files, publicSpec, adminSpec)
+	compose := keycloakCompose(app, files, publicSpec, adminSpec)
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return KeycloakFiles{}, fmt.Errorf("write Keycloak provider compose: %w", err)
 	}
@@ -193,9 +202,15 @@ func keycloakStateIdentity(app application.Manifest, placement capability.Provid
 	}
 }
 
-func keycloakCompose(files KeycloakFiles, publicSpec, adminSpec serviceaccess.HTTPGatewaySpec) string {
+func keycloakCompose(app application.Manifest, files KeycloakFiles, publicSpec, adminSpec serviceaccess.HTTPGatewaySpec) string {
 	publicGateway := serviceaccess.HTTPGatewayComposeService(files.PublicAccess, publicSpec)
 	adminGateway := serviceaccess.HTTPGatewayComposeService(files.AdminAccess, adminSpec)
+	hostnameCommand := ""
+	hostnameEnvironment := "      KC_HOSTNAME: https://%s:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}\n"
+	if devaccess.Enabled(app.Environment) {
+		hostnameCommand = "      - --hostname-strict=false\n"
+		hostnameEnvironment = ""
+	}
 	return fmt.Sprintf(`services:
   keycloak-db:
     image: docker.io/library/postgres:18-alpine
@@ -223,7 +238,7 @@ func keycloakCompose(files KeycloakFiles, publicSpec, adminSpec serviceaccess.HT
       - --http-enabled=true
       - --http-port=8080
       - --proxy-headers=xforwarded
-      - --health-enabled=true
+%s      - --health-enabled=true
       - --metrics-enabled=true
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
@@ -232,8 +247,7 @@ func keycloakCompose(files KeycloakFiles, publicSpec, adminSpec serviceaccess.HT
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
       KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-      KC_HOSTNAME: https://%s:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}
-      KC_HTTP_MANAGEMENT_SCHEME: http
+%s      KC_HTTP_MANAGEMENT_SCHEME: http
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
@@ -250,7 +264,7 @@ networks:
     name: %s
   identity-internal:
     name: %s
-`, KeycloakImage, keycloakPublicHost, publicGateway, adminGateway, files.ConsumerNetwork, files.InternalNetwork)
+`, KeycloakImage, hostnameCommand, hostnameEnvironment, publicGateway, adminGateway, files.ConsumerNetwork, files.InternalNetwork)
 }
 
 func randomIdentitySecret(bytes int) (string, error) {
