@@ -58,7 +58,6 @@ type SharedPostgresResourceObservation struct {
 	CredentialScope string `json:"credential_scope"`
 }
 
-
 type sharedValkeyResource struct {
 	CredentialReference string `json:"credential_reference"`
 	HostPort            int    `json:"host_port"`
