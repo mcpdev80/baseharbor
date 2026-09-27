@@ -138,7 +138,7 @@ var (
 		Services:        []ServiceKind{ServiceObservability},
 		Capabilities:    []SpecificationID{TracesV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared},
-		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}, {Name: "visualization-ui", Class: InterfaceObservability, Protocol: "https", Optional: true}},
+		Interfaces: []ProviderInterface{{Name: "query-api", Class: InterfaceObservability, Protocol: "https", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "tempo-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 3200, Path: "/metrics"},
