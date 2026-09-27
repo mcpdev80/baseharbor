@@ -18,12 +18,12 @@ import (
 )
 
 type targetInspectionResult struct {
-	ContractVersion string                             `json:"contract_version"`
-	Target          deployment.ResolvedTarget          `json:"target"`
-	Application     string                             `json:"application,omitempty"`
-	Environment     string                             `json:"environment,omitempty"`
-	Repository      string                             `json:"repository,omitempty"`
-	Effective       string                             `json:"effective"`
+	ContractVersion string                    `json:"contract_version"`
+	Target          deployment.ResolvedTarget `json:"target"`
+	Application     string                    `json:"application,omitempty"`
+	Environment     string                    `json:"environment,omitempty"`
+	Repository      string                    `json:"repository,omitempty"`
+	Effective       string                    `json:"effective"`
 	OperatorAuth    map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 }
 
