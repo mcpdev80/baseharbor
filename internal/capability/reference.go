@@ -17,6 +17,7 @@ var (
 	Prometheus    = Provider{Kind: ProviderPrometheus, Capabilities: []Kind{Metrics}}
 	Loki          = Provider{Kind: ProviderLoki, Capabilities: []Kind{Logs}}
 	Tempo         = Provider{Kind: ProviderTempo, Capabilities: []Kind{Traces}}
+	Keycloak      = Provider{Kind: ProviderKeycloak, Capabilities: []Kind{Identity}}
 )
 
 var (
@@ -135,6 +136,19 @@ var (
 			{Name: "tempo-traces", Kind: ObservabilityTraces, Status: ObservabilityNotApplicable, Verification: ObservabilityVerifyNone},
 		}},
 	}
+	KeycloakIntegration = IntegrationDescriptor{
+		ID: "baseharbor/keycloak", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: Keycloak,
+		Services:        []ServiceKind{ServiceIdentity},
+		Capabilities:    []SpecificationID{IdentityOIDCV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
+		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
+		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
+			{Name: "keycloak-metrics", Kind: ObservabilityMetrics, Status: ObservabilitySupported, Mode: ObservabilityNative, Protocol: "openmetrics", Verification: ObservabilityVerifyBackend, Port: 9000, Path: "/metrics"},
+			{Name: "keycloak-logs", Kind: ObservabilityLogs, Status: ObservabilitySupported, Mode: ObservabilityRuntime, Protocol: "stdout-stderr", SemanticConvention: "baseharbor.runtime.logs", Verification: ObservabilityVerifyBackend},
+			{Name: "keycloak-traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
+		}},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -166,6 +180,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return LokiIntegration, nil
 	case ProviderTempo:
 		return TempoIntegration, nil
+	case ProviderKeycloak:
+		return KeycloakIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
