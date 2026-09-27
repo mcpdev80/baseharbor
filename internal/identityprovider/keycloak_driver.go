@@ -223,12 +223,60 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err != nil {
 		return err
 	}
+
 	workloadDiscovery := rebaseIdentityDiscovery(discovery, publicIssuer, endpointIssuer)
+	trustBundle := d.files.PublicAccess.Material.CA
+	if isDevelopmentIdentityEnvironment(d.app.Environment) {
+		if err := d.ensureDevelopmentPublicRoute(ctx); err != nil {
+			return fmt.Errorf("reconcile canonical identity route before workload binding: %w", err)
+		}
+		gatewayFiles, err := devgateway.FilesFor(d.targetName())
+		if err != nil {
+			return err
+		}
+		workloadDiscovery = discovery
+		trustBundle = gatewayFiles.CA
+	}
+
 	d.discovery = discovery
 	return application.MaterializeIdentityBindingWithWorkloadDiscovery(
 		d.app, d.appFiles, string(capability.ProviderKeycloak),
-		discovery, workloadDiscovery, d.clientID, d.clientSecret, d.files.PublicAccess.Material.CA,
+		discovery, workloadDiscovery, d.clientID, d.clientSecret, trustBundle,
 	)
+}
+
+func (d *KeycloakDriver) ensureDevelopmentPublicRoute(ctx context.Context) error {
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
+	if err != nil {
+		return err
+	}
+	var owner, key, host string
+	switch placement.Scope {
+	case capability.ScopeShared:
+		owner = "shared/keycloak"
+		key = owner + "/login"
+		host, err = devaccess.SharedHost(d.targetName(), "identity")
+	case capability.ScopeApplication:
+		owner = "app/" + d.app.Name + "/" + d.app.Environment
+		key = owner + "/identity"
+		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	case capability.ScopeExternal:
+		return errors.New("external OIDC has no managed Keycloak development route")
+	default:
+		return fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+	if err != nil {
+		return err
+	}
+	route := devgateway.Route{
+		Key:        key,
+		Host:       host,
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), d.files.PublicPort),
+		Network:    d.files.ConsumerNetwork,
+		TrustFile:  d.files.PublicAccess.Material.CA,
+		ServerName: d.files.PublicAccess.Material.ServerName,
+	}
+	return devgateway.UpsertOwnerRoutes(ctx, d.runtime, d.issuer, d.targetName(), owner, []devgateway.Route{route})
 }
 
 func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.Binding, origins []string) error {
