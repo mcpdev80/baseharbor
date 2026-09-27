@@ -443,7 +443,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 			return State{}, false, err
 		}
 		if normalizedWorkloadProtocol(route.WorkloadProtocol) == "https" {
-			ca, err := os.ReadFile(filepath.Join(RuntimeIdentityHostDir(d.runtime), "ca.pem"))
+			ca, err := os.ReadFile(filepath.Join(application.RuntimeMTLSHostDir(d.runtime), "ca.pem"))
 			if err != nil {
 				return State{}, false, fmt.Errorf("read workload TLS trust for exposure %q: %w", route.Name, err)
 			}
