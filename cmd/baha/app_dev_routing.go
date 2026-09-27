@@ -440,7 +440,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 	e.term.Section("Development URLs")
 	for _, route := range routes {
 		if route.Owner == appOwner || strings.HasPrefix(route.Owner, "shared/") {
-			e.term.Result("READY", route.Key, devgateway.URL(route.Host))
+			e.term.Result("READY", route.Key, devgateway.URLForTarget(target, route.Host))
 		}
 	}
 	return nil
