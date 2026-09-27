@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -233,7 +234,7 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
-	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI && !c.manifest.Services.SecretsManagementUI {
+	if !c.manifest.Services.SQLManagementUI && !c.manifest.Services.CacheManagementUI && !c.manifest.Services.ObjectStorageManagementUI && !c.manifest.Services.SecretsManagementUI && !c.manifest.Services.ObservabilityManagementUI {
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -265,6 +266,13 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 			return
 		}
 		if err := verifyOpenBaoManagementUI(checkCtx, platformFiles); err != nil {
+			c.result.AddCheck("management-ui", false, err.Error())
+			return
+		}
+		count++
+	}
+	if c.manifest.Services.ObservabilityManagementUI {
+		if err := metricsprovider.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
 			c.result.AddCheck("management-ui", false, err.Error())
 			return
 		}
