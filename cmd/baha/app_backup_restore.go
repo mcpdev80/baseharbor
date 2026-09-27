@@ -237,8 +237,23 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		return err
 	}
 	project := files.Project
-	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
-		return err
+	if application.HasSharedBackends(m) {
+		if _, err := application.ReconcileSharedBackends(
+			ctx,
+			compose,
+			issuer,
+			resolved.TargetStateRoot,
+			resolved.Target.Name,
+			m,
+			files,
+		); err != nil {
+			return fmt.Errorf("recreate shared backend provider before restore: %w", err)
+		}
+	}
+	if application.HasApplicationScopedRuntimeServices(m) {
+		if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
 	}
 	if m.Services.Secrets {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -264,11 +279,18 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 			return fmt.Errorf("provision object-storage recovery target: %w", err)
 		}
 	}
-	if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
-		return err
+	if application.HasApplicationScopedRuntimeServices(m) {
+		if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
 	}
 	if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
 		return err
+	}
+	if application.HasSharedBackends(m) {
+		if err := application.VerifySharedBackends(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
+			return fmt.Errorf("verify shared backend provider before restore: %w", err)
+		}
 	}
 	var preparedLogs *managedLogsExecution
 	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateLogs) {
@@ -284,7 +306,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		}
 	}
 	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateSQL) {
-		if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
+		if err := application.RestorePostgresInstancesAt(ctx, compose, m, files, resolved.TargetStateRoot, resolved.Target.Name, postgresBackups); err != nil {
 			return err
 		}
 	}
@@ -489,6 +511,11 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 	if application.RequiresRuntimeBroker(m) {
 		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 			return err
+		}
+	}
+	if application.HasSharedBackends(m) {
+		if err := application.ReleaseSharedBackendApplication(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
+			return fmt.Errorf("release previous shared backend application resources before restore: %w", err)
 		}
 	}
 	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
