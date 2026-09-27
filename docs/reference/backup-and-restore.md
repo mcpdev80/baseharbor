@@ -28,9 +28,9 @@ baha app backup \
 
 Before capture, BaseHarbor verifies the managed runtime and, when enabled, the application OpenBao scope. It quiesces the repository workload and Application Runtime Broker, captures state, writes the encrypted archive and then restarts the components it stopped.
 
-The encrypted recovery unit contains desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope when managed secrets are enabled.
+The encrypted recovery unit is built from typed recovery contributors. Application metadata is always included. Managed SQL, the application-owned OpenBao secret scope, managed S3 objects and BaseHarbor-owned repository workload volumes are supported application-owned state. Application log history can be selected explicitly when log collection is declared and BaseHarbor owns the log-history path.
 
-After a successful backup, BaseHarbor records non-secret metadata such as archive path, creation time, PostgreSQL logical resources and managed-secret inclusion under protected application state. `baha app show` can display that metadata without revealing secret names or values.
+After a successful backup, BaseHarbor records non-secret metadata such as archive path, creation time and the typed recovery contributors with ownership, support, selection and verification state under protected application state. Secret values, access keys, tokens and private keys are never written into this metadata.
 
 ## Restore
 
@@ -49,7 +49,7 @@ baha app restore ./mailflow-production.bhbackup \
   --password-file ./backup-password.txt
 ```
 
-Restore validates PostgreSQL/OpenBao payloads and prerequisites, rebuilds protected runtime state, restores data while the workload is stopped, regenerates runtime identity material, and restarts/verifies the application boundary.
+Restore validates every selected payload and the recovery manifest before mutation, rebuilds protected runtime state, restores selected SQL, secret, S3, workload-volume and log-history state while the workload is stopped, regenerates application/runtime identity material, and restarts/verifies the application boundary.
 
 Repository workloads receive a bounded readiness window after restore so real applications can reach service health and HTTP/TLS exposure readiness. This does not weaken fail-closed semantics: success is not reported merely because containers started, and the operation still fails if the verified boundary does not become READY within the owned timeout.
 
@@ -63,8 +63,32 @@ Guided interactive backup and restore render visible activity immediately while 
 
 Non-interactive `--password-file` automation retains deterministic command behavior and does not depend on interactive terminal rendering.
 
-## Scope
+## Recovery selection and scope
 
-The current recovery unit covers BaseHarbor-owned application backend state: desired application metadata, managed PostgreSQL instances and the application-owned OpenBao scope when enabled. Object-storage contents are not yet part of that unit. Starting with v0.4.6, `baha app backup` and `baha app restore` therefore fail closed when the application declares managed `object-storage.s3` resources rather than presenting an incomplete archive as recoverable. Application-owned files, external databases and other external data require their own backup/recovery mechanism.
+Automation can select typed state classes explicitly:
 
-Backup archive format, cryptography and restore semantics are part of the release compatibility contract.
+```bash
+baha app backup \
+  --include-state observability.logs \
+  --exclude-state workload.storage \
+  --password-file ./backup-password.txt
+```
+
+The guided backup flow uses the same typed state classes and presents supported application-owned recovery choices interactively. Application metadata remains mandatory. Runtime leaf identities and application trust edges are reconstructed from desired state during restore rather than copying private CA keys into an application archive.
+
+Supported application-owned state in v0.4.16 includes:
+
+- `database.sql` managed SQL data;
+- `secrets` application-owned OpenBao secret scope;
+- `object-storage.s3` managed S3 bucket contents;
+- `workload.storage` BaseHarbor-owned repository workload named volumes;
+- `observability.logs` application log history when selected and managed by BaseHarbor;
+- `security.pki` application/runtime identity reconstruction.
+
+Application log history is selectable operational history and is excluded by default unless explicitly selected. Metrics and trace history remain explicitly unsupported because BaseHarbor does not yet provide a safe application-scoped restore path for those histories.
+
+External named volumes, bind mounts, external databases, external object stores and other operator-owned state remain outside BaseHarbor recovery ownership. They are represented explicitly as external/excluded contributors rather than copied silently.
+
+A durable unsupported application-owned contributor blocks backup unless the operator explicitly excludes it. BaseHarbor never presents a partial recovery unit as complete without recording that boundary.
+
+Backup archive format, cryptography, typed recovery manifest and restore semantics are part of the release compatibility contract.

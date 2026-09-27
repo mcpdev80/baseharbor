@@ -16,10 +16,14 @@ import (
 const loopbackHost = "127.0.0.1"
 
 type RuntimeContract struct {
-	Env         string
-	BindingsDir string
-	Metadata    string
+	Env                 string
+	BindingsDir         string
+	WorkloadBindingsDir string
+	Metadata            string
 }
+
+const workloadServiceBindingDirName = "workload-service-bindings"
+const workloadServiceBindingRoot = "/run/baseharbor/service-bindings"
 
 type runtimeMetadata struct {
 	Version      int                          `json:"version"`
@@ -161,7 +165,202 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		return RuntimeContract{}, fmt.Errorf("write application binding metadata: %w", err)
 	}
 
-	return RuntimeContract{Env: applicationEnv, BindingsDir: bindingsDir, Metadata: metadataPath}, nil
+	workloadBindingsDir, err := ensureWorkloadServiceBindingProjection(m, files, values)
+	if err != nil {
+		return RuntimeContract{}, err
+	}
+
+	return RuntimeContract{
+		Env:                 applicationEnv,
+		BindingsDir:         bindingsDir,
+		WorkloadBindingsDir: workloadBindingsDir,
+		Metadata:            metadataPath,
+	}, nil
+}
+
+func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
+	return filepath.Join(files.Dir, workloadServiceBindingDirName)
+}
+
+func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, values map[string]string) (string, error) {
+	root := workloadServiceBindingProjectionDir(files)
+	if err := os.RemoveAll(root); err != nil {
+		return "", fmt.Errorf("reset workload service binding projection: %w", err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", fmt.Errorf("create workload service binding projection: %w", err)
+	}
+
+	postgres := SQLInstanceNames(m)
+	for _, instance := range postgres {
+		name := workloadServiceBindingName("postgres", instance, len(postgres))
+		database, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "DB"))
+		if err != nil {
+			return "", err
+		}
+		username, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "USER"))
+		if err != nil {
+			return "", err
+		}
+		password, err := requireRuntimeValue(values, postgresRuntimeKey(instance, "PASSWORD"))
+		if err != nil {
+			return "", err
+		}
+		certificates, err := backendCertificates(values[postgresTLSCAKey(instance)])
+		if err != nil {
+			return "", err
+		}
+		certificatePath := filepath.ToSlash(filepath.Join(workloadServiceBindingRoot, name, "certificates"))
+		query := url.Values{}
+		query.Set("sslmode", "verify-ca")
+		query.Set("sslrootcert", certificatePath)
+		uri := (&url.URL{
+			Scheme:   "postgresql",
+			User:     url.UserPassword(username, password),
+			Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+			Path:     "/" + database,
+			RawQuery: query.Encode(),
+		}).String()
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type":         "postgresql",
+			"provider":     "postgresql",
+			"host":         postgresAccessService(instance),
+			"port":         "5432",
+			"database":     database,
+			"username":     username,
+			"password":     password,
+			"uri":          uri,
+			"certificates": certificates,
+		}); err != nil {
+			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
+		}
+	}
+
+	cache := CacheInstanceNames(m)
+	for _, instance := range cache {
+		name := workloadServiceBindingName("valkey", instance, len(cache))
+		password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
+		if err != nil {
+			return "", err
+		}
+		certificates, err := backendCertificates(values[valkeyTLSCAKey(instance)])
+		if err != nil {
+			return "", err
+		}
+		uri := (&url.URL{
+			Scheme: "rediss",
+			User:   url.UserPassword("default", password),
+			Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
+			Path:   "/0",
+		}).String()
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type":         "redis",
+			"provider":     "valkey",
+			"host":         valkeyAccessService(instance),
+			"port":         "6379",
+			"username":     "default",
+			"password":     password,
+			"uri":          uri,
+			"certificates": certificates,
+		}); err != nil {
+			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
+		}
+	}
+	return root, nil
+}
+
+func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
+	root := workloadServiceBindingProjectionDir(files)
+	postgres := SQLInstanceNames(m)
+	for _, instance := range postgres {
+		name := workloadServiceBindingName("postgres", instance, len(postgres))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: %w", instance, err)
+		}
+		if entries["type"] != "postgresql" || entries["provider"] != "postgresql" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid type/provider", instance)
+		}
+		if entries["host"] != postgresAccessService(instance) || entries["port"] != "5432" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "postgresql" || u.Host != net.JoinHostPort(postgresAccessService(instance), "5432") {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid uri", instance)
+		}
+		wantCA := filepath.ToSlash(filepath.Join(workloadServiceBindingRoot, name, "certificates"))
+		if u.Query().Get("sslmode") != "verify-ca" || u.Query().Get("sslrootcert") != wantCA {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: uri trust reference is incomplete", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload PostgreSQL binding %s: certificates entry is empty", instance)
+		}
+	}
+
+	cache := CacheInstanceNames(m)
+	for _, instance := range cache {
+		name := workloadServiceBindingName("valkey", instance, len(cache))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("verify workload cache binding %s: %w", instance, err)
+		}
+		if entries["type"] != "redis" || entries["provider"] != "valkey" {
+			return fmt.Errorf("verify workload cache binding %s: invalid type/provider", instance)
+		}
+		if entries["host"] != valkeyAccessService(instance) || entries["port"] != "6379" {
+			return fmt.Errorf("verify workload cache binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "rediss" || u.Host != net.JoinHostPort(valkeyAccessService(instance), "6379") {
+			return fmt.Errorf("verify workload cache binding %s: invalid uri", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload cache binding %s: certificates entry is empty", instance)
+		}
+	}
+	return nil
+}
+
+func readWorkloadServiceBinding(dir string) (map[string]string, error) {
+	entries := map[string]string{}
+	for _, name := range []string{"type", "provider", "host", "port", "uri", "certificates"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		value := strings.TrimSpace(string(data))
+		if value == "" {
+			return nil, fmt.Errorf("%s is empty", name)
+		}
+		entries[name] = value
+	}
+	return entries, nil
+}
+
+func workloadServiceBindingName(kind, instance string, count int) string {
+	if count == 1 && instance == defaultServiceInstance {
+		return kind
+	}
+	return kind + "." + instance
+}
+
+func writeWorkloadServiceBinding(dir string, entries map[string]string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for name, value := range entries {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("workload service binding %s has an empty value", name)
+		}
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(value+"\n"), 0o444); err != nil {
+			return err
+		}
+		if err := os.Chmod(path, 0o444); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureInstanceBindingDirs(bindingsDir, bindingsAbs, kind, instance string, count int) (string, string, error) {

@@ -13,16 +13,18 @@ import (
 )
 
 type repositoryWorkloadExecution struct {
-	compose           bhruntime.Compose
-	resolved          resolvedApplication
-	files             application.RuntimeFiles
-	workload          application.WorkloadFiles
-	environment       map[string]string
-	composeFiles      []string
-	expectedServices  []string
-	beforeServices    map[string]struct{}
-	freshStart        bool
-	buildFingerprints map[string]string
+	compose            bhruntime.Compose
+	resolved           resolvedApplication
+	files              application.RuntimeFiles
+	workload           application.WorkloadFiles
+	environment        map[string]string
+	composeFiles       []string
+	expectedServices   []string
+	beforeServices     map[string]struct{}
+	freshStart         bool
+	buildFingerprints  map[string]string
+	configFingerprints map[string]string
+	buildChanged       map[string]struct{}
 }
 
 func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
@@ -80,18 +82,24 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve application workload build identity: %w", err)
 	}
+	configFingerprints, err := resolveRepositoryWorkloadConfigFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
+	if err != nil {
+		return nil, false, fmt.Errorf("resolve application workload configuration identity: %w", err)
+	}
 
 	return &repositoryWorkloadExecution{
-		compose:           compose,
-		resolved:          resolved,
-		files:             files,
-		workload:          workload,
-		environment:       environment,
-		composeFiles:      composeFiles,
-		expectedServices:  expectedServices,
-		beforeServices:    beforeServices,
-		freshStart:        len(beforeStates) == 0,
-		buildFingerprints: buildFingerprints,
+		compose:            compose,
+		resolved:           resolved,
+		files:              files,
+		workload:           workload,
+		environment:        environment,
+		composeFiles:       composeFiles,
+		expectedServices:   expectedServices,
+		beforeServices:     beforeServices,
+		freshStart:         len(beforeStates) == 0,
+		buildFingerprints:  buildFingerprints,
+		configFingerprints: configFingerprints,
+		buildChanged:       map[string]struct{}{},
 	}, true, nil
 }
 
@@ -101,6 +109,9 @@ func (e *repositoryWorkloadExecution) rebuildChangedServices(ctx context.Context
 		return fmt.Errorf("load application workload build identity: %w", err)
 	}
 	changed := changedRepositoryWorkloadBuildServices(e.buildFingerprints, buildState)
+	for _, service := range changed {
+		e.buildChanged[service] = struct{}{}
+	}
 	if len(e.buildFingerprints) == 0 {
 		return nil
 	}
@@ -128,6 +139,38 @@ func (e *repositoryWorkloadExecution) rebuildChangedServices(ctx context.Context
 		}
 	}
 	cli.ReportActivityDetail(out, "rebuilt "+strings.Join(changed, ", "))
+	return nil
+}
+
+func (e *repositoryWorkloadExecution) recreateConfigurationChangedServices(ctx context.Context, out io.Writer) error {
+	state, err := loadRepositoryWorkloadConfigState(e.files)
+	if err != nil {
+		return fmt.Errorf("load application workload configuration identity: %w", err)
+	}
+	changed := changedRepositoryWorkloadConfigServices(e.configFingerprints, state)
+	if len(changed) == 0 {
+		return nil
+	}
+
+	var recreate []string
+	for _, service := range changed {
+		if _, rebuilt := e.buildChanged[service]; rebuilt {
+			continue
+		}
+		if _, existed := e.beforeServices[service]; !existed {
+			continue
+		}
+		recreate = append(recreate, service)
+	}
+	if len(recreate) == 0 {
+		return nil
+	}
+
+	cli.ReportActivityDetail(out, "configuration changes detected: "+strings.Join(recreate, ", "))
+	if err := e.compose.UpProjectFilesSelectedForceRecreateNoBuild(ctx, e.workload.Project, e.workload.RepositoryRoot, e.environment, recreate, e.composeFiles...); err != nil {
+		return fmt.Errorf("recreate configuration-changed application workload services: %w", err)
+	}
+	cli.ReportActivityDetail(out, "recreated "+strings.Join(recreate, ", "))
 	return nil
 }
 
@@ -211,6 +254,11 @@ func (e *repositoryWorkloadExecution) recordReady(out io.Writer, status reposito
 	if len(e.buildFingerprints) > 0 {
 		if err := persistRepositoryWorkloadBuildState(e.files, e.buildFingerprints); err != nil {
 			return fmt.Errorf("record verified workload build identity: %w", err)
+		}
+	}
+	if len(e.configFingerprints) > 0 {
+		if err := persistRepositoryWorkloadConfigState(e.files, e.configFingerprints); err != nil {
+			return fmt.Errorf("record verified workload configuration identity: %w", err)
 		}
 	}
 	fmt.Fprintf(out, "Workload Compose: %s\n", e.workload.Compose)

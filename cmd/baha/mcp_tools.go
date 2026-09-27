@@ -86,6 +86,15 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		}, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("evidence", "Export deterministic secret-safe lifecycle, policy, verification, recovery and audit evidence for the selected application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
+		result, err := collectApplicationEvidence(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("policy.check", "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
@@ -211,6 +220,12 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		args = append(args, "--password-file", passwordFile)
 		if output := strings.TrimSpace(input.OutputPath); output != "" {
 			args = append(args, "--output", output)
+		}
+		for _, class := range input.IncludeState {
+			args = append(args, "--include-state", class)
+		}
+		for _, class := range input.ExcludeState {
+			args = append(args, "--exclude-state", class)
 		}
 		if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)

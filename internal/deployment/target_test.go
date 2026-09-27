@@ -107,6 +107,30 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 	}
 }
 
+func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: "dev"}
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = LoadDeploymentRecord(id)
+	if err == nil {
+		t.Fatal("expected incomplete deployment record error")
+	}
+	stateErr, ok := DeploymentRecordState(err)
+	if !ok {
+		t.Fatalf("expected DeploymentRecordStateError, got %T: %v", err, err)
+	}
+	if stateErr.Kind != "incomplete" || stateErr.Identity != id {
+		t.Fatalf("unexpected state error: %#v", stateErr)
+	}
+}
+
 func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	for _, target := range []string{"docker-dev", "podman-dev"} {

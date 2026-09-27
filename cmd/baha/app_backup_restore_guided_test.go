@@ -61,13 +61,26 @@ func TestFormatBackupPreviewContainsDurableStateWithoutSecretNames(t *testing.T)
 	var out bytes.Buffer
 	formatBackupPreview(&out, m, "mailflow-production.bhbackup")
 	text := out.String()
-	for _, wanted := range []string{"Application: mailflow", "Environment: production", "PostgreSQL: primary", "Managed secrets: included", "never placed in argv"} {
+	for _, wanted := range []string{"Application: mailflow", "Environment: production", "PostgreSQL: primary", "Managed secrets: included", "application.metadata: selected", "database.sql/primary: selected", "secrets/default: selected", "never placed in argv"} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("backup preview missing %q:\n%s", wanted, text)
 		}
 	}
 	if strings.Contains(text, "API_TOKEN") {
 		t.Fatalf("backup preview exposed secret name:\n%s", text)
+	}
+}
+
+func TestFormatBackupPreviewShowsSupportedObjectStorage(t *testing.T) {
+	m := application.New("demo", "dev", false, false, false)
+	m = application.WithObjectStorageBuckets(m, "uploads")
+	var out bytes.Buffer
+	formatBackupPreview(&out, m, "demo-dev.bhbackup")
+	text := out.String()
+	for _, wanted := range []string{"object-storage.s3/uploads: selected", "security.pki/runtime-identities: selected"} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("backup preview missing %q:\n%s", wanted, text)
+		}
 	}
 }
 
@@ -184,5 +197,40 @@ func TestWithInMemoryPasswordFileUsesOwnerOnlyNonDiskFile(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPromptGuidedRecoverySelectionUsesTypedDefaultsAndChoices(t *testing.T) {
+	selection, err := applicationbackup.NewRecoverySelection([]applicationbackup.RecoveryContributor{
+		{StateClass: applicationbackup.StateApplicationMetadata, Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+		{StateClass: applicationbackup.StateSQL, LogicalResource: "primary", Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+		{StateClass: applicationbackup.StateLogs, LogicalResource: "application", Ownership: "application", Support: applicationbackup.RecoverySupported},
+		{StateClass: applicationbackup.StatePKI, LogicalResource: "runtime-identities", Ownership: "application", Support: applicationbackup.RecoverySupported, DefaultSelected: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "selection")
+	if err := os.WriteFile(path, []byte("no\nyes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	var out bytes.Buffer
+	selected, err := promptGuidedRecoverySelection(file, &out, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.HasSelected(applicationbackup.StateSQL) {
+		t.Fatal("SQL should have been excluded by interactive selection")
+	}
+	if !selected.HasSelected(applicationbackup.StateLogs) {
+		t.Fatal("logs should have been included by interactive selection")
+	}
+	if !selected.HasSelected(applicationbackup.StateApplicationMetadata) || !selected.HasSelected(applicationbackup.StatePKI) {
+		t.Fatal("required reconstruction state was not preserved")
 	}
 }

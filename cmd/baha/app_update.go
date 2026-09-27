@@ -129,7 +129,11 @@ func executeApplicationUpdateLifecycle(ctx context.Context, store application.St
 		return fmt.Errorf("application reached READY after update but recording update metadata failed: %w", err)
 	}
 	fmt.Fprintf(out, "Application %s / %s / %s updated successfully: %s -> %s\n", resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, state.Current, state.Target)
-	return nil
+	detail := "source fast-forwarded and reconciled to READY"
+	if opts.NoBackup {
+		detail += "; operator explicitly acknowledged update without a recovery point"
+	}
+	return recordApplicationAudit(ctx, resolved, "update", "success", "verified", detail)
 
 }
 

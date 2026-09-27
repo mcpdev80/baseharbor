@@ -18,12 +18,13 @@ const (
 var ErrNoRecoveryMetadata = errors.New("no application recovery metadata recorded")
 
 type RecoveryMetadata struct {
-	Version         int       `json:"version"`
-	Application     string    `json:"application"`
-	Environment     string    `json:"environment"`
-	RestoredAt      time.Time `json:"restored_at"`
-	BackupCreatedAt time.Time `json:"backup_created_at"`
-	ArchivePath     string    `json:"archive_path"`
+	Version         int                           `json:"version"`
+	Application     string                        `json:"application"`
+	Environment     string                        `json:"environment"`
+	RestoredAt      time.Time                     `json:"restored_at"`
+	BackupCreatedAt time.Time                     `json:"backup_created_at"`
+	ArchivePath     string                        `json:"archive_path"`
+	Recovery        []RecoveryContributorMetadata `json:"recovery,omitempty"`
 }
 
 func (m RecoveryMetadata) Validate() error {
@@ -44,6 +45,19 @@ func (m RecoveryMetadata) Validate() error {
 	}
 	if strings.TrimSpace(m.ArchivePath) == "" {
 		return errors.New("recovery metadata archive path is required")
+	}
+	for _, contributor := range m.Recovery {
+		if strings.TrimSpace(contributor.StateClass) == "" || strings.TrimSpace(contributor.Ownership) == "" {
+			return errors.New("recovery contributor metadata is incomplete")
+		}
+		switch contributor.Support {
+		case "supported", "unsupported", "external":
+		default:
+			return fmt.Errorf("unsupported recovery contributor support %q", contributor.Support)
+		}
+		if contributor.Selected && contributor.Support != "supported" {
+			return errors.New("selected recovery contributor must be supported")
+		}
 	}
 	return nil
 }

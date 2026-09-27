@@ -644,6 +644,14 @@ func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
 }
 
 func signedS3Request(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
+	return signedS3RequestLimit(ctx, client, endpoint, method, bucket, key, credentials, payload, 1<<20)
+}
+
+func signedS3RequestLimit(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
+	return signedS3RequestQuery(ctx, client, endpoint, method, bucket, key, nil, credentials, payload, limit)
+}
+
+func signedS3RequestQuery(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, query url.Values, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
 	path := "/"
 	if bucket != "" {
 		path += escapePath(bucket)
@@ -651,10 +659,14 @@ func signedS3Request(ctx context.Context, client *http.Client, endpoint, method,
 	if key != "" {
 		path += "/" + escapePath(key)
 	}
-	return signedAWSRequest(ctx, client, endpoint, "s3", method, path, "", credentials, payload)
+	return signedAWSRequestQuery(ctx, client, endpoint, "s3", method, path, "", query, credentials, payload, limit)
 }
 
 func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, service, method, path, contentType string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
+	return signedAWSRequestQuery(ctx, client, endpoint, service, method, path, contentType, nil, credentials, payload, 1<<20)
+}
+
+func signedAWSRequestQuery(ctx context.Context, client *http.Client, endpoint, service, method, path, contentType string, query url.Values, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
 	base, err := url.Parse(endpoint)
 	if err != nil {
 		return 0, nil, err
@@ -665,8 +677,11 @@ func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, servic
 	if path == "" {
 		path = "/"
 	}
+	if limit < 1 {
+		return 0, nil, errors.New("AWS response size limit must be positive")
+	}
 	base.Path = path
-	base.RawQuery = ""
+	base.RawQuery = query.Encode()
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
@@ -675,7 +690,7 @@ func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, servic
 	host := base.Host
 	canonicalHeaders := "host:" + host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
-	canonicalRequest := method + "\n" + base.EscapedPath() + "\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
+	canonicalRequest := method + "\n" + base.EscapedPath() + "\n" + base.RawQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
 	scope := dateStamp + "/us-east-1/" + service + "/aws4_request"
 	requestHash := sha256.Sum256([]byte(canonicalRequest))
 	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(requestHash[:])
@@ -701,9 +716,12 @@ func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, servic
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return resp.StatusCode, nil, err
+	}
+	if int64(len(body)) > limit {
+		return resp.StatusCode, nil, fmt.Errorf("AWS response exceeds recovery limit of %d bytes", limit)
 	}
 	return resp.StatusCode, body, nil
 }

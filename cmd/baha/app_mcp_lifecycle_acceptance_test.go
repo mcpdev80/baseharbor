@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,5 +162,14 @@ func formatMCPAcceptanceContent(result *mcp.CallToolResult) string {
 	if result == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%v", result.Content)
+	var parts []string
+	for _, content := range result.Content {
+		switch value := content.(type) {
+		case *mcp.TextContent:
+			parts = append(parts, value.Text)
+		default:
+			parts = append(parts, fmt.Sprintf("%v", content))
+		}
+	}
+	return strings.Join(parts, "\n")
 }

@@ -106,7 +106,11 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 			Next:        "Inspect baseharbor.doctor findings and resolve the remaining non-repairable condition.",
 		}
 	}
-	return nil
+	resolved, err := resolveApplication(ctx, store, nameArgs, "repair")
+	if err != nil {
+		return err
+	}
+	return recordApplicationAudit(ctx, resolved, "repair", "success", "doctor verified", "safe repair completed and doctor returned healthy")
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {

@@ -70,6 +70,17 @@ func TestRepositoryWorkloadStatusReadyIncludesExposure(t *testing.T) {
 	}
 }
 
+func TestRepositoryWorkloadStatusConfigDriftIsNotReady(t *testing.T) {
+	status := repositoryWorkloadStatus{
+		Found:       true,
+		Services:    []workloadServiceStatus{{Service: "api", State: "running", Ready: true}},
+		ConfigDrift: []string{"api"},
+	}
+	if status.Ready() {
+		t.Fatalf("configuration drift must prevent READY: %#v", status)
+	}
+}
+
 func TestInspectWorkloadExposuresDeduplicatesIPv4IPv6Publishers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	defer server.Close()

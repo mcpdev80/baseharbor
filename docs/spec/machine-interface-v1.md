@@ -17,6 +17,7 @@ apply
 status
 doctor
 observe
+evidence
 update
 repair
 backup

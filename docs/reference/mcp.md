@@ -26,6 +26,7 @@ baseharbor.apply
 baseharbor.status
 baseharbor.doctor
 baseharbor.observe
+baseharbor.evidence
 baseharbor.update
 baseharbor.repair
 baseharbor.backup
@@ -40,6 +41,8 @@ baseharbor.policy.explain
 These are BaseHarbor lifecycle operations, not wrappers around CLI commands.
 
 `baseharbor.apply` is the semantic converge operation rather than a 1:1 mirror of every human CLI alias.
+
+`baseharbor.evidence` is read-only and returns the same deterministic evidence bundle as `baha app evidence -o json`, including recovery contributor evidence and bounded audit history.
 
 `baseharbor.destroy` is destructive and requires explicit approval.
 
@@ -76,6 +79,7 @@ For clients that normalize the server name `baha` plus MCP tool dots into unders
     "baha_baseharbor_plan": "allow",
     "baha_baseharbor_doctor": "allow",
     "baha_baseharbor_observe": "allow",
+    "baha_baseharbor_evidence": "allow",
     "baha_baseharbor_policy_check": "allow",
     "baha_baseharbor_policy_explain": "allow"
   }

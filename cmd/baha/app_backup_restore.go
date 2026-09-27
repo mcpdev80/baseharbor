@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -24,8 +27,8 @@ func appBackupCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "backup",
 		Summary: "Create one encrypted recovery unit for an application",
-		Usage:   "baha app backup [NAME] --password-file FILE [--output FILE]",
-		Long:    "Quiesces the repository workload and per-application secret broker, captures desired application metadata, every managed PostgreSQL instance and the application-owned OpenBao secret scope, encrypts the complete recovery unit, then restarts the quiesced application components.",
+		Usage:   "baha app backup [NAME] --password-file FILE [--output FILE] [--include-state CLASS] [--exclude-state CLASS]",
+		Long:    "Discovers typed application recovery state, applies optional state-class selectors, quiesces the workload, captures selected BaseHarbor-owned durable state into one encrypted recovery unit, and explicitly records external or unsupported contributors.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return executeApplicationBackupLifecycle(ctx, store, args, out, errOut)
 		},
@@ -37,7 +40,7 @@ func appRestoreCommand(store application.Store) *cli.Command {
 		Name:    "restore",
 		Summary: "Restore and verify an encrypted application recovery unit",
 		Usage:   "baha app restore BACKUP [NAME] --password-file FILE",
-		Long:    "Validates and decrypts the complete archive before mutation, rebuilds protected BaseHarbor application state, restores PostgreSQL and the matching OpenBao secret scope while the workload remains stopped, regenerates runtime identities, then starts and verifies the broker and repository workload.",
+		Long:    "Validates and decrypts the recovery unit before mutation, follows its typed recovery manifest, reconstructs ephemeral identities, restores selected durable state while the workload remains stopped, then runs final status and doctor verification.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return executeApplicationRestoreLifecycle(ctx, store, args, out, errOut)
 		},
@@ -45,7 +48,11 @@ func appRestoreCommand(store application.Store) *cli.Command {
 }
 
 func executeApplicationBackupLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
-	filtered, environment, err := extractApplicationEnvironment(args, "backup")
+	selectionFiltered, selectionArgs, err := extractRecoverySelectionArgs(args)
+	if err != nil {
+		return err
+	}
+	filtered, environment, err := extractApplicationEnvironment(selectionFiltered, "backup")
 	if err != nil {
 		return err
 	}
@@ -62,9 +69,6 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		return err
 	}
 	m := resolved.Manifest
-	if application.HasObjectStorage(m) {
-		return errors.New("application backup does not yet include object-storage contents; refusing to create an incomplete recovery unit")
-	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
 		return err
@@ -127,7 +131,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		brokerStopped = true
 	}
 
-	captureErr := captureApplicationBackup(ctx, compose, platformFiles, m, files, password, outputPath)
+	captureErr := captureApplicationBackup(ctx, compose, platformFiles, resolved, files, selectionArgs, password, outputPath)
 
 	restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
 	if captureErr != nil || restartErr != nil {
@@ -157,8 +161,6 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	m := restoreData.manifest
-	postgresBackups := restoreData.postgresBackups
-	secretBackup := restoreData.secretBackup
 
 	resolved, err := resolveRestoreTarget(ctx, store, m)
 	if err != nil {
@@ -168,6 +170,18 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
+	return restoreApplicationState(ctx, store, out, resolved, compose, restoreData)
+
+}
+
+func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.Compose, restoreData applicationRestoreData) error {
+	m := restoreData.manifest
+	postgresBackups := restoreData.postgresBackups
+	secretBackup := restoreData.secretBackup
+	objectBackups := restoreData.objectStorage
+	workloadStorage := restoreData.workloadStorage
+	logsHistory := restoreData.logsHistory
+	var err error
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
@@ -232,16 +246,41 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 			return errors.New("restore target OpenBao scope is not empty; refusing PostgreSQL mutation")
 		}
 	}
+	var preparedObjectStorage *managedObjectStorageExecution
+	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateObjectStorage) {
+		preparedObjectStorage, err = prepareManagedObjectStorage(ctx, compose, resolved, issuer)
+		if err != nil {
+			return fmt.Errorf("prepare object-storage recovery: %w", err)
+		}
+		if err := convergeManagedObjectStorage(ctx, io.Discard, preparedObjectStorage); err != nil {
+			return fmt.Errorf("provision object-storage recovery target: %w", err)
+		}
+	}
 	if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 		return err
 	}
 	if err := waitForManagedRuntime(ctx, compose, m, files); err != nil {
 		return err
 	}
-	if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
-		return err
+	var preparedLogs *managedLogsExecution
+	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateLogs) {
+		preparedLogs, err = prepareManagedLogs(ctx, compose, resolved, issuer)
+		if err != nil {
+			return fmt.Errorf("prepare log-history recovery: %w", err)
+		}
+		if err := convergeManagedLogsBeforeWorkload(ctx, io.Discard, files, preparedLogs); err != nil {
+			return fmt.Errorf("provision log-history recovery target: %w", err)
+		}
+		if err := logsprovider.RestoreApplicationHistoryAt(ctx, m, resolved.TargetStateRoot, resolved.Target.Name, logsHistory); err != nil {
+			return fmt.Errorf("restore application log history: %w", err)
+		}
 	}
-	if m.Services.Secrets {
+	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateSQL) {
+		if err := application.RestorePostgresInstances(ctx, compose, m, files, postgresBackups); err != nil {
+			return err
+		}
+	}
+	if m.Services.Secrets && recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateSecrets) {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 		credentialsPath := openbao.ApplicationCredentialsPath(files.Dir)
 		if err := openbao.RestoreApplicationSecrets(ctx, compose, platformFiles, identity, credentialsPath, secretBackup); err != nil {
@@ -249,6 +288,16 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 		}
 		if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, credentialsPath); err != nil {
 			return fmt.Errorf("verify restored OpenBao scope: %w", err)
+		}
+	}
+	if preparedObjectStorage != nil {
+		for _, backup := range objectBackups {
+			if err := preparedObjectStorage.driver.RestoreBucket(ctx, backup); err != nil {
+				return err
+			}
+		}
+		if err := objectstorage.VerifyApplicationBucketsAt(ctx, compose, m, files, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
+			return fmt.Errorf("verify restored object storage: %w", err)
 		}
 	}
 	if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
@@ -259,9 +308,37 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 			return err
 		}
 	}
+	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage) {
+		_, targetVolumes, err := resolveRecoveryWorkloadStorage(ctx, compose, resolved, files, false)
+		if err != nil {
+			return fmt.Errorf("resolve workload storage recovery target: %w", err)
+		}
+		resolvedNames := make([]string, 0, len(targetVolumes))
+		for _, volume := range targetVolumes {
+			resolvedNames = append(resolvedNames, volume.Logical)
+			archive, ok := workloadStorage[volume.Logical]
+			if !ok {
+				return fmt.Errorf("workload recovery payload is missing %q", volume.Logical)
+			}
+			if err := compose.EnsureOwnedVolume(ctx, volume.Project, volume.Volume); err != nil {
+				return err
+			}
+			if err := compose.RestoreOwnedVolume(ctx, volume.Project, volume.Volume, archive); err != nil {
+				return err
+			}
+		}
+		if err := validateRecoveredLogicalResources(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage, resolvedNames); err != nil {
+			return err
+		}
+	}
 	if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("start restored application workload: %w", err)
+	}
+	if preparedLogs != nil {
+		if err := verifyManagedLogsAfterWorkload(ctx, io.Discard, preparedLogs); err != nil {
+			return fmt.Errorf("verify restored log history: %w", err)
+		}
 	}
 	if err := convergeManagedExposure(ctx, out, preparedExposure); err != nil {
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
@@ -272,6 +349,20 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	}
 	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
 		return fmt.Errorf("record restored deployment: %w", err)
+	}
+	status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(m.Name, m.Environment))
+	if err != nil {
+		return fmt.Errorf("final restore status verification: %w", err)
+	}
+	if !status.Ready {
+		return errors.New("final restore status verification did not reach READY")
+	}
+	doctor, err := collectApplicationDoctor(ctx, store, machineApplicationArgs(m.Name, m.Environment))
+	if err != nil {
+		return fmt.Errorf("final restore doctor verification: %w", err)
+	}
+	if !doctor.Healthy {
+		return errors.New("final restore doctor verification is not healthy")
 	}
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
@@ -442,6 +533,15 @@ func parseAppBackupArgs(args []string) (name, outputPath, passwordPath string, e
 				return "", "", "", usageError("--password-file requires a file path", "Never pass a backup password directly on the command line.")
 			}
 			passwordPath = args[i]
+		case "--include-state", "--exclude-state":
+			option := args[i]
+			i++
+			if i >= len(args) || args[i] == "" {
+				return "", "", "", usageError(option+" requires a recovery state class", "Use a typed recovery state class such as database.sql or object-storage.s3.")
+			}
+			if _, parseErr := applicationbackup.ParseRecoveryStateClass(args[i]); parseErr != nil {
+				return "", "", "", parseErr
+			}
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return "", "", "", usageError("unknown option "+args[i], "Run 'baha app backup --help' for usage.")
