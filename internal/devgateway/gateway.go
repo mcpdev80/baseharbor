@@ -37,6 +37,11 @@ type Route struct {
 	ServerName string `json:"server_name"`
 }
 
+type OwnerRoutes struct {
+	Owner  string
+	Routes []Route
+}
+
 type state struct {
 	Version int     `json:"version"`
 	Routes  []Route `json:"routes"`
@@ -74,10 +79,10 @@ func FilesFor(target string) (Files, error) {
 }
 
 func ReplaceOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target, owner string, routes []Route) error {
-	owner = strings.TrimSpace(owner)
-	if owner == "" {
-		return errors.New("development gateway route owner is required")
-	}
+	return ReplaceRoutes(ctx, runtime, issuer, target, OwnerRoutes{Owner: owner, Routes: routes})
+}
+
+func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, groups ...OwnerRoutes) error {
 	files, err := FilesFor(target)
 	if err != nil {
 		return err
@@ -88,18 +93,29 @@ func ReplaceOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacce
 	} else if err != nil {
 		return err
 	}
+	owners := map[string]struct{}{}
+	for _, group := range groups {
+		owner := strings.TrimSpace(group.Owner)
+		if owner == "" {
+			return errors.New("development gateway route owner is required")
+		}
+		owners[owner] = struct{}{}
+	}
 	filtered := current.Routes[:0]
 	for _, route := range current.Routes {
-		if route.Owner != owner {
+		if _, replace := owners[route.Owner]; !replace {
 			filtered = append(filtered, route)
 		}
 	}
-	for _, route := range routes {
-		route.Owner = owner
-		if err := validateRoute(route); err != nil {
-			return err
+	for _, group := range groups {
+		owner := strings.TrimSpace(group.Owner)
+		for _, route := range group.Routes {
+			route.Owner = owner
+			if err := validateRoute(route); err != nil {
+				return err
+			}
+			filtered = append(filtered, route)
 		}
-		filtered = append(filtered, route)
 	}
 	current.Routes = normalizedRoutes(filtered)
 	if err := saveState(files.State, current); err != nil {
