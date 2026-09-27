@@ -263,7 +263,7 @@ func (r *Registry) ReleaseManagedApplication(application string) {
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedApplicationInstances(application)
+	r.removeUnboundOwnedInstances(application)
 }
 
 func (r *Registry) ReleaseManagedDeployment(application, environment string) {
@@ -282,7 +282,7 @@ func (r *Registry) ReleaseApplication(application string) {
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedApplicationInstances(application)
+	r.removeUnboundOwnedInstances(application)
 }
 
 func (r *Registry) ReleaseApplicationDeployment(application, environment string) {
@@ -313,20 +313,29 @@ func (r *Registry) releaseDeployment(application, environment string, preserveEx
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedApplicationInstances(application)
+	r.removeUnboundOwnedInstances(application)
 }
 
-func (r *Registry) removeUnboundOwnedApplicationInstances(application string) {
+func (r *Registry) removeUnboundOwnedInstances(application string) {
 	referenced := make(map[string]struct{}, len(r.Bindings))
 	for _, binding := range r.Bindings {
 		referenced[binding.ProviderInstanceID] = struct{}{}
 	}
 	instances := r.Instances[:0]
 	for _, instance := range r.Instances {
-		if instance.Scope == ScopeApplication &&
-			instance.Ownership == OwnershipBaseHarbor &&
-			instance.OwnerApplication == application {
-			if _, stillReferenced := referenced[instance.ID]; !stillReferenced {
+		if instance.Ownership != OwnershipBaseHarbor {
+			instances = append(instances, instance)
+			continue
+		}
+		if _, stillReferenced := referenced[instance.ID]; stillReferenced {
+			instances = append(instances, instance)
+			continue
+		}
+		switch instance.Scope {
+		case ScopeShared:
+			continue
+		case ScopeApplication:
+			if instance.OwnerApplication == application {
 				continue
 			}
 		}
