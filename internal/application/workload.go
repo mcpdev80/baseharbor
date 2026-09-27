@@ -262,7 +262,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	managedRuntime := HasManagedRuntimeServices(m)
 	serviceBindings := managedRuntime || HasIdentity(m)
 	runtimeBroker := RequiresRuntimeBroker(m)
-	backendNetwork := managedRuntime || runtimeBroker
+	applicationBackendNetwork := HasApplicationScopedRuntimeServices(m) || runtimeBroker
+	sharedBackendNetwork := HasSharedBackends(m)
+	backendNetwork := applicationBackendNetwork || sharedBackendNetwork
 	objectStorage := HasObjectStorage(m)
 	runtimeObjectStorageServices := map[string]struct{}{}
 	for _, permission := range m.Runtime.Permissions {
@@ -423,8 +425,11 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		if hasNetworks {
 			b.WriteString("    networks:\n")
 			if !metricsSource && !exposed && !canonicalDevWorkload {
-				if backendNetwork {
+				if applicationBackendNetwork {
 					b.WriteString("      - baseharbor-backend\n")
+				}
+				if sharedBackendNetwork {
+					b.WriteString("      - baseharbor-shared-backend\n")
 				}
 				if serviceObjectStorage {
 					b.WriteString("      - baseharbor-object-storage\n")
@@ -437,8 +442,11 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				}
 				continue
 			}
-			if backendNetwork {
+			if applicationBackendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
+			}
+			if sharedBackendNetwork {
+				b.WriteString("      baseharbor-shared-backend: {}\n")
 			}
 			if serviceObjectStorage {
 				b.WriteString("      baseharbor-object-storage: {}\n")
@@ -468,9 +476,13 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	}
 	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || identityManaged || len(metricsServices) > 0 || len(exposedServices) > 0 || canonicalDevWorkload {
 		b.WriteString("networks:\n")
-		if backendNetwork {
+		if applicationBackendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", applicationBackendNetworkForRuntime(m, runtimeProject))
+		}
+		if sharedBackendNetwork {
+			b.WriteString("  baseharbor-shared-backend:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(SharedBackendNetworkName(runtime.Namespace, m.Environment)))
 		}
 		if objectStorage || hasRuntimeObjectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
