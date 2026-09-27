@@ -270,7 +270,9 @@ func TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources(t *testing.T
 	if err := writeSharedBackendState(shared.State, state); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &fakePostgresBackupRuntime{}
+	runtime := &fakePostgresBackupRuntime{verifyResult: map[string]string{
+		sharedPostgresService(m.Environment): "baha_app_a_dev\n",
+	}}
 	backup := []PostgresBackup{{Instance: "default", SQL: []byte("CREATE TABLE sentinel(value text);\n")}}
 	if err := RestorePostgresInstancesAt(context.Background(), runtime, m, RuntimeFiles{}, root, "baha", backup); err != nil {
 		t.Fatalf("RestorePostgresInstancesAt() error = %v", err)
