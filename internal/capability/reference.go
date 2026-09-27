@@ -18,6 +18,7 @@ var (
 	Loki          = Provider{Kind: ProviderLoki, Capabilities: []Kind{Logs}}
 	Tempo         = Provider{Kind: ProviderTempo, Capabilities: []Kind{Traces}}
 	Keycloak      = Provider{Kind: ProviderKeycloak, Capabilities: []Kind{Identity}}
+	ExternalOIDC  = Provider{Kind: ProviderExternalOIDC, Capabilities: []Kind{Identity}}
 )
 
 var (
@@ -149,6 +150,13 @@ var (
 			{Name: "keycloak-traces", Kind: ObservabilityTraces, Status: ObservabilityUnsupported, Verification: ObservabilityVerifyNone},
 		}},
 	}
+	ExternalOIDCIntegration = IntegrationDescriptor{
+		ID: "baseharbor/external-oidc", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: ExternalOIDC,
+		Services:        []ServiceKind{ServiceIdentity},
+		Capabilities:    []SpecificationID{IdentityOIDCV1.ID},
+		SupportedScopes: []ProviderScope{ScopeExternal},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -182,6 +190,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return TempoIntegration, nil
 	case ProviderKeycloak:
 		return KeycloakIntegration, nil
+	case ProviderExternalOIDC:
+		return ExternalOIDCIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
