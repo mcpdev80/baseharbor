@@ -338,6 +338,14 @@ func promptLine(reader *bufio.Reader, out io.Writer, label, defaultValue string)
 	return line, nil
 }
 
+func promptOptionalYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {
+	value, err := promptYesNo(reader, out, label, defaultYes)
+	if errors.Is(err, io.EOF) {
+		return defaultYes, nil
+	}
+	return value, err
+}
+
 func promptYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {
 	suffix := "[Y/n]"
 	if !defaultYes {
