@@ -283,6 +283,7 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
       PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
       PGADMIN_DISABLE_POSTFIX: "True"
+      PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGPASS_FILE: /run/baseharbor/pgpass
     ports:
