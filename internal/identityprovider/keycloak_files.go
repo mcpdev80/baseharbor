@@ -190,6 +190,35 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	return files, nil
 }
 
+func DestroyAllSharedKeycloakAt(ctx context.Context, runtime KeycloakRuntime, dataDir, namespace string) error {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak", "shared")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	project := bhruntime.SharedProjectName(namespace)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		compose := filepath.Join(dir, "compose.yaml")
+		env := filepath.Join(dir, "runtime.env")
+		if _, err := os.Stat(compose); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := runtime.DestroyProject(ctx, project, compose, env); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(root)
+}
+
 func keycloakStateIdentity(app application.Manifest, placement capability.ProviderPlacement, dataDir, namespace string) (string, string, error) {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak")
 	switch placement.Scope {
