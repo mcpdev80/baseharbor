@@ -171,6 +171,7 @@ func EnsureRuntimeModuleOverrideForRuntimeAt(
 		Class    observability.SourceClass
 	}
 	allowed := map[string]struct{}{}
+	filterAllowedServices := allowedServices != nil
 	for _, service := range allowedServices {
 		if service = strings.TrimSpace(service); service != "" {
 			allowed[service] = struct{}{}
@@ -185,7 +186,7 @@ func EnsureRuntimeModuleOverrideForRuntimeAt(
 		if !ok || sourceProject != project {
 			continue
 		}
-		if len(allowed) > 0 {
+		if filterAllowedServices {
 			if _, ok := allowed[service]; !ok {
 				continue
 			}
