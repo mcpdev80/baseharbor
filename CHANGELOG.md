@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
+- Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
+- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao and managed identity, with semantic interface classification and secure local TLS access.
+
+### Changed
+
+- Status, Doctor, JSON/MCP evidence and application lifecycle now observe and verify managed identity state, operator-authentication context and selected management surfaces.
+- Identity recovery explicitly separates portable application identity intent from provider-held users, MFA and passkey state instead of claiming unsupported provider-global snapshots.
+- Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
+- Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
+
+### Fixed
+
+- Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
+- Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
+
+### Security
+
+- Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
+- Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
+- Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
+
 ## [0.4.16] - 2026-09-26
 
 ### Added
