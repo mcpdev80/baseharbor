@@ -178,8 +178,12 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	}, nil
 }
 
-func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
+func WorkloadServiceBindingProjectionDir(files RuntimeFiles) string {
 	return filepath.Join(files.Dir, workloadServiceBindingDirName)
+}
+
+func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
+	return WorkloadServiceBindingProjectionDir(files)
 }
 
 func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, values map[string]string) (string, error) {
