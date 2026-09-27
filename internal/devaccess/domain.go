@@ -11,7 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-const DefaultDomain = "mcp.dev"
+const DefaultDomain = "baseharbor.localhost"
 
 var domainLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
 
