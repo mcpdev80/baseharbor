@@ -22,6 +22,7 @@ type Manifest struct {
 	Metrics     MetricsRequirements
 	Logs        LogsRequirements
 	Runtime     RuntimeRequirements
+	Identity    IdentityRequirements
 }
 
 type RuntimeRequirements struct {
@@ -62,9 +63,57 @@ type Services struct {
 	Cache                bool
 	Secrets              bool
 	ObjectStorage        bool
+	Identity             bool
+	SQLManagementUI      bool
+	CacheManagementUI    bool
+	SecretsManagementUI  bool
+	ObjectStorageManagementUI bool
+	IdentityManagementUI bool
 	SQLInstances         map[string]ServiceInstance
 	CacheInstances       map[string]ServiceInstance
 	ObjectStorageBuckets map[string]ServiceInstance
+}
+
+type IdentityRequirements struct {
+	CallbackPaths []string
+	LogoutPaths   []string
+	Scopes        []string
+	Claims        []string
+	Authentication IdentityAuthenticationRequirements
+}
+
+type IdentityAuthenticationRequirements struct {
+	MFA          string
+	Methods      []string
+	Passwordless bool
+}
+
+func HasIdentity(m Manifest) bool { return m.Services.Identity }
+
+func WithIdentity(m Manifest) Manifest {
+	m.Services.Identity = true
+	if len(m.Identity.Scopes) == 0 {
+		m.Identity.Scopes = []string{"openid", "profile", "email"}
+	}
+	return m
+}
+
+func WithIdentityCallbackPath(m Manifest, path string) Manifest {
+	m = WithIdentity(m)
+	m.Identity.CallbackPaths = append(m.Identity.CallbackPaths, strings.TrimSpace(path))
+	return m
+}
+
+func WithIdentityLogoutPath(m Manifest, path string) Manifest {
+	m = WithIdentity(m)
+	m.Identity.LogoutPaths = append(m.Identity.LogoutPaths, strings.TrimSpace(path))
+	return m
+}
+
+func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwordless bool) Manifest {
+	m = WithIdentity(m)
+	m.Identity.Authentication = IdentityAuthenticationRequirements{MFA: strings.TrimSpace(mfa), Methods: append([]string(nil), methods...), Passwordless: passwordless}
+	return m
 }
 
 // WorkloadConfig optionally disambiguates an existing application Compose
