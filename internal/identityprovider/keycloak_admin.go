@@ -105,7 +105,7 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 
 func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakRealm) error {
 	path := "/admin/realms/" + url.PathEscape(desired.Realm)
-	status, _, err := a.do(ctx, http.MethodGet, path, nil)
+	status, body, err := a.do(ctx, http.MethodGet, path, nil)
 	if err != nil { return err }
 	switch status {
 	case http.StatusOK:
