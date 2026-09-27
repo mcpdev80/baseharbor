@@ -1,0 +1,621 @@
+package application
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+const sharedBackendStateVersion = 1
+
+type sharedBackendState struct {
+	Version               int                              `json:"version"`
+	Environment           string                           `json:"environment"`
+	PostgresAdminPassword string                           `json:"postgres_admin_password,omitempty"`
+	PostgresHostPort      int                              `json:"postgres_host_port,omitempty"`
+	Applications          map[string]sharedBackendAppState `json:"applications"`
+}
+
+type sharedBackendAppState struct {
+	Application string                            `json:"application"`
+	Environment string                            `json:"environment"`
+	SQL         map[string]sharedPostgresResource `json:"sql,omitempty"`
+	Cache       map[string]sharedValkeyResource   `json:"cache,omitempty"`
+}
+
+type sharedPostgresResource struct {
+	Database string `json:"database"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type sharedValkeyResource struct {
+	Password string `json:"password"`
+	HostPort int    `json:"host_port"`
+}
+
+type SharedBackendFiles struct {
+	Dir     string
+	Compose string
+	Env     string
+	State   string
+	Project string
+	Network string
+}
+
+func SharedBackendNetworkName(namespace, environment string) string {
+	base := bhruntime.SharedResourceProjectName(namespace)
+	env := sharedBackendToken(environment)
+	if env == "" {
+		env = "dev"
+	}
+	return base + "-" + env + "-backends"
+}
+
+func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendFiles {
+	env := sharedBackendToken(environment)
+	if env == "" {
+		env = "dev"
+	}
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends", env)
+	return SharedBackendFiles{
+		Dir:     dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "provider.env"),
+		State:   filepath.Join(dir, "state.json"),
+		Project: bhruntime.SharedProjectName(namespace),
+		Network: SharedBackendNetworkName(namespace, environment),
+	}
+}
+
+func UsesSharedPostgreSQL(m Manifest) bool {
+	placement, err := ResolveProviderPlacement(m, capability.ProviderPostgreSQL)
+	return err == nil && placement.Scope == capability.ScopeShared && len(SQLInstanceNames(m)) > 0
+}
+
+func UsesSharedValkey(m Manifest) bool {
+	placement, err := ResolveProviderPlacement(m, capability.ProviderValkey)
+	return err == nil && placement.Scope == capability.ScopeShared && len(CacheInstanceNames(m)) > 0
+}
+
+func HasSharedBackends(m Manifest) bool {
+	return UsesSharedPostgreSQL(m) || UsesSharedValkey(m)
+}
+
+func HasApplicationScopedRuntimeServices(m Manifest) bool {
+	if len(SQLInstanceNames(m)) > 0 && !UsesSharedPostgreSQL(m) {
+		return true
+	}
+	if len(CacheInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
+		return true
+	}
+	return false
+}
+
+func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, issuer serviceaccess.Issuer, dataDir, namespace string, m Manifest, files RuntimeFiles) (bool, error) {
+	if !HasSharedBackends(m) {
+		return false, nil
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
+		return false, fmt.Errorf("create shared backend state: %w", err)
+	}
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return false, err
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return false, err
+	}
+	appKey := sharedBackendApplicationKey(m)
+	app := state.Applications[appKey]
+	app.Application = m.Name
+	app.Environment = m.Environment
+	if app.SQL == nil {
+		app.SQL = map[string]sharedPostgresResource{}
+	}
+	if app.Cache == nil {
+		app.Cache = map[string]sharedValkeyResource{}
+	}
+
+	if UsesSharedPostgreSQL(m) {
+		if state.PostgresAdminPassword == "" {
+			state.PostgresAdminPassword, err = sharedBackendSecret(32)
+			if err != nil {
+				return false, err
+			}
+		}
+		if state.PostgresHostPort == 0 {
+			state.PostgresHostPort, err = allocateLoopbackPort(nil)
+			if err != nil {
+				return false, err
+			}
+		}
+		for _, instance := range SQLInstanceNames(m) {
+			resource := sharedPostgresResource{
+				Database: values[postgresRuntimeKey(instance, "DB")],
+				Username: values[postgresRuntimeKey(instance, "USER")],
+				Password: values[postgresRuntimeKey(instance, "PASSWORD")],
+			}
+			if resource.Database == "" || resource.Username == "" || resource.Password == "" {
+				return false, fmt.Errorf("shared PostgreSQL application resource %s is incomplete", instance)
+			}
+			app.SQL[instance] = resource
+			values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
+			values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
+		}
+	}
+
+	if UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			port, convErr := strconv.Atoi(strings.TrimSpace(values[valkeyRuntimeKey(instance, "HOST_PORT")]))
+			if convErr != nil || port <= 0 {
+				port, err = allocateLoopbackPort(nil)
+				if err != nil {
+					return false, err
+				}
+			}
+			password := values[valkeyRuntimeKey(instance, "PASSWORD")]
+			if password == "" {
+				return false, fmt.Errorf("shared Valkey application resource %s is missing password", instance)
+			}
+			app.Cache[instance] = sharedValkeyResource{Password: password, HostPort: port}
+			values[valkeyRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
+			values[valkeyContainerHostKey(instance)] = sharedValkeyAccessAlias(m, instance)
+		}
+	}
+	state.Applications[appKey] = app
+
+	if err := ensureSharedBackendTLS(ctx, issuer, shared, m, &state, files, values); err != nil {
+		return false, err
+	}
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		return false, err
+	}
+	if err := writeSharedBackendState(shared.State, state); err != nil {
+		return false, err
+	}
+	if err := renderSharedBackendRuntime(shared, state); err != nil {
+		return false, err
+	}
+	if err := compose.ConfigProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+		return false, fmt.Errorf("validate shared backend runtime: %w", err)
+	}
+	if err := compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+		return false, fmt.Errorf("start shared backend runtime: %w", err)
+	}
+	if UsesSharedPostgreSQL(m) {
+		if err := reconcileSharedPostgresApplication(ctx, compose, shared, app); err != nil {
+			return false, err
+		}
+	}
+	if _, err := EnsureRuntimeContract(m, files); err != nil {
+		return false, fmt.Errorf("refresh application contract for shared backends: %w", err)
+	}
+	return true, nil
+}
+
+func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	if !HasSharedBackends(m) {
+		return nil
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return err
+	}
+	app, ok := state.Applications[sharedBackendApplicationKey(m)]
+	if !ok {
+		return fmt.Errorf("shared backend application registration is missing")
+	}
+	if UsesSharedPostgreSQL(m) {
+		for instance, resource := range app.SQL {
+			script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(resource.Password), shellQuote(resource.Username), shellQuote(resource.Database))
+			out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
+			if err != nil {
+				return fmt.Errorf("verify shared PostgreSQL %s: %w", instance, err)
+			}
+			if strings.TrimSpace(out) != "1" {
+				return fmt.Errorf("verify shared PostgreSQL %s: unexpected query result %q", instance, strings.TrimSpace(out))
+			}
+		}
+	}
+	if UsesSharedValkey(m) {
+		for instance, resource := range app.Cache {
+			service := sharedValkeyService(m, instance)
+			script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(resource.Password))
+			out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
+			if err != nil {
+				return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
+			}
+			if strings.TrimSpace(out) != "PONG" {
+				return fmt.Errorf("verify shared Valkey %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+			}
+		}
+	}
+	return nil
+}
+
+func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	key := sharedBackendApplicationKey(m)
+	app, ok := state.Applications[key]
+	if !ok {
+		return nil
+	}
+	if len(app.SQL) > 0 {
+		for _, resource := range app.SQL {
+			script := fmt.Sprintf("psql -U baseharbor_admin -d postgres -v ON_ERROR_STOP=1 -c %s -c %s",
+				shellQuote(fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", quotePostgresIdent(resource.Database))),
+				shellQuote(fmt.Sprintf("DROP ROLE IF EXISTS %s", quotePostgresIdent(resource.Username))),
+			)
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script); err != nil {
+				return fmt.Errorf("release shared PostgreSQL application resources: %w", err)
+			}
+		}
+	}
+	delete(state.Applications, key)
+	if len(state.Applications) == 0 {
+		if err := compose.DestroyProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+			return err
+		}
+		return os.RemoveAll(shared.Dir)
+	}
+	if err := writeSharedBackendState(shared.State, state); err != nil {
+		return err
+	}
+	if err := renderSharedBackendRuntime(shared, state); err != nil {
+		return err
+	}
+	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)
+}
+
+func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, m Manifest, state *sharedBackendState, files RuntimeFiles, values map[string]string) error {
+	if UsesSharedPostgreSQL(m) {
+		policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		root := filepath.Join(shared.Dir, "postgresql")
+		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), sharedPostgresService(m.Environment), sharedPostgresAlias(), "127.0.0.1")
+		if err != nil {
+			return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
+		}
+		if err := projectPostgresServerMaterial(root, material); err != nil {
+			return err
+		}
+		for _, instance := range SQLInstanceNames(m) {
+			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[postgresTLSCAKey(instance)] = ca
+		}
+	}
+
+	if UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
+			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
+				ServiceName:      sharedValkeyAccessService(m, instance),
+				UpstreamHost:     sharedValkeyService(m, instance),
+				UpstreamPort:     6379,
+				PublishedPortEnv: sharedValkeyPortEnv(m, instance),
+				ContainerPort:    6379,
+			})
+			if err != nil {
+				return fmt.Errorf("prepare shared Valkey TLS for %s: %w", instance, err)
+			}
+			material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+			if err != nil {
+				return err
+			}
+			ca, err := projectBackendCA(files, "valkey", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[valkeyTLSCAKey(instance)] = ca
+		}
+	}
+	return nil
+}
+
+func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
+	instances := make([]string, 0, len(app.SQL))
+	for instance := range app.SQL {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+	for _, instance := range instances {
+		resource := app.SQL[instance]
+		sql := fmt.Sprintf("SELECT 'CREATE ROLE %s LOGIN PASSWORD %s' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s)\\gexec\nALTER ROLE %s WITH LOGIN PASSWORD %s;\nSELECT 'CREATE DATABASE %s OWNER %s' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = %s)\\gexec\nALTER DATABASE %s OWNER TO %s;\n",
+			quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Password), quotePostgresLiteral(resource.Username),
+			quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Password),
+			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username), quotePostgresLiteral(resource.Database),
+			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
+		)
+		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
+			return fmt.Errorf("reconcile shared PostgreSQL resource %s: %w", instance, err)
+		}
+	}
+	return nil
+}
+
+func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendState) error {
+	var env strings.Builder
+	fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", state.PostgresAdminPassword)
+	if state.PostgresHostPort > 0 {
+		fmt.Fprintf(&env, "SHARED_POSTGRES_HOST_PORT=%d\n", state.PostgresHostPort)
+	}
+	appKeys := make([]string, 0, len(state.Applications))
+	for key := range state.Applications {
+		appKeys = append(appKeys, key)
+	}
+	sort.Strings(appKeys)
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		for instance, resource := range app.Cache {
+			fmt.Fprintf(&env, "%s=%d\n", sharedValkeyPortEnvFor(app.Application, app.Environment, instance), resource.HostPort)
+			fmt.Fprintf(&env, "%s=%s\n", sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance), resource.Password)
+		}
+	}
+	if err := writeOwnerOnlyFile(files.Env, []byte(env.String())); err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	hasPostgres := false
+	for _, app := range state.Applications {
+		if len(app.SQL) > 0 {
+			hasPostgres = true
+			break
+		}
+	}
+	if hasPostgres {
+		writeSharedPostgresCompose(&b, state)
+	}
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		instances := make([]string, 0, len(app.Cache))
+		for instance := range app.Cache {
+			instances = append(instances, instance)
+		}
+		sort.Strings(instances)
+		for _, instance := range instances {
+			writeSharedValkeyCompose(&b, app, instance)
+		}
+	}
+	b.WriteString("volumes:\n")
+	if hasPostgres {
+		fmt.Fprintf(&b, "  shared-postgres-data:\n    name: %s-%s-postgres-data\n", bhruntime.SharedResourceProjectName(""), sharedBackendToken(state.Environment))
+	}
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		for instance := range app.Cache {
+			service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
+			fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-data\n", service, service, sharedBackendToken(state.Environment))
+		}
+	}
+	b.WriteString("networks:\n  shared-backend:\n")
+	fmt.Fprintf(&b, "    name: %s\n", files.Network)
+	return os.WriteFile(files.Compose, []byte(b.String()), 0o600)
+}
+
+func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
+	service := sharedPostgresService(state.Environment)
+	root := "./postgresql/runtime"
+	fmt.Fprintf(b, `  %s:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    user: "postgres"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: baseharbor_admin
+      POSTGRES_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432"
+    volumes:
+      - shared-postgres-data:/var/lib/postgresql
+      - %s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - %s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - %s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
+    networks:
+      shared-backend:
+        aliases:
+          - %s
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\\"$${POSTGRES_PASSWORD}\\" psql -h 127.0.0.1 -U baseharbor_admin -d postgres -tAc 'SELECT 1' | grep -q '^1$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+`, service, root, root, root, sharedPostgresAlias())
+}
+
+func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, instance string) {
+	service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
+	access := sharedValkeyAccessServiceFor(app.Application, app.Environment, instance)
+	passwordEnv := sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance)
+	portEnv := sharedValkeyPortEnvFor(app.Application, app.Environment, instance)
+	root := "./" + filepath.ToSlash(filepath.Join("valkey", sharedBackendToken(app.Application), sharedBackendToken(instance)))
+	fmt.Fprintf(b, `  %s:
+    image: docker.io/valkey/valkey:9.1.2-alpine
+    restart: unless-stopped
+    user: "valkey"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    environment:
+      VALKEY_PASSWORD: ${%s}
+    command: ["sh", "-ec", "exec valkey-server --appendonly yes --requirepass \\"$${VALKEY_PASSWORD}\\""]
+    volumes:
+      - %s-data:/data
+    networks:
+      shared-backend: {}
+
+`, service, passwordEnv, service)
+	gatewayFiles := serviceaccess.TCPGatewayFiles{
+		Config:   root + "/service-access/haproxy.cfg",
+		PEM:      root + "/service-access/runtime/server.pem",
+		Material: serviceaccess.TLSMaterial{},
+	}
+	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, serviceaccess.TCPGatewaySpec{
+		ServiceName:      access,
+		UpstreamHost:     service,
+		UpstreamPort:     6379,
+		PublishedPortEnv: portEnv,
+		ContainerPort:    6379,
+	}))
+}
+
+func loadSharedBackendState(path, environment string) (sharedBackendState, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return sharedBackendState{Version: sharedBackendStateVersion, Environment: environment, Applications: map[string]sharedBackendAppState{}}, nil
+	}
+	if err != nil {
+		return sharedBackendState{}, err
+	}
+	var state sharedBackendState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return sharedBackendState{}, err
+	}
+	if state.Version != sharedBackendStateVersion {
+		return sharedBackendState{}, fmt.Errorf("unsupported shared backend state version %d", state.Version)
+	}
+	if state.Applications == nil {
+		state.Applications = map[string]sharedBackendAppState{}
+	}
+	return state, nil
+}
+
+func writeSharedBackendState(path string, state sharedBackendState) error {
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeOwnerOnlyFile(path, data)
+}
+
+func sharedBackendApplicationKey(m Manifest) string {
+	return sharedBackendToken(m.Name) + "/" + sharedBackendToken(m.Environment)
+}
+
+func sharedPostgresService(environment string) string {
+	return "shared-postgres-" + sharedBackendToken(environment)
+}
+
+func sharedPostgresAlias() string { return "postgres-access" }
+
+func sharedValkeyService(m Manifest, instance string) string {
+	return sharedValkeyServiceFor(m.Name, m.Environment, instance)
+}
+
+func sharedValkeyServiceFor(application, environment, instance string) string {
+	return "shared-valkey-" + sharedBackendToken(application+"-"+environment+"-"+instance)
+}
+
+func sharedValkeyAccessService(m Manifest, instance string) string {
+	return sharedValkeyAccessServiceFor(m.Name, m.Environment, instance)
+}
+
+func sharedValkeyAccessServiceFor(application, environment, instance string) string {
+	return sharedValkeyServiceFor(application, environment, instance) + "-access"
+}
+
+func sharedValkeyAccessAlias(m Manifest, instance string) string { return sharedValkeyAccessService(m, instance) }
+
+func sharedValkeyPortEnv(m Manifest, instance string) string {
+	return sharedValkeyPortEnvFor(m.Name, m.Environment, instance)
+}
+
+func sharedValkeyPortEnvFor(application, environment, instance string) string {
+	return "SHARED_VALKEY_" + envInstanceToken(sharedBackendToken(application+"-"+environment+"-"+instance)) + "_HOST_PORT"
+}
+
+func sharedValkeyPasswordEnvFor(application, environment, instance string) string {
+	return "SHARED_VALKEY_" + envInstanceToken(sharedBackendToken(application+"-"+environment+"-"+instance)) + "_PASSWORD"
+}
+
+func postgresContainerHostKey(instance string) string { return postgresRuntimeKey(instance, "CONTAINER_HOST") }
+func valkeyContainerHostKey(instance string) string   { return valkeyRuntimeKey(instance, "CONTAINER_HOST") }
+
+func sharedBackendToken(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if b.Len() > 0 && !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func sharedBackendSecret(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func quotePostgresIdent(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quotePostgresLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
