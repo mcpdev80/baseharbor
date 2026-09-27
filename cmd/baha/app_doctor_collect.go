@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -268,7 +269,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			}},
 		)
 	}
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI {
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.ObservabilityManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
@@ -289,6 +290,11 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 					return err
 				}
 				if err := verifyOpenBaoManagementUI(ctx, platformFiles); err != nil {
+					return err
+				}
+			}
+			if m.Services.ObservabilityManagementUI {
+				if err := metricsprovider.VerifyManagementUIAt(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, m); err != nil {
 					return err
 				}
 			}
