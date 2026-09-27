@@ -210,8 +210,13 @@ func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, bind
 
 func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
 	if d.files.Dir == "" {
-		files, err := EnsureKeycloakFilesAt(ctx, d.app, d.issuer, d.dataDir, d.namespace)
-		if err != nil { return err }
+		files, err := ExistingKeycloakFilesAt(d.app, d.dataDir, d.namespace)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 		d.files = files
 	}
 	admin, err := d.adminClient(ctx)
