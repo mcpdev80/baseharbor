@@ -135,11 +135,13 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	if err := m.Validate(); err != nil {
 		return err
 	}
-	if err := configureGuidedDevelopmentAccess(ctx, reader, out, m); err != nil {
+	devSetup, err := collectGuidedDevAccess(ctx, reader, out, m)
+	if err != nil {
 		return err
 	}
 
 	printAdoptionSummary(out, m, d, selection.secretPolicies)
+	printGuidedDevAccessSummary(out, devSetup)
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
 		fmt.Fprintln(out, "----------------------------------------")
@@ -152,85 +154,13 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 	if !confirm {
 		fmt.Fprintln(out, "No changes were made.")
+		zeroBytes(devSetup.password)
 		return nil
+	}
+	if err := applyGuidedDevAccess(devSetup); err != nil {
+		return fmt.Errorf("configure local development access: %w", err)
 	}
 	return writeRepositoryManifest(m, out)
-}
-
-func configureGuidedDevelopmentAccess(ctx context.Context, reader *bufio.Reader, out io.Writer, m application.Manifest) error {
-	if !requiresDevelopmentGateway(m) {
-		return nil
-	}
-	target, err := effectiveTarget(ctx)
-	if err != nil {
-		return err
-	}
-
-	domain, err := devaccess.LoadDomain(target.Name)
-	if errors.Is(err, os.ErrNotExist) {
-		domain, err = promptLine(reader, out, "Development domain", devaccess.DefaultDomain)
-		if err != nil {
-			return err
-		}
-		domain, err = devaccess.ConfigureDomain(target.Name, domain)
-	}
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(out, "
-Development routing")
-	fmt.Fprintf(out, "  Target  %s
-", target.Name)
-	fmt.Fprintf(out, "  Domain  %s
-", domain)
-
-	if !requiresDevelopmentManagementAccess(m) {
-		return nil
-	}
-	credentials, err := devaccess.Load(target.Name, "dev")
-	if err == nil {
-		fmt.Fprintf(out, "  Login   %s (managed)
-", credentials.Username)
-		return nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	fmt.Fprintln(out, "
-Developer admin access")
-	username, err := promptLine(reader, out, "Username", devaccess.DefaultUsername)
-	if err != nil {
-		return err
-	}
-	useGenerated, err := promptYesNo(reader, out, "Use a generated secure password?", true)
-	if err != nil {
-		return err
-	}
-	if useGenerated {
-		credentials, err = devaccess.Reset(target.Name, "dev", username)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "  Login       %s
-", credentials.Username)
-		fmt.Fprintln(out, "  Password    generated securely")
-		fmt.Fprintln(out, "  Reveal      baha dev credentials")
-		return nil
-	}
-	password, err := appApplySecretReadHidden(appInitInput, out, "Developer admin password")
-	if err != nil {
-		return err
-	}
-	defer zeroBytes(password)
-	credentials, err = devaccess.Configure(target.Name, "dev", username, string(password))
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "  Login       %s
-", credentials.Username)
-	fmt.Fprintln(out, "  Password    configured securely")
-	return nil
 }
 
 func detectedApplicationManifest(name, environment string, sql, cache, objectStorage, secrets, hasWorkload bool) application.Manifest {
