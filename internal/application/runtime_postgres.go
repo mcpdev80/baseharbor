@@ -119,6 +119,9 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 }
 
 func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+	if UsesSharedPostgreSQL(m) {
+		return nil
+	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
@@ -134,6 +137,9 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 }
 
 func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+	if UsesSharedValkey(m) {
+		return nil
+	}
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
@@ -159,27 +165,38 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	if !HasManagedRuntimeServices(m) {
 		return "services: {}\n", nil
 	}
+	sqlInstances := SQLInstanceNames(m)
+	cacheInstances := CacheInstanceNames(m)
+	if UsesSharedPostgreSQL(m) {
+		sqlInstances = nil
+	}
+	if UsesSharedValkey(m) {
+		cacheInstances = nil
+	}
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 {
+		return "services: {}\n", nil
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for _, instance := range SQLInstanceNames(m) {
+	for _, instance := range sqlInstances {
 		writePostgresComposeService(&b, instance)
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range cacheInstances {
 		writeValkeyComposeService(&b, instance)
 		b.WriteString(valkeyGatewayCompose(instance))
 	}
-	if m.Services.SQLManagementUI {
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
 		writeCacheUIComposeServices(&b, m)
 	}
 	b.WriteString("\nvolumes:\n")
-	for _, instance := range SQLInstanceNames(m) {
+	for _, instance := range sqlInstances {
 		service := runtimeServiceName("postgres", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range cacheInstances {
 		service := runtimeServiceName("valkey", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
