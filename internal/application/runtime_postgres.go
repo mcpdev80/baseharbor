@@ -299,12 +299,11 @@ func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
       - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
       - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
 `)
-	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n", devaccess.ApplicationAlias(m.Name, "pgadmin"))
 	for _, instance := range SQLInstanceNames(m) {
 		token := envInstanceToken(instance)
 		fmt.Fprintf(b, "      - ./providers/management-ui/postgres/postgres-%s.ca.pem:/run/baseharbor/postgres-%s.ca.pem:ro\n", token, token)
 	}
-	b.WriteString("\n")
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "pgadmin"))
 }
 
 func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
