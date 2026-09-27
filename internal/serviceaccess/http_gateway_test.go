@@ -2,6 +2,7 @@ package serviceaccess
 
 import (
 	"strings"
+	"path/filepath"
 	"testing"
 )
 
@@ -11,6 +12,19 @@ func TestCaddyfileRequiresClientCertificateWhenRequested(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway config missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestHTTPClientDoesNotLoadOptionalClientIdentity(t *testing.T) {
+	dir := t.TempDir()
+	ca, cert, key := testGatewayTLSMaterial(t, dir)
+	material := TLSMaterial{
+		CA: ca, ServerCertificate: cert, ServerKey: key, ServerName: "localhost",
+		ClientCertificate: filepath.Join(dir, "missing-client.pem"),
+		ClientKey: filepath.Join(dir, "missing-client-key.pem"),
+	}
+	if _, err := NewHTTPClient(material, false); err != nil {
+		t.Fatalf("optional client identity must be ignored when mTLS is not required: %v", err)
 	}
 }
 
