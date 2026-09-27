@@ -12,7 +12,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 var applicationEnvironmentOverride string
@@ -106,7 +105,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr
 			}
-			if _, authErr := operatorauth.Ensure(ctx, resolved.Manifest.Environment); authErr != nil {
+			if authErr := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); authErr != nil {
 				return resolvedApplication{}, authErr
 			}
 			return resolved, nil
@@ -124,7 +123,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	if _, err := operatorauth.Ensure(ctx, resolved.Manifest.Environment); err != nil {
+	if err := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); err != nil {
 		return resolvedApplication{}, err
 	}
 	return resolved, nil
