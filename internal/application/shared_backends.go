@@ -33,10 +33,12 @@ type sharedBackendState struct {
 }
 
 type sharedBackendAppState struct {
-	Application string                            `json:"application"`
-	Environment string                            `json:"environment"`
-	SQL         map[string]sharedPostgresResource `json:"sql,omitempty"`
-	Cache       map[string]sharedValkeyResource   `json:"cache,omitempty"`
+	Application       string                            `json:"application"`
+	Environment       string                            `json:"environment"`
+	SQLManagementUI   bool                              `json:"sql_management_ui,omitempty"`
+	CacheManagementUI bool                              `json:"cache_management_ui,omitempty"`
+	SQL               map[string]sharedPostgresResource `json:"sql,omitempty"`
+	Cache             map[string]sharedValkeyResource   `json:"cache,omitempty"`
 }
 
 type sharedPostgresResource struct {
@@ -128,6 +130,8 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 	app := state.Applications[appKey]
 	app.Application = m.Name
 	app.Environment = m.Environment
+	app.SQLManagementUI = m.Services.SQLManagementUI && UsesSharedPostgreSQL(m)
+	app.CacheManagementUI = m.Services.CacheManagementUI && UsesSharedValkey(m)
 	if app.SQL == nil {
 		app.SQL = map[string]sharedPostgresResource{}
 	}
@@ -619,6 +623,19 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	if state.PostgresHostPort > 0 {
 		fmt.Fprintf(&env, "SHARED_POSTGRES_HOST_PORT=%d\n", state.PostgresHostPort)
 	}
+	if state.PostgresUIHostPort > 0 {
+		fmt.Fprintf(&env, "SHARED_POSTGRES_UI_HOST_PORT=%d\n", state.PostgresUIHostPort)
+	}
+	if state.CacheUIHostPort > 0 {
+		fmt.Fprintf(&env, "SHARED_CACHE_UI_HOST_PORT=%d\n", state.CacheUIHostPort)
+	}
+	if state.ManagementUsername != "" {
+		fmt.Fprintf(&env, "SHARED_MANAGEMENT_USER=%s\n", state.ManagementUsername)
+		fmt.Fprintf(&env, "SHARED_PGADMIN_EMAIL=%s\n", developmentPostgresUIEmail(state.ManagementUsername))
+	}
+	if state.ManagementPassword != "" {
+		fmt.Fprintf(&env, "SHARED_MANAGEMENT_PASSWORD=%s\n", state.ManagementPassword)
+	}
 	appKeys := make([]string, 0, len(state.Applications))
 	for key := range state.Applications {
 		appKeys = append(appKeys, key)
@@ -647,6 +664,18 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	if hasPostgres {
 		writeSharedPostgresCompose(&b, state)
 	}
+	hasPostgresUI := false
+	hasCacheUI := false
+	for _, app := range state.Applications {
+		hasPostgresUI = hasPostgresUI || app.SQLManagementUI
+		hasCacheUI = hasCacheUI || app.CacheManagementUI
+	}
+	if hasPostgresUI {
+		writeSharedPostgresUICompose(&b)
+	}
+	if hasCacheUI {
+		writeSharedCacheUICompose(&b)
+	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		instances := make([]string, 0, len(app.Cache))
@@ -672,6 +701,97 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	b.WriteString("networks:\n  shared-backend:\n")
 	fmt.Fprintf(&b, "    name: %s\n", files.Network)
 	return os.WriteFile(files.Compose, []byte(b.String()), 0o600)
+}
+
+func writeSharedPostgresUICompose(b *strings.Builder) {
+	b.WriteString(`  shared-pgadmin:
+    image: ` + PostgresUIImage + `
+    restart: unless-stopped
+    user: "5050:5050"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${SHARED_PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_ENABLE_TLS: "True"
+      PGADMIN_LISTEN_PORT: "8443"
+      PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+      PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGPASS_FILE: /run/baseharbor/pgpass
+    ports:
+      - "127.0.0.1:${SHARED_POSTGRES_UI_HOST_PORT}:8443"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,uid=5050,gid=5050,mode=0700
+    volumes:
+      - ./management-ui/postgres/password:/run/baseharbor/password:ro
+      - ./management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
+      - ./management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./management-ui/postgres/postgres.ca.pem:/run/baseharbor/postgres.ca.pem:ro
+      - ./management-ui/postgres/server.cert:/certs/server.cert:ro
+      - ./management-ui/postgres/server.key:/certs/server.key:ro
+    networks:
+      shared-backend:
+        aliases:
+          - shared-pgadmin
+
+`)
+}
+
+func writeSharedCacheUICompose(b *strings.Builder) {
+	b.WriteString(`  shared-cache-ui:
+    image: ` + CacheUIImage + `
+    restart: unless-stopped
+    user: "redis"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HTTP_USER: ${SHARED_MANAGEMENT_USER}
+      HTTP_PASSWORD_FILE: /run/baseharbor/http-password
+      NOSAVE: "true"
+      NO_LOG_DATA: "true"
+      NODE_ENV: production
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    volumes:
+      - ./management-ui/cache/http-password:/run/baseharbor/http-password:ro
+      - ./management-ui/cache/local.json:/redis-commander/config/local.json:ro
+      - ./management-ui/cache/local-production.json:/redis-commander/config/local-production.json:ro
+    networks:
+      shared-backend: {}
+
+  shared-cache-ui-access:
+    image: ` + UIProxyImage + `
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${SHARED_CACHE_UI_HOST_PORT}:8443"
+    volumes:
+      - ./management-ui/cache/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./management-ui/cache/server.pem:/certs/server.pem:ro
+      - ./management-ui/cache/server-key.pem:/certs/server-key.pem:ro
+    networks:
+      shared-backend:
+        aliases:
+          - shared-cache-ui-access
+
+`)
 }
 
 func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
