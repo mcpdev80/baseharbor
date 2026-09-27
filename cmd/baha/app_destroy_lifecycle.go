@@ -14,6 +14,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -477,6 +479,29 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
 		}
 	case capability.ScopeExternal:
+	}
+	return nil
+}
+
+func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx context.Context) error {
+	if !devaccess.Enabled(e.manifest.Environment) {
+		return nil
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
+	}
+	issuer := openbao.NewServiceIssuer(e.compose, files)
+	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
+	if err := devgateway.RemoveOwners(
+		ctx,
+		e.compose,
+		issuer,
+		e.resolved.Target.Name,
+		appOwner,
+		appOwner+"/prometheus",
+	); err != nil {
+		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
 	return nil
 }
