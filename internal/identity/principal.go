@@ -16,6 +16,8 @@ type Principal struct {
 	Issuer   string   `json:"issuer"`
 	Subject  string   `json:"subject"`
 	Audience []string `json:"audience,omitempty"`
+	Assurance string   `json:"assurance,omitempty"`
+	Methods   []string `json:"authentication_methods,omitempty"`
 }
 
 // WithPrincipal stores an authenticated principal in a context.
