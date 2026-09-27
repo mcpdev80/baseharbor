@@ -127,17 +127,20 @@ func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRunti
 		if !ok {
 			return fmt.Errorf("shared PostgreSQL resource %s is missing", instance)
 		}
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared PostgreSQL credential %s for restore: %w", instance, err)
+		}
+		restoreInput := append([]byte(password+"\n"), byInstance[instance]...)
+		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
 		if _, err := runtime.ExecProjectInput(
 			ctx,
 			shared.Project,
 			shared.Compose,
 			shared.Env,
-			byInstance[instance],
+			restoreInput,
 			sharedPostgresService(m.Environment),
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", resource.Username,
-			"-d", resource.Database,
+			"sh", "-ec", command,
 		); err != nil {
 			return fmt.Errorf("restore shared postgres instance %s: %w", instance, err)
 		}
