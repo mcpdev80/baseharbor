@@ -62,6 +62,25 @@ plan -> preflight -> apply -> verify
 
 Reconciliation compares desired state with observed provider/runtime state and fails closed on ambiguity, ownership conflicts or unsupported requirements.
 
+## Canonical local development routing
+
+Development browser surfaces use one target-wide HTTPS gateway. The canonical URL is the developer-facing source of truth; runtime loopback ports and provider-specific internal endpoints remain implementation detail.
+
+```text
+https://<app>-<service>.baseharbor.localhost
+                    |
+                    v
+          Target dev gateway
+                    |
+                    v
+      owned provider/runtime network
+                    |
+                    v
+        verified internal upstream
+```
+
+The default domain is configurable per Target. Route ownership follows provider placement: application routes are removed with the application, shared routes belong to the shared provider boundary, and external providers keep their own URLs. Gateway TLS is issued from the existing BaseHarbor service-PKI boundary and HTTPS upstreams are verified against their projected trust material rather than disabling TLS verification.
+
 ## Interfaces
 
 CLI, JSON and MCP are adapters over the same semantic core. No interface may bypass policy, ownership, verification or secret safety.
