@@ -103,6 +103,7 @@ jobs:
       - name: Reset runtime state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
       - name: Run full demo acceptance suite
@@ -127,6 +128,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
       - name: Generate Docker demo evidence
@@ -200,6 +202,7 @@ jobs:
       - name: Reset runtime state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
       - name: Verify Podman Quadlet runtime
@@ -253,6 +256,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 
       - name: Generate Podman demo evidence
