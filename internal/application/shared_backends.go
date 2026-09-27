@@ -51,7 +51,7 @@ type sharedPostgresResource struct {
 
 type sharedValkeyResource struct {
 	CredentialReference string `json:"credential_reference"`
-	HostPort             int    `json:"host_port"`
+	HostPort            int    `json:"host_port"`
 }
 
 type SharedBackendFiles struct {
