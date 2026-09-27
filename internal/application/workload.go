@@ -289,6 +289,12 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			}
 		}
 	}
+	canonicalDevWorkload := strings.EqualFold(strings.TrimSpace(m.Environment), "dev") && len(services) == 1
+	canonicalDevNetworkName := ""
+	if canonicalDevWorkload {
+		canonicalDevNetworkName = DevelopmentWorkloadNetworkNameForProject(runtimeProject)
+	}
+
 	metricsServices := map[string]struct{}{}
 	metricsNetworkName := ""
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || HasRuntimeMetricsPermissions(m)
@@ -330,7 +336,7 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
-		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || identityManaged || metricsSource || exposed
+		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || identityManaged || metricsSource || exposed || canonicalDevWorkload
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
 		hasBackendTLS := managedRuntime
@@ -416,7 +422,7 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		}
 		if hasNetworks {
 			b.WriteString("    networks:\n")
-			if !metricsSource && !exposed {
+			if !metricsSource && !exposed && !canonicalDevWorkload {
 				if backendNetwork {
 					b.WriteString("      - baseharbor-backend\n")
 				}
@@ -453,9 +459,14 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				b.WriteString("        aliases:\n")
 				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(service))
 			}
+			if canonicalDevWorkload {
+				b.WriteString("      baseharbor-dev-workload:\n")
+				b.WriteString("        aliases:\n")
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(DevelopmentWorkloadAlias(m)))
+			}
 		}
 	}
-	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || identityManaged || len(metricsServices) > 0 || len(exposedServices) > 0 {
+	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || identityManaged || len(metricsServices) > 0 || len(exposedServices) > 0 || canonicalDevWorkload {
 		b.WriteString("networks:\n")
 		if backendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
@@ -480,6 +491,10 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
 			fmt.Fprintf(&b, "    name: %s\n", applicationExposureNetworkForRuntime(m, runtimeProject))
+		}
+		if canonicalDevWorkload {
+			b.WriteString("  baseharbor-dev-workload:\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(canonicalDevNetworkName))
 		}
 	}
 	return b.String(), nil
