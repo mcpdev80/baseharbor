@@ -164,6 +164,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if err := execution.cleanupProviderState(ctx); err != nil {
 		return err
 	}
+	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
+		return err
+	}
 	if err := execution.removeApplicationState(); err != nil {
 		return err
 	}
