@@ -183,15 +183,20 @@ jobs:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
           BASEHARBOR_TEST_RUNTIME: ${{ steps.target.outputs.runtime }}
           DEMO_GATE: ${{ steps.target.outputs.gate }}
-          ARTIFACT_DIR: /tmp/baseharbor-demo-targeted
         run: |
           set -euo pipefail
-          rm -rf /tmp/baseharbor-demo-targeted-repo "$ARTIFACT_DIR"
-          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git /tmp/baseharbor-demo-targeted-repo
-          git -C /tmp/baseharbor-demo-targeted-repo fetch --depth 1 origin "${{ steps.demo_revision.outputs.demo_ref }}"
-          git -C /tmp/baseharbor-demo-targeted-repo checkout --detach FETCH_HEAD
-          test "$(git -C /tmp/baseharbor-demo-targeted-repo rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
-          cd /tmp/baseharbor-demo-targeted-repo
+          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
+          export WORKDIR="$RUNNER_TEMP/baseharbor-demo-targeted-repo"
+          export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-demo-targeted"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export BASEHARBOR_TARGET="demo-${worker_id}"
+          rm -rf "$WORKDIR" "$ARTIFACT_DIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$WORKDIR"
+          git -C "$WORKDIR" fetch --depth 1 origin "${{ steps.demo_revision.outputs.demo_ref }}"
+          git -C "$WORKDIR" checkout --detach FETCH_HEAD
+          test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
+          cd "$WORKDIR"
           if [ "$DEMO_GATE" = "release-focused" ]; then
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
               BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
@@ -211,7 +216,7 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/targeted-demo-raw"
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
-          cp -a /tmp/baseharbor-demo-targeted/. "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
           if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             runtime="${{ steps.target.outputs.runtime }}"
