@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -60,20 +62,20 @@ func (r WorkloadSecurityReport) Error() error {
 
 type renderedSecurityCompose struct {
 	Services map[string]struct {
-		Privileged  bool                   `json:"privileged"`
-		NetworkMode string                 `json:"network_mode"`
-		PID         string                 `json:"pid"`
-		IPC         string                 `json:"ipc"`
-		CapAdd      []string               `json:"cap_add"`
-		Devices     []any                  `json:"devices"`
-		Volumes     []renderedComposeMount `json:"volumes"`
-	} `json:"services"`
+		Privileged  bool                   `json:"privileged" yaml:"privileged"`
+		NetworkMode string                 `json:"network_mode" yaml:"network_mode"`
+		PID         string                 `json:"pid" yaml:"pid"`
+		IPC         string                 `json:"ipc" yaml:"ipc"`
+		CapAdd      []string               `json:"cap_add" yaml:"cap_add"`
+		Devices     []any                  `json:"devices" yaml:"devices"`
+		Volumes     []renderedComposeMount `json:"volumes" yaml:"volumes"`
+	} `json:"services" yaml:"services"`
 }
 
 type renderedComposeMount struct {
-	Type   string `json:"type"`
-	Source string `json:"source"`
-	Target string `json:"target"`
+	Type   string `json:"type" yaml:"type"`
+	Source string `json:"source" yaml:"source"`
+	Target string `json:"target" yaml:"target"`
 }
 
 func (m *renderedComposeMount) UnmarshalJSON(data []byte) error {
@@ -115,20 +117,70 @@ func (m *renderedComposeMount) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (m *renderedComposeMount) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		value := strings.TrimSpace(node.Value)
+		if value == "" {
+			return nil
+		}
+		parts := strings.Split(value, ":")
+		if len(parts) == 1 {
+			m.Type = "volume"
+			m.Target = parts[0]
+			return nil
+		}
+		m.Source = strings.TrimSpace(parts[0])
+		m.Target = strings.TrimSpace(parts[1])
+		if filepath.IsAbs(m.Source) || strings.HasPrefix(m.Source, "./") || strings.HasPrefix(m.Source, "../") {
+			m.Type = "bind"
+		} else {
+			m.Type = "volume"
+		}
+		return nil
+	}
+	var object struct {
+		Type   string `yaml:"type"`
+		Source string `yaml:"source"`
+		Target string `yaml:"target"`
+	}
+	if err := node.Decode(&object); err != nil {
+		return err
+	}
+	m.Type = object.Type
+	m.Source = object.Source
+	m.Target = object.Target
+	return nil
+}
+
+func AnalyzeComposeSecuritySource(m Manifest, source []byte) (WorkloadSecurityReport, error) {
+	policy, err := ResolveWorkloadSecurityPolicy(m)
+	if err != nil {
+		return WorkloadSecurityReport{}, err
+	}
+	var config renderedSecurityCompose
+	if err := yaml.Unmarshal(source, &config); err != nil {
+		return WorkloadSecurityReport{}, fmt.Errorf("decode Compose security model: %w", err)
+	}
+	return analyzeSecurityConfig(policy, config), nil
+}
+
 func AnalyzeRenderedComposeSecurity(m Manifest, rendered []byte) (WorkloadSecurityReport, error) {
 	policy, err := ResolveWorkloadSecurityPolicy(m)
 	if err != nil {
 		return WorkloadSecurityReport{}, err
 	}
+	var config renderedSecurityCompose
+	if err := json.Unmarshal(rendered, &config); err != nil {
+		return WorkloadSecurityReport{}, fmt.Errorf("decode rendered Compose security model: %w", err)
+	}
+	return analyzeSecurityConfig(policy, config), nil
+}
+
+func analyzeSecurityConfig(policy WorkloadSecurityPolicy, config renderedSecurityCompose) WorkloadSecurityReport {
 	mode := policy.Mode
 	allowed := map[string]bool{}
 	for _, code := range policy.AllowedOverrides {
 		allowed[code] = true
-	}
-
-	var config renderedSecurityCompose
-	if err := json.Unmarshal(rendered, &config); err != nil {
-		return WorkloadSecurityReport{}, fmt.Errorf("decode rendered Compose security model: %w", err)
 	}
 	report := WorkloadSecurityReport{Mode: mode}
 	services := make([]string, 0, len(config.Services))
@@ -185,7 +237,7 @@ func AnalyzeRenderedComposeSecurity(m Manifest, rendered []byte) (WorkloadSecuri
 			}
 		}
 	}
-	return report, nil
+	return report
 }
 
 func ResolveWorkloadSecurityPolicy(m Manifest) (WorkloadSecurityPolicy, error) {
