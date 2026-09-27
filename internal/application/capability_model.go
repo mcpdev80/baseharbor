@@ -90,12 +90,12 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 			}
 			binding.Identity = &capability.IdentityBinding{
 				CallbackPaths: append([]string(nil), m.Identity.CallbackPaths...),
-				LogoutPaths:   append([]string(nil), m.Identity.LogoutPaths...),
-				Scopes:        append([]string(nil), m.Identity.Scopes...),
-				Claims:        append([]string(nil), m.Identity.Claims...),
-				MFA:           policy.MFA,
-				Methods:       append([]string(nil), policy.Methods...),
-				Passwordless:  policy.Passwordless,
+				LogoutPaths: append([]string(nil), m.Identity.LogoutPaths...),
+				Scopes: append([]string(nil), m.Identity.Scopes...),
+				Claims: append([]string(nil), m.Identity.Claims...),
+				MFA: policy.MFA,
+				Methods: append([]string(nil), policy.Methods...),
+				Passwordless: policy.Passwordless,
 			}
 		}
 		if resource.Kind == capability.Logs {
