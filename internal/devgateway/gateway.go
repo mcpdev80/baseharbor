@@ -281,7 +281,17 @@ func Routes(target string) ([]Route, error) {
 	return append([]Route(nil), current.Routes...), nil
 }
 
-func Verify(ctx context.Context, target string) error {
+func VerifyHosts(ctx context.Context, target string, hosts []string) error {
+	wanted := map[string]struct{}{}
+	for _, host := range hosts {
+		host = strings.ToLower(strings.TrimSpace(host))
+		if host != "" {
+			wanted[host] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
 	files, err := FilesFor(target)
 	if err != nil {
 		return err
@@ -298,36 +308,63 @@ func Verify(ctx context.Context, target string) error {
 	if !roots.AppendCertsFromPEM(caPEM) {
 		return errors.New("development gateway CA contains no certificates")
 	}
+	seen := map[string]struct{}{}
 	var errs []error
 	for _, route := range current.Routes {
-		dialer := &net.Dialer{}
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs: roots,
-				ServerName: route.Host,
-			},
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, "127.0.0.1:443")
-			},
-		}
-		client := &http.Client{Transport: transport}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, URL(route.Host)+"/", nil)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", route.Host, err))
+		if _, ok := wanted[route.Host]; !ok {
 			continue
 		}
-		resp, err := client.Do(req)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", route.Host, err))
-			continue
+		seen[route.Host] = struct{}{}
+		if err := verifyRoute(ctx, roots, route); err != nil {
+			errs = append(errs, err)
 		}
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 500 {
-			errs = append(errs, fmt.Errorf("%s returned HTTP %d", route.Host, resp.StatusCode))
+	}
+	for host := range wanted {
+		if _, ok := seen[host]; !ok {
+			errs = append(errs, fmt.Errorf("%s is not registered in the development gateway", host))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route) error {
+	dialer := &net.Dialer{}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs: roots,
+			ServerName: route.Host,
+		},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, "127.0.0.1:443")
+		},
+	}
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URL(route.Host)+"/", nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", route.Host, err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s: %w", route.Host, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("%s returned HTTP %d", route.Host, resp.StatusCode)
+	}
+	return nil
+}
+
+func Verify(ctx context.Context, target string) error {
+	routes, err := Routes(target)
+	if err != nil {
+		return err
+	}
+	hosts := make([]string, 0, len(routes))
+	for _, route := range routes {
+		hosts = append(hosts, route.Host)
+	}
+	return VerifyHosts(ctx, target, hosts)
 }
 
 func loadState(path string) (state, error) {
