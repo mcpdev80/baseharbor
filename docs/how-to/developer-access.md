@@ -48,7 +48,7 @@ Explicit reveal is a separate action:
 baha app creds postgres --reveal
 ```
 
-The trusted-local path does not yet apply managed-production OIDC/RBAC/JIT policy. The command/action boundary is intentionally structured so later environment policy can govern the same action names without changing the normal developer workflow.
+`dev` remains trusted-local and does not require `baha login`. The same application operations against `test` or `prod` require the configured Target/Environment OIDC operator boundary. Use `baha login -e test`, `baha whoami -e test` and `baha logout -e test` explicitly when needed. Advanced RBAC/JIT/break-glass governance remains a later platform-access layer.
 
 ## Workload logs
 
@@ -86,4 +86,4 @@ Workload commands are routed through BaseHarbor's Compose runtime boundary and u
 - Explicit reveal is separate from normal connect/use actions.
 - Workload access is limited to services selected by the application contract.
 - Missing or ambiguous resource instances fail clearly instead of guessing.
-- Managed-production identity, approval and JIT elevation remain future policy layers, not local-development requirements.
+- Test/prod require the configured OIDC operator boundary; trusted-local dev does not. Advanced approval, JIT elevation and break-glass governance remain future policy layers.
