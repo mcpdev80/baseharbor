@@ -55,3 +55,36 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 	assertTargets("logs", logs)
 	assertTargets("traces", traces)
 }
+
+
+func TestManagedRuntimeObservabilityExcludesSharedBackendServices(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
+	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")
+
+	m := New("demo", "dev", true, true, false)
+	m = WithLogsCollection(m, "application-provider")
+
+	if got := ManagedRuntimeProviderServiceNames(m); len(got) != 0 {
+		t.Fatalf("shared backend services leaked into application runtime observability: %v", got)
+	}
+
+	project := "baseharbor-local-demo-dev"
+	if err := reconcileManagedRuntimeObservability(m, project); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := observability.ListLogs(
+		capability.ProviderPlacement{Scope: capability.ScopeApplication},
+		[]string{m.Name},
+		true,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range logs {
+		if source.Provider == capability.ProviderPostgreSQL || source.Provider == capability.ProviderValkey {
+			t.Fatalf("shared backend registered as application-scoped runtime source: %+v", source)
+		}
+	}
+}
