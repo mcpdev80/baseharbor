@@ -140,8 +140,8 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 				return selection, err
 			}
 		}
-		if selection.selected[5] || selection.selected[6] || selection.selected[7] {
-			selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI?", false)
+		if selection.selected[5] {
+			selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI (Prometheus)?", false)
 			if err != nil {
 				return selection, err
 			}
