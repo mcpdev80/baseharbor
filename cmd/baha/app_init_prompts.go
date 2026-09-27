@@ -381,6 +381,18 @@ func readPrompt(reader *bufio.Reader, out io.Writer, prompt string) (string, err
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
+func appInitReaderIsRealTerminal(r io.Reader) bool {
+	file, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func appInitReaderIsTerminal(r io.Reader) bool {
 	file, ok := r.(*os.File)
 	if !ok {
