@@ -351,23 +351,24 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			if serviceBindings {
 				serviceEnv["SERVICE_BINDING_ROOT"] = workloadServiceBindingRoot
 			}
-			if HasIdentity(m) {
-		issuer, err := requireRuntimeValue(values, "IDENTITY_CONTAINER_ISSUER")
+				if HasIdentity(m) {
+				issuer, err := requireRuntimeValue(values, "IDENTITY_CONTAINER_ISSUER")
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		clientID, err := requireRuntimeValue(values, "IDENTITY_CLIENT_ID")
+				clientID, err := requireRuntimeValue(values, "IDENTITY_CLIENT_ID")
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		env["OIDC_ISSUER"] = issuer
-		env["OIDC_CLIENT_ID"] = clientID
-		if len(m.Identity.Scopes) > 0 {
-			env["OIDC_SCOPES"] = strings.Join(m.Identity.Scopes, " ")
-		}
-		if strings.TrimSpace(values["IDENTITY_CLIENT_SECRET"]) != "" {
-			env["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
-		}
+				serviceEnv["OIDC_ISSUER"] = issuer
+				serviceEnv["OIDC_CLIENT_ID"] = clientID
+				if len(m.Identity.Scopes) > 0 {
+					serviceEnv["OIDC_SCOPES"] = strings.Join(m.Identity.Scopes, " ")
+				}
+				if strings.TrimSpace(values["IDENTITY_CLIENT_SECRET"]) != "" {
+					serviceEnv["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
+				}
+			}
 	}
 
 	if HasOTLPTelemetry(m) {
