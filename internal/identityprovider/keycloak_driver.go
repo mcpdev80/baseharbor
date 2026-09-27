@@ -18,6 +18,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -385,10 +386,7 @@ func (d *KeycloakDriver) publicBaseURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if engine, ok := d.runtime.(keycloakRuntimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
-		return "https://" + host + ":8443", nil
-	}
-	return devaccess.CanonicalURL(host), nil
+	return devgateway.URLForTarget(d.targetName(), host), nil
 }
 
 func (d *KeycloakDriver) publicIssuerURL() (string, error) {
