@@ -313,7 +313,17 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 	}
-	if application.HasSharedBackends(m) {
+	sharedBackendsRegistered := false
+	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		placement, found, err := application.RegisteredProviderPlacementAt(e.resolved.TargetStateRoot, m, provider)
+		if err != nil {
+			return fmt.Errorf("inspect registered %s placement before destroy: %w", provider, err)
+		}
+		if found && placement.Scope == capability.ScopeShared {
+			sharedBackendsRegistered = true
+		}
+	}
+	if sharedBackendsRegistered {
 		if err := application.ReleaseSharedBackendApplication(
 			ctx,
 			e.compose,
