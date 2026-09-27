@@ -154,58 +154,56 @@ remove_quadlet_units() {
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 
   local config_home unit_dir file base unit
+  local -a unit_dirs=()
   config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-  unit_dir="$config_home/containers/systemd"
-  [ -d "$unit_dir" ] || return 0
+  unit_dirs+=("$config_home/containers/systemd")
+  if [ "$config_home" != "$HOME/.config" ]; then
+    unit_dirs+=("$HOME/.config/containers/systemd")
+  fi
 
   shopt -s nullglob
   local -a files=()
-  if [ -n "$scope" ]; then
-    files=(
-      "$unit_dir"/baseharbor-*"$scope"*.container
-      "$unit_dir"/baseharbor-*"$scope"*.network
-      "$unit_dir"/baseharbor-*"$scope"*.volume
-      "$unit_dir"/baseharbor-*"$scope"*.build
-      "$unit_dir"/baseharbor-*"$scope"*.env
-      "$unit_dir"/bh-*"$scope"*.container
-      "$unit_dir"/bh-*"$scope"*.network
-      "$unit_dir"/bh-*"$scope"*.volume
-      "$unit_dir"/bh-*"$scope"*.build
-      "$unit_dir"/bh-*"$scope"*.env
-    )
-  else
-    files=(
-      "$unit_dir"/baseharbor-*.container
-      "$unit_dir"/baseharbor-*.network
-      "$unit_dir"/baseharbor-*.volume
-      "$unit_dir"/baseharbor-*.build
-      "$unit_dir"/baseharbor-*.env
-      "$unit_dir"/bh-*.container
-      "$unit_dir"/bh-*.network
-      "$unit_dir"/bh-*.volume
-      "$unit_dir"/bh-*.build
-      "$unit_dir"/bh-*.env
-    )
-  fi
+  for unit_dir in "${unit_dirs[@]}"; do
+    [ -d "$unit_dir" ] || continue
+    local -a found=()
+    if [ -n "$scope" ]; then
+      found=(
+        "$unit_dir"/baseharbor-*"$scope"*.container
+        "$unit_dir"/baseharbor-*"$scope"*.network
+        "$unit_dir"/baseharbor-*"$scope"*.volume
+        "$unit_dir"/baseharbor-*"$scope"*.build
+        "$unit_dir"/baseharbor-*"$scope"*.env
+        "$unit_dir"/bh-*"$scope"*.container
+        "$unit_dir"/bh-*"$scope"*.network
+        "$unit_dir"/bh-*"$scope"*.volume
+        "$unit_dir"/bh-*"$scope"*.build
+        "$unit_dir"/bh-*"$scope"*.env
+      )
+    else
+      found=(
+        "$unit_dir"/baseharbor-*.container
+        "$unit_dir"/baseharbor-*.network
+        "$unit_dir"/baseharbor-*.volume
+        "$unit_dir"/baseharbor-*.build
+        "$unit_dir"/baseharbor-*.env
+        "$unit_dir"/bh-*.container
+        "$unit_dir"/bh-*.network
+        "$unit_dir"/bh-*.volume
+        "$unit_dir"/bh-*.build
+        "$unit_dir"/bh-*.env
+      )
+    fi
+    files+=("${found[@]}")
+  done
 
   for file in "${files[@]}"; do
     base="$(basename "$file")"
     case "$base" in
-      *.container)
-        unit="${base%.container}.service"
-        ;;
-      *.network)
-        unit="${base%.network}-network.service"
-        ;;
-      *.volume)
-        unit="${base%.volume}-volume.service"
-        ;;
-      *.build)
-        unit="${base%.build}-build.service"
-        ;;
-      *)
-        continue
-        ;;
+      *.container) unit="${base%.container}.service" ;;
+      *.network) unit="${base%.network}-network.service" ;;
+      *.volume) unit="${base%.volume}-volume.service" ;;
+      *.build) unit="${base%.build}-build.service" ;;
+      *) continue ;;
     esac
     log "quadlet: stopping $unit"
     run_timeout 20s systemctl --user stop "$unit" >/dev/null 2>&1 || true
