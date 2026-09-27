@@ -211,7 +211,6 @@ func keycloakCompose(files KeycloakFiles, publicSpec, adminSpec serviceaccess.HT
     image: %s
     restart: unless-stopped
     user: "1000:0"
-    read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
