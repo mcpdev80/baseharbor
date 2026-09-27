@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Development OIDC workload bindings now use the same canonical issuer reported to developers and trust the Target development gateway; provider-internal Keycloak endpoints remain lifecycle/admin-only, including rootless Podman on deterministic HTTPS port 8443.
+- Runtime Executor observer mTLS identity is projected independently of OTLP tracing so logs/metrics observability probes remain valid when tracing is not selected.
+- Podman CI/runtime validation isolates Quadlet generator preflight state and removes stale BaseHarbor user units from the effective user configuration, preventing unrelated worker state from poisoning validation.
 - Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
 - Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
 
