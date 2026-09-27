@@ -239,6 +239,11 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 			return false, err
 		}
 	}
+	if UsesSharedValkey(m) {
+		if err := waitSharedValkeyReady(ctx, compose, shared, m); err != nil {
+			return false, err
+		}
+	}
 	if _, err := EnsureRuntimeContract(m, files); err != nil {
 		return false, fmt.Errorf("refresh application contract for shared backends: %w", err)
 	}
@@ -533,6 +538,11 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 	}
 	if err := destroySharedValkeyApplicationRuntime(ctx, compose, shared, app); err != nil {
 		return err
+	}
+	for instance, resource := range app.Cache {
+		if err := removeSharedBackendCredential(shared.Dir, resource.CredentialReference); err != nil {
+			return fmt.Errorf("remove shared Valkey credential for %s: %w", instance, err)
+		}
 	}
 	delete(state.Applications, key)
 	if len(state.Applications) == 0 {
@@ -912,6 +922,52 @@ func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {
 	return keys
 }
 
+func waitSharedValkeyReady(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, m Manifest) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	for _, instance := range CacheInstanceNames(m) {
+		app := sharedBackendApplicationKey(m)
+		state, err := loadSharedBackendState(shared.State, m.Environment)
+		if err != nil {
+			return err
+		}
+		resource := state.Applications[app].Cache[instance]
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared Valkey credential %s: %w", instance, err)
+		}
+		service := sharedValkeyService(m, instance)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		var lastErr error
+		ready := false
+		for !ready {
+			script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(password))
+			out, execErr := compose.ExecProject(waitCtx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
+			if execErr == nil && strings.TrimSpace(out) == "PONG" {
+				ready = true
+				break
+			}
+			if execErr != nil {
+				lastErr = execErr
+			} else {
+				lastErr = fmt.Errorf("unexpected readiness result %q", strings.TrimSpace(out))
+			}
+			select {
+			case <-waitCtx.Done():
+				ticker.Stop()
+				if lastErr != nil {
+					return fmt.Errorf("wait for shared Valkey %s readiness: %w", instance, lastErr)
+				}
+				return fmt.Errorf("wait for shared Valkey %s readiness: %w", instance, waitCtx.Err())
+			case <-ticker.C:
+			}
+		}
+		ticker.Stop()
+	}
+	return nil
+}
+
 func waitSharedPostgresReady(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, environment string) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -1226,7 +1282,12 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
       - /tmp:rw,noexec,nosuid,nodev
     environment:
       VALKEY_PASSWORD: ${%s}
-    command: ["sh", "-ec", "exec valkey-server --appendonly yes --requirepass \\"$${VALKEY_PASSWORD}\\""]
+    command:
+      - sh
+      - -ec
+      - |
+        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$VALKEY_PASSWORD" > /tmp/valkey.conf
+        exec valkey-server /tmp/valkey.conf
     volumes:
       - %s-data:/data
     networks:
