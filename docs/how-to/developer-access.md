@@ -7,7 +7,7 @@ BaseHarbor provides a trusted-local developer access layer for day-to-day Compos
 Each local development Target owns one development domain. The default is:
 
 ```text
-baseharbor.localhost
+baha.localhost
 ```
 
 The guided setup asks for this value once. Change or inspect it later with:
@@ -20,20 +20,21 @@ baha dev domain dev.example.internal
 BaseHarbor derives browser-facing names automatically; applications do not carry these local names in `baseharbor.yaml`.
 
 ```text
-<app>-api.<domain>
-<app>-pgadmin.<domain>
-<app>-cache.<domain>
-<app>-identity.<domain>
-<app>-identity-admin.<domain>
+<app>.<domain>
+<app>-<service>.<domain>
 
-shared-storage.<domain>
-shared-openbao.<domain>
-shared-prometheus.<domain>
+pgadmin.<domain>
+cache.<domain>
+storage.<domain>
+auth.<domain>
+auth-admin.<domain>
+secrets.<domain>
+metrics.<domain>
 ```
 
 A Target-scoped local HTTPS gateway owns the canonical browser entry points and routes to the already verified application/provider endpoints. The gateway certificate contains the active canonical hosts as DNS SANs and backend TLS is verified against BaseHarbor-managed trust. Random loopback ports remain runtime implementation details and are not normal developer-facing addresses.
 
-For an unambiguous repository workload with one selected service and one detected HTTP port, BaseHarbor automatically publishes the canonical `<app>-api.<domain>` route. Ambiguous workloads are not guessed and require explicit exposure intent.
+For an unambiguous repository workload with one selected service and one detected HTTP port, BaseHarbor automatically publishes the canonical `<app>.<domain>` route. Ambiguous workloads are not guessed and require explicit exposure intent.
 
 `baha status`, `baha doctor` and structured status output use canonical browser URLs in development. Internal loopback ports remain available only to lifecycle/readiness internals and verbose diagnostics.
 
