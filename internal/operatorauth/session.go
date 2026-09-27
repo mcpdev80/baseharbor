@@ -15,23 +15,27 @@ import (
 )
 
 type Session struct {
-	Issuer    string    `json:"issuer"`
-	Subject   string    `json:"subject"`
-	ClientID  string    `json:"client_id"`
-	IDToken   string    `json:"id_token"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Target      string    `json:"target"`
+	Environment string    `json:"environment"`
+	Issuer      string    `json:"issuer"`
+	Subject     string    `json:"subject"`
+	ClientID    string    `json:"client_id"`
+	IDToken     string    `json:"id_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 func (s Session) ValidAt(now time.Time) bool {
-	return strings.TrimSpace(s.Issuer) != "" &&
+	return strings.TrimSpace(s.Target) != "" &&
+		strings.TrimSpace(s.Environment) != "" &&
+		strings.TrimSpace(s.Issuer) != "" &&
 		strings.TrimSpace(s.Subject) != "" &&
 		strings.TrimSpace(s.ClientID) != "" &&
 		strings.TrimSpace(s.IDToken) != "" &&
 		s.ExpiresAt.After(now.Add(30*time.Second))
 }
 
-func LoadSession() (Session, error) {
-	path, err := SessionPath()
+func LoadSession(target, environment string) (Session, error) {
+	path, err := SessionPath(target, environment)
 	if err != nil {
 		return Session{}, err
 	}
@@ -43,6 +47,9 @@ func LoadSession() (Session, error) {
 	if err := json.Unmarshal(data, &session); err != nil {
 		return Session{}, fmt.Errorf("decode operator session: %w", err)
 	}
+	if session.Target != strings.TrimSpace(target) || session.Environment != strings.TrimSpace(environment) {
+		return Session{}, ErrAuthenticationRequired
+	}
 	return session, nil
 }
 
@@ -50,7 +57,7 @@ func SaveSession(session Session) error {
 	if !session.ValidAt(time.Now()) {
 		return errors.New("refusing to persist invalid or expired operator session")
 	}
-	path, err := SessionPath()
+	path, err := SessionPath(session.Target, session.Environment)
 	if err != nil {
 		return err
 	}
@@ -77,8 +84,8 @@ func SaveSession(session Session) error {
 	return nil
 }
 
-func ClearSession() error {
-	path, err := SessionPath()
+func ClearSession(target, environment string) error {
+	path, err := SessionPath(target, environment)
 	if err != nil {
 		return err
 	}
@@ -88,15 +95,18 @@ func ClearSession() error {
 	return nil
 }
 
-func VerifySession(ctx context.Context, cfg Config) (*identity.Principal, error) {
-	session, err := LoadSession()
+func VerifySession(ctx context.Context, target, environment string, cfg Config) (*identity.Principal, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	session, err := LoadSession(target, environment)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrAuthenticationRequired
 		}
 		return nil, err
 	}
-	if !session.ValidAt(time.Now()) || session.Issuer != cfg.Issuer || session.ClientID != cfg.ClientID {
+	if !session.ValidAt(time.Now()) || session.Issuer != strings.TrimRight(cfg.Issuer, "/") || session.ClientID != cfg.ClientID {
 		return nil, ErrAuthenticationRequired
 	}
 	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.Issuer, Audiences: []string{cfg.ClientID}})
