@@ -128,7 +128,7 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
-			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, c.files)
+			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, nil)
 		}},
 		{Name: "managed runtime definition", Run: func(context.Context) error {
 			if c.runtimeErr != nil {
