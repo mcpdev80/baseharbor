@@ -46,6 +46,9 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
 		return err
 	}
+	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return err
+	}
 	return execution.finalize(ctx)
 }
 
@@ -319,6 +322,23 @@ func (e *applicationUpExecution) convergeApplicationRuntime(ctx context.Context)
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (e *applicationUpExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
+	apply := &applicationApplyExecution{
+		resolved:      e.resolved,
+		manifest:      e.manifest,
+		term:          e.term,
+		out:           e.out,
+		compose:       e.compose,
+		platformFiles: e.platformFiles,
+		issuer:        e.issuer,
+		files:         e.files,
+	}
+	if err := apply.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return fmt.Errorf("reconcile development canonical routes after application restart: %w", err)
 	}
 	return nil
 }
