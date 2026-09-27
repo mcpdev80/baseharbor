@@ -44,6 +44,29 @@ type ManagementUISurface struct {
 	Authentication string                   `json:"authentication"`
 }
 
+func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, username, password string) error {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return errors.New("development management UI credentials are incomplete")
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	if m.Services.SQLManagementUI {
+		values[PostgresUIEmailEnv] = username + "@baseharbor.local"
+		values[PostgresUIPasswordEnv] = password
+	}
+	if m.Services.CacheManagementUI {
+		values[CacheUIUserEnv] = username
+		values[CacheUIPasswordEnv] = password
+	}
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		return err
+	}
+	return EnsureApplicationManagementUIs(ctx, issuer, files, m)
+}
+
 func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
 	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI {
 		return nil
