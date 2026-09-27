@@ -161,7 +161,7 @@ func promptAndStoreMissingRequiredSecrets(
 }
 
 func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !application.HasManagedRuntimeServices(m) {
+	if !application.HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
 	const maxAttempts = 3
