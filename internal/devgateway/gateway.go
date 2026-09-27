@@ -163,6 +163,9 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	}
 	trustTargets := map[string]string{}
 	for i, route := range current.Routes {
+		if !strings.HasPrefix(route.Upstream, "https://") {
+			continue
+		}
 		targetPath := filepath.Join(files.Dir, "runtime", "trust", fmt.Sprintf("route-%03d.pem", i))
 		if err := projectReadable(route.TrustFile, targetPath); err != nil {
 			return fmt.Errorf("project trust for %s: %w", route.Key, err)
@@ -232,14 +235,19 @@ func saveState(path string, value state) error {
 func validateRoute(route Route) error {
 	for label, value := range map[string]string{
 		"key": route.Key, "host": route.Host, "upstream": route.Upstream,
-		"network": route.Network, "trust file": route.TrustFile, "server name": route.ServerName,
+		"network": route.Network,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("development gateway route %s is required", label)
 		}
 	}
-	if !strings.HasPrefix(route.Upstream, "https://") {
-		return fmt.Errorf("development gateway route %s must use an HTTPS upstream", route.Key)
+	if !strings.HasPrefix(route.Upstream, "https://") && !strings.HasPrefix(route.Upstream, "http://") {
+		return fmt.Errorf("development gateway route %s must use an HTTP(S) upstream", route.Key)
+	}
+	if strings.HasPrefix(route.Upstream, "https://") {
+		if strings.TrimSpace(route.TrustFile) == "" || strings.TrimSpace(route.ServerName) == "" {
+			return fmt.Errorf("development gateway HTTPS route %s requires trust file and server name", route.Key)
+		}
 	}
 	if strings.ContainsAny(route.Host, "/:@ \t\r\n") {
 		return fmt.Errorf("development gateway host %q is invalid", route.Host)
@@ -280,11 +288,16 @@ func renderCaddyfile(routes []Route) string {
 	for i, route := range routes {
 		fmt.Fprintf(&b, "  @route%d host %s\n", i, route.Host)
 		fmt.Fprintf(&b, "  handle @route%d {\n", i)
-		fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
-		b.WriteString("      transport http {\n        tls\n")
-		fmt.Fprintf(&b, "        tls_trust_pool file /trust/route-%03d.pem\n", i)
-		fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
-		b.WriteString("      }\n    }\n  }\n")
+		if strings.HasPrefix(route.Upstream, "https://") {
+			fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
+			b.WriteString("      transport http {\n        tls\n")
+			fmt.Fprintf(&b, "        tls_trust_pool file /trust/route-%03d.pem\n", i)
+			fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
+			b.WriteString("      }\n    }\n")
+		} else {
+			fmt.Fprintf(&b, "    reverse_proxy %s\n", route.Upstream)
+		}
+		b.WriteString("  }\n")
 	}
 	b.WriteString("  respond 404\n}\n")
 	return b.String()
@@ -316,7 +329,9 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string) 
 	fmt.Fprintf(&b, "      - %q\n", files.Cert+":/certs/server.pem:ro")
 	fmt.Fprintf(&b, "      - %q\n", files.Key+":/certs/server-key.pem:ro")
 	for _, route := range routes {
-		fmt.Fprintf(&b, "      - %q\n", trustTargets[route.Key]+":/trust/"+trustMountName(routes, route.Key)+":ro")
+		if trust := trustTargets[route.Key]; trust != "" {
+			fmt.Fprintf(&b, "      - %q\n", trust+":/trust/"+trustMountName(routes, route.Key)+":ro")
+		}
 	}
 	b.WriteString("    networks:\n")
 	seen := map[string]bool{}
