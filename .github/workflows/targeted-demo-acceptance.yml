@@ -49,7 +49,7 @@ jobs:
       - Linux
       - X64
       - baseharbor
-      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (endsWith(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
+      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
     timeout-minutes: 60
     env:
       INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
