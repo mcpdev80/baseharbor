@@ -18,7 +18,7 @@ func TestAnalyzeManagedServiceReferenceRewritesPostgresAliases(t *testing.T) {
 	        "DATABASE_HOST":"database:5432"
 	      }
 	    },
-	    "database": {"environment":{}}
+	    "database": {"image":"postgres:16","environment":{}}
 	  }
 	}`)
 	got, err := analyzeManagedServiceReferenceRewrites(m, rendered, []string{"calcom"})
@@ -49,7 +49,7 @@ func TestAnalyzeManagedServiceReferenceRewritesCacheAliases(t *testing.T) {
 	        "CACHE_HOST":"redis:6379"
 	      }
 	    },
-	    "redis": {"environment":{}}
+	    "redis": {"image":"valkey/valkey:8","environment":{}}
 	  }
 	}`)
 	got, err := analyzeManagedServiceReferenceRewrites(m, rendered, []string{"api"})
