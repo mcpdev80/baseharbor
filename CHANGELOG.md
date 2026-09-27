@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-09-27
+
 ### Added
 
 - Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
