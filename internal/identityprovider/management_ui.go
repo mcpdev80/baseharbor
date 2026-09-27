@@ -1,0 +1,120 @@
+package identityprovider
+
+import (
+	"errors"
+	"path/filepath"
+	"strconv"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string) (KeycloakFiles, error) {
+	placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return KeycloakFiles{}, errors.New("external OIDC has no BaseHarbor-owned Keycloak management surface")
+	}
+	dir, project, err := keycloakStateIdentity(app, placement, dataDir, namespace)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	envPath := filepath.Join(dir, "runtime.env")
+	values, err := readProtectedEnv(envPath)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	publicPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	adminPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"])
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	consumer, err := application.IdentityProviderNetworkName(app, namespace)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+
+	publicPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	publicPolicy.ServerName = keycloakPublicHost
+	publicMaterial, err := serviceaccess.ExistingTLSMaterial(publicPolicy, filepath.Join(dir, "public", "service-access", "pki"))
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	adminPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-admin", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	adminPolicy.ServerName = "localhost"
+	adminMaterial, err := serviceaccess.ExistingTLSMaterial(adminPolicy, filepath.Join(dir, "admin", "service-access", "pki"))
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+
+	return KeycloakFiles{
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             envPath,
+		Project:         project,
+		ConsumerNetwork: consumer,
+		InternalNetwork: consumer + "-internal",
+		PublicPort:      publicPort,
+		AdminPort:       adminPort,
+		PublicURL:       "https://" + keycloakPublicHost + ":" + strconv.Itoa(publicPort),
+		AdminURL:        "https://127.0.0.1:" + strconv.Itoa(adminPort),
+		PublicAccess: serviceaccess.HTTPGatewayFiles{
+			Dir:       filepath.Join(dir, "public", "service-access"),
+			Caddyfile: filepath.Join(dir, "public", "service-access", "Caddyfile"),
+			Material:  publicMaterial,
+		},
+		AdminAccess: serviceaccess.HTTPGatewayFiles{
+			Dir:       filepath.Join(dir, "admin", "service-access"),
+			Caddyfile: filepath.Join(dir, "admin", "service-access", "Caddyfile"),
+			Material:  adminMaterial,
+		},
+	}, nil
+}
+
+func ExistingKeycloakFiles(app application.Manifest) (KeycloakFiles, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	return ExistingKeycloakFilesAt(app, dataDir, "")
+}
+
+func KeycloakManagementSurfaces(app application.Manifest, dataDir, namespace string) ([]application.ManagementUISurface, error) {
+	if !app.Services.IdentityManagementUI {
+		return nil, nil
+	}
+	placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+	if err != nil {
+		return nil, err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return nil, nil
+	}
+	files, err := ExistingKeycloakFilesAt(app, dataDir, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return []application.ManagementUISurface{
+		{
+			Service: "identity-login", Purpose: application.ProviderInterfaceUserFacing,
+			URL: files.PublicURL, Authentication: "oidc",
+		},
+		{
+			Service: "identity-admin", Purpose: application.ProviderInterfaceAdministration,
+			URL: files.AdminURL, Authentication: "keycloak-native",
+		},
+	}, nil
+}
