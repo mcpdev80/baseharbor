@@ -1,0 +1,39 @@
+name: "Maintenance · Format Shared PostgreSQL"
+
+on:
+  push:
+    branches:
+      - feature/v0417-managed-identity-ui
+    paths:
+      - .ci/format-shared-postgres-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/v0417-managed-identity-ui
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Format focused files
+        run: |
+          gofmt -w             internal/application/shared_backends.go             internal/application/shared_backends_test.go             internal/application/runtime_postgres.go             internal/application/runtime_lifecycle.go             cmd/baha/app_status_collect.go
+          git diff --check
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             internal/application/shared_backends.go             internal/application/shared_backends_test.go             internal/application/runtime_postgres.go             internal/application/runtime_lifecycle.go             cmd/baha/app_status_collect.go
+          git commit -m "style(postgres): format shared provider implementation"
+          git push origin HEAD:feature/v0417-managed-identity-ui
