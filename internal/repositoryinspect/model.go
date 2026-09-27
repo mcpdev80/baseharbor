@@ -134,7 +134,8 @@ type Engine struct {
 }
 
 type ComposeAnalysis struct {
-	WorkloadServices          []string       `json:"workload_services,omitempty"`
+	WorkloadServices          []string          `json:"workload_services,omitempty"`
+	WorkloadProtocols         map[string]string `json:"workload_protocols,omitempty"`
 	InfrastructureServices    []string       `json:"infrastructure_services,omitempty"`
 	AmbiguousServices         []string       `json:"ambiguous_services,omitempty"`
 	SQLInstances              []string       `json:"sql_instances,omitempty"`
