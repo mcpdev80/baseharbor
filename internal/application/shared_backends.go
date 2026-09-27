@@ -479,14 +479,14 @@ func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values
 		if username == "" || password == "" {
 			return errors.New("shared backend management UI credentials are incomplete")
 		}
-		if state.ManagementUsername == "" {
+		if state.ManagementUsername == "" || state.ManagementPassword == "" {
 			state.ManagementUsername = username
-		}
-		if state.ManagementPassword == "" {
 			state.ManagementPassword = password
-		}
-		if state.ManagementUsername != username || state.ManagementPassword != password {
-			return errors.New("shared backend management UI credentials differ from Target-scoped developer access")
+		} else if strings.EqualFold(strings.TrimSpace(m.Environment), "dev") ||
+			strings.EqualFold(strings.TrimSpace(m.Environment), "development") {
+			// Development credentials are Target-scoped and explicitly rotatable.
+			state.ManagementUsername = username
+			state.ManagementPassword = password
 		}
 		values[CacheUIUserEnv] = state.ManagementUsername
 		values[CacheUIPasswordEnv] = state.ManagementPassword
