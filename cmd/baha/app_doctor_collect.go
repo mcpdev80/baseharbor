@@ -74,6 +74,14 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 	}
 	if runtimeErr == nil {
 		collector.serviceTLS, collector.serviceTLSErr = application.InspectBackendTLSLifecycle(files, m)
+		if collector.serviceTLSErr == nil && application.HasSharedBackends(m) {
+			sharedTLS, err := application.InspectSharedBackendTLSLifecycleAt(resolved.TargetStateRoot, resolved.Target.Name, m)
+			if err != nil {
+				collector.serviceTLSErr = err
+			} else {
+				collector.serviceTLS = append(collector.serviceTLS, sharedTLS...)
+			}
+		}
 	}
 	return collector, false, nil
 }
@@ -251,36 +259,48 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 		}})
 	}
 	if m.Services.SQL {
-		checks = append(checks,
-			preflight.Check{Name: "postgres running", Run: func(context.Context) error {
-				if !containsString(c.running, "postgres") {
-					return errors.New("no postgres instance is running")
-				}
-				return nil
-			}},
-			preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
-				if !containsString(c.running, "postgres") {
-					return errors.New("no postgres instance is running")
-				}
-				return application.VerifyPostgresRuntime(ctx, c.compose, m, c.files)
-			}},
-		)
+		if application.UsesSharedPostgreSQL(m) {
+			checks = append(checks, preflight.Check{Name: "postgres shared isolation", Run: func(ctx context.Context) error {
+				return application.VerifySharedPostgreSQL(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
+			}})
+		} else {
+			checks = append(checks,
+				preflight.Check{Name: "postgres running", Run: func(context.Context) error {
+					if !containsString(c.running, "postgres") {
+						return errors.New("no postgres instance is running")
+					}
+					return nil
+				}},
+				preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
+					if !containsString(c.running, "postgres") {
+						return errors.New("no postgres instance is running")
+					}
+					return application.VerifyPostgresRuntime(ctx, c.compose, m, c.files)
+				}},
+			)
+		}
 	}
 	if m.Services.Cache {
-		checks = append(checks,
-			preflight.Check{Name: "valkey running", Run: func(context.Context) error {
-				if !containsString(c.running, "valkey") {
-					return errors.New("no valkey instance is running")
-				}
-				return nil
-			}},
-			preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
-				if !containsString(c.running, "valkey") {
-					return errors.New("no valkey instance is running")
-				}
-				return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
-			}},
-		)
+		if application.UsesSharedValkey(m) {
+			checks = append(checks, preflight.Check{Name: "valkey shared isolation", Run: func(ctx context.Context) error {
+				return application.VerifySharedValkey(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
+			}})
+		} else {
+			checks = append(checks,
+				preflight.Check{Name: "valkey running", Run: func(context.Context) error {
+					if !containsString(c.running, "valkey") {
+						return errors.New("no valkey instance is running")
+					}
+					return nil
+				}},
+				preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
+					if !containsString(c.running, "valkey") {
+						return errors.New("no valkey instance is running")
+					}
+					return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
+				}},
+			)
+		}
 	}
 	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.ObservabilityManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
@@ -290,6 +310,11 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			if m.Services.SQLManagementUI || m.Services.CacheManagementUI {
 				if err := application.VerifyApplicationManagementUIs(ctx, m, c.files); err != nil {
 					return err
+				}
+				for _, result := range application.VerifySharedManagementUIChecks(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, m) {
+					if result.Err != nil {
+						return result.Err
+					}
 				}
 			}
 			if m.Services.ObjectStorageManagementUI {
