@@ -55,6 +55,22 @@ type keycloakClient struct {
 	OptionalClientScopes  []string          `json:"optionalClientScopes,omitempty"`
 }
 
+
+type keycloakClientScope struct {
+	ID         string            `json:"id,omitempty"`
+	Name       string            `json:"name"`
+	Protocol   string            `json:"protocol"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type keycloakProtocolMapper struct {
+	ID             string            `json:"id,omitempty"`
+	Name           string            `json:"name"`
+	Protocol       string            `json:"protocol"`
+	ProtocolMapper string            `json:"protocolMapper"`
+	Config         map[string]string `json:"config"`
+}
+
 type requiredAction struct {
 	Alias         string `json:"alias"`
 	Name          string `json:"name,omitempty"`
@@ -154,6 +170,166 @@ func (a *keycloakAdmin) reconcileClient(ctx context.Context, realm string, desir
 		return "", fmt.Errorf("update Keycloak client: HTTP %d: %s", status, body)
 	}
 	return existing[0].ID, nil
+}
+
+
+func (a *keycloakAdmin) reconcileClientScopes(ctx context.Context, realm, clientUUID string, scopes, claims []string) error {
+	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/client-scopes", nil)
+	if err != nil { return err }
+	if status != http.StatusOK { return fmt.Errorf("list Keycloak client scopes: HTTP %d: %s", status, body) }
+	var available []keycloakClientScope
+	if err := json.Unmarshal([]byte(body), &available); err != nil { return err }
+	byName := map[string]keycloakClientScope{}
+	for _, scope := range available { byName[scope.Name] = scope }
+
+	for _, name := range sortedUnique(scopes) {
+		if name == "openid" { continue }
+		scope, ok := byName[name]
+		if !ok {
+			desired := keycloakClientScope{
+				Name: name, Protocol: "openid-connect",
+				Attributes: map[string]string{
+					"include.in.token.scope": "true",
+					"display.on.consent.screen": "true",
+				},
+			}
+			status, body, err := a.do(ctx, http.MethodPost, "/admin/realms/"+url.PathEscape(realm)+"/client-scopes", desired)
+			if err != nil { return err }
+			if status != http.StatusCreated { return fmt.Errorf("create Keycloak client scope %s: HTTP %d: %s", name, status, body) }
+			status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/client-scopes", nil)
+			if err != nil { return err }
+			if status != http.StatusOK { return fmt.Errorf("reload Keycloak client scopes: HTTP %d", status) }
+			available = nil
+			if err := json.Unmarshal([]byte(body), &available); err != nil { return err }
+			byName = map[string]keycloakClientScope{}
+			for _, item := range available { byName[item.Name] = item }
+			scope, ok = byName[name]
+			if !ok { return fmt.Errorf("created Keycloak client scope %q cannot be resolved", name) }
+		}
+		status, body, err := a.do(ctx, http.MethodPut, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientUUID)+"/default-client-scopes/"+url.PathEscape(scope.ID), nil)
+		if err != nil { return err }
+		if status != http.StatusNoContent && status != http.StatusConflict {
+			return fmt.Errorf("attach Keycloak client scope %s: HTTP %d: %s", name, status, body)
+		}
+	}
+
+	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientUUID)+"/protocol-mappers/models", nil)
+	if err != nil { return err }
+	if status != http.StatusOK { return fmt.Errorf("list Keycloak protocol mappers: HTTP %d: %s", status, body) }
+	var mappers []keycloakProtocolMapper
+	if err := json.Unmarshal([]byte(body), &mappers); err != nil { return err }
+	mapperByName := map[string]keycloakProtocolMapper{}
+	for _, mapper := range mappers { mapperByName[mapper.Name] = mapper }
+	for _, claim := range sortedUnique(claims) {
+		if standardOIDCClaim(claim) { continue }
+		name := "baseharbor-claim-" + claim
+		desired := keycloakProtocolMapper{
+			Name: name, Protocol: "openid-connect", ProtocolMapper: "oidc-usermodel-attribute-mapper",
+			Config: map[string]string{
+				"user.attribute": claim,
+				"claim.name": claim,
+				"jsonType.label": "String",
+				"id.token.claim": "true",
+				"access.token.claim": "true",
+				"userinfo.token.claim": "true",
+			},
+		}
+		if existing, ok := mapperByName[name]; ok {
+			desired.ID = existing.ID
+			status, body, err = a.do(ctx, http.MethodPut, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientUUID)+"/protocol-mappers/models/"+url.PathEscape(existing.ID), desired)
+		} else {
+			status, body, err = a.do(ctx, http.MethodPost, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientUUID)+"/protocol-mappers/models", desired)
+		}
+		if err != nil { return err }
+		if status != http.StatusNoContent && status != http.StatusCreated {
+			return fmt.Errorf("reconcile Keycloak claim mapper %s: HTTP %d: %s", claim, status, body)
+		}
+	}
+	return nil
+}
+
+func (a *keycloakAdmin) verifyManagedIdentity(ctx context.Context, realm string, ownership map[string]string, clientID string, redirects, logouts []string, mfa string, methods []string, passwordless bool) error {
+	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm), nil)
+	if err != nil { return err }
+	if status != http.StatusOK { return fmt.Errorf("verify Keycloak realm: HTTP %d: %s", status, body) }
+	var currentRealm keycloakRealm
+	if err := json.Unmarshal([]byte(body), &currentRealm); err != nil { return err }
+	if !currentRealm.Enabled || !keycloakRealmOwnedBy(currentRealm, ownership) {
+		return fmt.Errorf("Keycloak realm ownership/readiness verification failed")
+	}
+
+	query := url.Values{}
+	query.Set("clientId", clientID)
+	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
+	if err != nil { return err }
+	if status != http.StatusOK { return fmt.Errorf("verify Keycloak client: HTTP %d: %s", status, body) }
+	var clients []keycloakClient
+	if err := json.Unmarshal([]byte(body), &clients); err != nil { return err }
+	if len(clients) != 1 || !clients[0].Enabled || clients[0].PublicClient {
+		return fmt.Errorf("Keycloak client readiness verification failed")
+	}
+	if !sameSortedStrings(clients[0].RedirectURIs, redirects) {
+		return fmt.Errorf("Keycloak redirect URI drift detected")
+	}
+	wantLogouts := sortedUnique(logouts)
+	gotLogouts := []string{}
+	if raw := strings.TrimSpace(clients[0].Attributes["post.logout.redirect.uris"]); raw != "" {
+		gotLogouts = sortedUnique(strings.Split(raw, "##"))
+	}
+	if !sameSortedStrings(gotLogouts, wantLogouts) {
+		return fmt.Errorf("Keycloak logout URI drift detected")
+	}
+
+	if strings.EqualFold(mfa, "required") || passwordless {
+		status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/authentication/required-actions", nil)
+		if err != nil { return err }
+		if status != http.StatusOK { return fmt.Errorf("verify Keycloak required actions: HTTP %d: %s", status, body) }
+		var actions []requiredAction
+		if err := json.Unmarshal([]byte(body), &actions); err != nil { return err }
+		byAlias := map[string]requiredAction{}
+		for _, action := range actions { byAlias[action.Alias] = action }
+		var required []string
+		if strings.EqualFold(mfa, "required") {
+			for _, method := range methods {
+				switch method {
+				case "totp":
+					required = append(required, "CONFIGURE_TOTP")
+				case "webauthn", "passkey":
+					required = append(required, "webauthn-register")
+				}
+			}
+		}
+		if passwordless { required = append(required, "webauthn-register-passwordless") }
+		for _, alias := range sortedUnique(required) {
+			action, ok := byAlias[alias]
+			if !ok || !action.Enabled || !action.DefaultAction {
+				return fmt.Errorf("Keycloak required action %s is not enforced", alias)
+			}
+		}
+	}
+	return nil
+}
+
+func sameSortedStrings(a, b []string) bool {
+	a = sortedUnique(a)
+	b = sortedUnique(b)
+	if len(a) != len(b) { return false }
+	for i := range a {
+		if a[i] != b[i] { return false }
+	}
+	return true
+}
+
+func standardOIDCClaim(claim string) bool {
+	switch strings.TrimSpace(claim) {
+	case "sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "acr", "amr", "azp", "sid", "typ",
+		"name", "given_name", "family_name", "middle_name", "nickname", "preferred_username", "profile",
+		"picture", "website", "email", "email_verified", "gender", "birthdate", "zoneinfo", "locale",
+		"phone_number", "phone_number_verified", "address", "updated_at":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *keycloakAdmin) reconcileRequiredActions(ctx context.Context, realm string, mfa string, methods []string, passwordless bool) error {
