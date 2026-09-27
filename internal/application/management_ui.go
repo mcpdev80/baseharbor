@@ -124,8 +124,8 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		dir     string
 		path    string
 	}{
-		{m.Services.SQLManagementUI, "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
-		{m.Services.CacheManagementUI, "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
+		{m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m), "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
+		{m.Services.CacheManagementUI && !UsesSharedValkey(m), "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
 	}
 
 	results := make([]ManagementUICheckResult, 0, len(checks))
