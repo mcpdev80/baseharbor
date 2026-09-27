@@ -27,6 +27,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Successful backup/restore metadata records typed recovery contributors and per-contributor verification without storing secret values.
 - CLI and MCP evidence use the same collector and machine contract instead of maintaining separate reporting semantics.
 
+### Fixed
+
+- Deterministic repository initialization now fails closed when repository workload evidence exists but no workload was explicitly selected, preventing a partial contract that silently drops an existing workload.
+- Workload convergence fingerprints the effective rendered Compose service configuration, so interpolation changes such as repository `.env` updates recreate only affected services and cannot leave stale containers reported READY.
+- Managed SQL/cache workloads receive a portable Service Binding 1.1 projection with workload-native endpoints and TLS trust material; status and Doctor verify the consumer-facing binding instead of treating provider health alone as application readiness.
+- Failed application convergence persists an addressable `applying` / `failed` deployment record. Legacy incomplete deployments can be recovered by application name from protected BaseHarbor state instead of crashing `status`, `down` or `destroy` on a missing `deployment.json`.
+- Secondary PostgreSQL/Redis connection aliases that still reference a repository service replaced by a managed capability are rewired to the managed workload endpoint when the mapping is unambiguous. Unsupported or ambiguous references fail closed before mutation.
+- `baha app destroy` selectively reclaims named Compose volumes that belong exclusively to repository PostgreSQL/Redis/Valkey services replaced by managed capabilities, while preserving shared, external and unrecognized workload volumes.
+
 ### Security
 
 - Recovery never broadens ownership to external volumes, bind mounts, external data stores or provider-private state; unsupported/external contributors remain explicit in the recovery/evidence model.
