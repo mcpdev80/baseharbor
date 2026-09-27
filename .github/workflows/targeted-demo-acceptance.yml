@@ -142,8 +142,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/repositoryinspect -run TestAnalyzeComposeFileDetectsExplicitWorkloadHTTPSProtocol -count=1
-          go test ./cmd/baha -run TestDevelopmentWorkloadRoute -count=1
+          go test ./internal/repositoryinspect -run 'TestAnalyzeComposeFile.*Workload.*Protocol' -count=1
+          go test ./cmd/baha -run 'TestDevelopmentWorkloadRoute|TestWorkloadExposureSchemeForService' -count=1
 
       - name: Verify Podman Quadlet runtime
         id: quadlet
