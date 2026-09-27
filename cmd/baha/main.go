@@ -119,7 +119,7 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
 	ctx = operatorauth.WithEnforcement(ctx)
-	ctx = operatorauth.WithInteractive(ctx, out, errOut)
+	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 
