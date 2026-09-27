@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, managed/private issuer trust projection through `OIDC_CA_FILE`, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
 - Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
 - Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
+- Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
 
 ### Changed
 
@@ -20,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Identity recovery explicitly separates portable application identity intent from provider-held users, MFA and passkey state instead of claiming unsupported provider-global snapshots.
 - Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
 - Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
+- `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
 
 ### Fixed
 
