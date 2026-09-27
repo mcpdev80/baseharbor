@@ -49,6 +49,16 @@ type sharedPostgresResource struct {
 	CredentialReference string `json:"credential_reference"`
 }
 
+type SharedPostgresResourceObservation struct {
+	Instance        string `json:"instance"`
+	Database        string `json:"database"`
+	Role            string `json:"role"`
+	Owner           string `json:"owner"`
+	ProviderScope   string `json:"provider_scope"`
+	CredentialScope string `json:"credential_scope"`
+}
+
+
 type sharedValkeyResource struct {
 	CredentialReference string `json:"credential_reference"`
 	HostPort            int    `json:"host_port"`
@@ -248,6 +258,43 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, iss
 		return false, fmt.Errorf("refresh application contract for shared backends: %w", err)
 	}
 	return true, nil
+}
+
+func SharedPostgresResourcesAt(dataDir, namespace string, m Manifest) ([]SharedPostgresResourceObservation, error) {
+	if !UsesSharedPostgreSQL(m) {
+		return nil, nil
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return nil, err
+	}
+	appKey := sharedBackendApplicationKey(m)
+	app, ok := state.Applications[appKey]
+	if !ok {
+		return nil, fmt.Errorf("shared PostgreSQL application registration is missing")
+	}
+	if err := verifySharedPostgresStateOwnership(state, appKey); err != nil {
+		return nil, err
+	}
+	instances := make([]string, 0, len(app.SQL))
+	for instance := range app.SQL {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+	out := make([]SharedPostgresResourceObservation, 0, len(instances))
+	for _, instance := range instances {
+		resource := app.SQL[instance]
+		out = append(out, SharedPostgresResourceObservation{
+			Instance:        instance,
+			Database:        resource.Database,
+			Role:            resource.Username,
+			Owner:           app.Application + "/" + app.Environment,
+			ProviderScope:   string(capability.ScopeShared),
+			CredentialScope: "application",
+		})
+	}
+	return out, nil
 }
 
 func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
