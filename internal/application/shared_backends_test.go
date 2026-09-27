@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestSharedPostgresIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
-	t.Setenv(ProviderScopeEnv("postgresql"), "shared")
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
 	a := WithSQLInstances(New("payments-super-long-application-name-that-would-overflow-postgresql-identifiers", "dev", true, false, false), "primary", "analytics")
 	b := WithSQLInstances(New("payments-super-long-application-name-that-would-overflow-postgresql-identifiers", "test", true, false, false), "primary", "analytics")
 
