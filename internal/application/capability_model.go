@@ -129,6 +129,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.Prometheus, nil
 	case capability.Logs:
 		return capability.Loki, nil
+	case capability.Identity:
+		return capability.Keycloak, nil
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}
