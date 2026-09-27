@@ -39,6 +39,7 @@ func TestSharedPostgresIdentityIsDeterministicAndCollisionSafe(t *testing.T) {
 func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) {
 	state := sharedBackendState{
 		Version: sharedBackendStateVersion,
+		PostgresAdminCredential: "credentials/postgres/provider-admin.password",
 		Applications: map[string]sharedBackendAppState{
 			"app-a/dev": {
 				Application: "app-a", Environment: "dev",
@@ -66,6 +67,71 @@ func TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity(t *testing.T) 
 	}
 	if err := verifySharedPostgresStateOwnership(state, "app-a/dev"); err == nil || !strings.Contains(err.Error(), "ambiguous owners") {
 		t.Fatalf("verifySharedPostgresStateOwnership() role error = %v, want ambiguous owners", err)
+	}
+}
+
+
+func TestVerifySharedPostgresStateOwnershipRejectsProviderAdminLeakage(t *testing.T) {
+	state := sharedBackendState{
+		Version:                 sharedBackendStateVersion,
+		PostgresAdminCredential: "credentials/postgres/provider-admin.password",
+		Applications: map[string]sharedBackendAppState{
+			"app-a/dev": {
+				Application: "app-a", Environment: "dev",
+				SQL: map[string]sharedPostgresResource{"default": {
+					Database: "app_a_dev", Username: "baseharbor_admin", CredentialReference: "credentials/postgres/app-a-dev-default.password",
+				}},
+			},
+		},
+	}
+	if err := verifySharedPostgresStateOwnership(state, "app-a/dev"); err == nil || !strings.Contains(err.Error(), "provider administrator role") {
+		t.Fatalf("verifySharedPostgresStateOwnership() admin role error = %v", err)
+	}
+
+	resource := state.Applications["app-a/dev"]
+	resource.SQL["default"] = sharedPostgresResource{
+		Database: "app_a_dev", Username: "baha_app_a_dev", CredentialReference: state.PostgresAdminCredential,
+	}
+	state.Applications["app-a/dev"] = resource
+	if err := verifySharedPostgresStateOwnership(state, "app-a/dev"); err == nil || !strings.Contains(err.Error(), "provider administrator credential") {
+		t.Fatalf("verifySharedPostgresStateOwnership() admin credential error = %v", err)
+	}
+}
+
+func TestVerifySharedPostgresStateOwnershipRejectsProviderDatabases(t *testing.T) {
+	for _, database := range []string{"postgres", "template0", "template1"} {
+		state := sharedBackendState{
+			Version:                 sharedBackendStateVersion,
+			PostgresAdminCredential: "credentials/postgres/provider-admin.password",
+			Applications: map[string]sharedBackendAppState{
+				"app-a/dev": {
+					Application: "app-a", Environment: "dev",
+					SQL: map[string]sharedPostgresResource{"default": {
+						Database: database, Username: "baha_app_a_dev", CredentialReference: "credentials/postgres/app-a-dev-default.password",
+					}},
+				},
+			},
+		}
+		if err := verifySharedPostgresStateOwnership(state, "app-a/dev"); err == nil || !strings.Contains(err.Error(), "provider database") {
+			t.Fatalf("verifySharedPostgresStateOwnership(%q) error = %v", database, err)
+		}
+	}
+}
+
+func TestVerifySharedPostgresStateOwnershipRequiresProviderAdminCredential(t *testing.T) {
+	state := sharedBackendState{
+		Version: sharedBackendStateVersion,
+		Applications: map[string]sharedBackendAppState{
+			"app-a/dev": {
+				Application: "app-a", Environment: "dev",
+				SQL: map[string]sharedPostgresResource{"default": {
+					Database: "app_a_dev", Username: "baha_app_a_dev", CredentialReference: "credentials/postgres/app-a-dev-default.password",
+				}},
+			},
+		},
+	}
+	if err := verifySharedPostgresStateOwnership(state, "app-a/dev"); err == nil || !strings.Contains(err.Error(), "administrator credential reference is missing") {
+		t.Fatalf("verifySharedPostgresStateOwnership() error = %v", err)
 	}
 }
 
