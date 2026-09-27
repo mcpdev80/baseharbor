@@ -59,6 +59,29 @@ func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
 	}
 }
 
+func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Services.ObservabilityManagementUI = true
+	m.Metrics.Sources = []MetricsSourceRequirement{{Name: "application", Service: "demo-app", Port: 8080, Path: "/metrics"}}
+
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "services:\n  observability:\n    management_ui: true\n") {
+		t.Fatalf("observability management UI missing from metrics-only manifest:\n%s", rendered)
+	}
+
+	got, err := ParseYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Services.ObservabilityManagementUI {
+		t.Fatal("observability management UI did not survive manifest round trip")
+	}
+	if len(got.Metrics.Sources) != 1 || got.Metrics.Sources[0].Service != "demo-app" {
+		t.Fatalf("metrics source did not survive round trip: %#v", got.Metrics.Sources)
+	}
+}
+
 func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
