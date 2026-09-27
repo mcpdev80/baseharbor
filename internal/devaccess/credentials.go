@@ -52,6 +52,43 @@ func Ensure(target, environment string) (Credentials, error) {
 	return credentials, nil
 }
 
+func Configure(target, environment, username, password string) (Credentials, error) {
+	if !Enabled(environment) {
+		return Credentials{}, fmt.Errorf("developer access is only available for development environments")
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = DefaultUsername
+	}
+	credentials := Credentials{Username: username, Password: password}
+	path, err := credentialsPath(target, environment)
+	if err != nil {
+		return Credentials{}, err
+	}
+	if err := write(path, credentials); err != nil {
+		return Credentials{}, err
+	}
+	return credentials, nil
+}
+
+func Reset(target, environment, username string) (Credentials, error) {
+	if strings.TrimSpace(username) == "" {
+		if existing, err := Load(target, environment); err == nil {
+			username = existing.Username
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Credentials{}, err
+		}
+	}
+	if strings.TrimSpace(username) == "" {
+		username = DefaultUsername
+	}
+	password, err := randomPassword(24)
+	if err != nil {
+		return Credentials{}, err
+	}
+	return Configure(target, environment, username, password)
+}
+
 func Load(target, environment string) (Credentials, error) {
 	path, err := credentialsPath(target, environment)
 	if err != nil {
