@@ -17,6 +17,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -72,7 +73,15 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 		seen[raw] = struct{}{}
 		normalized = append(normalized, raw)
 	}
-	d.origins = sortedUnique(normalized)
+	normalized = sortedUnique(normalized)
+	if isDevelopmentIdentityEnvironment(d.app.Environment) && len(normalized) == 1 {
+		host, err := devaccess.ApplicationHost(d.targetName(), d.app.Name, "api")
+		if err != nil {
+			return err
+		}
+		normalized = []string{devaccess.CanonicalURL(host)}
+	}
+	d.origins = normalized
 	return nil
 }
 
@@ -131,6 +140,17 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		return err
 	}
 	ownership := keycloakOwnership(d.app)
+	realmAttributes := make(map[string]string, len(ownership)+1)
+	for key, value := range ownership {
+		realmAttributes[key] = value
+	}
+	if isDevelopmentIdentityEnvironment(d.app.Environment) {
+		publicBase, err := d.publicBaseURL()
+		if err != nil {
+			return err
+		}
+		realmAttributes["frontendUrl"] = publicBase
+	}
 	realm := keycloakRealm{
 		Realm: d.realm, Enabled: true,
 		DisplayName: "BaseHarbor " + d.app.Name + " (" + d.app.Environment + ")",
@@ -141,7 +161,7 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		WebAuthnPolicySignatureAlgorithms:             []string{"ES256", "RS256"},
 		WebAuthnPolicyPasswordlessRpEntityName:        "BaseHarbor",
 		WebAuthnPolicyPasswordlessSignatureAlgorithms: []string{"ES256", "RS256"},
-		Attributes: ownership,
+		Attributes: realmAttributes,
 	}
 	if err := admin.reconcileRealm(ctx, realm); err != nil {
 		return err
@@ -193,13 +213,21 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err != nil {
 		return err
 	}
-	issuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
-	discovery, err := FetchDiscovery(ctx, client, issuer)
+	endpointIssuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
+	publicIssuer, err := d.publicIssuerURL()
 	if err != nil {
 		return err
 	}
+	discovery, err := FetchDiscoveryAt(ctx, client, endpointIssuer, publicIssuer)
+	if err != nil {
+		return err
+	}
+	workloadDiscovery := rebaseIdentityDiscovery(discovery, publicIssuer, endpointIssuer)
 	d.discovery = discovery
-	return application.MaterializeIdentityBinding(d.app, d.appFiles, string(capability.ProviderKeycloak), discovery, d.clientID, d.clientSecret, d.files.PublicAccess.Material.CA)
+	return application.MaterializeIdentityBindingWithWorkloadDiscovery(
+		d.app, d.appFiles, string(capability.ProviderKeycloak),
+		discovery, workloadDiscovery, d.clientID, d.clientSecret, d.files.PublicAccess.Material.CA,
+	)
 }
 
 func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.Binding, origins []string) error {
@@ -222,8 +250,12 @@ func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, bind
 	if err != nil {
 		return err
 	}
-	issuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
-	discovery, err := FetchDiscovery(ctx, client, issuer)
+	endpointIssuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
+	publicIssuer, err := d.publicIssuerURL()
+	if err != nil {
+		return err
+	}
+	discovery, err := FetchDiscoveryAt(ctx, client, endpointIssuer, publicIssuer)
 	if err != nil {
 		return err
 	}
@@ -321,6 +353,56 @@ func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func (d *KeycloakDriver) targetName() string {
+	target := strings.TrimSpace(d.namespace)
+	if target == "" {
+		return "local"
+	}
+	return target
+}
+
+func (d *KeycloakDriver) publicBaseURL() (string, error) {
+	if !isDevelopmentIdentityEnvironment(d.app.Environment) {
+		return d.files.PublicURL, nil
+	}
+	host, err := devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	if err != nil {
+		return "", err
+	}
+	return devaccess.CanonicalURL(host), nil
+}
+
+func (d *KeycloakDriver) publicIssuerURL() (string, error) {
+	base, err := d.publicBaseURL()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(base, "/") + "/realms/" + url.PathEscape(d.realm), nil
+}
+
+func rebaseIdentityDiscovery(discovery application.IdentityDiscovery, fromIssuer, toIssuer string) application.IdentityDiscovery {
+	fromIssuer = strings.TrimRight(strings.TrimSpace(fromIssuer), "/")
+	toIssuer = strings.TrimRight(strings.TrimSpace(toIssuer), "/")
+	rebase := func(value string) string {
+		value = strings.TrimSpace(value)
+		if value == fromIssuer {
+			return toIssuer
+		}
+		if strings.HasPrefix(value, fromIssuer+"/") {
+			return toIssuer + strings.TrimPrefix(value, fromIssuer)
+		}
+		return value
+	}
+	return application.IdentityDiscovery{
+		Issuer:                rebase(discovery.Issuer),
+		AuthorizationEndpoint: rebase(discovery.AuthorizationEndpoint),
+		TokenEndpoint:         rebase(discovery.TokenEndpoint),
+		UserinfoEndpoint:      rebase(discovery.UserinfoEndpoint),
+		JWKSURI:               rebase(discovery.JWKSURI),
+		EndSessionEndpoint:    rebase(discovery.EndSessionEndpoint),
+	}
 }
 
 func keycloakRealmName(app application.Manifest) string {
