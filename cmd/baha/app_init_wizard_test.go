@@ -524,6 +524,12 @@ func TestAdoptionSummaryMinimal(t *testing.T) {
 
 func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	m := detectedApplicationManifest("demo", "dev", true, true, true, true, true)
+	m.Services.SQLManagementUI = true
+	m.Services.CacheManagementUI = true
+	m.Services.ObjectStorageManagementUI = true
+	m.Services.SecretsManagementUI = true
+	m.Services.IdentityManagementUI = true
+	m.Services.ObservabilityManagementUI = true
 	m = application.WithWorkload(m, "compose.yaml", "api")
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithOTLPTelemetry(m, "traces")
@@ -541,6 +547,13 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 		"SQL Database  detected and confirmed",
 		"Cache         detected and confirmed",
 		"Object Storage detected and confirmed",
+		"Management UIs",
+		"PostgreSQL    pgAdmin",
+		"Cache         Redis Commander",
+		"Object Storage provider administration UI",
+		"Secrets       OpenBao UI",
+		"Identity      provider administration UI",
+		"Observability Prometheus UI",
 		"Observability",
 		"Metrics       expose OpenMetrics HTTP (recommended /metrics)",
 		"BaseHarbor collects workload + supported managed-provider metrics",
