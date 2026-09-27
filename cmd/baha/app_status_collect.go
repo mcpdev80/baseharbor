@@ -328,8 +328,17 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 			cancel()
 			loginDetail := "Keycloak user-facing identity UI reachable over TLS"
 			if devaccess.Enabled(c.manifest.Environment) {
-				if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity"); hostErr == nil {
-					loginDetail = devaccess.CanonicalURL(host)
+				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
+					var host string
+					var hostErr error
+					if placement.Scope == capability.ScopeShared {
+						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity")
+					} else {
+						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity")
+					}
+					if hostErr == nil {
+						loginDetail = devaccess.CanonicalURL(host)
+					}
 				}
 			}
 			record("identity-login", checkErr, loginDetail)
@@ -342,8 +351,17 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 			cancel()
 			adminDetail := "Keycloak administration UI reachable over TLS"
 			if devaccess.Enabled(c.manifest.Environment) {
-				if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin"); hostErr == nil {
-					adminDetail = devaccess.CanonicalURL(host)
+				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
+					var host string
+					var hostErr error
+					if placement.Scope == capability.ScopeShared {
+						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity-admin")
+					} else {
+						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin")
+					}
+					if hostErr == nil {
+						adminDetail = devaccess.CanonicalURL(host)
+					}
 				}
 			}
 			record("identity-admin", checkErr, adminDetail)
