@@ -364,6 +364,11 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject)); destroyErr != nil {
 				*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "application-runtime " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
 			}
+			if application.HasSharedBackends(m) {
+				if releaseErr := application.ReleaseSharedBackendApplication(parent, compose, targetRoot, target.Name, m); releaseErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "shared-data-resources " + m.Name + "/" + m.Environment, Detail: releaseErr.Error()})
+				}
+			}
 			if placement, found, placementErr := application.RegisteredProviderPlacementAt(targetRoot, m, capability.ProviderTempo); placementErr == nil && found && placement.Scope == capability.ScopeApplication {
 				if destroyErr := tracesprovider.DestroyProvider(parent, compose, m); destroyErr != nil {
 					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "application-traces " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
@@ -452,6 +457,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		}
 	}
 	runCleanup("runtime-executor", func() error { return runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name) })
+	runCleanup("data-providers", func() error { return application.DestroyAllSharedBackendsAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("object-storage", func() error { return objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("telemetry", func() error { return telemetry.DestroySharedProviderAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("traces", func() error { return tracesprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name) })
