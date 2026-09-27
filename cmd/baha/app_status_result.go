@@ -26,7 +26,7 @@ type applicationStatusResult struct {
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
 	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
-	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
+	OperatorAuth    operatorAuthObservation                       `json:"operator_auth"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
