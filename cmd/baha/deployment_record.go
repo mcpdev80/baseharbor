@@ -11,6 +11,48 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
+func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) (deployment.DeploymentRecord, error) {
+	if !resolved.SourceAvailable {
+		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
+	}
+	intent, err := json.Marshal(resolved.Manifest)
+	if err != nil {
+		return deployment.DeploymentRecord{}, fmt.Errorf("encode normalized pending intent: %w", err)
+	}
+	revision, err := repositoryDesiredStateFingerprint(ctx, resolved)
+	if err != nil {
+		return deployment.DeploymentRecord{}, fmt.Errorf("fingerprint pending source: %w", err)
+	}
+	record := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: resolved.DeploymentIdentity,
+		Source: deployment.DeploymentSource{
+			Kind:       "repository",
+			Repository: resolved.repositoryRoot(),
+			Manifest:   resolved.ManifestPath,
+			Digest:     revision,
+		},
+		Applied: deployment.AppliedDeployment{
+			Intent:          intent,
+			RuntimeProvider: resolved.Target.RuntimeProvider,
+			GeneratedState: map[string]string{
+				"deployment": resolved.DeploymentStateRoot,
+				"state":      filepath.Join(resolved.DeploymentStateRoot, "state"),
+			},
+			LastAppliedRef: revision,
+		},
+		Observed: deployment.ObservedDeployment{
+			State:      "applying",
+			Ready:      false,
+			VerifiedAt: time.Now().UTC(),
+		},
+	}
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		return deployment.DeploymentRecord{}, err
+	}
+	return record, nil
+}
+
 func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) error {
 	if !resolved.SourceAvailable {
 		return fmt.Errorf("cannot record applied deployment without available source")
