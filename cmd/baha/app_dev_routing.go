@@ -42,6 +42,9 @@ func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]st
 		if m.Services.ObservabilityManagementUI && route.Owner == "shared/prometheus" {
 			include = true
 		}
+		if m.Services.Identity && route.Owner == "shared/keycloak" {
+			include = true
+		}
 		if !include {
 			continue
 		}
@@ -132,29 +135,48 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			if err != nil {
 				return err
 			}
+			owner := appOwner
+			loginKey := appOwner + "/identity"
+			adminKey := appOwner + "/identity-admin"
 			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "identity")
+			if placement.Scope == capability.ScopeShared {
+				owner = "shared/keycloak"
+				loginKey = owner + "/login"
+				adminKey = owner + "/admin"
+				host, err = devaccess.SharedHost(target, "identity")
+			}
 			if err != nil {
 				return err
 			}
-			appRoutes = append(appRoutes, devgateway.Route{
-				Key: appOwner + "/identity", Host: host,
+			identityRoutes := []devgateway.Route{{
+				Key: loginKey, Host: host,
 				Upstream: fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
 				Network: files.ConsumerNetwork,
 				TrustFile: files.PublicAccess.Material.CA,
 				ServerName: files.PublicAccess.Material.ServerName,
-			})
+			}}
 			if e.manifest.Services.IdentityManagementUI {
-				adminHost, err := devaccess.ApplicationHost(target, e.manifest.Name, "identity-admin")
+				var adminHost string
+				if placement.Scope == capability.ScopeShared {
+					adminHost, err = devaccess.SharedHost(target, "identity-admin")
+				} else {
+					adminHost, err = devaccess.ApplicationHost(target, e.manifest.Name, "identity-admin")
+				}
 				if err != nil {
 					return err
 				}
-				appRoutes = append(appRoutes, devgateway.Route{
-					Key: appOwner + "/identity-admin", Host: adminHost,
+				identityRoutes = append(identityRoutes, devgateway.Route{
+					Key: adminKey, Host: adminHost,
 					Upstream: "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
 					Network: files.InternalNetwork,
 					TrustFile: files.AdminAccess.Material.CA,
 					ServerName: files.AdminAccess.Material.ServerName,
 				})
+			}
+			if placement.Scope == capability.ScopeShared {
+				groups = append(groups, devgateway.OwnerRoutes{Owner: owner, Routes: identityRoutes})
+			} else {
+				appRoutes = append(appRoutes, identityRoutes...)
 			}
 		}
 	}
