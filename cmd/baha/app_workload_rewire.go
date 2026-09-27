@@ -42,8 +42,11 @@ func analyzeManagedServiceReferenceRewrites(m application.Manifest, rendered []b
 		selected[service] = struct{}{}
 	}
 	excluded := make(map[string]struct{})
-	for service := range config.Services {
-		if _, ok := selected[service]; !ok {
+	for service, definition := range config.Services {
+		if _, ok := selected[service]; ok {
+			continue
+		}
+		if isManagedReplacementService(m, service, definition.Image) {
 			excluded[service] = struct{}{}
 		}
 	}
@@ -79,6 +82,13 @@ func analyzeManagedServiceReferenceRewrites(m application.Manifest, rendered []b
 		}
 	}
 	return rewrites, nil
+}
+
+func isManagedReplacementService(m application.Manifest, service, image string) bool {
+	value := strings.ToLower(strings.TrimSpace(service + " " + image))
+	postgres := strings.Contains(value, "postgres") || strings.Contains(value, "postgresql")
+	cache := strings.Contains(value, "redis") || strings.Contains(value, "valkey")
+	return (m.Services.SQL && postgres) || (m.Services.Cache && cache)
 }
 
 func classifyManagedServiceReference(m application.Manifest, value string, excluded map[string]struct{}) (workloadReferenceRewriteKind, bool, error) {
