@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
 - Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
 - Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
+- First-class resource-efficient `shared` placement for the bundled PostgreSQL and Valkey providers while retaining explicit `application` placement; shared provider lifecycle is Target-owned while databases, cache resources, credentials and Service Bindings remain application-isolated.
 
 ### Changed
 
@@ -24,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
 - `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
 - Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
+- The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
 
 ### Fixed
 
@@ -36,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Shared PostgreSQL reconciliation hardens database/schema/public privileges, verifies application-role ownership and denies cross-application database access; destroy fails closed unless protected provider state and live PostgreSQL ownership agree.
 - Shared PostgreSQL application roles are `NOINHERIT`, receive no provider-role memberships, cannot connect to provider administration databases, and restores authenticate with the protected application credential rather than a provider-admin or local-trust shortcut.
 - Shared PostgreSQL backup/restore remains application-scoped and derives the exact database set from protected application registrations; sibling databases, roles and credentials are never part of another application's recovery operation.
+- Shared Valkey uses isolated per-application services and credentials inside the Target-owned provider lifecycle, preserving normal Redis/Valkey client compatibility without cross-application key visibility.
 - Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
 - Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
 - Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
