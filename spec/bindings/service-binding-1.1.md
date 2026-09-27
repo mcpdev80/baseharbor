@@ -20,6 +20,37 @@ private-key
 
 BaseHarbor MUST NOT introduce aliases such as `hostname`, `connectionHost`, `user`, `pass` or `connectionString` when the standard name has the required meaning.
 
+## Workload projection
+
+For workload-facing bindings BaseHarbor follows the Service Binding 1.1 workload projection model:
+
+```text
+SERVICE_BINDING_ROOT=/run/baseharbor/service-bindings
+
+$SERVICE_BINDING_ROOT/
+  postgres/
+    type
+    host
+    port
+    uri
+    username
+    password
+    certificates
+  valkey/
+    type
+    host
+    port
+    uri
+    password
+    certificates
+```
+
+Each binding is a direct child of `SERVICE_BINDING_ROOT`. Named or multiple instances use stable direct-child binding names such as `postgres.analytics` or `valkey.sessions`.
+
+Only application-consumable service binding entries are projected. BaseHarbor internal runtime identity, broker state, provider metadata and unrelated protected state MUST NOT be mounted through `SERVICE_BINDING_ROOT`.
+
+Compatibility variables such as `REDIS_URL` remain compatibility projections; they do not replace the standard `certificates` binding entry and must not be treated as a complete portable TLS trust contract by themselves.
+
 ## Secret safety
 
 Using the Service Binding name does not require BaseHarbor to expose plaintext secret material through provider metadata.

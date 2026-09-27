@@ -131,6 +131,30 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 	}
 }
 
+func TestWorkloadOverrideProjectsStandardServiceBindingRoot(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	runtime := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
+	values := map[string]string{
+		"POSTGRES_DB":          "demo_dev",
+		"POSTGRES_USER":        "baseharbor",
+		"POSTGRES_PASSWORD":    "secret",
+		"POSTGRES_TLS_CA_FILE": filepath.Join(runtime.Dir, "postgres-ca.pem"),
+		"VALKEY_PASSWORD":      "secret",
+		"VALKEY_TLS_CA_FILE":   filepath.Join(runtime.Dir, "valkey-ca.pem"),
+	}
+	got, err := workloadOverrideYAMLForFiles(m, []string{"api"}, values, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "SERVICE_BINDING_ROOT: "+strconv.Quote(workloadServiceBindingRoot)) {
+		t.Fatalf("override missing SERVICE_BINDING_ROOT:\n%s", got)
+	}
+	wantMount := workloadServiceBindingProjectionDir(runtime) + ":" + workloadServiceBindingRoot + ":ro"
+	if !strings.Contains(got, strconv.Quote(wantMount)) {
+		t.Fatalf("override missing service binding mount %q:\n%s", wantMount, got)
+	}
+}
+
 func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false

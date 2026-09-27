@@ -214,6 +214,78 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, true, false)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := workloadServiceBindingProjectionDir(files)
+	for _, path := range []string{
+		filepath.Join(root, "postgres", "type"),
+		filepath.Join(root, "postgres", "uri"),
+		filepath.Join(root, "postgres", "certificates"),
+		filepath.Join(root, "valkey", "type"),
+		filepath.Join(root, "valkey", "uri"),
+		filepath.Join(root, "valkey", "certificates"),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("projected binding %s: %v", path, err)
+		}
+		if info.Mode().Perm() != 0o444 {
+			t.Fatalf("projected binding %s mode = %o, want 444", path, info.Mode().Perm())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "runtime-identity")); !os.IsNotExist(err) {
+		t.Fatalf("internal runtime identity must not enter service binding projection, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "metadata.json")); !os.IsNotExist(err) {
+		t.Fatalf("internal metadata must not enter service binding projection, err=%v", err)
+	}
+
+	postgresURI, err := os.ReadFile(filepath.Join(root, "postgres", "uri"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(postgresURI), "@postgres:5432/") ||
+		!strings.Contains(string(postgresURI), "sslrootcert=%2Frun%2Fbaseharbor%2Fservice-bindings%2Fpostgres%2Fcertificates") {
+		t.Fatalf("workload PostgreSQL binding is not container-native: %s", postgresURI)
+	}
+	valkeyURI, err := os.ReadFile(filepath.Join(root, "valkey", "uri"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(valkeyURI), "@valkey-access:6379/0") {
+		t.Fatalf("workload Valkey binding is not container-native: %s", valkeyURI)
+	}
+}
+
+func TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust(t *testing.T) {
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, true, false)
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyWorkloadServiceBindings(m, files); err != nil {
+		t.Fatalf("valid workload bindings failed verification: %v", err)
+	}
+
+	certificates := filepath.Join(workloadServiceBindingProjectionDir(files), "valkey", "certificates")
+	if err := os.Chmod(certificates, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certificates, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyWorkloadServiceBindings(m, files); err == nil || !strings.Contains(err.Error(), "certificates") {
+		t.Fatalf("expected broken cache trust to fail verification, got %v", err)
+	}
+}
+
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
@@ -290,6 +362,18 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("named binding %s: %v", path, err)
+		}
+	}
+
+	projection := workloadServiceBindingProjectionDir(files)
+	for _, path := range []string{
+		filepath.Join(projection, "postgres.primary", "uri"),
+		filepath.Join(projection, "postgres.analytics", "uri"),
+		filepath.Join(projection, "valkey.cache", "uri"),
+		filepath.Join(projection, "valkey.sessions", "uri"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("flattened workload binding %s: %v", path, err)
 		}
 	}
 }

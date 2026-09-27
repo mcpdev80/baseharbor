@@ -327,9 +327,12 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		fmt.Fprintf(&b, "  %s:\n", service)
 		if hasEnvironment {
 			b.WriteString("    environment:\n")
-			serviceEnv := make(map[string]string, len(env)+2)
+			serviceEnv := make(map[string]string, len(env)+3)
 			for key, value := range env {
 				serviceEnv[key] = value
+			}
+			if managedRuntime {
+				serviceEnv["SERVICE_BINDING_ROOT"] = workloadServiceBindingRoot
 			}
 			if HasOTLPTelemetry(m) {
 				serviceEnv["OTEL_SERVICE_NAME"] = service
@@ -346,6 +349,10 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		}
 		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS {
 			b.WriteString("    volumes:\n")
+			if hasBackendTLS {
+				projection := workloadServiceBindingProjectionDir(runtime)
+				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(projection+":"+workloadServiceBindingRoot+":ro"))
+			}
 			if hasTelemetryTLS {
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
 				if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
