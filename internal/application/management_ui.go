@@ -3,7 +3,9 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -66,10 +68,22 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 	return nil
 }
 
-func VerifyApplicationManagementUIs(ctx context.Context, m Manifest, files RuntimeFiles) error {
+type ManagementUICheckResult struct {
+	Name string
+	Err  error
+}
+
+func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files RuntimeFiles) []ManagementUICheckResult {
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
-		return err
+		var results []ManagementUICheckResult
+		if m.Services.SQLManagementUI {
+			results = append(results, ManagementUICheckResult{Name: "pgadmin", Err: err})
+		}
+		if m.Services.CacheManagementUI {
+			results = append(results, ManagementUICheckResult{Name: "redis-commander", Err: err})
+		}
+		return results
 	}
 	checks := []struct {
 		enabled bool
@@ -81,39 +95,55 @@ func VerifyApplicationManagementUIs(ctx context.Context, m Manifest, files Runti
 		{m.Services.SQLManagementUI, "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
 		{m.Services.CacheManagementUI, "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
 	}
+	results := make([]ManagementUICheckResult, 0, len(checks))
 	for _, check := range checks {
 		if !check.enabled {
 			continue
 		}
-		portValue, err := requireRuntimeValue(values, check.portKey)
-		if err != nil {
-			return err
+		result := ManagementUICheckResult{Name: check.name}
+		portValue, checkErr := requireRuntimeValue(values, check.portKey)
+		if checkErr == nil {
+			var port int
+			port, checkErr = strconv.Atoi(portValue)
+			if checkErr != nil {
+				checkErr = fmt.Errorf("%s management UI has invalid host port: %w", check.name, checkErr)
+			} else {
+				var policy serviceaccess.Policy
+				policy, checkErr = serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
+				if checkErr == nil {
+					var material serviceaccess.TLSMaterial
+					material, checkErr = serviceaccess.ExistingTLSMaterial(policy, check.dir)
+					if checkErr != nil {
+						checkErr = fmt.Errorf("inspect %s management UI TLS: %w", check.name, checkErr)
+					} else {
+						var client *http.Client
+						client, checkErr = serviceaccess.NewHTTPClient(material, false)
+						if checkErr == nil {
+							var endpoint string
+							endpoint, checkErr = serviceaccess.LoopbackHTTPSURL(port)
+							if checkErr == nil {
+								if err := serviceaccess.WaitHTTPS(ctx, client, endpoint, check.path); err != nil {
+									checkErr = fmt.Errorf("%s management UI is not ready: %w", check.name, err)
+								}
+							}
+						}
+					}
+			}
 		}
-		port, err := strconv.Atoi(portValue)
-		if err != nil {
-			return fmt.Errorf("%s management UI has invalid host port: %w", check.name, err)
-		}
-		policy, err := serviceaccess.Resolve(m.Environment, check.name, serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
-		}
-		material, err := serviceaccess.ExistingTLSMaterial(policy, check.dir)
-		if err != nil {
-			return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
-		}
-		client, err := serviceaccess.NewHTTPClient(material, false)
-		if err != nil {
-			return err
-		}
-		endpoint, err := serviceaccess.LoopbackHTTPSURL(port)
-		if err != nil {
-			return err
-		}
-		if err := serviceaccess.WaitHTTPS(ctx, client, endpoint, check.path); err != nil {
-			return fmt.Errorf("%s management UI is not ready: %w", check.name, err)
+		result.Err = checkErr
+		results = append(results, result)
+	}
+	return results
+}
+
+func VerifyApplicationManagementUIs(ctx context.Context, m Manifest, files RuntimeFiles) error {
+	var errs []error
+	for _, result := range VerifyApplicationManagementUIChecks(ctx, m, files) {
+		if result.Err != nil {
+			errs = append(errs, result.Err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]ManagementUISurface, error) {
