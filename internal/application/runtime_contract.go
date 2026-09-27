@@ -218,17 +218,21 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 		query := url.Values{}
 		query.Set("sslmode", "verify-ca")
 		query.Set("sslrootcert", certificatePath)
+		host := strings.TrimSpace(values[postgresContainerHostKey(instance)])
+		if host == "" {
+			host = postgresAccessService(instance)
+		}
 		uri := (&url.URL{
 			Scheme:   "postgresql",
 			User:     url.UserPassword(username, password),
-			Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+			Host:     net.JoinHostPort(host, "5432"),
 			Path:     "/" + database,
 			RawQuery: query.Encode(),
 		}).String()
 		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
 			"type":         "postgresql",
 			"provider":     "postgresql",
-			"host":         postgresAccessService(instance),
+			"host":         host,
 			"port":         "5432",
 			"database":     database,
 			"username":     username,
@@ -251,16 +255,20 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 		if err != nil {
 			return "", err
 		}
+		host := strings.TrimSpace(values[valkeyContainerHostKey(instance)])
+		if host == "" {
+			host = valkeyAccessService(instance)
+		}
 		uri := (&url.URL{
 			Scheme: "rediss",
 			User:   url.UserPassword("default", password),
-			Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
+			Host:   net.JoinHostPort(host, "6379"),
 			Path:   "/0",
 		}).String()
 		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
 			"type":         "redis",
 			"provider":     "valkey",
-			"host":         valkeyAccessService(instance),
+			"host":         host,
 			"port":         "6379",
 			"username":     "default",
 			"password":     password,
@@ -274,6 +282,10 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 }
 
 func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
 	root := workloadServiceBindingProjectionDir(files)
 	postgres := SQLInstanceNames(m)
 	for _, instance := range postgres {
@@ -285,11 +297,15 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		if entries["type"] != "postgresql" || entries["provider"] != "postgresql" {
 			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid type/provider", instance)
 		}
-		if entries["host"] != postgresAccessService(instance) || entries["port"] != "5432" {
+		expectedHost := strings.TrimSpace(values[postgresContainerHostKey(instance)])
+		if expectedHost == "" {
+			expectedHost = postgresAccessService(instance)
+		}
+		if entries["host"] != expectedHost || entries["port"] != "5432" {
 			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid workload endpoint", instance)
 		}
 		u, err := url.Parse(entries["uri"])
-		if err != nil || u.Scheme != "postgresql" || u.Host != net.JoinHostPort(postgresAccessService(instance), "5432") {
+		if err != nil || u.Scheme != "postgresql" || u.Host != net.JoinHostPort(expectedHost, "5432") {
 			return fmt.Errorf("verify workload PostgreSQL binding %s: invalid uri", instance)
 		}
 		wantCA := filepath.ToSlash(filepath.Join(workloadServiceBindingRoot, name, "certificates"))
@@ -311,11 +327,15 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		if entries["type"] != "redis" || entries["provider"] != "valkey" {
 			return fmt.Errorf("verify workload cache binding %s: invalid type/provider", instance)
 		}
-		if entries["host"] != valkeyAccessService(instance) || entries["port"] != "6379" {
+		expectedHost := strings.TrimSpace(values[valkeyContainerHostKey(instance)])
+		if expectedHost == "" {
+			expectedHost = valkeyAccessService(instance)
+		}
+		if entries["host"] != expectedHost || entries["port"] != "6379" {
 			return fmt.Errorf("verify workload cache binding %s: invalid workload endpoint", instance)
 		}
 		u, err := url.Parse(entries["uri"])
-		if err != nil || u.Scheme != "rediss" || u.Host != net.JoinHostPort(valkeyAccessService(instance), "6379") {
+		if err != nil || u.Scheme != "rediss" || u.Host != net.JoinHostPort(expectedHost, "6379") {
 			return fmt.Errorf("verify workload cache binding %s: invalid uri", instance)
 		}
 		if strings.TrimSpace(entries["certificates"]) == "" {
