@@ -110,27 +110,27 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	}
 
 	if selection.selected[0] {
-		selection.sqlManagementUI, err = promptYesNo(reader, out, "PostgreSQL management UI?", false)
+		selection.sqlManagementUI, err = promptOptionalYesNo(reader, out, "PostgreSQL management UI?", false)
 		if err != nil { return selection, err }
 	}
 	if selection.selected[1] {
-		selection.cacheManagementUI, err = promptYesNo(reader, out, "Cache management UI?", false)
+		selection.cacheManagementUI, err = promptOptionalYesNo(reader, out, "Cache management UI?", false)
 		if err != nil { return selection, err }
 	}
 	if selection.selected[2] {
-		selection.objectStorageManagementUI, err = promptYesNo(reader, out, "Object storage management UI?", false)
+		selection.objectStorageManagementUI, err = promptOptionalYesNo(reader, out, "Object storage management UI?", false)
 		if err != nil { return selection, err }
 	}
 	if selection.selected[3] {
-		selection.secretsManagementUI, err = promptYesNo(reader, out, "Secrets management UI?", false)
+		selection.secretsManagementUI, err = promptOptionalYesNo(reader, out, "Secrets management UI?", false)
 		if err != nil { return selection, err }
 	}
 	if selection.selected[4] {
-		selection.identityManagementUI, err = promptYesNo(reader, out, "Identity management UI?", false)
+		selection.identityManagementUI, err = promptOptionalYesNo(reader, out, "Identity management UI?", false)
 		if err != nil { return selection, err }
 	}
 	if selection.selected[5] || selection.selected[6] || selection.selected[7] {
-		selection.observabilityManagementUI, err = promptYesNo(reader, out, "Observability management UI?", false)
+		selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI?", false)
 		if err != nil { return selection, err }
 	}
 
