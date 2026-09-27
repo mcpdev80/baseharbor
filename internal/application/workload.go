@@ -254,7 +254,7 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
 	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
 	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
-	identityNetworkName := scopedWorkloadNetworkName("baseharbor-identity", namespace)
+	identityNetworkName := ""
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
@@ -282,6 +282,12 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			return "", err
 		}
 		identityManaged = provider.Kind == capability.ProviderKeycloak
+		if identityManaged {
+			identityNetworkName, err = IdentityProviderNetworkName(m, namespace)
+			if err != nil {
+				return "", err
+			}
+		}
 	}
 	metricsServices := map[string]struct{}{}
 	metricsNetworkName := ""
