@@ -10,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -168,6 +169,23 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return err
 	}
 	e.files = files
+
+	if devaccess.Enabled(e.manifest.Environment) &&
+		(e.manifest.Services.SQLManagementUI ||
+			e.manifest.Services.CacheManagementUI ||
+			e.manifest.Services.ObjectStorageManagementUI ||
+			e.manifest.Services.SecretsManagementUI ||
+			e.manifest.Services.IdentityManagementUI ||
+			e.manifest.Services.ObservabilityManagementUI ||
+			e.manifest.Services.Identity) {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("prepare developer access: %w", err)
+		}
+		if err := application.ApplyDevelopmentManagementUICredentials(ctx, e.issuer, e.files, e.manifest, credentials.Username, credentials.Password); err != nil {
+			return fmt.Errorf("project developer access into management UIs: %w", err)
+		}
+	}
 
 	if application.HasManagedRuntimeServices(e.manifest) {
 		if err := e.compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
