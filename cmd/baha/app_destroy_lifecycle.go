@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -363,7 +364,7 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 		return nil
 	}
 
-	keycloakPlacement, keycloakFound, err := application.RegisteredProviderPlacementAt(
+	_, keycloakFound, err := application.RegisteredProviderPlacementAt(
 		e.resolved.TargetStateRoot, e.manifest, capability.ProviderKeycloak,
 	)
 	if err != nil {
@@ -377,7 +378,6 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 		if err := driver.DestroyApplication(ctx); err != nil {
 			return fmt.Errorf("destroy managed identity scope: %w", err)
 		}
-		_ = keycloakPlacement
 		return nil
 	}
 
