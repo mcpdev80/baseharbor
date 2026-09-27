@@ -190,7 +190,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 					Key: appOwner + "/workload-api",
 					Host: host,
 					Upstream: fmt.Sprintf("http://%s:%d", application.DevelopmentWorkloadAlias(e.manifest), ports[0]),
-					Network: application.DevelopmentWorkloadNetworkNameForProject(e.files.Project),
+					Network: application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
 				})
 			}
 		}
