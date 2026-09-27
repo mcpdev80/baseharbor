@@ -651,10 +651,14 @@ func postgresContainerConnectionURL(values map[string]string, instance string) (
 	query := url.Values{}
 	query.Set("sslmode", "verify-ca")
 	query.Set("sslrootcert", postgresTLSCAContainerPath(instance))
+	host := strings.TrimSpace(values[postgresContainerHostKey(instance)])
+	if host == "" {
+		host = postgresAccessService(instance)
+	}
 	u := &url.URL{
 		Scheme:   "postgresql",
 		User:     url.UserPassword(username, password),
-		Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+		Host:     net.JoinHostPort(host, "5432"),
 		Path:     "/" + database,
 		RawQuery: query.Encode(),
 	}
@@ -666,10 +670,14 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 	if err != nil {
 		return "", err
 	}
+	host := strings.TrimSpace(values[valkeyContainerHostKey(instance)])
+	if host == "" {
+		host = valkeyAccessService(instance)
+	}
 	u := &url.URL{
 		Scheme: "rediss",
 		User:   url.UserPassword("default", password),
-		Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
+		Host:   net.JoinHostPort(host, "6379"),
 		Path:   "/0",
 	}
 	return u.String(), nil
