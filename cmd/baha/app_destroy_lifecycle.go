@@ -499,7 +499,6 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 		issuer,
 		e.resolved.Target.Name,
 		appOwner,
-		appOwner+"/prometheus",
 	); err != nil {
 		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
