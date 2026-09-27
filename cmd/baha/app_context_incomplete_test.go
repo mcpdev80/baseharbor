@@ -6,11 +6,45 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-func TestResolveRegisteredApplicationReportsIncompleteDeploymentState(t *testing.T) {
+func TestResolveRegisteredApplicationRecoversIncompleteDeploymentFromProtectedState(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "dev"}
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
+	m := application.New("demo", "dev", true, true, false)
+	if _, err := store.Create(m); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := resolveRegisteredApplication(target, targetRoot, "demo", "", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolved.IncompleteDeployment {
+		t.Fatal("expected recovered deployment to remain marked incomplete")
+	}
+	if resolved.Manifest.Name != "demo" || resolved.Manifest.Environment != "dev" {
+		t.Fatalf("unexpected recovered manifest: %#v", resolved.Manifest)
+	}
+	if resolved.FromRepository || resolved.SourceAvailable {
+		t.Fatalf("incomplete state must not invent source availability: %#v", resolved)
+	}
+}
+
+func TestResolveRegisteredApplicationFailsClosedWhenIncompleteStateCannotBeReconstructed(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
 	targetRoot, err := deployment.TargetStateRoot(target.Name)
