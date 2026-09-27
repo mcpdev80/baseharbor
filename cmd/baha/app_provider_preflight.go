@@ -22,6 +22,9 @@ type managedProviderPreflightState struct {
 }
 
 func requiresManagedServiceIssuer(m application.Manifest) bool {
+	if requiresDevelopmentGateway(m) {
+		return true
+	}
 	if application.HasIdentity(m) {
 		provider, err := application.IdentityProviderForDeployment()
 		if err != nil || provider.Kind == capability.ProviderKeycloak {
