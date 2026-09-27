@@ -29,6 +29,7 @@ type keycloakRealm struct {
 	RegistrationAllowed bool `json:"registrationAllowed"`
 	ResetPasswordAllowed bool `json:"resetPasswordAllowed"`
 	RememberMe   bool     `json:"rememberMe"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
 	OTPPolicyType string   `json:"otpPolicyType,omitempty"`
 	WebAuthnPolicyRpEntityName string `json:"webAuthnPolicyRpEntityName,omitempty"`
 	WebAuthnPolicySignatureAlgorithms []string `json:"webAuthnPolicySignatureAlgorithms,omitempty"`
@@ -92,6 +93,13 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 	if err != nil { return err }
 	switch status {
 	case http.StatusOK:
+		var current keycloakRealm
+		if err := json.Unmarshal([]byte(body), &current); err != nil {
+			return fmt.Errorf("decode existing Keycloak realm: %w", err)
+		}
+		if !keycloakRealmOwnedBy(current, desired.Attributes) {
+			return fmt.Errorf("Keycloak realm %q exists but is not owned by this BaseHarbor application/environment", desired.Realm)
+		}
 		status, body, err := a.do(ctx, http.MethodPut, path, desired)
 		if err != nil { return err }
 		if status != http.StatusNoContent {
@@ -187,11 +195,29 @@ func (a *keycloakAdmin) reconcileRequiredActions(ctx context.Context, realm stri
 	return nil
 }
 
-func (a *keycloakAdmin) deleteRealm(ctx context.Context, realm string) error {
-	status, body, err := a.do(ctx, http.MethodDelete, "/admin/realms/"+url.PathEscape(realm), nil)
+func (a *keycloakAdmin) deleteRealm(ctx context.Context, realm string, ownership map[string]string) error {
+	path := "/admin/realms/" + url.PathEscape(realm)
+	status, body, err := a.do(ctx, http.MethodGet, path, nil)
+	if err != nil { return err }
+	if status == http.StatusNotFound { return nil }
+	if status != http.StatusOK { return fmt.Errorf("inspect Keycloak realm before delete: HTTP %d: %s", status, body) }
+	var current keycloakRealm
+	if err := json.Unmarshal([]byte(body), &current); err != nil { return err }
+	if !keycloakRealmOwnedBy(current, ownership) {
+		return fmt.Errorf("Keycloak realm %q is not owned by this BaseHarbor application/environment; refusing delete", realm)
+	}
+	status, body, err = a.do(ctx, http.MethodDelete, path, nil)
 	if err != nil { return err }
 	if status == http.StatusNotFound || status == http.StatusNoContent { return nil }
 	return fmt.Errorf("delete Keycloak realm: HTTP %d: %s", status, body)
+}
+
+func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
+	if len(expected) == 0 || len(current.Attributes) == 0 { return false }
+	for key, value := range expected {
+		if current.Attributes[key] != value { return false }
+	}
+	return true
 }
 
 func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any) (int, string, error) {
