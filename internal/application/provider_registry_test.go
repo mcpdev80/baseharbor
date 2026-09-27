@@ -275,3 +275,108 @@ func TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance(t *testing.
 		}
 	}
 }
+
+func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) {
+	stateDir := t.TempDir()
+	dev := New("demo", "dev", true, false, false)
+	prod := New("demo", "prod", true, false, false)
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, prod); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := referenceProviderRegistryStoreAt(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 2 {
+		t.Fatalf("bindings=%#v", registry.Bindings)
+	}
+	seen := map[string]string{}
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Application != "demo" || binding.Resource.Kind != capability.SQL {
+			t.Fatalf("unexpected binding %#v", binding)
+		}
+		seen[binding.Environment] = binding.ProviderInstanceID
+	}
+	if seen["dev"] != "postgresql/demo/dev/default" || seen["prod"] != "postgresql/demo/prod/default" {
+		t.Fatalf("environment bindings=%#v", seen)
+	}
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 2 {
+		t.Fatalf("reconciling dev removed prod: %#v", registry.Bindings)
+	}
+
+	if err := ReleaseApplicationProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "prod" {
+		t.Fatalf("destroying dev changed prod binding: %#v", registry.Bindings)
+	}
+	if len(registry.Instances) != 1 || registry.Instances[0].OwnerEnvironment != "prod" {
+		t.Fatalf("destroying dev changed prod provider instance: %#v", registry.Instances)
+	}
+}
+
+func TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile(t *testing.T) {
+	stateDir := t.TempDir()
+	m := New("demo", "dev", true, false, false)
+	store, err := referenceProviderRegistryStoreAt(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registry := capability.NewRegistry()
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.SQL,
+		Name:        "default",
+		Provider:    capability.ProviderPostgreSQL,
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.OwnerEnvironment = ""
+	if err := registry.Register(instance); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Bind(resource, instance.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, m); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "dev" {
+		t.Fatalf("legacy binding was not migrated: %#v", registry.Bindings)
+	}
+	if len(registry.Instances) != 1 || registry.Instances[0].OwnerEnvironment != "dev" {
+		t.Fatalf("legacy provider instance was not migrated: %#v", registry.Instances)
+	}
+}
