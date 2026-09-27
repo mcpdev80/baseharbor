@@ -2,7 +2,26 @@
 set -euo pipefail
 
 engine="${1:-docker}"
-command -v "$engine" >/dev/null 2>&1 || exit 0
+
+log() {
+  printf '[runtime-reset] %s\n' "$*" >&2
+}
+
+run_timeout() {
+  local seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --signal=TERM --kill-after=5s "$seconds" "$@"
+  else
+    "$@"
+  fi
+}
+
+log "engine=$engine"
+if ! command -v "$engine" >/dev/null 2>&1; then
+  log "engine not installed; nothing to reset"
+  exit 0
+fi
 
 is_baseharbor_resource() {
   local project="${1:-}" name="${2:-}"
@@ -16,8 +35,12 @@ remove_containers() {
   local line name docker_project podman_project project
   local -a ids=() targets=()
 
-  mapfile -t ids < <("$engine" container ls -aq 2>/dev/null || true)
-  [ "${#ids[@]}" -gt 0 ] || return 0
+  log "containers: discovering"
+  mapfile -t ids < <(run_timeout 20s "$engine" container ls -aq 2>/dev/null || true)
+  if [ "${#ids[@]}" -eq 0 ]; then
+    log "containers: none"
+    return 0
+  fi
 
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -31,20 +54,30 @@ remove_containers() {
       targets+=("$name")
     fi
   done < <(
-    "$engine" container inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_timeout 30s "$engine" container inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
-  [ "${#targets[@]}" -gt 0 ] || return 0
-  "$engine" container stop -t 2 "${targets[@]}" >/dev/null 2>&1 || true
-  "$engine" container rm "${targets[@]}" >/dev/null 2>&1 || "$engine" container rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  if [ "${#targets[@]}" -eq 0 ]; then
+    log "containers: no BaseHarbor-owned targets"
+    return 0
+  fi
+  log "containers: stopping ${#targets[@]} target(s)"
+  run_timeout 30s "$engine" container stop -t 2 "${targets[@]}" >/dev/null 2>&1 || true
+  log "containers: removing ${#targets[@]} target(s)"
+  run_timeout 30s "$engine" container rm "${targets[@]}" >/dev/null 2>&1 || run_timeout 30s "$engine" container rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  log "containers: done"
 }
 
 remove_networks() {
   local line name docker_project podman_project project
   local -a ids=() targets=()
 
-  mapfile -t ids < <("$engine" network ls -q 2>/dev/null || true)
-  [ "${#ids[@]}" -gt 0 ] || return 0
+  log "networks: discovering"
+  mapfile -t ids < <(run_timeout 20s "$engine" network ls -q 2>/dev/null || true)
+  if [ "${#ids[@]}" -eq 0 ]; then
+    log "networks: none"
+    return 0
+  fi
 
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -57,19 +90,28 @@ remove_networks() {
       targets+=("$name")
     fi
   done < <(
-    "$engine" network inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_timeout 30s "$engine" network inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
-  [ "${#targets[@]}" -gt 0 ] || return 0
-  "$engine" network rm "${targets[@]}" >/dev/null 2>&1 || true
+  if [ "${#targets[@]}" -eq 0 ]; then
+    log "networks: no BaseHarbor-owned targets"
+    return 0
+  fi
+  log "networks: removing ${#targets[@]} target(s)"
+  run_timeout 30s "$engine" network rm "${targets[@]}" >/dev/null 2>&1 || true
+  log "networks: done"
 }
 
 remove_volumes() {
   local line name docker_project podman_project project
   local -a ids=() targets=()
 
-  mapfile -t ids < <("$engine" volume ls -q 2>/dev/null || true)
-  [ "${#ids[@]}" -gt 0 ] || return 0
+  log "volumes: discovering"
+  mapfile -t ids < <(run_timeout 20s "$engine" volume ls -q 2>/dev/null || true)
+  if [ "${#ids[@]}" -eq 0 ]; then
+    log "volumes: none"
+    return 0
+  fi
 
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -82,15 +124,21 @@ remove_volumes() {
       targets+=("$name")
     fi
   done < <(
-    "$engine" volume inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_timeout 30s "$engine" volume inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
-  [ "${#targets[@]}" -gt 0 ] || return 0
-  "$engine" volume rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  if [ "${#targets[@]}" -eq 0 ]; then
+    log "volumes: no BaseHarbor-owned targets"
+    return 0
+  fi
+  log "volumes: removing ${#targets[@]} target(s)"
+  run_timeout 30s "$engine" volume rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  log "volumes: done"
 }
 
 remove_quadlet_units() {
   [ "$engine" = "podman" ] || return 0
+  log "quadlet: discovering units"
 
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
@@ -133,24 +181,30 @@ remove_quadlet_units() {
         continue
         ;;
     esac
-    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    log "quadlet: stopping $unit"
+    run_timeout 20s systemctl --user stop "$unit" >/dev/null 2>&1 || true
   done
 
   if [ "${#files[@]}" -gt 0 ]; then
     rm -f "${files[@]}" >/dev/null 2>&1 || true
-    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    run_timeout 20s systemctl --user daemon-reload >/dev/null 2>&1 || true
+    log "quadlet: removed ${#files[@]} file(s)"
   fi
   shopt -u nullglob
 }
 
+log "begin cleanup"
 remove_quadlet_units
 remove_containers
 remove_networks
 remove_volumes
 
+log "state: removing BaseHarbor XDG/tmp state"
 rm -rf \
   "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
   "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
   "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
   /tmp/baseharbor-* /tmp/baha /tmp/mailflow /tmp/baseharbor-demo \
   2>/dev/null || true
+
+log "cleanup complete"
