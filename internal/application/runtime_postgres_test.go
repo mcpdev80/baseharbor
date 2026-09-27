@@ -275,7 +275,10 @@ func TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust(t *testing.T
 	}
 
 	certificates := filepath.Join(workloadServiceBindingProjectionDir(files), "valkey", "certificates")
-	if err := os.WriteFile(certificates, nil, 0o444); err != nil {
+	if err := os.Chmod(certificates, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certificates, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyWorkloadServiceBindings(m, files); err == nil || !strings.Contains(err.Error(), "certificates") {
