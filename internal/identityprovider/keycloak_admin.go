@@ -238,6 +238,15 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 		}
 	}
 
+	credential := keycloakUserCredential{Type: "password", Value: password, Temporary: false}
+	status, body, err = a.do(ctx, http.MethodPut, "/admin/realms/"+url.PathEscape(realm)+"/users/"+url.PathEscape(userID)+"/reset-password", credential)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("reset Keycloak development user password: HTTP %d: %s", status, body)
+	}
+
 	if !realmAdmin {
 		return nil
 	}
