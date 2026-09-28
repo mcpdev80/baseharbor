@@ -19,7 +19,7 @@ var projectEnvironmentCache = struct {
 	items map[string]map[string]string
 }{items: map[string]map[string]string{}}
 
-func cacheProjectEnvironment(project string, environment map[string]string) {
+func CacheProjectEnvironment(project string, environment map[string]string) {
 	if len(environment) == 0 {
 		return
 	}
@@ -32,7 +32,7 @@ func cacheProjectEnvironment(project string, environment map[string]string) {
 	projectEnvironmentCache.Unlock()
 }
 
-func takeProjectEnvironment(project string) map[string]string {
+func TakeProjectEnvironment(project string) map[string]string {
 	projectEnvironmentCache.Lock()
 	defer projectEnvironmentCache.Unlock()
 	environment := projectEnvironmentCache.items[project]
@@ -40,7 +40,7 @@ func takeProjectEnvironment(project string) map[string]string {
 	return environment
 }
 
-func clearProjectEnvironment(project string) {
+func ClearProjectEnvironment(project string) {
 	projectEnvironmentCache.Lock()
 	delete(projectEnvironmentCache.items, project)
 	projectEnvironmentCache.Unlock()
@@ -58,7 +58,7 @@ func (c Compose) ConfigProjectFilesEnv(ctx context.Context, project, workdir str
 			return fmt.Errorf("%v; plain config fallback: %w", quietErr, err)
 		}
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	return nil
 }
 
@@ -152,11 +152,11 @@ func (c Compose) UpProjectFilesSelectedProgress(ctx context.Context, project, wo
 }
 
 func (c Compose) DownProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	return c.DownProjectFilesEnv(ctx, project, workdir, takeProjectEnvironment(project), composeFiles...)
+	return c.DownProjectFilesEnv(ctx, project, workdir, TakeProjectEnvironment(project), composeFiles...)
 }
 
 func (c Compose) DownProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
-	defer clearProjectEnvironment(project)
+	defer ClearProjectEnvironment(project)
 
 	_, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "down")
 	return err
