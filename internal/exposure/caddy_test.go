@@ -7,7 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	runtime dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
+	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
 )
 
 func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
