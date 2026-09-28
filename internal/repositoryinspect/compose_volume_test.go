@@ -84,3 +84,30 @@ func TestReclaimableReplacedInfrastructureVolumesDoesNotGuessUnknownService(t *t
 		t.Fatalf("unknown infrastructure volume must not be reclaimed, got %#v", got)
 	}
 }
+
+
+func TestReclaimableReplacedInfrastructureVolumesAcceptsShortSyntax(t *testing.T) {
+	rendered := []byte(`{
+	  "services": {
+	    "app": {
+	      "image": "example/app",
+	      "volumes": ["uploads:/app/uploads"]
+	    },
+	    "database": {
+	      "image": "postgres:16",
+	      "volumes": ["database-data:/var/lib/postgresql/data"]
+	    }
+	  },
+	  "volumes": {
+	    "database-data": {"name":"bh-demo_database-data"},
+	    "uploads": {"name":"bh-demo_uploads"}
+	  }
+	}`)
+	got, err := ReclaimableReplacedInfrastructureVolumes(rendered, []string{"app"}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].LogicalName != "database-data" {
+		t.Fatalf("reclaimable volumes = %#v, want database-data only", got)
+	}
+}
