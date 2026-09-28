@@ -40,7 +40,7 @@ type applicationDestroyExecution struct {
 	files               application.RuntimeFiles
 	runtimeErr          error
 	partialRuntime      bool
-	compose             bhruntime.Compose
+	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	replacedVolumes     []bhruntime.ProjectResource
 	platformFiles       bhruntime.Files
