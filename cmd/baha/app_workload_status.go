@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ type workloadServiceStatus struct {
 	Service   string
 	State     string
 	Health    string
+	Readiness string
 	Ready     bool
 	Exposures []workloadExposureStatus
 }
@@ -137,7 +139,16 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 			result = append(result, workloadServiceStatus{Service: service, State: "not running"})
 			continue
 		}
-		result = append(result, workloadServiceStatus{Service: service, State: normalizedWorkloadState(state.State), Health: strings.ToLower(strings.TrimSpace(state.Health)), Ready: state.Ready()})
+		normalizedState := normalizedWorkloadState(state.State)
+		health := strings.ToLower(strings.TrimSpace(state.Health))
+		ready := normalizedState == "running" && health == "healthy"
+		readiness := "not-ready"
+		if ready {
+			readiness = "healthcheck"
+		} else if normalizedState == "running" && health == "" {
+			readiness = "unverified"
+		}
+		result = append(result, workloadServiceStatus{Service: service, State: normalizedState, Health: health, Readiness: readiness, Ready: ready})
 	}
 	return result
 }
@@ -163,9 +174,15 @@ func attachWorkloadExposures(services []workloadServiceStatus, exposures []workl
 	}
 	for i := range services {
 		services[i].Exposures = byService[services[i].Service]
+		if len(services[i].Exposures) == 0 {
+			continue
+		}
+		services[i].Ready = services[i].State == "running" && services[i].Health != "unhealthy"
+		services[i].Readiness = "endpoint"
 		for _, exposure := range services[i].Exposures {
 			if !exposure.Ready {
 				services[i].Ready = false
+				services[i].Readiness = "not-ready"
 			}
 		}
 	}
@@ -181,13 +198,16 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 	seen := map[string]struct{}{}
 	var result []workloadExposureStatus
 	for _, state := range states {
-		if !selected[state.Service] || !state.Ready() {
+		if !selected[state.Service] || normalizedWorkloadState(state.State) != "running" || strings.EqualFold(strings.TrimSpace(state.Health), "unhealthy") {
 			continue
 		}
 		for _, publisher := range state.Publishers {
-			scheme, ok := workloadExposureSchemeForService(state.Service, protocols, publisher.TargetPort, publisher.PublishedPort)
-			if !ok || publisher.PublishedPort <= 0 || (publisher.Protocol != "" && publisher.Protocol != "tcp") {
+			if publisher.PublishedPort <= 0 || (publisher.Protocol != "" && publisher.Protocol != "tcp") {
 				continue
+			}
+			scheme, httpProbe := workloadExposureSchemeForService(state.Service, protocols, publisher.TargetPort, publisher.PublishedPort)
+			if !httpProbe {
+				scheme = "tcp"
 			}
 			host := normalizePublishedHost(publisher.URL)
 			key := fmt.Sprintf("%s\x00%s\x00%s\x00%d", state.Service, scheme, host, publisher.PublishedPort)
@@ -203,7 +223,13 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 				}
 			}
 			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			ready, detail := probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
+			var ready bool
+			var detail string
+			if scheme == "tcp" {
+				ready, detail = probeTCPExposureTarget(probeCtx, host, publisher.PublishedPort)
+			} else {
+				ready, detail = probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
+			}
 			cancel()
 			if !ready && scheme == "http" && strings.TrimSpace(protocols[state.Service]) == "" {
 				probeCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
@@ -276,12 +302,39 @@ func probeHTTPExposureTarget(ctx context.Context, scheme, dialHost, requestHost 
 	return status.Ready, status.Detail
 }
 
+func probeTCPExposureTarget(ctx context.Context, host string, port int) (bool, string) {
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
+	if err != nil {
+		return false, err.Error()
+	}
+	_ = conn.Close()
+	return true, "TCP listener accepted connection"
+}
+
 func normalizedWorkloadState(state string) string {
 	state = strings.ToLower(strings.TrimSpace(state))
 	if state == "" {
 		return "unknown"
 	}
 	return state
+}
+
+func (status repositoryWorkloadStatus) RunningUnverified() bool {
+	if !status.Found || len(status.Services) == 0 || len(status.BuildDrift) > 0 || len(status.ConfigDrift) > 0 {
+		return false
+	}
+	unverified := false
+	for _, service := range status.Services {
+		if service.Ready {
+			continue
+		}
+		if service.State != "running" || service.Health != "" || len(service.Exposures) != 0 || service.Readiness != "unverified" {
+			return false
+		}
+		unverified = true
+	}
+	return unverified
 }
 
 func (status repositoryWorkloadStatus) Ready() bool {
@@ -320,6 +373,9 @@ func formatWorkloadServiceStatus(service workloadServiceStatus) string {
 	detail := service.State
 	if service.Health != "" {
 		detail += " health=" + service.Health
+	}
+	if service.Readiness != "" {
+		detail += " readiness=" + service.Readiness
 	}
 	for _, exposure := range service.Exposures {
 		detail += " exposure=" + formatWorkloadExposureStatus(exposure)
