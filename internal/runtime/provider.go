@@ -104,6 +104,10 @@ type PodmanProvider struct{ Compose }
 func (DockerProvider) Kind() ProviderKind { return ProviderDocker }
 func (PodmanProvider) Kind() ProviderKind { return ProviderPodman }
 
+func (DockerProvider) PreferredLocalHTTPSPort() int { return 443 }
+func (PodmanProvider) PreferredLocalHTTPSPort() int { return 8443 }
+func (Compose) PreferredLocalHTTPSPort() int        { return 443 }
+
 func (Compose) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{
 		WorkloadLifecycle: true,
