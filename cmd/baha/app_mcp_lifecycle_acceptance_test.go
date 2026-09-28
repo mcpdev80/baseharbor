@@ -109,7 +109,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	runtime, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
 		t.Fatal(err)
 	}
