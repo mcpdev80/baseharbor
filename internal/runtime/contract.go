@@ -83,6 +83,5 @@ type RuntimeProvider interface {
 	RestoreOwnedVolume(context.Context, string, string, []byte) error
 }
 
-var _ RuntimeProvider = Compose{}
 var _ RuntimeProvider = DockerProvider{}
 var _ RuntimeProvider = PodmanProvider{}
