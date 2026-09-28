@@ -130,34 +130,11 @@ func (c Compose) UpProject(ctx context.Context, project, composeFile, envFile st
 }
 
 func (c Compose) UpProjectProgress(ctx context.Context, project, composeFile, envFile string, onProgress func(string)) error {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return err
-		}
-		if onProgress != nil {
-			onProgress("rendered Podman Quadlet runtime")
-		}
-		if err := quadletStartProject(ctx, q, nil); err != nil {
-			return err
-		}
-		if onProgress != nil {
-			onProgress("started Podman Quadlet services")
-		}
-		return nil
-	}
 	_, err := c.outputProjectInputProgress(ctx, project, composeFile, envFile, nil, onProgress, "up", "-d")
 	return err
 }
 
 func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return err
-		}
-		return quadletRemoveProject(ctx, q, false)
-	}
 	if consolidatedProject(project) {
 		return c.removeComposeModule(ctx, project, composeFile, envFile, false)
 	}
@@ -165,18 +142,11 @@ func (c Compose) DownProject(ctx context.Context, project, composeFile, envFile 
 }
 
 func (c Compose) StopProject(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return err
-		}
-		return quadletStopProject(ctx, q, nil)
-	}
 	return c.runProject(ctx, project, composeFile, envFile, "stop")
 }
 
 func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet || consolidatedProject(project) {
+	if consolidatedProject(project) {
 		return c.DownProject(ctx, project, composeFile, envFile)
 	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--remove-orphans")
@@ -197,7 +167,7 @@ func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFi
 }
 
 func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet || consolidatedProject(project) {
+	if consolidatedProject(project) {
 		return c.DestroyProject(ctx, project, composeFile, envFile)
 	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
