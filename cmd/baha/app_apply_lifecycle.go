@@ -25,7 +25,7 @@ type applicationApplyExecution struct {
 	out              io.Writer
 	errOut           io.Writer
 	secretService    *applicationsecret.Service
-	compose          bhruntime.Compose
+	compose          bhruntime.RuntimeProvider
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
 	providers        *managedProviderPreflightState
