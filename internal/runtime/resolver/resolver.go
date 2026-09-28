@@ -3,21 +3,22 @@ package resolver
 import (
 	"context"
 
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
+	podmanprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/podman"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
 
 var registry = mustRegistry(
 	runtimecontract.ProviderRegistration{
-		Descriptor: bhruntime.DockerProviderDescriptor(),
+		Descriptor: dockerprovider.Descriptor(),
 		Factory: func(ctx context.Context) (runtimecontract.Provider, error) {
-			return bhruntime.NewDockerProvider(ctx)
+			return dockerprovider.New(ctx)
 		},
 	},
 	runtimecontract.ProviderRegistration{
-		Descriptor: bhruntime.PodmanProviderDescriptor(),
+		Descriptor: podmanprovider.Descriptor(),
 		Factory: func(ctx context.Context) (runtimecontract.Provider, error) {
-			return bhruntime.NewPodmanProvider(ctx)
+			return podmanprovider.New(ctx)
 		},
 	},
 )
