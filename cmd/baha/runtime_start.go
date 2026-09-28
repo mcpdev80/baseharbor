@@ -136,7 +136,7 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}
@@ -154,7 +154,7 @@ func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files
 	if err != nil {
 		return nil, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return nil, err
 	}
