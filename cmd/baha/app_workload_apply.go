@@ -13,7 +13,7 @@ import (
 )
 
 type repositoryWorkloadExecution struct {
-	compose            bhruntime.Compose
+	compose            bhruntime.RuntimeProvider
 	resolved           resolvedApplication
 	files              application.RuntimeFiles
 	workload           application.WorkloadFiles
@@ -28,7 +28,7 @@ type repositoryWorkloadExecution struct {
 	buildChanged       map[string]struct{}
 }
 
-func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
+func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return nil, found, err
