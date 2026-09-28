@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -24,7 +25,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
