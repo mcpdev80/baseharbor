@@ -112,16 +112,21 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return err
 	}
-	openBaoAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, openBaoPolicy, filepath.Join(stateDir, "providers", "openbao"), serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "openbao-access",
-		Upstream:         "http://openbao:8200",
-		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT",
-		ContainerPort:    8443,
-		Networks:         []string{"default"},
-		RequireClient:    false,
-	})
+	openBaoPolicy.ServerName = "openbao"
+	openBaoRoot := filepath.Join(stateDir, "providers", "openbao")
+	openBaoMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		openBaoPolicy,
+		filepath.Join(openBaoRoot, "service-access", "pki"),
+		"openbao",
+		"127.0.0.1",
+	)
 	if err != nil {
-		return fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
+		return fmt.Errorf("prepare OpenBao native TLS: %w", err)
+	}
+	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
+		return fmt.Errorf("project OpenBao native TLS: %w", err)
 	}
 
 	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
@@ -153,15 +158,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return err
 	}
-	accessService := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
-		ServiceName: "openbao-access", Upstream: "http://openbao:8200",
-		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT", ContainerPort: 8443,
-		Networks: []string{"default"}, RequireClient: false,
-	})
-	if marker := strings.Index(rendered, "\nvolumes:\n"); marker >= 0 {
-		rendered = rendered[:marker] + "\n" + accessService + rendered[marker:]
-	} else {
-		return errors.New("embedded runtime compose is missing volumes section")
+	rendered, err = renderSecureControlPlaneOpenBao(rendered)
+	if err != nil {
+		return err
 	}
 	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return fmt.Errorf("write control-plane service access compose: %w", err)
@@ -218,6 +217,80 @@ hostnossl all all 0.0.0.0/0 reject
 hostnossl all all ::/0 reject
 `
 	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
+}
+
+func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{
+		material.CA:                "ca.pem",
+		material.ServerCertificate: "server-cert.pem",
+		material.ServerKey:         "server-key.pem",
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("OpenBao TLS material %s is empty", name)
+		}
+		mode := os.FileMode(0o644)
+		if name == "server-key.pem" {
+			mode = 0o600
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
+	start := strings.Index(rendered, "  openbao:\n")
+	end := strings.Index(rendered, "\nvolumes:\n")
+	if start < 0 || end <= start {
+		return "", errors.New("embedded runtime compose is missing the OpenBao service")
+	}
+	const service = `  openbao:
+    image: docker.io/openbao/openbao:2.6.3
+    restart: unless-stopped
+    user: "100"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
+    command: server
+    environment:
+      SKIP_CHOWN: "1"
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/baseharbor/tls-source/ca.pem
+      BAO_LOCAL_CONFIG: >-
+        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/file"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":false,"tls_cert_file":"/run/baseharbor/tls-source/server-cert.pem","tls_key_file":"/run/baseharbor/tls-source/server-key.pem","tls_min_version":"tls12"}},"api_addr":"https://openbao:8200"}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
+    volumes:
+      - openbao-data:/openbao/file
+      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/tls-source/ca.pem:ro
+      - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+    networks:
+      - default
+      - secrets
+    healthcheck:
+      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$?; [ $code -eq 0 ] || [ $code -eq 2 ]"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+`
+	return rendered[:start] + service + rendered[end:], nil
 }
 
 func renderSecureControlPlanePostgres(rendered string) (string, error) {
