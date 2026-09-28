@@ -461,9 +461,11 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./service-access/runtime:/run/baseharbor/tls:ro
+    ports:
+      - "127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318"
     networks:
 %s`, networks))
-	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, otlpAccessSpec()))
 	b.WriteString(fmt.Sprintf(`networks:
   telemetry:
     name: ${BASEHARBOR_TELEMETRY_NETWORK}
@@ -487,6 +489,11 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
     protocols:
       http:
         endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /run/baseharbor/tls/server.pem
+          key_file: /run/baseharbor/tls/server-key.pem
+          client_ca_file: /run/baseharbor/tls/ca.pem
+          min_version: "1.2"
 exporters:
   debug:
     verbosity: basic
@@ -550,6 +557,7 @@ func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Clien
 	if err != nil {
 		return nil, err
 	}
+	policy.ServerName = "otel-collector"
 	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
 	if err != nil {
 		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
