@@ -97,17 +97,10 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	if values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] == "" {
-		port, err := allocateIdentityPort(map[int]struct{}{publicPort: {}})
-		if err != nil {
-			return KeycloakFiles{}, err
-		}
-		values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(port)
-	}
-	adminPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"])
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	// Native Keycloak HTTPS serves both BaseHarbor's OIDC and administrative
+	// control paths on one loopback listener. Keep the legacy environment key
+	// synchronized for state compatibility without allocating a second port.
+	values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(publicPort)
 	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD"} {
 		if strings.TrimSpace(values[key]) == "" {
 			secret, err := randomIdentitySecret(32)
