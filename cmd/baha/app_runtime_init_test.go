@@ -62,7 +62,7 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=compose\n") {
+	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=docker\n") {
 		t.Fatalf("runtime provider missing from init state: %s", data)
 	}
 }
@@ -108,7 +108,7 @@ func TestRuntimeHostnameRejectsBackslashEscapedDots(t *testing.T) {
 	}
 }
 
-func TestRepositoryInitStateDefaultsLegacyRuntimeProviderToCompose(t *testing.T) {
+func TestRepositoryInitStateDefaultsRuntimeProviderToDocker(t *testing.T) {
 	root := t.TempDir()
 	path := repositoryInitEnvPath(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
