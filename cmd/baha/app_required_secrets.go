@@ -13,7 +13,7 @@ import (
 
 func inspectRequiredApplicationSecrets(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	platformFiles bhruntime.Files,
 	m application.Manifest,
 	files application.RuntimeFiles,
@@ -46,7 +46,7 @@ func inspectRequiredApplicationSecrets(
 
 func checkRequiredApplicationSecrets(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	platformFiles bhruntime.Files,
 	m application.Manifest,
 	files application.RuntimeFiles,
