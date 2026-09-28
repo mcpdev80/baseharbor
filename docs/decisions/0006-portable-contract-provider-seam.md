@@ -63,7 +63,7 @@ Provider selection must preserve requested guarantees or fail clearly. It must n
 
 The first v0.4 implementation intentionally does not introduce a generic plugin framework, full provider interface hierarchy or Kubernetes/OpenShift implementation. It establishes and exercises the smallest domain seam needed to prevent further provider leakage.
 
-`BuildPlan` begins consuming logical SQL, key-value and secret intent through `PortableContract`; current Compose workload handling remains on the existing path until the runtime-provider seam is introduced incrementally.
+`BuildPlan` consumes logical SQL, key-value and secret intent through `PortableContract`. Repository Compose remains a workload-source compatibility path; the runtime-provider boundary is defined by ADR 0007 and must not treat Compose as provider identity.
 
 ## Follow-up
 
@@ -73,4 +73,4 @@ Subsequent v0.4 work should:
 2. define the runtime-provider boundary around workload realization and lifecycle operations;
 3. introduce capability negotiation with explicit unsupported-capability failures;
 4. build the generic input resolver on top of application/deployment ownership boundaries;
-5. add provider-conformance tests that can later be reused by Compose, Kubernetes and OpenShift implementations.
+5. add provider-conformance tests reusable by Docker, Podman and later Kubernetes/OpenShift Runtime Provider implementations.
