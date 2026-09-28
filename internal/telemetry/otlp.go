@@ -135,6 +135,10 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	return nil
 }
 
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
 func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
@@ -142,6 +146,11 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	files, err := d.ensureProviderFiles(ctx)
 	if err != nil {
 		return err
+	}
+	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(ctx, files.Project, "otel-collector-access"); err != nil {
+			return fmt.Errorf("remove legacy OpenTelemetry access gateway: %w", err)
+		}
 	}
 	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate OpenTelemetry Collector configuration: %w", err)
