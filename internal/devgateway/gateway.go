@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	stateVersion        = 1
-	gatewayPort         = 443
-	rootlessGatewayPort = 8443
+	stateVersion             = 1
+	gatewayPort              = 443
+	rootlessGatewayPort      = 8443
 	fallbackGatewayPortStart = 18443
 )
 
