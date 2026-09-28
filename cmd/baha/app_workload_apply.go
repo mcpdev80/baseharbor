@@ -243,6 +243,9 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 		if lastErr == nil && lastStatus.Ready() {
 			return e.recordReady(out, lastStatus)
 		}
+		if lastErr == nil && lastStatus.RunningUnverified() {
+			return e.recordRunningUnverified(out, lastStatus)
+		}
 		select {
 		case <-verifyCtx.Done():
 		case <-time.After(repositoryWorkloadReadinessPollInterval):
@@ -264,6 +267,23 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 		len(lastStatus.Exposures),
 		strings.Join(serviceDetails, ", "),
 	)
+}
+
+func (e *repositoryWorkloadExecution) recordRunningUnverified(out io.Writer, status repositoryWorkloadStatus) error {
+	cli.ReportActivityDetail(out, "workload running; readiness unverified")
+	fmt.Fprintf(out, "[RUNNING] workload       %d Compose service(s) running; readiness unverified\n", len(e.expectedServices))
+	if len(e.buildFingerprints) > 0 {
+		if err := persistRepositoryWorkloadBuildState(e.files, e.buildFingerprints); err != nil {
+			return fmt.Errorf("record workload build identity: %w", err)
+		}
+	}
+	if len(e.configFingerprints) > 0 {
+		if err := persistRepositoryWorkloadConfigState(e.files, e.configFingerprints); err != nil {
+			return fmt.Errorf("record workload configuration identity: %w", err)
+		}
+	}
+	fmt.Fprintf(out, "Workload Compose: %s\n", e.workload.Compose)
+	return nil
 }
 
 func (e *repositoryWorkloadExecution) recordReady(out io.Writer, status repositoryWorkloadStatus) error {
