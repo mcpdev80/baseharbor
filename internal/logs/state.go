@@ -118,20 +118,12 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 	return EnsureProviderFilesForMode(ctx, issuer, m, bhruntime.LogCollectionSyslog)
 }
 
-func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
-	return EnsureProviderFilesForMode(ctx, issuer, m, logCollectionModeForLegacyRuntime(runtimeKind))
-}
-
 func EnsureProviderFilesForMode(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, mode bhruntime.LogCollectionMode) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
 	}
 	return EnsureProviderFilesForModeAt(ctx, issuer, dataDir, "", m, mode)
-}
-
-func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
-	return EnsureProviderFilesForModeAt(ctx, issuer, dataDir, namespace, m, logCollectionModeForLegacyRuntime(runtimeKind))
 }
 
 func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode) (ProviderFiles, error) {
