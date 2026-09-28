@@ -13,7 +13,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
