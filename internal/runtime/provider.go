@@ -12,9 +12,6 @@ import (
 type ProviderKind string
 
 const (
-	// ProviderCompose is retained only as the legacy auto-detect compatibility
-	// value. New target-owned runtime selections use concrete provider identities.
-	ProviderCompose    ProviderKind = "compose"
 	ProviderDocker     ProviderKind = "docker"
 	ProviderPodman     ProviderKind = "podman"
 	ProviderKubernetes ProviderKind = "kubernetes"
@@ -70,10 +67,10 @@ type Provider interface {
 func ParseProviderKind(value string) (ProviderKind, error) {
 	kind := ProviderKind(strings.TrimSpace(strings.ToLower(value)))
 	if kind == "" {
-		kind = ProviderCompose
+		kind = ProviderDocker
 	}
 	switch kind {
-	case ProviderCompose, ProviderDocker, ProviderPodman, ProviderKubernetes, ProviderOpenShift:
+	case ProviderDocker, ProviderPodman, ProviderKubernetes, ProviderOpenShift:
 		return kind, nil
 	default:
 		return "", fmt.Errorf("unsupported runtime provider %q", value)
@@ -99,12 +96,7 @@ func RequireCapabilities(provider Provider, required ...RuntimeCapability) error
 	return nil
 }
 
-func (c Compose) Kind() ProviderKind {
-	if c.provider != "" {
-		return c.provider
-	}
-	return ProviderCompose
-}
+func (Compose) Kind() ProviderKind { return ProviderDocker }
 
 type DockerProvider struct{ Compose }
 type PodmanProvider struct{ Compose }
@@ -130,8 +122,6 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 		return nil, err
 	}
 	switch normalized {
-	case ProviderCompose:
-		return detectRuntimeProvider(ctx)
 	case ProviderDocker:
 		compose, err := detectDockerCompose(ctx)
 		if err != nil {
@@ -151,14 +141,7 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 	}
 }
 
-// DetectProvider preserves the v0.3/v0.4 Compose-default compatibility path.
-// Deployment-aware callers should use DetectProviderForKind with the explicit
-// provider stored in protected deployment state.
-// ResolveRuntimeProviderForKind resolves an executable runtime implementation
-// behind the provider-neutral orchestration contract. The type assertion is
-// intentionally contained inside the runtime package so application/core code
-// never depends on a concrete runtime implementation.
-func ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
+// ResolveRuntimeProviderForKind resolves an executable runtime implementation\n// behind the provider-neutral orchestration contract.\nfunc ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
 	provider, err := DetectProviderForKind(ctx, kind)
 	if err != nil {
 		return nil, err
@@ -171,9 +154,9 @@ func ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (Runt
 }
 
 func ResolveRuntimeProvider(ctx context.Context) (RuntimeProvider, error) {
-	return ResolveRuntimeProviderForKind(ctx, ProviderCompose)
+	return ResolveRuntimeProviderForKind(ctx, ProviderDocker)
 }
 
 func DetectProvider(ctx context.Context) (Provider, error) {
-	return DetectProviderForKind(ctx, ProviderCompose)
+	return DetectProviderForKind(ctx, ProviderDocker)
 }
