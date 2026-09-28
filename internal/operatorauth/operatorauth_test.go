@@ -91,7 +91,6 @@ func TestSessionIsTargetAndEnvironmentScopedAndExpires(t *testing.T) {
 	}
 }
 
-
 type synchronizedBuffer struct {
 	mu sync.Mutex
 	s  string
