@@ -15,7 +15,6 @@ import (
 // remains an input/source format, while realization is owned by Quadlet and the
 // user systemd manager. No portable Core code needs to know that distinction.
 
-func (p PodmanProvider) Engine() string { return "podman" }
 func (p PodmanProvider) LogCollectionMode() LogCollectionMode { return LogCollectionJournald }
 func (p PodmanProvider) VerifyProjectServiceLogCollection(context.Context, string, string, string) error {
 	return nil
