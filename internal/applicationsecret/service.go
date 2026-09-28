@@ -25,7 +25,7 @@ const applicationSecretOperationTimeout = 60 * time.Second
 type Service struct {
 	store         application.Store
 	runtimeClient *openbao.ApplicationRuntimeClient
-	compose       *bhruntime.RuntimeProvider
+	runtime       bhruntime.RuntimeProvider
 	platformFiles *bhruntime.Files
 	manifest      *application.Manifest
 	runtimeFiles  *application.RuntimeFiles
@@ -36,13 +36,13 @@ func New(store application.Store) *Service {
 }
 
 func NewForRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files) *Service {
-	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
+	return &Service{store: store, runtime: compose, platformFiles: &platformFiles}
 }
 
 func NewForApplicationRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
 	return &Service{
 		store:         store,
-		compose:       &compose,
+		runtime:       compose,
 		platformFiles: &platformFiles,
 		manifest:      &manifest,
 		runtimeFiles:  &runtimeFiles,
@@ -214,10 +214,10 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 		return resolvedApplication{}, err
 	}
 	var compose bhruntime.RuntimeProvider
-	if s.compose != nil {
-		compose = *s.compose
+	if s.runtime != nil {
+		compose = s.runtime
 	} else {
-		compose, err = bhruntime.DetectCompose(ctx)
+		compose, err = bhruntime.ResolveRuntimeProvider(ctx)
 		if err != nil {
 			return resolvedApplication{}, err
 		}
