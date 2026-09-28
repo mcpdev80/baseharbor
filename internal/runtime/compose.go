@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 )
@@ -33,28 +32,6 @@ func (c Compose) DirectOutput(ctx context.Context, args ...string) (string, erro
 	return c.directOutput(ctx, args...)
 }
 
-func detectDockerCompose(ctx context.Context) (Compose, error) {
-	path, err := exec.LookPath("docker")
-	if err != nil {
-		return Compose{}, ErrRuntimeNotFound
-	}
-	cmd := exec.CommandContext(ctx, path, "compose", "version")
-	if err := cmd.Run(); err != nil {
-		return Compose{}, ErrRuntimeNotFound
-	}
-	return Compose{command: path, prefix: []string{"compose"}}, nil
-}
-
-func detectPodmanRuntime(ctx context.Context) (Compose, error) {
-	path, err := exec.LookPath("podman")
-	if err != nil {
-		return Compose{}, ErrRuntimeNotFound
-	}
-	if !QuadletAvailable(ctx) {
-		return Compose{}, fmt.Errorf("%w: Podman Quadlet and the user systemd session are required", ErrRuntimeNotFound)
-	}
-	return Compose{command: path}, nil
-}
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
 	return c.UpProject(ctx, "baseharbor", composeFile, envFile)
