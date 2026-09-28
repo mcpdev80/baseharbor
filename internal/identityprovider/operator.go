@@ -145,8 +145,10 @@ func managedOperatorCanonicalBaseURL(runtime KeycloakRuntime, namespace string) 
 	if err != nil {
 		return "", err
 	}
-	if engine, ok := runtime.(keycloakRuntimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
-		return "https://" + host + ":8443", nil
+	if capable, ok := runtime.(keycloakRuntimeLocalHTTPS); ok {
+		if port := capable.PreferredLocalHTTPSPort(); port > 0 && port != 443 {
+			return "https://" + host + ":" + strconv.Itoa(port), nil
+		}
 	}
 	return devaccess.CanonicalURL(host), nil
 }
