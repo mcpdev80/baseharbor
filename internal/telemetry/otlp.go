@@ -360,11 +360,11 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, otlpAccessSpec())
-	if err != nil {
+	accessPolicy.ServerName = "otel-collector"
+	if _, err := serviceaccess.EnsureNativeTLS(ctx, issuer, accessPolicy, files.Dir, "otel-collector", "127.0.0.1"); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, serviceaccess.HTTPGatewayFiles{}, files.Network)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -440,7 +440,7 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, _ serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
 	var networks = "      - telemetry\n"
 	var networkDecl = ""
 	if strings.TrimSpace(traceNetwork) != "" {
