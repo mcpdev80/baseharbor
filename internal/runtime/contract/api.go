@@ -97,13 +97,26 @@ type ImageIdentity struct {
 	Digest    string
 }
 
+type PublishedPort struct {
+	URL           string
+	TargetPort    int
+	PublishedPort int
+	Protocol      string
+}
+
 type ServiceState struct {
 	Service    string
 	State      string
 	Health     string
-	Container  string
-	ExitCode   int
-	HasExitCode bool
+	Publishers []PublishedPort
+}
+
+func (s ServiceState) Ready() bool {
+	if !strings.EqualFold(strings.TrimSpace(s.State), "running") {
+		return false
+	}
+	health := strings.ToLower(strings.TrimSpace(s.Health))
+	return health == "" || health == "healthy"
 }
 
 type RuntimeProvider interface {
