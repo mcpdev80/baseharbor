@@ -41,13 +41,13 @@ func TestProviderKindIsDeploymentMetadata(t *testing.T) {
 	if ProviderDocker == "" {
 		t.Fatal("Docker provider kind must be stable and non-empty")
 	}
-	if got, want := string(ProviderDocker), "compose"; got != want {
+	if got, want := string(ProviderDocker), "docker"; got != want {
 		t.Fatalf("ProviderDocker = %q, want %q", got, want)
 	}
 }
 
-func TestParseProviderKindDefaultsToCompose(t *testing.T) {
-	for _, input := range []string{"", " ", "compose", " COMPOSE "} {
+func TestParseProviderKindDefaultsToDocker(t *testing.T) {
+	for _, input := range []string{"", " "} {
 		got, err := ParseProviderKind(input)
 		if err != nil {
 			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
@@ -58,7 +58,7 @@ func TestParseProviderKindDefaultsToCompose(t *testing.T) {
 	}
 }
 
-func TestParseProviderKindAcceptsKnownFutureProviders(t *testing.T) {
+func TestParseProviderKindAcceptsKnownProviders(t *testing.T) {
 	for input, want := range map[string]ProviderKind{
 		"docker":     ProviderDocker,
 		"podman":     ProviderPodman,
@@ -76,8 +76,10 @@ func TestParseProviderKindAcceptsKnownFutureProviders(t *testing.T) {
 }
 
 func TestParseProviderKindRejectsUnknownProvider(t *testing.T) {
-	if _, err := ParseProviderKind("future-runtime"); err == nil {
-		t.Fatal("unknown runtime provider unexpectedly accepted")
+	for _, input := range []string{"compose", "future-runtime"} {
+		if _, err := ParseProviderKind(input); err == nil {
+			t.Fatalf("unknown runtime provider %q unexpectedly accepted", input)
+		}
 	}
 }
 
