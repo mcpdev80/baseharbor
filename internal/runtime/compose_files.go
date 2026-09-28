@@ -176,7 +176,7 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 	args := []string{"stop"}
 	args = append(args, services...)
 	if _, err := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...); err != nil {
-		containers, listErr := c.ListComposeContainers(ctx)
+		containers, listErr := c.ListRuntimeContainers(ctx)
 		if listErr != nil {
 			return fmt.Errorf("%v; engine-level selected-service fallback: %w", err, listErr)
 		}
@@ -193,7 +193,7 @@ func (c Compose) StopProjectFilesSelected(ctx context.Context, project, workdir 
 		}
 	}
 
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return fmt.Errorf("list selected workload containers after stop: %w", err)
 	}
