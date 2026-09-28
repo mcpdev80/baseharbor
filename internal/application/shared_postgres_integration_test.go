@@ -11,7 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -24,7 +24,7 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("DetectCompose() error = %v", err)
 	}
