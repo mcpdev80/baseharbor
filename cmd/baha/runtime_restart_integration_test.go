@@ -67,7 +67,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		}
 	}
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
