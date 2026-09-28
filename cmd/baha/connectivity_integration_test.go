@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -27,7 +28,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 
-	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
