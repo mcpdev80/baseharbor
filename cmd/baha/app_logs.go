@@ -22,7 +22,7 @@ type managedLogsExecution struct {
 	execution                   *capability.Execution
 	issuer                      serviceaccess.Issuer
 	driver                      *logsprovider.Driver
-	runtime                     bhruntime.Compose
+	runtime                     bhruntime.RuntimeProvider
 	manifest                    application.Manifest
 	services                    []string
 	resources                   []capability.Resource
@@ -36,7 +36,7 @@ type managedLogsExecution struct {
 	runtimeFiles                application.RuntimeFiles
 }
 
-func prepareManagedLogs(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
+func prepareManagedLogs(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedLogsExecution, error) {
 	policy, err := application.LogsPolicy(resolved.Manifest)
 	if err != nil {
 		return nil, err
@@ -204,7 +204,7 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 	return nil
 }
 
-func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, override string, found bool) error {
+func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, override string, found bool) error {
 	if !application.HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
@@ -235,7 +235,7 @@ func reconcileApplicationProviderLogOverride(ctx context.Context, runtime bhrunt
 	return nil
 }
 
-func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
+func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	if application.RequiresRuntimeBroker(m) {
 		brokerFiles, err := runtimebroker.Existing(files)
 		if err == nil {
@@ -318,7 +318,7 @@ func reconcileRuntimeComponentLogOverrides(ctx context.Context, runtime bhruntim
 	return nil
 }
 
-func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
+func emitRuntimeComponentObservabilityEvidence(ctx context.Context, runtime bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
 	const wantStatus = "404"
 
 	if application.RequiresRuntimeBroker(m) {
