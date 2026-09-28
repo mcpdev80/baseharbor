@@ -201,7 +201,7 @@ func (p PodmanProvider) ConfigProjectFilesEnv(ctx context.Context, project, work
 	if err := quadletValidateProject(ctx, q); err != nil {
 		return err
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	return nil
 }
 
@@ -236,7 +236,7 @@ func (p PodmanProvider) BuildProjectFilesSelectedProgress(ctx context.Context, p
 	if err := quadletBuildProject(ctx, q, services); err != nil {
 		return err
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	return nil
 }
 
@@ -252,7 +252,7 @@ func (p PodmanProvider) UpProjectFilesSelectedForceRecreateNoBuild(ctx context.C
 	if err := quadletForceRestartProjectNoBuild(ctx, q, services); err != nil {
 		return err
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	return nil
 }
 
@@ -271,7 +271,7 @@ func (p PodmanProvider) UpProjectFilesSelectedNoBuildProgress(ctx context.Contex
 	if err := quadletStartProjectNoBuild(ctx, q, services); err != nil {
 		return err
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	if onProgress != nil {
 		onProgress("started Podman Quadlet workload")
 	}
@@ -293,7 +293,7 @@ func (p PodmanProvider) UpProjectFilesSelectedProgress(ctx context.Context, proj
 	if err := quadletStartProject(ctx, q, services); err != nil {
 		return err
 	}
-	cacheProjectEnvironment(project, environment)
+	CacheProjectEnvironment(project, environment)
 	if onProgress != nil {
 		onProgress("started Podman Quadlet workload")
 	}
@@ -301,11 +301,11 @@ func (p PodmanProvider) UpProjectFilesSelectedProgress(ctx context.Context, proj
 }
 
 func (p PodmanProvider) DownProjectFiles(ctx context.Context, project, workdir string, composeFiles ...string) error {
-	return p.DownProjectFilesEnv(ctx, project, workdir, takeProjectEnvironment(project), composeFiles...)
+	return p.DownProjectFilesEnv(ctx, project, workdir, TakeProjectEnvironment(project), composeFiles...)
 }
 
 func (p PodmanProvider) DownProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) error {
-	defer clearProjectEnvironment(project)
+	defer ClearProjectEnvironment(project)
 	resolved, err := quadletResolveComposeFiles(workdir, composeFiles)
 	if err != nil {
 		return err
