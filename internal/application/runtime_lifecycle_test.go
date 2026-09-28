@@ -10,6 +10,7 @@ import (
 )
 
 func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("mailflow", "prod", true, true, false)
 	resources := ExpectedRuntimeResources(m)
 	wantNames := []string{
@@ -47,6 +48,7 @@ func TestApplicationBackendNetworkNameIsStableAndIsolated(t *testing.T) {
 }
 
 func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("mailflow", "prod", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
