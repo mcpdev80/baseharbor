@@ -65,7 +65,7 @@ func detectDockerCompose(ctx context.Context) (Compose, error) {
 	return Compose{command: path, prefix: []string{"compose"}}, nil
 }
 
-func detectPodmanCompose(ctx context.Context) (Compose, error) {
+func detectPodmanRuntime(ctx context.Context) (Compose, error) {
 	path, err := exec.LookPath("podman")
 	if err != nil {
 		return Compose{}, ErrRuntimeNotFound
