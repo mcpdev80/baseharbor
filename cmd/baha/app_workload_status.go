@@ -33,7 +33,7 @@ type repositoryWorkloadStatus struct {
 	ConfigDrift []string
 }
 
-func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
+func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return repositoryWorkloadStatus{Found: found, Workload: workload}, err
