@@ -57,8 +57,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
 - Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
 - The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
-- Native certificate rollout is provider-aware: Keycloak polls replacement certificates, Prometheus re-reads web TLS material per request, SeaweedFS uses its reloading certificate provider, OTLP reloads TLS material on a bounded interval, and OpenBao 2.6 keeps its supported SIGHUP listener reload path.
-- The v0.4.17 dependency audit explicitly defers OpenBao 2.7 until #532 migrates the removed `storage.file` backend, keeps the Go 1.25 support floor by deferring x/crypto/x/sys updates that require Go 1.26, and tracks the yaml.v3 replacement separately in #533.
+- Native certificate rollout is provider-aware: Keycloak polls replacement certificates, Prometheus re-reads web TLS material per request, SeaweedFS uses its reloading certificate provider, OTLP reloads TLS material on a bounded interval, and OpenBao 2.7 uses native `tls_auto_reload`.
+- The v0.4.17 dependency audit adopts OpenBao 2.7 with dedicated PostgreSQL storage, `verify-full`, native TLS reload and hybrid-PQC-first TLS; it keeps the Go 1.25 support floor by deferring x/crypto/x/sys updates that require Go 1.26 and tracks the yaml.v3 replacement separately in #533.
 
 ## [0.4.16] - 2026-09-26
 
