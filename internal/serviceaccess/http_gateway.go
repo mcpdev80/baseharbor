@@ -219,8 +219,11 @@ func readAuthToken(path string) (string, error) {
 
 func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
 	runtimeDir := filepath.Join(dir, "runtime")
-	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 		return TLSMaterial{}, fmt.Errorf("create service access runtime projection: %w", err)
+	}
+	if err := os.Chmod(runtimeDir, 0o755); err != nil {
+		return TLSMaterial{}, fmt.Errorf("set service access runtime projection permissions: %w", err)
 	}
 	project := func(source, name string) (string, error) {
 		data, err := os.ReadFile(source)
