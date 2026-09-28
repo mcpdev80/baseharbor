@@ -255,7 +255,7 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 		return "", errors.New("embedded runtime compose is missing the OpenBao service")
 	}
 	const service = `  openbao:
-    image: docker.io/openbao/openbao:2.6.3
+    image: docker.io/openbao/openbao:2.7.0
     restart: unless-stopped
     user: "100"
     read_only: true
@@ -270,11 +270,11 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
       BAO_ADDR: https://127.0.0.1:8200
       BAO_CACERT: /run/baseharbor/tls-source/ca.pem
       BAO_LOCAL_CONFIG: >-
-        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/file"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":false,"tls_cert_file":"/run/baseharbor/tls-source/server-cert.pem","tls_key_file":"/run/baseharbor/tls-source/server-key.pem","tls_min_version":"tls12"}},"api_addr":"https://openbao:8200"}
+        {"ui":true,"disable_mlock":true,"storage":{"raft":{"path":"/openbao/raft","node_id":"baseharbor-1"}},"listener":{"tcp":{"address":"0.0.0.0:8200","cluster_address":"0.0.0.0:8201","tls_disable":false,"tls_cert_file":"/run/baseharbor/tls-source/server-cert.pem","tls_key_file":"/run/baseharbor/tls-source/server-key.pem","tls_auto_reload":true,"tls_auto_reload_interval":"10s","tls_min_version":"tls12"}},"api_addr":"https://openbao:8200","cluster_addr":"https://openbao:8201"}
     ports:
       - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
-      - openbao-data:/openbao/file
+      - openbao-data:/openbao/raft
       - ./providers/openbao/runtime/ca.pem:/run/baseharbor/tls-source/ca.pem:ro
       - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
       - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
