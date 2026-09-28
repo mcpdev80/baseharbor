@@ -89,7 +89,7 @@ func detectDockerCompose(ctx context.Context) (Compose, error) {
 	if err := cmd.Run(); err != nil {
 		return Compose{}, ErrRuntimeNotFound
 	}
-	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderDocker}, nil
+	return Compose{command: path, prefix: []string{"compose"}}, nil
 }
 
 func detectPodmanCompose(ctx context.Context) (Compose, error) {
@@ -98,13 +98,13 @@ func detectPodmanCompose(ctx context.Context) (Compose, error) {
 		return Compose{}, ErrRuntimeNotFound
 	}
 	if QuadletAvailable(ctx) {
-		return Compose{command: path, quadlet: true, provider: ProviderPodman}, nil
+		return Compose{command: path}, nil
 	}
 	cmd := exec.CommandContext(ctx, path, "compose", "version")
 	if err := cmd.Run(); err != nil {
 		return Compose{}, ErrRuntimeNotFound
 	}
-	return Compose{command: path, prefix: []string{"compose"}, provider: ProviderPodman}, nil
+	return Compose{command: path}, nil
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
