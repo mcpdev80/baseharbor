@@ -160,7 +160,7 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 		}},
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			c.compose, err = detectComposeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			c.compose, err = detectRuntimeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
