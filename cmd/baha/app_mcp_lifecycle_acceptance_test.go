@@ -13,7 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
@@ -22,7 +22,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := runtimeresolver.DefaultRuntimeProvider(ctx); err != nil {
+	if _, err := testruntime.Resolve(ctx); err != nil {
 		t.Skipf("runtime unavailable: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
