@@ -19,7 +19,7 @@ func TestStartManagedRuntimeSkipsWorkloadOnlyApplication(t *testing.T) {
 			Services: []string{"coordinator", "docker-engine", "web"},
 		},
 	}
-	if err := startManagedRuntime(context.Background(), io.Discard, bhruntime.Compose{}, m, application.RuntimeFiles{}); err != nil {
+	if err := startManagedRuntime(context.Background(), io.Discard, bhruntime.DockerProvider{}, m, application.RuntimeFiles{}); err != nil {
 		t.Fatalf("startManagedRuntime() error = %v", err)
 	}
 }
