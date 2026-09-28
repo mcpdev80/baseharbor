@@ -146,7 +146,7 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 				required = append(required, bhruntime.CapabilityServiceExec)
 			}
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, required...)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
