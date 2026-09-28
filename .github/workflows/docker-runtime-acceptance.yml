@@ -83,8 +83,8 @@ jobs:
         run: |
           echo "::group::Docker control-plane diagnostics"
           docker ps -a || true
-          docker logs bh-local-shared-postgres 2>&1 || true
-          docker logs bh-local-shared-openbao 2>&1 || true
+          docker logs bh-local-shared-postgres-1 2>&1 || true
+          docker logs bh-local-shared-openbao-1 2>&1 || true
           echo "::endgroup::"
 
       - name: Reset runtime state before recovery test
