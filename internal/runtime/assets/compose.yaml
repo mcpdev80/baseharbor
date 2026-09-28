@@ -23,7 +23,7 @@ services:
       start_period: 5s
 
   openbao:
-    image: docker.io/openbao/openbao:2.6.3
+    image: docker.io/openbao/openbao:2.7.0
     restart: unless-stopped
     user: "100"
     read_only: true
@@ -37,9 +37,9 @@ services:
       SKIP_CHOWN: "1"
       BAO_ADDR: http://127.0.0.1:8200
       BAO_LOCAL_CONFIG: >-
-        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/file"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"api_addr":"http://127.0.0.1:8200"}
+        {"ui":true,"disable_mlock":true,"storage":{"raft":{"path":"/openbao/raft","node_id":"baseharbor-1"}},"listener":{"tcp":{"address":"0.0.0.0:8200","cluster_address":"0.0.0.0:8201","tls_disable":true}},"api_addr":"http://127.0.0.1:8200","cluster_addr":"http://openbao:8201"}
     volumes:
-      - openbao-data:/openbao/file
+      - openbao-data:/openbao/raft
     networks:
       - default
       - secrets
