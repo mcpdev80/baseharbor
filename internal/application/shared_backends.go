@@ -123,7 +123,7 @@ func HasApplicationScopedRuntimeServices(m Manifest) bool {
 	return false
 }
 
-func ReconcileSharedBackends(ctx context.Context, compose bhruntime.Compose, issuer serviceaccess.Issuer, dataDir, namespace string, m Manifest, files RuntimeFiles) (bool, error) {
+func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, dataDir, namespace string, m Manifest, files RuntimeFiles) (bool, error) {
 	if !HasSharedBackends(m) {
 		return false, nil
 	}
@@ -296,7 +296,7 @@ func SharedPostgresResourcesAt(dataDir, namespace string, m Manifest) ([]SharedP
 	return out, nil
 }
 
-func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, m Manifest) error {
 	if !UsesSharedPostgreSQL(m) {
 		return nil
 	}
@@ -423,7 +423,7 @@ func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPo
 	return nil
 }
 
-func VerifySharedValkey(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, m Manifest) error {
 	if !UsesSharedValkey(m) {
 		return nil
 	}
@@ -527,14 +527,14 @@ func VerifySharedManagementUIChecks(ctx context.Context, dataDir, namespace stri
 	return results
 }
 
-func VerifySharedBackends(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+func VerifySharedBackends(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, m Manifest) error {
 	if err := VerifySharedPostgreSQL(ctx, compose, dataDir, namespace, m); err != nil {
 		return err
 	}
 	return VerifySharedValkey(ctx, compose, dataDir, namespace, m)
 }
 
-func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string) error {
+func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string) error {
 	root := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends")
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
@@ -569,7 +569,7 @@ func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.Compose, 
 	return os.RemoveAll(root)
 }
 
-func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, m Manifest) error {
+func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, m Manifest) error {
 	postgresPlacement, postgresFound, err := RegisteredProviderPlacementAt(dataDir, m, capability.ProviderPostgreSQL)
 	if err != nil {
 		return fmt.Errorf("inspect registered PostgreSQL placement before shared release: %w", err)
@@ -683,7 +683,7 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Comp
 	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)
 }
 
-func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
+func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, app sharedBackendAppState) error {
 	if len(app.Cache) == 0 {
 		return nil
 	}
@@ -1035,7 +1035,7 @@ func sortedSharedBackendApplicationKeys(state sharedBackendState) []string {
 	return keys
 }
 
-func waitSharedValkeyReady(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, m Manifest) error {
+func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, m Manifest) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -1081,7 +1081,7 @@ func waitSharedValkeyReady(ctx context.Context, compose bhruntime.Compose, share
 	return nil
 }
 
-func waitSharedPostgresReady(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, environment string) error {
+func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -1122,7 +1122,7 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.Compose, sha
 	}
 }
 
-func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, app sharedBackendAppState) error {
+func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, app sharedBackendAppState) error {
 	instances := make([]string, 0, len(app.SQL))
 	for instance := range app.SQL {
 		instances = append(instances, instance)
