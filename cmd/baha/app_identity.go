@@ -51,7 +51,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 	var driver capability.Driver
 	prepared := &managedIdentityExecution{
 		provider: identity.Resource.Provider,
-		target: resolved.Target.Name,
+		target:   resolved.Target.Name,
 		manifest: m,
 	}
 	switch identity.Resource.Provider {

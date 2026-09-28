@@ -160,7 +160,6 @@ func TestRestorePostgresInstancesStopsOnRestoreFailure(t *testing.T) {
 	}
 }
 
-
 func TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources(t *testing.T) {
 	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
 	m := WithSQLInstances(New("app-a", "dev", true, false, false), "default", "analytics")

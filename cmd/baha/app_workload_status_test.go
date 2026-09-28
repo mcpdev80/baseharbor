@@ -208,7 +208,6 @@ func TestFormatWorkloadServiceStatus(t *testing.T) {
 	}
 }
 
-
 func TestWorkloadExposureSchemeForServiceHonorsExplicitHTTPSOnPort8080(t *testing.T) {
 	scheme, ok := workloadExposureSchemeForService("demo-app", map[string]string{"demo-app": "https"}, 8080, 8080)
 	if !ok || scheme != "https" {
@@ -223,7 +222,6 @@ func TestWorkloadExposureSchemeForServiceFallsBackWhenUndeclared(t *testing.T) {
 		t.Fatalf("scheme=%q ok=%v, want %q,%v", got, ok, want, wantOK)
 	}
 }
-
 
 func TestTerminalWorkloadServiceError(t *testing.T) {
 	if err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "api", State: "running", Ready: false}}); err != nil {

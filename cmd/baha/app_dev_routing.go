@@ -16,9 +16,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
-	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]string, error) {
@@ -139,9 +139,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				Owner: "shared/postgresql",
 				Routes: []devgateway.Route{{
 					Key: "shared/postgresql", Host: host,
-					Upstream: "https://shared-pgadmin:8443",
-					Network: shared.Network,
-					TrustFile: filepath.Join(shared.Dir, "management-ui", "postgres", "pki", "ca.pem"),
+					Upstream:   "https://shared-pgadmin:8443",
+					Network:    shared.Network,
+					TrustFile:  filepath.Join(shared.Dir, "management-ui", "postgres", "pki", "ca.pem"),
 					ServerName: "localhost",
 				}},
 			})
@@ -152,9 +152,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			}
 			appRoutes = append(appRoutes, devgateway.Route{
 				Key: appOwner + "/pgadmin", Host: host,
-				Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
-				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-				TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
+				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
 				ServerName: "localhost",
 			})
 		}
@@ -174,9 +174,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				Owner: "shared/valkey",
 				Routes: []devgateway.Route{{
 					Key: "shared/valkey", Host: host,
-					Upstream: "https://shared-cache-ui-access:8443",
-					Network: shared.Network,
-					TrustFile: filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
+					Upstream:   "https://shared-cache-ui-access:8443",
+					Network:    shared.Network,
+					TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
 					ServerName: "localhost",
 				}},
 			})
@@ -187,9 +187,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			}
 			appRoutes = append(appRoutes, devgateway.Route{
 				Key: appOwner + "/cache", Host: host,
-				Upstream: "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
-				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-				TrustFile: filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
+				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
 				ServerName: "localhost",
 			})
 		}
@@ -219,9 +219,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			}
 			identityRoutes := []devgateway.Route{{
 				Key: loginKey, Host: host,
-				Upstream: fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
-				Network: files.ConsumerNetwork,
-				TrustFile: files.PublicAccess.Material.CA,
+				Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
+				Network:    files.ConsumerNetwork,
+				TrustFile:  files.PublicAccess.Material.CA,
 				ServerName: files.PublicAccess.Material.ServerName,
 			}}
 			if e.manifest.Services.IdentityManagementUI {
@@ -236,9 +236,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				}
 				identityRoutes = append(identityRoutes, devgateway.Route{
 					Key: adminKey, Host: adminHost,
-					Upstream: "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
-					Network: files.InternalNetwork,
-					TrustFile: files.AdminAccess.Material.CA,
+					Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
+					Network:    files.InternalNetwork,
+					TrustFile:  files.AdminAccess.Material.CA,
 					ServerName: files.AdminAccess.Material.ServerName,
 				})
 			}
@@ -335,11 +335,11 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				serverName = state.Host
 			}
 			appRoutes = append(appRoutes, devgateway.Route{
-				Key: appOwner + "/exposure/" + route.Name,
-				Host: host,
-				Upstream: fmt.Sprintf("%s://baseharbor-internal-exposure-%s:%d", upstreamScheme, route.Name, containerPort),
-				Network: state.Network,
-				TrustFile: trustFile,
+				Key:        appOwner + "/exposure/" + route.Name,
+				Host:       host,
+				Upstream:   fmt.Sprintf("%s://baseharbor-internal-exposure-%s:%d", upstreamScheme, route.Name, containerPort),
+				Network:    state.Network,
+				TrustFile:  trustFile,
 				ServerName: serverName,
 			})
 		}
@@ -355,12 +355,12 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				return err
 			}
 			appRoutes = append(appRoutes, devgateway.Route{
-				Key: appOwner + "/runtime-docs",
-				Host: host,
+				Key:        appOwner + "/runtime-docs",
+				Host:       host,
 				PathPrefix: "/swagger",
-				Upstream: "https://baseharbor-runtime:8081",
-				Network: application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-				TrustFile: filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem"),
+				Upstream:   "https://baseharbor-runtime:8081",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem"),
 				ServerName: "baseharbor-runtime",
 			})
 		}
@@ -395,9 +395,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				Owner: owner,
 				Routes: []devgateway.Route{{
 					Key: key, Host: host,
-					Upstream: "https://seaweedfs-admin-access:9443",
-					Network: files.Network,
-					TrustFile: filepath.Join(files.Dir, "management-ui", "service-access", "pki", "ca.pem"),
+					Upstream:   "https://seaweedfs-admin-access:9443",
+					Network:    files.Network,
+					TrustFile:  filepath.Join(files.Dir, "management-ui", "service-access", "pki", "ca.pem"),
 					ServerName: "localhost",
 				}},
 			})
@@ -416,9 +416,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			Owner: "shared/openbao",
 			Routes: []devgateway.Route{{
 				Key: "shared/openbao", Host: host,
-				Upstream: "https://openbao-access:8443",
-				Network: bhruntime.ControlPlaneNetworkName(resourceProject),
-				TrustFile: filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
+				Upstream:   "https://openbao-access:8443",
+				Network:    bhruntime.ControlPlaneNetworkName(resourceProject),
+				TrustFile:  filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
 				ServerName: "localhost",
 			}},
 		})
@@ -450,9 +450,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				Owner: owner,
 				Routes: []devgateway.Route{{
 					Key: key, Host: host,
-					Upstream: "https://" + service + ":8443",
-					Network: metrics.PublishNetworkName(placement.Project),
-					TrustFile: filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
+					Upstream:   "https://" + service + ":8443",
+					Network:    metrics.PublishNetworkName(placement.Project),
+					TrustFile:  filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
 					ServerName: "localhost",
 				}},
 			})
