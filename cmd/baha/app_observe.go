@@ -68,7 +68,16 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 		return
 	}
 
-	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "BaseHarbor-managed capabilities, bindings and workload readiness verified", false: "one or more managed capabilities, bindings or workload checks need attention"}[result.Ready])
+	applicationState := "DEGRADED"
+	applicationDetail := "one or more managed capabilities, bindings or workload checks need attention"
+	if result.Ready {
+		applicationState = "READY"
+		applicationDetail = "BaseHarbor-managed capabilities, bindings and workload readiness verified"
+	} else if !result.HasFailures() && result.HasUnverified() {
+		applicationState = "RUNNING"
+		applicationDetail = "workload is running; readiness remains unverified"
+	}
+	term.Result(applicationState, "application", applicationDetail)
 
 	sections := map[string][]application.StatusCheck{}
 	order := []string{"Services", "Workload", "Observability", "Exposure", "Other"}
@@ -111,6 +120,9 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 
 	if result.Ready {
 		fmt.Fprintln(out, "\nREADY")
+	} else if !result.HasFailures() && result.HasUnverified() {
+		fmt.Fprintln(out, "\nRUNNING")
+		fmt.Fprintln(out, "Readiness: UNVERIFIED")
 	} else {
 		fmt.Fprintln(out, "\nDEGRADED")
 		fmt.Fprintln(out, "\nNext:")
@@ -206,7 +218,7 @@ func appStatusCommand(store application.Store) *cli.Command {
 			if result.State == "stopped" || result.State == "not_applied" {
 				return nil
 			}
-			if !result.Ready {
+			if !result.Ready && result.HasFailures() {
 				return cli.Presented(errors.New("application is not ready"))
 			}
 			return nil
