@@ -442,7 +442,7 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 	out, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName,
 		"bao", "write", "-format=json", "auth/approle/login", "-")
 	if err != nil {
-		return "", errors.New("OpenBao AppRole login failed")
+		return "", fmt.Errorf("OpenBao AppRole login failed: %w", err)
 	}
 	var reply struct {
 		Auth struct {
