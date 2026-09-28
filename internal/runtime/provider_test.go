@@ -18,7 +18,7 @@ func (p testProvider) Capabilities() ProviderCapabilities { return p.caps }
 
 func TestComposeProviderMetadata(t *testing.T) {
 	var provider Provider = Compose{}
-	if got, want := provider.Kind(), ProviderCompose; got != want {
+	if got, want := provider.Kind(), ProviderDocker; got != want {
 		t.Fatalf("Kind() = %q, want %q", got, want)
 	}
 
@@ -38,11 +38,11 @@ func TestComposeProviderMetadata(t *testing.T) {
 }
 
 func TestProviderKindIsDeploymentMetadata(t *testing.T) {
-	if ProviderCompose == "" {
-		t.Fatal("Compose provider kind must be stable and non-empty")
+	if ProviderDocker == "" {
+		t.Fatal("Docker provider kind must be stable and non-empty")
 	}
-	if got, want := string(ProviderCompose), "compose"; got != want {
-		t.Fatalf("ProviderCompose = %q, want %q", got, want)
+	if got, want := string(ProviderDocker), "compose"; got != want {
+		t.Fatalf("ProviderDocker = %q, want %q", got, want)
 	}
 }
 
@@ -52,8 +52,8 @@ func TestParseProviderKindDefaultsToCompose(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
 		}
-		if got != ProviderCompose {
-			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, ProviderCompose)
+		if got != ProviderDocker {
+			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, ProviderDocker)
 		}
 	}
 }
