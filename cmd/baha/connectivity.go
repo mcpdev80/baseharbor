@@ -194,7 +194,7 @@ func connectionsCommand() *cli.Command {
 	}
 }
 
-func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication) error {
+func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, resolved resolvedApplication) error {
 	m := resolved.Manifest
 	rules, err := application.LoadConnectivityRulesAt(resolved.TargetStateRoot)
 	if err != nil {
@@ -228,7 +228,7 @@ func reconcileConnectivityForManifest(ctx context.Context, out io.Writer, compos
 	return nil
 }
 
-func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) error {
+func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication) error {
 	m := resolved.Manifest
 	rules, err := application.LoadConnectivityRulesAt(resolved.TargetStateRoot)
 	if err != nil {
@@ -252,7 +252,7 @@ func suspendConnectivityForManifest(ctx context.Context, compose bhruntime.Compo
 	return nil
 }
 
-func convergeConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
+func convergeConnectivityRuleAt(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
 	network := application.ConnectivityNetworkName(rule)
 	if err := compose.EnsureManagedNetwork(ctx, network); err != nil {
 		return fmt.Errorf("create connectivity network: %w", err)
@@ -291,7 +291,7 @@ func convergeConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, 
 	return nil
 }
 
-func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
+func convergeConnectivityRule(ctx context.Context, compose bhruntime.RuntimeProvider, rule application.ConnectivityRule, sourceContainers []string, targetNetwork string) error {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return err
@@ -299,7 +299,7 @@ func convergeConnectivityRule(ctx context.Context, compose bhruntime.Compose, ru
 	return convergeConnectivityRuleAt(ctx, compose, dataDir, "", rule, sourceContainers, targetNetwork)
 }
 
-func waitConnectivityRelayReady(ctx context.Context, compose bhruntime.Compose, project string) error {
+func waitConnectivityRelayReady(ctx context.Context, compose bhruntime.RuntimeProvider, project string) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var lastStatus string
@@ -335,7 +335,7 @@ func waitConnectivityRelayReady(ctx context.Context, compose bhruntime.Compose, 
 	return fmt.Errorf("directed connectivity relay did not become ready: last status %q: %w", lastStatus, waitCtx.Err())
 }
 
-func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, dataDir, namespace string, rule application.ConnectivityRule, containers []bhruntime.ComposeContainer) error {
+func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.RuntimeProvider, dataDir, namespace string, rule application.ConnectivityRule, containers []bhruntime.RuntimeProviderContainer) error {
 	id := application.ConnectivityRuleID(rule)
 	files, err := connectivityrelay.ExistingFilesAt(dataDir, namespace, id)
 	if err == nil {
@@ -357,7 +357,7 @@ func suspendConnectivityRuleAt(ctx context.Context, compose bhruntime.Compose, d
 	return nil
 }
 
-func suspendConnectivityRule(ctx context.Context, compose bhruntime.Compose, rule application.ConnectivityRule, containers []bhruntime.ComposeContainer) error {
+func suspendConnectivityRule(ctx context.Context, compose bhruntime.RuntimeProvider, rule application.ConnectivityRule, containers []bhruntime.RuntimeProviderContainer) error {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return err
@@ -412,7 +412,7 @@ func canonicalConnectivityService(service string) string {
 	}
 }
 
-func resolveConnectivityEndpoint(input connectivityEndpointInput, containers []bhruntime.ComposeContainer, namespace string) (application.ConnectivityEndpoint, []string, error) {
+func resolveConnectivityEndpoint(input connectivityEndpointInput, containers []bhruntime.RuntimeProviderContainer, namespace string) (application.ConnectivityEndpoint, []string, error) {
 	type candidate struct {
 		endpoint   application.ConnectivityEndpoint
 		containers []string
@@ -453,7 +453,7 @@ func resolveConnectivityEndpoint(input connectivityEndpointInput, containers []b
 	panic("unreachable")
 }
 
-func resolveConnectivityTargetPort(ctx context.Context, compose bhruntime.Compose, input connectivityEndpointInput, endpoint application.ConnectivityEndpoint, containers []string) (int, error) {
+func resolveConnectivityTargetPort(ctx context.Context, compose bhruntime.RuntimeProvider, input connectivityEndpointInput, endpoint application.ConnectivityEndpoint, containers []string) (int, error) {
 	if input.Port != 0 {
 		return input.Port, nil
 	}
@@ -482,8 +482,8 @@ func resolveConnectivityTargetPort(ctx context.Context, compose bhruntime.Compos
 	panic("unreachable")
 }
 
-func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.Compose, endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer, namespace string) (string, error) {
-	var matched []bhruntime.ComposeContainer
+func resolveConnectivityTargetNetwork(ctx context.Context, compose bhruntime.RuntimeProvider, endpoint application.ConnectivityEndpoint, containers []bhruntime.RuntimeProviderContainer, namespace string) (string, error) {
+	var matched []bhruntime.RuntimeProviderContainer
 	for _, container := range containers {
 		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application, namespace)
 		if ok && environment == endpoint.Environment && container.Service == endpoint.Service {
@@ -617,7 +617,7 @@ func connectivityInputMatchesEndpoint(input connectivityEndpointInput, endpoint 
 	return connectivityServiceMatches(input.Service, endpoint.Service)
 }
 
-func containersForResolvedEndpoint(endpoint application.ConnectivityEndpoint, containers []bhruntime.ComposeContainer, namespace string) []string {
+func containersForResolvedEndpoint(endpoint application.ConnectivityEndpoint, containers []bhruntime.RuntimeProviderContainer, namespace string) []string {
 	var result []string
 	for _, container := range containers {
 		environment, ok := connectivityProjectEnvironment(container.Project, endpoint.Application, namespace)
