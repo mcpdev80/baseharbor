@@ -11,8 +11,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
