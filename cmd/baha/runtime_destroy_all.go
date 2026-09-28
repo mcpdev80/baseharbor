@@ -226,7 +226,7 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 	}
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
 		return
@@ -342,7 +342,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 	}
 	resolved, err := resolveRegisteredApplication(target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
 	if err == nil && strings.TrimSpace(target.RuntimeProvider) != "" {
-		compose, composeErr := detectComposeForTarget(parent, target)
+		compose, composeErr := detectRuntimeForTarget(parent, target)
 		if composeErr != nil {
 			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "deployment-fallback-runtime", Detail: composeErr.Error()})
 		} else {
@@ -410,7 +410,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
-	compose, composeErr := detectComposeForTarget(ctx, target)
+	compose, composeErr := detectRuntimeForTarget(ctx, target)
 	if composeErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-provider", Detail: composeErr.Error()})
 		_ = os.RemoveAll(dataDir)
