@@ -11,9 +11,10 @@ import (
 type Config struct {
 	PostgresDB       string
 	PostgresUser     string
-	PostgresPassword string
-	PostgresPort     int
-	OpenBaoPort      int
+	PostgresPassword  string
+	OpenBaoDBPassword string
+	PostgresPort      int
+	OpenBaoPort       int
 }
 
 func LoadConfig(envPath string) (Config, error) {
@@ -64,11 +65,12 @@ func LoadConfig(envPath string) (Config, error) {
 	cfg := Config{
 		PostgresDB:       values["BASEHARBOR_POSTGRES_DB"],
 		PostgresUser:     values["BASEHARBOR_POSTGRES_USER"],
-		PostgresPassword: values["BASEHARBOR_POSTGRES_PASSWORD"],
-		PostgresPort:     postgresPort,
+		PostgresPassword:  values["BASEHARBOR_POSTGRES_PASSWORD"],
+		OpenBaoDBPassword: values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
+		PostgresPort:      postgresPort,
 		OpenBaoPort:      openBaoPort,
 	}
-	if cfg.PostgresDB == "" || cfg.PostgresUser == "" || cfg.PostgresPassword == "" {
+	if cfg.PostgresDB == "" || cfg.PostgresUser == "" || cfg.PostgresPassword == "" || cfg.OpenBaoDBPassword == "" {
 		return Config{}, fmt.Errorf("runtime PostgreSQL configuration is incomplete")
 	}
 	return cfg, nil
