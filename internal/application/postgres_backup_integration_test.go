@@ -97,7 +97,7 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	}
 }
 
-func waitForPostgresBackupRuntime(t *testing.T, ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) {
+func waitForPostgresBackupRuntime(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) {
 	t.Helper()
 	var lastErr error
 	for attempt := 0; attempt < 30; attempt++ {
