@@ -123,7 +123,7 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 	return EnsureRuntime(ctx, issuer, store, m)
 }
 
-func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
 	if UsesSharedPostgreSQL(m) {
 		return nil
 	}
@@ -141,7 +141,7 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 	return nil
 }
 
-func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
 	if UsesSharedValkey(m) {
 		return nil
 	}
