@@ -32,6 +32,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	t.Setenv(application.MetricsCollectSourcesEnv, "application,application-provider,platform-provider")
 	t.Setenv(application.LogsEnabledEnv, "true")
