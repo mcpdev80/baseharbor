@@ -27,7 +27,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
