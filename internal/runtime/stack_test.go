@@ -100,7 +100,7 @@ func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testin
 	}
 }
 
-func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t *testing.T) {
+func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
 	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
 	if err != nil {
@@ -115,8 +115,10 @@ func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t 
 	}
 	text := string(compose)
 	for _, wanted := range []string{
-		"openbao-access:",
-		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8443",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+		"BAO_ADDR: https://127.0.0.1:8200",
+		"tls_cert_file",
+		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
 		"-c ssl=on",
 		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
@@ -126,8 +128,10 @@ func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t 
 			t.Fatalf("reconciled runtime is missing %q", wanted)
 		}
 	}
-	if strings.Contains(text, "postgres-access:") {
-		t.Fatal("control-plane PostgreSQL must use native TLS instead of a raw TLS proxy")
+	for _, forbidden := range []string{"postgres-access:", "openbao-access:"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("control-plane service must use native TLS instead of proxy %s", forbidden)
+		}
 	}
 	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
 	if err != nil {
