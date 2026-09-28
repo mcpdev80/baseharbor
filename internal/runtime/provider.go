@@ -58,66 +58,58 @@ var referenceProviderCapabilities = ProviderCapabilities{
 	ResourceOwnership: true,
 }
 
-var defaultRuntimeProviderRegistry = mustProviderRegistry(
-	ProviderRegistration{
-		Descriptor: ProviderDescriptor{
-			Kind:            ProviderDocker,
-			ContractVersion: RuntimeProviderContractVersion,
-			ProviderVersion: "0.4.17",
-			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
-			WorkloadSources: []string{"compose-spec"},
-			Realization:     "docker-compose",
-			Capabilities:    referenceProviderCapabilities,
-		},
-		Factory: func(ctx context.Context) (Provider, error) {
-			compose, err := detectDockerCompose(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return DockerProvider{Compose: compose}, nil
-		},
-	},
-	ProviderRegistration{
-		Descriptor: ProviderDescriptor{
-			Kind:            ProviderPodman,
-			ContractVersion: RuntimeProviderContractVersion,
-			ProviderVersion: "0.4.17",
-			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
-			WorkloadSources: []string{"compose-spec"},
-			Realization:     "podman-quadlet-systemd-user",
-			Capabilities:    referenceProviderCapabilities,
-		},
-		Factory: func(ctx context.Context) (Provider, error) {
-			runtime, err := detectPodmanRuntime(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return PodmanProvider{Compose: runtime}, nil
-		},
-	},
-)
+var dockerProviderDescriptor = ProviderDescriptor{
+	Kind:            ProviderDocker,
+	ContractVersion: RuntimeProviderContractVersion,
+	ProviderVersion: "0.4.17",
+	Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+	WorkloadSources: []string{"compose-spec"},
+	Realization:     "docker-compose",
+	Capabilities:    referenceProviderCapabilities,
+}
 
-func mustProviderRegistry(registrations ...ProviderRegistration) *ProviderRegistry {
-	registry, err := NewProviderRegistry(registrations...)
+var podmanProviderDescriptor = ProviderDescriptor{
+	Kind:            ProviderPodman,
+	ContractVersion: RuntimeProviderContractVersion,
+	ProviderVersion: "0.4.17",
+	Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+	WorkloadSources: []string{"compose-spec"},
+	Realization:     "podman-quadlet-systemd-user",
+	Capabilities:    referenceProviderCapabilities,
+}
+
+func NewDockerProvider(ctx context.Context) (RuntimeProvider, error) {
+	compose, err := detectDockerCompose(ctx)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return registry
+	return DockerProvider{Compose: compose}, nil
 }
 
-func ProviderDescriptorForKind(kind ProviderKind) (ProviderDescriptor, error) {
-	return defaultRuntimeProviderRegistry.Descriptor(kind)
+func NewPodmanProvider(ctx context.Context) (RuntimeProvider, error) {
+	runtime, err := detectPodmanRuntime(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return PodmanProvider{Compose: runtime}, nil
 }
 
-func (DockerProvider) Descriptor() ProviderDescriptor {
-	descriptor, _ := ProviderDescriptorForKind(ProviderDocker)
+func DockerProviderDescriptor() ProviderDescriptor {
+	return cloneProviderDescriptor(dockerProviderDescriptor)
+}
+
+func PodmanProviderDescriptor() ProviderDescriptor {
+	return cloneProviderDescriptor(podmanProviderDescriptor)
+}
+
+func cloneProviderDescriptor(descriptor ProviderDescriptor) ProviderDescriptor {
+	descriptor.Standards = append([]string(nil), descriptor.Standards...)
+	descriptor.WorkloadSources = append([]string(nil), descriptor.WorkloadSources...)
 	return descriptor
 }
 
-func (PodmanProvider) Descriptor() ProviderDescriptor {
-	descriptor, _ := ProviderDescriptorForKind(ProviderPodman)
-	return descriptor
-}
+func (DockerProvider) Descriptor() ProviderDescriptor { return DockerProviderDescriptor() }
+func (PodmanProvider) Descriptor() ProviderDescriptor { return PodmanProviderDescriptor() }
 
 func (DockerProvider) PreferredLocalHTTPSPort() int { return 443 }
 func (PodmanProvider) PreferredLocalHTTPSPort() int { return 8443 }
@@ -125,19 +117,3 @@ func (Compose) PreferredLocalHTTPSPort() int        { return 443 }
 
 func (DockerProvider) Capabilities() ProviderCapabilities { return referenceProviderCapabilities }
 func (PodmanProvider) Capabilities() ProviderCapabilities { return referenceProviderCapabilities }
-
-func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, error) {
-	return defaultRuntimeProviderRegistry.Resolve(ctx, kind)
-}
-
-func ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
-	return defaultRuntimeProviderRegistry.ResolveRuntimeProvider(ctx, kind)
-}
-
-func ResolveRuntimeProvider(ctx context.Context) (RuntimeProvider, error) {
-	return ResolveRuntimeProviderForKind(ctx, ProviderDocker)
-}
-
-func DetectProvider(ctx context.Context) (Provider, error) {
-	return DetectProviderForKind(ctx, ProviderDocker)
-}
