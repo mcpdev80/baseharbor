@@ -22,7 +22,7 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("DetectCompose() error = %v", err)
 	}
