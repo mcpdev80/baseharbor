@@ -14,7 +14,7 @@ Repository workload source and runtime provider identity are also separate conce
 
 ## Decision
 
-BaseHarbor uses a versioned provider-neutral runtime contract in `internal/runtime`.
+BaseHarbor uses a versioned provider-neutral runtime contract in `internal/runtime/contract`. First-party runtime implementations live behind explicit package boundaries in `internal/providers/runtime/docker` and `internal/providers/runtime/podman`; `internal/runtime/resolver` is the only first-party selection/registration boundary.
 
 The runtime boundary consists of:
 
