@@ -11,6 +11,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -74,6 +76,9 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
 			}
+			if err := removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m); err != nil {
+				return err
+			}
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
 					return err
@@ -129,6 +134,22 @@ func appDownCommand(store application.Store) *cli.Command {
 			return nil
 		},
 	}
+}
+
+func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, m application.Manifest) error {
+	if !devaccess.Enabled(m.Environment) {
+		return nil
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return fmt.Errorf("load target runtime for development route suspension: %w", err)
+	}
+	issuer := openbao.NewServiceIssuer(compose, files)
+	owner := "app/" + m.Name + "/" + m.Environment
+	if err := devgateway.RemoveOwners(ctx, compose, issuer, resolved.Target.Name, owner); err != nil {
+		return fmt.Errorf("suspend canonical development routes before application down: %w", err)
+	}
+	return nil
 }
 
 func appDestroyCommand(store application.Store) *cli.Command {
