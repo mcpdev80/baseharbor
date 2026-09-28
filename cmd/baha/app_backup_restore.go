@@ -292,6 +292,11 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 			return fmt.Errorf("verify shared backend provider before restore: %w", err)
 		}
 	}
+	if application.RequiresRuntimeBroker(m) {
+		if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, m, files); err != nil {
+			return fmt.Errorf("recreate application runtime broker before observability restore: %w", err)
+		}
+	}
 	var preparedLogs *managedLogsExecution
 	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateLogs) {
 		preparedLogs, err = prepareManagedLogs(ctx, compose, resolved, issuer)
@@ -332,11 +337,6 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	}
 	if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
 		return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
-	}
-	if application.RequiresRuntimeBroker(m) {
-		if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, m, files); err != nil {
-			return err
-		}
 	}
 	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage) {
 		_, targetVolumes, err := resolveRecoveryWorkloadStorage(ctx, compose, resolved, files, false)
