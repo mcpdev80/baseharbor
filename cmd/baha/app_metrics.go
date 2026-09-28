@@ -16,7 +16,7 @@ import (
 type managedMetricsExecution struct {
 	execution           *capability.Execution
 	driver              *metricsprovider.Driver
-	runtime             bhruntime.Compose
+	runtime             bhruntime.RuntimeProvider
 	issuer              serviceaccess.Issuer
 	manifest            application.Manifest
 	enabled             bool
@@ -30,7 +30,7 @@ type managedMetricsExecution struct {
 	namespace           string
 }
 
-func prepareManagedMetrics(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedMetricsExecution, error) {
+func prepareManagedMetrics(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedMetricsExecution, error) {
 	m := resolved.Manifest
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(m)
 
