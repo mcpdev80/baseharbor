@@ -63,7 +63,7 @@ func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, work
 }
 
 func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, err
 	}
