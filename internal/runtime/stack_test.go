@@ -186,11 +186,20 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 			t.Fatalf("pg_hba.conf missing %q", wanted)
 		}
 	}
-	if !strings.Contains(text, `"tls_auto_reload":true`) {
-		t.Fatal("OpenBao native TLS must enable tls_auto_reload on 2.7")
+	config, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(text, `"cluster_addr":"https://openbao:8201"`) {
-		t.Fatal("OpenBao Raft runtime must advertise cluster_addr")
+	configText := string(config)
+	for _, wanted := range []string{
+		`storage "postgresql"`,
+		"sslmode=verify-full",
+		"tls_auto_reload          = true",
+		"X25519MLKEM768",
+	} {
+		if !strings.Contains(configText, wanted) {
+			t.Fatalf("OpenBao 2.7 runtime config missing %q", wanted)
+		}
 	}
 }
 
@@ -304,19 +313,23 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeUsesOpenBaoRaftStorage(t *testing.T) {
+func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
-	if !strings.Contains(text, "docker.io/openbao/openbao:2.7.0") {
-		t.Fatal("managed OpenBao runtime must use OpenBao 2.7.0")
+	for _, wanted := range []string{
+		"docker.io/openbao/openbao:2.7.0",
+		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"BASEHARBOR_OPENBAO_DB_PASSWORD",
+		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("managed OpenBao/PostgreSQL runtime missing %q", wanted)
+		}
 	}
-	if !strings.Contains(text, `"storage":{"raft":{"path":"/openbao/raft","node_id":"baseharbor-1"}}`) {
-		t.Fatal("managed OpenBao runtime must use integrated Raft storage")
-	}
-	if !strings.Contains(text, "openbao-data:/openbao/raft") {
-		t.Fatal("OpenBao persistent volume must mount at /openbao/raft")
-	}
-	if strings.Contains(text, `"storage":{"file"`) || strings.Contains(text, "/openbao/file") {
-		t.Fatal("legacy OpenBao file storage must not remain in the current runtime")
+	for _, forbidden := range []string{"openbao-data:", "/openbao/raft", "/openbao/file"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("obsolete OpenBao storage remains in current runtime: %q", forbidden)
+		}
 	}
 }
 
