@@ -64,8 +64,8 @@ storage "postgresql" {
 listener "tcp" {
   address                  = "0.0.0.0:8200"
   tls_disable              = false
-  tls_cert_file            = "/run/baseharbor/tls-source/server-cert.pem"
-  tls_key_file             = "/run/baseharbor/tls-source/server-key.pem"
+  tls_cert_file            = "/run/baseharbor/openbao/server-cert.pem"
+  tls_key_file             = "/run/baseharbor/openbao/server-key.pem"
   tls_auto_reload          = true
   tls_auto_reload_interval = "10s"
   tls_min_version          = "tls12"
