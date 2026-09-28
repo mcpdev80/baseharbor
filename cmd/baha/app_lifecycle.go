@@ -55,7 +55,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
-					compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+					compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 					return err
 				}},
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
