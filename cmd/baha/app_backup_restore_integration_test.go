@@ -38,7 +38,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatalf("runtime up: %v", err)
 	}
 	defer func() { _ = runtimeDown(context.Background(), io.Discard) }()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
