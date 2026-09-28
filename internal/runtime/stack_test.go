@@ -105,6 +105,18 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 			t.Fatalf("OpenBao bootstrap prerequisite %s: %v", path, err)
 		}
 	}
+	for _, path := range []string{
+		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
+		filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o044 == 0 {
+			t.Fatalf("bind-mounted runtime file %s is not readable by the non-root container", path)
+		}
+	}
 }
 
 func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
