@@ -47,7 +47,7 @@ Manifest v1 fields are classified as follows.
 | named Redis/Valkey instances | portable key-value capability intent | translated to `cache.key-value` requirements |
 | `secrets.required` names/generation intent | portable secret requirement | translated without secret values |
 | `services.secrets.enabled` | portable managed-secret intent | translated without selecting OpenBao/Vault |
-| workload Compose path/service selection | provider-specific compatibility input | remains supported by the Compose implementation; it is not copied into provider-neutral capability identity |
+| workload Compose path/service selection | provider-specific compatibility input | remains supported as repository workload-source input; it is not copied into provider-neutral capability identity |
 | generated Compose networks/project names/ports/volumes | provider implementation detail | never part of the portable contract |
 | FQDN, TLS source directory, selected TLS mode | deployment/operator state | stored outside `baseharbor.yaml` |
 | runtime provider/profile | deployment/platform state | stored outside `baseharbor.yaml` |
