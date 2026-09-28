@@ -67,9 +67,8 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 				if err != nil {
 					continue
 				}
-				if strings.Contains(importPath, "/internal/runtime/docker") ||
-					strings.Contains(importPath, "/internal/runtime/podman") {
-					t.Errorf("%s imports concrete runtime package %q", relativePath(root, path), importPath)
+				if strings.Contains(importPath, "/internal/providers/runtime/") {
+					t.Errorf("%s imports concrete runtime provider package %q", relativePath(root, path), importPath)
 				}
 				if importPath == "github.com/mcpdev80/baseharbor/internal/runtime" {
 					name := "runtime"
@@ -105,6 +104,61 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("scan %s: %v", relativeRoot, err)
 		}
+	}
+}
+
+
+func TestRuntimeProviderPackageBoundaries(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve architecture test location")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+
+	entries, err := os.ReadDir(filepath.Join(root, "internal", "runtime"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		name := entry.Name()
+		if strings.Contains(name, "podman") || strings.HasPrefix(name, "quadlet") {
+			t.Errorf("provider-specific production file remains in internal/runtime root: %s", name)
+		}
+	}
+
+	contractRoot := filepath.Join(root, "internal", "runtime", "contract")
+	err = filepath.WalkDir(contractRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		fileSet := token.NewFileSet()
+		file, err := parser.ParseFile(fileSet, path, src, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imported := range file.Imports {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				continue
+			}
+			if strings.Contains(importPath, "/internal/providers/runtime/") {
+				t.Errorf("%s imports concrete provider package %q", relativePath(root, path), importPath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
