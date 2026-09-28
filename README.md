@@ -1,9 +1,12 @@
-<p align="center">
-  <img src="docs/brand/github_banner.png" alt="BaseHarbor" width="100%">
-</p>
+<h1 align="center">BaseHarbor</h1>
 
 <h2 align="center">One application contract. Replaceable infrastructure.</h2>
 
+<p align="center"><strong>
+A command-line tool that turns <em>"I just want to build an app"</em>
+into provisioned, secured, verified infrastructure —
+on your own machine, no vendor, no lock-in.
+</strong></p>
 
 <p align="center">
   <a href="https://github.com/mcpdev80/baseharbor-demo">
@@ -23,142 +26,121 @@
   </a>
 </p>
 
-BaseHarbor is a **portable application infrastructure control plane**.
+## The problem
 
-It inspects an application repository, turns infrastructure requirements into one explicit application contract, and realizes that contract through replaceable providers. The application keeps using standard protocols and clients; BaseHarbor owns provider selection, policy, lifecycle, credentials, trust, verification and evidence.
+You know the drill. You want to build an app — and before the first feature
+works, you are configuring a database container, networking, ports, secrets,
+TLS, identity, backups and a monitoring stack.
 
-The result is one developer workflow from local containers to later Kubernetes/OpenShift targets without rewriting application infrastructure intent around a specific product.
-
-## The idea
-
-**Inspect what the application already says**  
-BaseHarbor deterministically derives repository evidence from code, dependencies, Compose files, ports and configuration. No LLM or external AI service is required for inspection, planning or verification.
-
-**Declare needs, not products**  
-The application asks for SQL, cache, S3, secrets, identity, exposure or observability. PostgreSQL, Valkey, SeaweedFS, OpenBao, Keycloak and other products are provider realizations behind that intent.
-
-**Keep runtime and workload source separate**  
-Compose is currently a repository workload-source standard. Docker realizes it through Docker Compose; Podman realizes the same portable semantics through native Quadlet + `systemd --user`. Runtime Provider identity is `docker` or `podman`, not `compose`.
-
-**Use standard interfaces at the application boundary**  
-PostgreSQL · Redis/Valkey · S3 · HTTP(S) · OIDC/OAuth2 · OTLP · Service Binding · environment variables · files
-
-**Secure the lifecycle, not just the container**  
-Least privilege · scoped credentials · explicit trust boundaries · ownership verification · fail-closed behavior · secret-safe evidence
-
-**Make the same control plane usable by humans and agents**  
-Human-readable CLI output and structured JSON/MCP expose the same bounded operations. MCP does not provide a generic shell, Docker socket or unrestricted runtime execution.
+BaseHarbor takes that work off your plate. It is a normal CLI —
+deterministic, no AI involved:
 
 ```bash
-baha app inspect .
-baha app init
-baha target
-baha up
-baha status
-baha doctor
+baha app init      # adopt your existing repo, or plan a new app
+baha up            # provision, connect, secure, verify
+baha status        # done — with evidence, not guesswork
 ```
 
-> **Runtime status:** Docker and Podman are implemented Runtime Providers behind the same portable contract. Docker uses Docker Compose. Podman uses generated Quadlet units managed by rootless `systemd --user`; there is no `podman compose` fallback. Kubernetes and OpenShift are planned providers and are not implemented yet.
+Your app ends up at a stable, verified HTTPS URL (`demo.baha.localhost`
+by default), with identity, secrets and metrics on their own canonical
+hostnames — no port hunting, no certificate setup.
 
-## Why BaseHarbor?
+Your app receives normal bindings (`DATABASE_URL`, `REDIS_URL`,
+`S3_ENDPOINT`, `OIDC_ISSUER`, …) and keeps using its normal libraries.
+BaseHarbor is not a framework, not a PaaS, and never touches your code.
 
-Infrastructure usually becomes application-specific glue: Compose fragments, Helm values, cloud resources, credentials, local setup scripts and environment-specific conventions all describe the same application in different ways.
+## If you know Terraform, you already understand BaseHarbor
 
-BaseHarbor puts the stable part in one place:
+Terraform made infrastructure declarative: describe what you need, and it
+provisions it and keeps it from drifting — on AWS, Azure or GCP, without
+rewriting your code.
+
+BaseHarbor does the same — one layer up, for your **application's needs**
+instead of raw infrastructure:
 
 ```text
-Application repository
-        |
-        v
-repository evidence
-        |
-        v
-portable baseharbor.yaml intent
-        |
-        v
-BaseHarbor control plane
-        |
-        +--> Runtime Providers
-        +--> Capability Providers
-        +--> policy + security
-        +--> lifecycle + recovery
-        +--> verification + evidence
-        |
-        v
-Docker / Podman today
-Kubernetes / OpenShift later
+Terraform:   "I need a VM, a network, a DNS record."
+BaseHarbor:  "My app needs SQL, a cache, secrets, object storage,
+              identity, HTTPS exposure — provision it, wire it up, verify it."
 ```
 
-The portable contract stays application-facing. Provider- and runtime-specific objects remain realization details.
+Your `baseharbor.yaml` is the HCL of your application. Change the Target,
+keep the contract: Docker / Podman today, Kubernetes later — the way the
+same Terraform file targets different clouds.
+
+BaseHarbor is **not** Terraform and does not replace it. It answers a
+question Terraform deliberately never covered: not *"does the resource
+exist?"* but *"does the application actually work?"*
 
 ## What you get
 
-- Deterministic repository inspection with **Detected / Suggested / Possible** evidence.
-- Portable application intent with provider-neutral capability and runtime boundaries.
-- Explicit Runtime Providers with versioned descriptors, capability negotiation and fail-closed selection.
-- PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
-- Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
-- Canonical local development URLs through one Target-scoped domain (default `baha.localhost`) instead of random loopback ports as normal developer UX.
-- Environment-aware operator access: trusted local operation in dev; authenticated OIDC operator access in test/prod.
-- A canonical developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
-- First-class deployment Targets with target-scoped runtime/deployment state.
-- Plan, preflight, policy and explicit apply for automation and troubleshooting.
-- Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
-- Provider placement for application-scoped, shared or externally managed infrastructure.
-- Shared provider lifecycle with application-isolated databases, cache resources, credentials, bindings and destroy ownership.
-- Machine-readable results and a versioned local MCP interface for agent workflows.
+- **Adopt existing repositories** — `baha` inspects your code, dependencies,
+  Compose files and ports deterministically (parsers, rules, repository
+  evidence — no LLM or external AI service), and turns them into a portable
+  contract with **Detected / Suggested / Possible** evidence.
+- **Declare needs, not products** — `sql`, `cache`, `secrets`, `object storage`,
+  `identity`, HTTPS exposure: logical capabilities; PostgreSQL, Valkey,
+  S3-compatible and Keycloak products are replaceable realizations underneath.
+- **Everything wired and verified** — provisioning, credentials, TLS, bindings,
+  backups, updates, drift detection. READY means the real protocol/data flow
+  was verified, not just that a container is up.
+- **Shared providers, isolated resources** — one Target-owned provider can
+  serve many applications while databases, cache resources, credentials,
+  bindings and destroy ownership remain application-isolated.
+  `application   shared | external` placement, failing closed when unsupported.
+- **Managed identity** — provider-neutral OIDC/OAuth2 with managed Keycloak
+  or external providers, exposure-derived redirect/logout URIs, portable
+  MFA/passkey policy, Service Binding 1.1 projection.
+- **Canonical local development access** — one Target-scoped domain
+  (default `baha.localhost`) with deterministic HTTPS names such as
+  `my-app.baha.localhost`, `pgadmin.baha.localhost`, `auth.baha.localhost`
+  — instead of exposing random loopback ports as developer UX.
+- **Optional provider management surfaces** — pgAdmin, Redis Commander,
+  SeaweedFS Admin, OpenBao, Keycloak and Prometheus, selected per capability,
+  never duplicated per application, environment-policy driven.
+- **Deployment Targets** — Target + Application + Environment, with
+  target-scoped state; Docker / Podman today, Kubernetes / OpenShift planned.
+- **Environment-aware operator access** — trusted local operation in dev;
+  authenticated OIDC operator access in test/prod, separate from
+  application-user identity.
+- **Standard interfaces only** — PostgreSQL · Redis/Valkey · S3 · HTTP ·
+  OIDC/OAuth2 · OTLP · environment variables · files. No BaseHarbor SDK,
+  no imports in your app.
+- **Zero-trust by default** — least privilege, scoped credentials,
+  explicit trust boundaries, fail-closed behavior.
 
-## Local development access
+> **Runtime status:** Docker and Podman are implemented Runtime Providers
+> behind the same portable contract. Docker realizes Compose workload input
+> through Docker Compose; Podman realizes the same portable semantics through
+> native Quadlet units managed by rootless `systemd --user`; there is no
+> `podman compose` fallback. Kubernetes and OpenShift are planned runtime
+> providers and are not implemented yet.
 
-For `dev`, BaseHarbor keeps local access predictable without changing the portable application contract.
+## A CLI first — agent-ready if you want it
 
-The effective Target owns one development domain, defaulting to `baha.localhost`. Browser-facing application and provider surfaces receive deterministic HTTPS names such as:
-
-```text
-my-app.baha.localhost
-pgadmin.baha.localhost
-auth.baha.localhost
-secrets.baha.localhost
-metrics.baha.localhost
-```
-
-Docker serves these canonical development hosts on HTTPS port 443. Rootless Podman uses the fixed unprivileged HTTPS port 8443 and reports that port in canonical URLs; no host sysctl change is required.
-
-The default reference placement is shared wherever the bundled provider can safely isolate applications. PostgreSQL uses one Target-owned provider with per-application databases and roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources. Dedicated `application` placement remains available when an isolated provider instance is explicitly required.
-
-A Target-scoped development account defaults to username `developer` with a generated strong password. BaseHarbor reuses that identity across selected development management surfaces. When managed Identity is present, the same developer identity is reconciled through OIDC; providers that require native authentication receive an adapter using the same development credentials.
-
-Use the explicit commands when you need to inspect or change local development access:
+BaseHarbor is a command-line tool that automates your infrastructure work.
+Commands such as `inspect`, `init`, `plan`, `up`, `status`, `doctor`
+and policy checks are deterministic BaseHarbor functionality implemented in
+code. It has nothing to do with AI — unless you want it to:
 
 ```bash
-baha dev domain
-baha dev domain dev.example.internal
-baha dev credentials
-baha dev credentials --reset
+baha agent describe -o json
+baha mcp serve
 ```
 
-The password is never printed by normal `status`, `doctor`, plan or evidence output. Test and prod do not use this shared development credential; they keep the authenticated operator-OIDC boundary.
-
-## Security is behavior
-
-BaseHarbor does not treat security as a label.
-
-Current behavior includes:
-
-- deny-by-default and fail-closed decisions;
-- scoped application/runtime credentials;
-- bucket-scoped S3 credentials;
-- application-scoped runtime identities;
-- standard OIDC application identity with file-based trust material for managed/private issuers;
-- authenticated BaseHarbor operator boundaries for test/prod, separate from application-user identity;
-- explicit directional cross-application connectivity;
-- protected deployment state;
-- real protocol/data-flow readiness checks;
-- workload preflight checks for risky Compose settings such as privileged mode, runtime sockets, host networking, dangerous capabilities, devices and critical host mounts.
+The same operations you run by hand are exposed as structured JSON and a
+local **MCP interface**. That is the only place AI enters the picture: if you
+use an AI agent, it can operate BaseHarbor through these bounded, verified
+operations instead of raw shell access. No generic shell, no Docker socket,
+no unrestricted runtime execution. The MCP interface is an optional
+integration surface — it does not change how BaseHarbor detects, plans or
+verifies infrastructure. Without an agent, none of this matters: it is just
+a CLI doing work for you.
 
 ## Application contract
 
-The application describes **what it needs**, not how infrastructure must be implemented.
+The application describes **what it needs**, not how infrastructure must be
+implemented:
 
 ```yaml
 version: 1
@@ -201,16 +183,78 @@ OIDC_CA_FILE
 APP_SECRET
 ```
 
-Your application keeps using native ecosystem clients and protocols.
+Your application keeps using native ecosystem clients, protocols and
+frameworks — standard OIDC libraries, standard database drivers, no
+BaseHarbor SDK.
 
-## Agent-native, without giving the agent a shell
+## Local development access
 
-```bash
-baha agent describe -o json
-baha mcp serve
+For `dev`, BaseHarbor keeps local access predictable without changing the
+portable application contract.
+
+The effective Target owns one development domain, defaulting to
+`baha.localhost`. Browser-facing application and provider surfaces receive
+deterministic HTTPS names such as:
+
+```text
+my-app.baha.localhost
+pgadmin.baha.localhost
+auth.baha.localhost
+secrets.baha.localhost
+metrics.baha.localhost
 ```
 
-BaseHarbor itself does not require AI. Commands such as `inspect`, `init`, `plan`, `status`, `doctor` and policy checks are deterministic BaseHarbor functionality implemented in code. The local MCP interface is only an optional integration surface that exposes those existing operations to agents; it does not change how BaseHarbor detects, plans or verifies infrastructure. It does not expose a generic shell, Docker socket or unrestricted runtime execution.
+Docker serves these canonical development hosts on HTTPS port 443. Rootless
+Podman uses the fixed unprivileged HTTPS port 8443 and reports that port in
+canonical URLs; no host sysctl change is required.
+
+A Target-scoped development account defaults to username `developer` with
+a generated strong password, reused across selected development management
+surfaces. When managed Identity is present, the same developer identity is
+reconciled through OIDC. The password is never printed by normal `status`,
+`doctor`, plan or evidence output. Test and prod do not use this shared
+development credential; they keep the authenticated operator-OIDC boundary.
+
+Use the explicit commands when you need to inspect or change local
+development access:
+
+```bash
+baha dev domain
+baha dev domain dev.example.internal
+baha dev credentials
+baha dev credentials --reset
+```
+
+## What BaseHarbor is not
+
+- **Not a PaaS** — self-hosted, runs on your Docker or Podman, no vendor.
+- **Not a framework** — your code stays normal Go/Python/Node; no SDK,
+  no BaseHarbor APIs in your app.
+- **Not a Kubernetes distribution** — Docker/Podman today; Kubernetes is a
+  future runtime for the *same* contract.
+- **Not an AI product** — a deterministic CLI that automates infrastructure;
+  agents can optionally drive it via MCP.
+- **Not Terraform** — it does not manage cloud resources; it is the
+  declarative layer *above* them, for your application.
+
+## Security is behavior
+
+BaseHarbor does not treat security as a label. Current behavior includes:
+
+- deny-by-default and fail-closed decisions;
+- scoped application/runtime credentials;
+- bucket-scoped S3 credentials;
+- application-scoped runtime identities;
+- standard OIDC application identity with file-based trust material for
+  managed/private issuers;
+- authenticated BaseHarbor operator boundaries for test/prod, separate from
+  application-user identity;
+- explicit directional cross-application connectivity;
+- protected deployment state;
+- real protocol/data-flow readiness checks;
+- workload preflight checks for risky Compose settings such as privileged
+  mode, runtime sockets, host networking, dangerous capabilities, devices
+  and critical host mounts.
 
 ## Install
 
@@ -235,14 +279,15 @@ baha version
 
 BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 
-Docker and Podman are the implemented Runtime Providers today. Docker realizes Compose workload input through Docker Compose; Podman realizes it through native Quadlet + rootless `systemd --user`. Kubernetes and OpenShift remain future runtime tracks and must preserve the same portable application contract when implemented.
+Docker and Podman are the implemented Runtime Providers today. Docker
+realizes Compose workload input through Docker Compose; Podman realizes the
+same portable semantics through native Quadlet units managed by rootless
+`systemd --user`. Kubernetes and OpenShift remain future runtime tracks and
+must preserve the same application contract when implemented.
 
-Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch represents released source.
+Normal feature, fix, chore and dependency pull requests target `develop`.
+The `main` branch represents released source.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
-
----
-
-<sub>Human-specified, machine-verified. AI can integrate through the bounded MCP surface, but BaseHarbor's core inspection, planning and verification are deterministic.</sub>
+Apache License 2.0. See .
