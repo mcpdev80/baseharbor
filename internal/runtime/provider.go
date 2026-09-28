@@ -23,6 +23,8 @@ const (
 // not application capabilities such as PostgreSQL or object storage.
 type RuntimeCapability string
 
+const RuntimeProviderContractVersion = "baseharbor.runtime/v1"
+
 const (
 	CapabilityWorkloadLifecycle RuntimeCapability = "workload-lifecycle"
 	CapabilityServiceExec       RuntimeCapability = "service-exec"
@@ -38,6 +40,17 @@ type ProviderCapabilities struct {
 	ServiceExec       bool
 	PublishedPorts    bool
 	ResourceOwnership bool
+}
+
+// ProviderDescriptor is the versioned, product-neutral declaration used for
+// runtime discovery and capability negotiation. Product implementation details
+// remain behind the provider factory.
+type ProviderDescriptor struct {
+	Kind            ProviderKind
+	ContractVersion string
+	ProviderVersion string
+	Standards       []string
+	Capabilities    ProviderCapabilities
 }
 
 func (c ProviderCapabilities) Supports(capability RuntimeCapability) bool {
@@ -61,7 +74,15 @@ func (c ProviderCapabilities) Supports(capability RuntimeCapability) bool {
 // operation has a demonstrated second implementation.
 type Provider interface {
 	Kind() ProviderKind
+	Descriptor() ProviderDescriptor
 	Capabilities() ProviderCapabilities
+}
+
+type providerFactory func(context.Context) (Provider, error)
+
+type providerRegistration struct {
+	descriptor ProviderDescriptor
+	factory    providerFactory
 }
 
 func ParseProviderKind(value string) (ProviderKind, error) {
@@ -84,7 +105,14 @@ func RequireCapabilities(provider Provider, required ...RuntimeCapability) error
 	if provider == nil {
 		return fmt.Errorf("runtime provider is required")
 	}
-	caps := provider.Capabilities()
+	descriptor := provider.Descriptor()
+	if descriptor.ContractVersion != RuntimeProviderContractVersion {
+		return fmt.Errorf("runtime provider %s uses contract %q, require %q", provider.Kind(), descriptor.ContractVersion, RuntimeProviderContractVersion)
+	}
+	if descriptor.Kind != provider.Kind() {
+		return fmt.Errorf("runtime provider descriptor kind %q does not match provider %q", descriptor.Kind, provider.Kind())
+	}
+	caps := descriptor.Capabilities
 	for _, capability := range required {
 		if capability == "" {
 			return fmt.Errorf("runtime provider %s: empty capability requirement", provider.Kind())
@@ -104,17 +132,81 @@ type PodmanProvider struct{ Compose }
 func (DockerProvider) Kind() ProviderKind { return ProviderDocker }
 func (PodmanProvider) Kind() ProviderKind { return ProviderPodman }
 
+var referenceProviderCapabilities = ProviderCapabilities{
+	WorkloadLifecycle: true,
+	ServiceExec:       true,
+	PublishedPorts:    true,
+	ResourceOwnership: true,
+}
+
+var runtimeProviderRegistry = map[ProviderKind]providerRegistration{
+	ProviderDocker: {
+		descriptor: ProviderDescriptor{
+			Kind:            ProviderDocker,
+			ContractVersion: RuntimeProviderContractVersion,
+			ProviderVersion: "0.4.17",
+			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+			Capabilities:    referenceProviderCapabilities,
+		},
+		factory: func(ctx context.Context) (Provider, error) {
+			compose, err := detectDockerCompose(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return DockerProvider{Compose: compose}, nil
+		},
+	},
+	ProviderPodman: {
+		descriptor: ProviderDescriptor{
+			Kind:            ProviderPodman,
+			ContractVersion: RuntimeProviderContractVersion,
+			ProviderVersion: "0.4.17",
+			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+			Capabilities:    referenceProviderCapabilities,
+		},
+		factory: func(ctx context.Context) (Provider, error) {
+			compose, err := detectPodmanCompose(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return PodmanProvider{Compose: compose}, nil
+		},
+	},
+}
+
+func ProviderDescriptorForKind(kind ProviderKind) (ProviderDescriptor, error) {
+	normalized, err := ParseProviderKind(string(kind))
+	if err != nil {
+		return ProviderDescriptor{}, err
+	}
+	registration, ok := runtimeProviderRegistry[normalized]
+	if !ok {
+		return ProviderDescriptor{}, fmt.Errorf("runtime provider %q is not registered", normalized)
+	}
+	return registration.descriptor, nil
+}
+
+func (Compose) Descriptor() ProviderDescriptor {
+	descriptor, _ := ProviderDescriptorForKind(ProviderDocker)
+	return descriptor
+}
+
+func (DockerProvider) Descriptor() ProviderDescriptor {
+	descriptor, _ := ProviderDescriptorForKind(ProviderDocker)
+	return descriptor
+}
+
+func (PodmanProvider) Descriptor() ProviderDescriptor {
+	descriptor, _ := ProviderDescriptorForKind(ProviderPodman)
+	return descriptor
+}
+
 func (DockerProvider) PreferredLocalHTTPSPort() int { return 443 }
 func (PodmanProvider) PreferredLocalHTTPSPort() int { return 8443 }
 func (Compose) PreferredLocalHTTPSPort() int        { return 443 }
 
 func (Compose) Capabilities() ProviderCapabilities {
-	return ProviderCapabilities{
-		WorkloadLifecycle: true,
-		ServiceExec:       true,
-		PublishedPorts:    true,
-		ResourceOwnership: true,
-	}
+	return referenceProviderCapabilities
 }
 
 // DetectProviderForKind resolves the explicitly selected deployment runtime.
@@ -125,24 +217,20 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 	if err != nil {
 		return nil, err
 	}
-	switch normalized {
-	case ProviderDocker:
-		compose, err := detectDockerCompose(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return DockerProvider{Compose: compose}, nil
-	case ProviderPodman:
-		compose, err := detectPodmanCompose(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return PodmanProvider{Compose: compose}, nil
-	case ProviderKubernetes, ProviderOpenShift:
-		return nil, fmt.Errorf("runtime provider %q is not executable in v0.4.15", normalized)
-	default:
-		return nil, fmt.Errorf("runtime provider %q is not implemented", normalized)
+	registration, ok := runtimeProviderRegistry[normalized]
+	if !ok {
+		return nil, fmt.Errorf("runtime provider %q is not registered", normalized)
 	}
+	provider, err := registration.factory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	descriptor := provider.Descriptor()
+	if descriptor.ContractVersion != registration.descriptor.ContractVersion ||
+		descriptor.Kind != registration.descriptor.Kind {
+		return nil, fmt.Errorf("runtime provider %q descriptor does not match registry declaration", normalized)
+	}
+	return provider, nil
 }
 
 // ResolveRuntimeProviderForKind resolves an executable runtime implementation
