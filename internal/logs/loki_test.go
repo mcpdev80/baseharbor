@@ -283,7 +283,7 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFilesForRuntime(context.Background(), serviceissuer.New(t), m, "podman")
+	files, err := logs.EnsureProviderFilesForMode(context.Background(), serviceissuer.New(t), m, bhruntime.LogCollectionJournald)
 	if err != nil {
 		t.Fatal(err)
 	}
