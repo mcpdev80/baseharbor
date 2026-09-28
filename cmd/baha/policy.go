@@ -120,7 +120,7 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 		return result, nil
 	}
 
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	var report application.WorkloadSecurityReport
 	var reportErr error
 	if errors.Is(err, bhruntime.ErrRuntimeNotFound) {
