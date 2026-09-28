@@ -39,7 +39,7 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 		TLSMode:         "existing",
 		CertDir:         "/operator/certs",
 		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
-		RuntimeProvider: bhruntime.ProviderCompose,
+		RuntimeProvider: bhruntime.ProviderDocker,
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestRuntimeHostnameRoundTripPreservesLiteralDots(t *testing.T) {
 		TLSMode:         "existing",
 		CertDir:         "/operator/certs",
 		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
-		RuntimeProvider: bhruntime.ProviderCompose,
+		RuntimeProvider: bhruntime.ProviderDocker,
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -121,8 +121,8 @@ func TestRepositoryInitStateDefaultsLegacyRuntimeProviderToCompose(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.RuntimeProvider != bhruntime.ProviderCompose {
-		t.Fatalf("runtime provider = %q, want %q", state.RuntimeProvider, bhruntime.ProviderCompose)
+	if state.RuntimeProvider != bhruntime.ProviderDocker {
+		t.Fatalf("runtime provider = %q, want %q", state.RuntimeProvider, bhruntime.ProviderDocker)
 	}
 }
 
