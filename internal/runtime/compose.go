@@ -13,25 +13,6 @@ import (
 var ErrRuntimeNotFound = errors.New("container runtime orchestration not found")
 var ErrResourceOwnership = errors.New("runtime resource ownership does not match the application project")
 
-type ProjectResource struct {
-	Kind string
-	Name string
-}
-
-type RuntimeContainer struct {
-	Name    string
-	Project string
-	Service string
-	Running bool
-	Health  string
-}
-
-type ImageIdentity struct {
-	Reference string
-	ImageID   string
-	Digest    string
-}
-
 // Compose provides the small lifecycle surface BaseHarbor needs from a
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
