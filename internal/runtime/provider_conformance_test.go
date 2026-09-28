@@ -1,39 +1,43 @@
-package runtime
+package runtime_test
 
 import (
 	"testing"
+
+	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
+	podmanprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/podman"
+	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
 
 type runtimeProviderConformanceExpectation struct {
-	kind        ProviderKind
+	kind        runtimecontract.ProviderKind
 	httpsPort   int
-	logMode     LogCollectionMode
+	logMode     runtimecontract.LogCollectionMode
 	realization string
 }
 
 func TestFirstPartyRuntimeProviderConformance(t *testing.T) {
 	tests := []struct {
 		name     string
-		provider RuntimeProvider
+		provider runtimecontract.RuntimeProvider
 		want     runtimeProviderConformanceExpectation
 	}{
 		{
 			name:     "docker",
-			provider: DockerProvider{},
+			provider: &dockerprovider.Provider{},
 			want: runtimeProviderConformanceExpectation{
-				kind:        ProviderDocker,
+				kind:        runtimecontract.ProviderDocker,
 				httpsPort:   443,
-				logMode:     LogCollectionSyslog,
+				logMode:     runtimecontract.LogCollectionSyslog,
 				realization: "docker-compose",
 			},
 		},
 		{
 			name:     "podman",
-			provider: PodmanProvider{},
+			provider: &podmanprovider.Provider{},
 			want: runtimeProviderConformanceExpectation{
-				kind:        ProviderPodman,
+				kind:        runtimecontract.ProviderPodman,
 				httpsPort:   8443,
-				logMode:     LogCollectionJournald,
+				logMode:     runtimecontract.LogCollectionJournald,
 				realization: "podman-quadlet-systemd-user",
 			},
 		},
@@ -46,7 +50,7 @@ func TestFirstPartyRuntimeProviderConformance(t *testing.T) {
 	}
 }
 
-func assertRuntimeProviderConformance(t *testing.T, provider RuntimeProvider, want runtimeProviderConformanceExpectation) {
+func assertRuntimeProviderConformance(t *testing.T, provider runtimecontract.RuntimeProvider, want runtimeProviderConformanceExpectation) {
 	t.Helper()
 	if provider.Kind() != want.kind {
 		t.Fatalf("Kind() = %q, want %q", provider.Kind(), want.kind)
@@ -55,8 +59,8 @@ func assertRuntimeProviderConformance(t *testing.T, provider RuntimeProvider, wa
 	if descriptor.Kind != want.kind {
 		t.Fatalf("descriptor kind = %q, want %q", descriptor.Kind, want.kind)
 	}
-	if descriptor.ContractVersion != RuntimeProviderContractVersion {
-		t.Fatalf("contract version = %q, want %q", descriptor.ContractVersion, RuntimeProviderContractVersion)
+	if descriptor.ContractVersion != runtimecontract.RuntimeProviderContractVersion {
+		t.Fatalf("contract version = %q, want %q", descriptor.ContractVersion, runtimecontract.RuntimeProviderContractVersion)
 	}
 	if descriptor.ProviderVersion == "" {
 		t.Fatal("provider version is empty")
@@ -70,12 +74,12 @@ func assertRuntimeProviderConformance(t *testing.T, provider RuntimeProvider, wa
 	if len(descriptor.Standards) == 0 {
 		t.Fatal("provider declares no adopted standards")
 	}
-	if err := RequireCapabilities(
+	if err := runtimecontract.RequireCapabilities(
 		provider,
-		CapabilityWorkloadLifecycle,
-		CapabilityServiceExec,
-		CapabilityPublishedPorts,
-		CapabilityResourceOwnership,
+		runtimecontract.CapabilityWorkloadLifecycle,
+		runtimecontract.CapabilityServiceExec,
+		runtimecontract.CapabilityPublishedPorts,
+		runtimecontract.CapabilityResourceOwnership,
 	); err != nil {
 		t.Fatalf("required capabilities: %v", err)
 	}
