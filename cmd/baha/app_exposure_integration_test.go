@@ -26,7 +26,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
