@@ -40,11 +40,7 @@ func ApplicationRegistrationAt(dataDir, namespace string, m application.Manifest
 }
 
 func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeFiles, services []string) (string, error) {
-	return EnsureWorkloadOverrideForRuntime(m, runtime, services, "docker")
-}
-
-func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
-	return EnsureWorkloadOverrideForMode(m, runtime, services, logCollectionModeForLegacyRuntime(runtimeKind))
+	return EnsureWorkloadOverrideForMode(m, runtime, services, bhruntime.LogCollectionSyslog)
 }
 
 func EnsureWorkloadOverrideForMode(m application.Manifest, runtime application.RuntimeFiles, services []string, mode bhruntime.LogCollectionMode) (string, error) {
@@ -53,10 +49,6 @@ func EnsureWorkloadOverrideForMode(m application.Manifest, runtime application.R
 		return "", err
 	}
 	return EnsureWorkloadOverrideForModeAt(dataDir, "", m, runtime, services, mode)
-}
-
-func EnsureWorkloadOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
-	return EnsureWorkloadOverrideForModeAt(dataDir, namespace, m, runtime, services, logCollectionModeForLegacyRuntime(runtimeKind))
 }
 
 func EnsureWorkloadOverrideForModeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, mode bhruntime.LogCollectionMode) (string, error) {
@@ -87,73 +79,6 @@ func EnsureWorkloadOverrideForModeAt(dataDir, namespace string, m application.Ma
 		return "", err
 	}
 	return path, nil
-}
-
-func EnsureProviderSourceOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return "", false, err
-	}
-	return EnsureProviderSourceOverrideForRuntimeAt(dataDir, "", m, runtime, runtimeKind)
-}
-
-func EnsureProviderSourceOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, runtimeKind string) (string, bool, error) {
-	project := strings.TrimSpace(runtime.Project)
-	if project == "" {
-		project = application.RuntimeProjectName(m)
-	}
-	return EnsureRuntimeProjectOverrideForRuntimeAt(
-		dataDir,
-		namespace,
-		m,
-		runtime.Dir,
-		providerOverrideName,
-		project,
-		runtimeKind,
-		observability.SourceApplicationProvider,
-	)
-}
-
-func EnsureRuntimeProjectOverrideForRuntime(
-	m application.Manifest,
-	dir string,
-	filename string,
-	project string,
-	runtimeKind string,
-	class observability.SourceClass,
-) (string, bool, error) {
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return "", false, err
-	}
-	return EnsureRuntimeProjectOverrideForRuntimeAt(dataDir, "", m, dir, filename, project, runtimeKind, class)
-}
-
-func EnsureRuntimeProjectOverrideForRuntimeAt(
-	dataDir string,
-	namespace string,
-	m application.Manifest,
-	dir string,
-	filename string,
-	project string,
-	runtimeKind string,
-	class observability.SourceClass,
-) (string, bool, error) {
-	return EnsureRuntimeModuleOverrideForRuntimeAt(dataDir, namespace, m, dir, filename, project, runtimeKind, class, nil)
-}
-
-func EnsureRuntimeModuleOverrideForRuntimeAt(
-	dataDir string,
-	namespace string,
-	m application.Manifest,
-	dir string,
-	filename string,
-	project string,
-	runtimeKind string,
-	class observability.SourceClass,
-	allowedServices []string,
-) (string, bool, error) {
-	return EnsureRuntimeModuleOverrideForModeAt(dataDir, namespace, m, dir, filename, project, logCollectionModeForLegacyRuntime(runtimeKind), class, allowedServices)
 }
 
 func EnsureRuntimeModuleOverrideForModeAt(
@@ -321,11 +246,4 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 		return err
 	}
 	return nil
-}
-
-func logCollectionModeForLegacyRuntime(runtimeKind string) bhruntime.LogCollectionMode {
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
-		return bhruntime.LogCollectionJournald
-	}
-	return bhruntime.LogCollectionSyslog
 }
