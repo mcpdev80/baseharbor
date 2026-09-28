@@ -16,7 +16,14 @@ import (
 // user systemd manager. No portable Core code needs to know that distinction.
 
 func (p PodmanProvider) LogCollectionMode() LogCollectionMode { return LogCollectionJournald }
-func (p PodmanProvider) VerifyProjectServiceLogCollection(context.Context, string, string, string) error {
+func (p PodmanProvider) VerifyProjectServiceLogCollection(ctx context.Context, project, service, expectedTag string) error {
+	driver, err := p.ProjectServiceLogDriver(ctx, project, service)
+	if err != nil {
+		return err
+	}
+	if driver != "journald" {
+		return fmt.Errorf("runtime log driver for %s/%s: got %q, want journald", project, service, driver)
+	}
 	return nil
 }
 
