@@ -29,7 +29,6 @@ type Runtime interface {
 	UpProject(context.Context, string, string, string) error
 	StopProject(context.Context, string, string, string) error
 	DestroyProject(context.Context, string, string, string) error
-	LogCollectionMode() bhruntime.LogCollectionMode
 }
 
 type Driver struct {
@@ -42,14 +41,25 @@ type Driver struct {
 	namespace string
 }
 
+type runtimeLogMode interface {
+	LogCollectionMode() bhruntime.LogCollectionMode
+}
+
+func logCollectionMode(runtime Runtime) bhruntime.LogCollectionMode {
+	if detected, ok := runtime.(runtimeLogMode); ok {
+		return detected.LogCollectionMode()
+	}
+	return bhruntime.LogCollectionSyslog
+}
+
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
-	return &Driver{runtime: runtime, mode: runtime.LogCollectionMode(), app: app, issuer: issuer}
+	return &Driver{runtime: runtime, mode: logCollectionMode(runtime), app: app, issuer: issuer}
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{
 		runtime:   runtime,
-		mode:      runtime.LogCollectionMode(),
+		mode:      logCollectionMode(runtime),
 		app:       app,
 		issuer:    issuer,
 		dataDir:   filepath.Clean(dataDir),
