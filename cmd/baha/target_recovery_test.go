@@ -67,7 +67,6 @@ func TestTargetRecoveryFileResolutionAndPersistence(t *testing.T) {
 	}
 }
 
-
 func TestPreflightNewTargetRecoveryFileRejectsExistingMaterial(t *testing.T) {
 	configRoot := t.TempDir()
 	dataRoot := t.TempDir()
