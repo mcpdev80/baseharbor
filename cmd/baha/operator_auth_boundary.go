@@ -176,7 +176,7 @@ func bootstrapManagedOperatorKeycloak(ctx context.Context, target, environment s
 	if err != nil {
 		return operatorauth.Config{}, err
 	}
-	compose, err := detectComposeForTarget(ctx, resolvedTarget)
+	compose, err := detectRuntimeForTarget(ctx, resolvedTarget)
 	if err != nil {
 		return operatorauth.Config{}, err
 	}
@@ -222,7 +222,7 @@ func finalizeManagedOperatorKeycloak(ctx context.Context, target, environment st
 	if err != nil {
 		return err
 	}
-	compose, err := detectComposeForTarget(ctx, resolvedTarget)
+	compose, err := detectRuntimeForTarget(ctx, resolvedTarget)
 	if err != nil {
 		return err
 	}
