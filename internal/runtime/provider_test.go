@@ -9,12 +9,25 @@ import (
 var _ Provider = Compose{}
 
 type testProvider struct {
-	kind ProviderKind
-	caps ProviderCapabilities
+	kind            ProviderKind
+	caps            ProviderCapabilities
+	contractVersion string
 }
 
-func (p testProvider) Kind() ProviderKind                 { return p.kind }
+func (p testProvider) Kind() ProviderKind { return p.kind }
 func (p testProvider) Capabilities() ProviderCapabilities { return p.caps }
+func (p testProvider) Descriptor() ProviderDescriptor {
+	version := p.contractVersion
+	if version == "" {
+		version = RuntimeProviderContractVersion
+	}
+	return ProviderDescriptor{
+		Kind:            p.kind,
+		ContractVersion: version,
+		ProviderVersion: "test",
+		Capabilities:    p.caps,
+	}
+}
 
 func TestComposeProviderMetadata(t *testing.T) {
 	var provider Provider = Compose{}
@@ -136,5 +149,44 @@ func TestRequireCapabilitiesRejectsNilProviderAndEmptyRequirement(t *testing.T) 
 	provider := testProvider{kind: "test", caps: ProviderCapabilities{}}
 	if err := RequireCapabilities(provider, ""); err == nil {
 		t.Fatal("empty capability unexpectedly accepted")
+	}
+}
+
+func TestProviderDescriptorRegistryDeclaresReferenceProviders(t *testing.T) {
+	for _, kind := range []ProviderKind{ProviderDocker, ProviderPodman} {
+		descriptor, err := ProviderDescriptorForKind(kind)
+		if err != nil {
+			t.Fatalf("ProviderDescriptorForKind(%q) error = %v", kind, err)
+		}
+		if descriptor.Kind != kind {
+			t.Fatalf("descriptor kind = %q, want %q", descriptor.Kind, kind)
+		}
+		if descriptor.ContractVersion != RuntimeProviderContractVersion {
+			t.Fatalf("descriptor contract = %q, want %q", descriptor.ContractVersion, RuntimeProviderContractVersion)
+		}
+		if descriptor.ProviderVersion == "" {
+			t.Fatalf("descriptor %q has empty provider version", kind)
+		}
+		if !descriptor.Capabilities.WorkloadLifecycle || !descriptor.Capabilities.ResourceOwnership {
+			t.Fatalf("descriptor %q is missing required reference capabilities: %#v", kind, descriptor.Capabilities)
+		}
+	}
+}
+
+func TestProviderDescriptorRegistryRejectsUnavailableProvider(t *testing.T) {
+	if _, err := ProviderDescriptorForKind(ProviderKubernetes); err == nil {
+		t.Fatal("unregistered Kubernetes provider unexpectedly resolved")
+	}
+}
+
+func TestRequireCapabilitiesRejectsContractMismatch(t *testing.T) {
+	provider := testProvider{
+		kind:            "test",
+		caps:            ProviderCapabilities{WorkloadLifecycle: true},
+		contractVersion: "baseharbor.runtime/v999",
+	}
+	err := RequireCapabilities(provider, CapabilityWorkloadLifecycle)
+	if err == nil || !strings.Contains(err.Error(), RuntimeProviderContractVersion) {
+		t.Fatalf("expected contract-version mismatch, got %v", err)
 	}
 }
