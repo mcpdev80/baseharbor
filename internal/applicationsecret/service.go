@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 type Metadata struct {
@@ -217,7 +218,7 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if s.runtime != nil {
 		compose = s.runtime
 	} else {
-		compose, err = bhruntime.ResolveRuntimeProvider(ctx)
+		compose, err = runtimeresolver.DefaultRuntimeProvider(ctx)
 		if err != nil {
 			return resolvedApplication{}, err
 		}
