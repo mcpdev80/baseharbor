@@ -12,7 +12,7 @@ import (
 
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
@@ -68,7 +68,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		}
 	}
 
-	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
