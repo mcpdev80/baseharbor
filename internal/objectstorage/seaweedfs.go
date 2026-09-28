@@ -601,9 +601,9 @@ func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) err
 		return err
 	}
 	for source, name := range map[string]string{
-		material.CA: "ca.pem",
+		material.CA:                "ca.pem",
 		material.ServerCertificate: "server.pem",
-		material.ServerKey: "server-key.pem",
+		material.ServerKey:         "server-key.pem",
 	} {
 		data, err := os.ReadFile(source)
 		if err != nil {
