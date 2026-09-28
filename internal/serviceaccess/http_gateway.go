@@ -129,7 +129,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfile(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
+	config := caddyfileWithUpstreamTLS(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -480,7 +480,11 @@ func WaitHTTPS(ctx context.Context, client *http.Client, endpoint, path string) 
 	}
 }
 
-func caddyfile(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+func caddyfile(upstream string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamTLS(upstream, "", "", port, authentication, basicAuthUsername, basicAuthHash, denyPaths...)
+}
+
+func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
