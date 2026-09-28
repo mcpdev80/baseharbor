@@ -71,6 +71,10 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	return EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, "")
 }
 
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
 func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, AdminCredentials, string, error) {
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
@@ -81,6 +85,11 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 	files, err := EnsureProviderFilesAt(reconcileCtx, issuer, dataDir, namespace)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	if cleaner, ok := runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(reconcileCtx, files.Project, "seaweedfs-access"); err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("remove legacy SeaweedFS access gateway: %w", err)
+		}
 	}
 	if err := runtime.ConfigProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
