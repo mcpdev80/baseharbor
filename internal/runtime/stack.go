@@ -258,91 +258,38 @@ func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMateri
 }
 
 func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
-	start := strings.Index(rendered, "  openbao:\n")
-	end := strings.Index(rendered, "\nvolumes:\n")
-	if start < 0 || end <= start {
-		return "", errors.New("embedded runtime compose is missing the OpenBao service")
+	for _, required := range []string{
+		"  openbao:\n",
+		"docker.io/openbao/openbao:2.7.0",
+		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro",
+		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
+	} {
+		if !strings.Contains(rendered, required) {
+			return "", fmt.Errorf("embedded runtime compose is missing secure OpenBao runtime %q", required)
+		}
 	}
-	const service = `  openbao:
-    image: docker.io/openbao/openbao:2.7.0
-    restart: unless-stopped
-    user: "100"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
-    command: server
-    environment:
-      SKIP_CHOWN: "1"
-      BAO_ADDR: https://127.0.0.1:8200
-      BAO_CACERT: /run/baseharbor/tls-source/ca.pem
-      BAO_LOCAL_CONFIG: >-
-        {"ui":true,"disable_mlock":true,"storage":{"raft":{"path":"/openbao/raft","node_id":"baseharbor-1"}},"listener":{"tcp":{"address":"0.0.0.0:8200","cluster_address":"0.0.0.0:8201","tls_disable":false,"tls_cert_file":"/run/baseharbor/tls-source/server-cert.pem","tls_key_file":"/run/baseharbor/tls-source/server-key.pem","tls_auto_reload":true,"tls_auto_reload_interval":"10s","tls_min_version":"tls12"}},"api_addr":"https://openbao:8200","cluster_addr":"https://openbao:8201"}
-    ports:
-      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
-    volumes:
-      - openbao-data:/openbao/raft
-      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/tls-source/ca.pem:ro
-      - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-    networks:
-      - default
-      - secrets
-    healthcheck:
-      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$?; [ $code -eq 0 ] || [ $code -eq 2 ]"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-`
-	return rendered[:start] + service + rendered[end:], nil
+	for _, forbidden := range []string{`"storage":{"file"`, `"storage":{"raft"`, "/openbao/file", "/openbao/raft", "openbao-data:"} {
+		if strings.Contains(rendered, forbidden) {
+			return "", fmt.Errorf("embedded runtime compose contains obsolete OpenBao storage %q", forbidden)
+		}
+	}
+	return rendered, nil
 }
 
 func renderSecureControlPlanePostgres(rendered string) (string, error) {
-	start := strings.Index(rendered, "  postgres:\n")
-	end := strings.Index(rendered, "\n  openbao:\n")
-	if start < 0 || end <= start {
-		return "", errors.New("embedded runtime compose is missing the PostgreSQL service")
+	for _, required := range []string{
+		"  postgres:\n",
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"BASEHARBOR_OPENBAO_DB_PASSWORD",
+		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+	} {
+		if !strings.Contains(rendered, required) {
+			return "", fmt.Errorf("embedded runtime compose is missing secure PostgreSQL runtime %q", required)
+		}
 	}
-	const service = `  postgres:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    user: "postgres"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint:
-      - /bin/sh
-      - -ec
-    command:
-      - |
-        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
-        chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /var/run/postgresql:rw,noexec,nosuid,nodev
-    environment:
-      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
-      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-`
-	return rendered[:start] + service + rendered[end:], nil
+	return rendered, nil
 }
 
 func ExistingFiles(stateDir string) (Files, error) {
