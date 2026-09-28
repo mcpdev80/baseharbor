@@ -24,7 +24,7 @@
 </p>
 
 **Inspect existing repositories**  
-Discover infrastructure requirements from code, dependencies, Compose files, ports and configuration.
+Discover infrastructure requirements deterministically from code, dependencies, Compose files, ports and configuration. Inspection is implemented in BaseHarbor itself using parsers, rules and repository evidence — no LLM or external AI service is involved.
 
 **Declare needs, not products**  
 Keep infrastructure intent portable instead of coupling the app to a specific implementation.
@@ -77,7 +77,7 @@ Kubernetes / OpenShift planned
 
 ## What you get
 
-- Repository inspection with **Detected / Suggested / Possible** evidence.
+- Deterministic repository inspection with **Detected / Suggested / Possible** evidence, implemented in code and driven by parsers, rules and repository evidence — not by AI.
 - Portable application intent with provider-neutral capability boundaries.
 - PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
 - Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
@@ -194,7 +194,7 @@ baha agent describe -o json
 baha mcp serve
 ```
 
-The local MCP interface exposes bounded BaseHarbor operations such as inspect, plan, status, doctor and policy checks. It does not expose a generic shell, Docker socket or unrestricted runtime execution.
+BaseHarbor itself does not require AI. Commands such as `inspect`, `init`, `plan`, `status`, `doctor` and policy checks are deterministic BaseHarbor functionality implemented in code. The local MCP interface is only an optional integration surface that exposes those existing operations to agents; it does not change how BaseHarbor detects, plans or verifies infrastructure. It does not expose a generic shell, Docker socket or unrestricted runtime execution.
 
 ## Install
 
