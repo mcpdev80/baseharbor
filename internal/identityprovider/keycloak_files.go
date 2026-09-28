@@ -24,6 +24,7 @@ const (
 	KeycloakImage      = "quay.io/keycloak/keycloak:26.7.4"
 	KeycloakService    = "keycloak"
 	keycloakPublicHost = "identity.localhost"
+	keycloakHTTPSPort = 8443
 )
 
 type KeycloakRuntime interface {
@@ -128,40 +129,29 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		return KeycloakFiles{}, err
 	}
 	publicPolicy.ServerName = keycloakPublicHost
-	publicSpec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "keycloak-public",
-		Upstream:         "http://keycloak:8080",
-		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
-		ContainerPort:    publicPort,
-		Networks:         []string{"identity-consumer", "identity-internal"},
-		NetworkAliases:   []string{devaccess.ProviderAlias(files.Project, "identity")},
-		DenyPaths:        []string{"/admin"},
-	}
-	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, publicPolicy, filepath.Join(dir, "public"), publicSpec)
+	providerAlias := devaccess.ProviderAlias(files.Project, "identity")
+	nativeMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		publicPolicy,
+		filepath.Join(dir, "native-tls", "pki"),
+		keycloakPublicHost,
+		providerAlias,
+		"keycloak",
+		"127.0.0.1",
+	)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-
-	adminPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-admin", serviceaccess.AuthenticationNative)
+	nativeMaterial, err = projectKeycloakTLSMaterial(filepath.Join(dir, "native-tls", "runtime"), nativeMaterial)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	adminPolicy.ServerName = "localhost"
-	adminSpec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "keycloak-admin",
-		Upstream:         "http://keycloak:8080",
-		PublishedPortEnv: "BASEHARBOR_KEYCLOAK_ADMIN_PORT",
-		ContainerPort:    9443,
-		Networks:         []string{"identity-internal"},
-		NetworkAliases:   []string{devaccess.ProviderAlias(files.Project, "identity-admin")},
-	}
-	adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(dir, "admin"), adminSpec)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	publicAccess := serviceaccess.HTTPGatewayFiles{Dir: filepath.Join(dir, "native-tls"), Material: nativeMaterial}
+	adminAccess := publicAccess
 
 	files.PublicPort = publicPort
-	files.AdminPort = adminPort
+	files.AdminPort = publicPort
 	files.PublicURL = fmt.Sprintf("https://%s:%d", keycloakPublicHost, publicPort)
 	files.CanonicalPublicURL = files.PublicURL
 	if devaccess.Enabled(app.Environment) {
@@ -176,11 +166,11 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		}
 		files.CanonicalPublicURL = devaccess.CanonicalURL(host)
 	}
-	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", adminPort)
+	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
 
-	compose := keycloakCompose(app, files, publicSpec, adminSpec)
+	compose := keycloakCompose(app, files)
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return KeycloakFiles{}, fmt.Errorf("write Keycloak provider compose: %w", err)
 	}
@@ -254,9 +244,7 @@ func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
 	return writeProtectedEnv(files.Env, values)
 }
 
-func keycloakCompose(app application.Manifest, files KeycloakFiles, publicSpec, adminSpec serviceaccess.HTTPGatewaySpec) string {
-	publicGateway := serviceaccess.HTTPGatewayComposeService(files.PublicAccess, publicSpec)
-	adminGateway := serviceaccess.HTTPGatewayComposeService(files.AdminAccess, adminSpec)
+func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	hostnameCommand := ""
 	hostnameEnvironment := "      KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}\n"
 	if devaccess.Enabled(app.Environment) {
@@ -286,9 +274,11 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles, publicSpec, 
       - keycloak-db
     command:
       - start
-      - --http-enabled=true
-      - --http-port=8080
-      - --proxy-headers=xforwarded
+      - --http-enabled=false
+      - --https-port=%d
+      - --https-certificate-file=/run/baseharbor/tls/server.pem
+      - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
+      - --https-certificates-reload-period=30s
 %s      - --health-enabled=true
       - --metrics-enabled=true
     environment:
@@ -298,15 +288,24 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles, publicSpec, 
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
       KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-%s      KC_HTTP_MANAGEMENT_SCHEME: http
+%s      KC_HTTP_MANAGEMENT_SCHEME: https
+    ports:
+      - "127.0.0.1:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}:%d"
+    volumes:
+      - ./native-tls/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
+      - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+      - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
     networks:
-      - identity-internal
+      identity-consumer:
+        aliases:
+          - %q
+      identity-internal:
+        aliases:
+          - keycloak
 
-%s
-%s
 volumes:
   keycloak-db-data:
 
@@ -315,7 +314,35 @@ networks:
     name: %s
   identity-internal:
     name: %s
-`, KeycloakImage, hostnameCommand, hostnameEnvironment, publicGateway, adminGateway, files.ConsumerNetwork, files.InternalNetwork)
+`, KeycloakImage, keycloakHTTPSPort, hostnameCommand, hostnameEnvironment, keycloakHTTPSPort, devaccess.ProviderAlias(files.Project, "identity"), files.ConsumerNetwork, files.InternalNetwork)
+}
+
+func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	project := func(source, name string) (string, error) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "", err
+		}
+		if len(data) == 0 {
+			return "", fmt.Errorf("Keycloak TLS material %s is empty", name)
+		}
+		target := filepath.Join(dir, name)
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return "", err
+		}
+		return target, nil
+	}
+	var err error
+	material.CA, err = project(material.CA, "ca.pem")
+	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	material.ServerCertificate, err = project(material.ServerCertificate, "server.pem")
+	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	material.ServerKey, err = project(material.ServerKey, "server-key.pem")
+	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	return material, nil
 }
 
 func randomIdentitySecret(bytes int) (string, error) {
