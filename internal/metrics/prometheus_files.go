@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func DesiredTargetFiles(m application.Manifest) map[string]struct{} {
@@ -191,7 +193,7 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	}
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
-		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: targetsDir,
+		Config: filepath.Join(dir, "prometheus.yml"), WebConfig: filepath.Join(dir, "web-config.yml"), TargetsDir: targetsDir,
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations:       filepath.Join(dir, "registrations.json"),
 	}
@@ -309,19 +311,14 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessSpec := prometheusAccessSpec()
-	if accessEnvironment == "dev" && values["BASEHARBOR_PROMETHEUS_UI_USER"] != "" && values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] != "" {
-		accessSpec.BasicAuthUsername = values["BASEHARBOR_PROMETHEUS_UI_USER"]
-		accessSpec.BasicAuthPassword = values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"]
-	}
-	if placement.Scope == capability.ScopeApplication {
-		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
-	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
-	if err != nil {
+	accessPolicy.ServerName = "prometheus"
+	if _, err := serviceaccess.EnsureNativeTLS(ctx, issuer, accessPolicy, files.Dir, "prometheus", "127.0.0.1"); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {
+	if err := writePrometheusWebConfig(files.WebConfig, accessPolicy, values); err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), serviceaccess.HTTPGatewayFiles{}, providerSources)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -439,15 +436,23 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		return err
 	}
 
-	accessPolicy, err := serviceaccess.Resolve(prometheusAccessEnvironment(m, registrations), "prometheus", serviceaccess.AuthenticationMTLS)
+	accessEnvironment := prometheusAccessEnvironment(m, registrations)
+	accessPolicy, err := serviceaccess.Resolve(accessEnvironment, "prometheus", serviceaccess.AuthenticationMTLS)
 	if err != nil {
 		return err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, prometheusAccessSpec())
+	accessPolicy.ServerName = "prometheus"
+	if _, err := serviceaccess.EnsureNativeTLS(ctx, issuer, accessPolicy, files.Dir, "prometheus", "127.0.0.1"); err != nil {
+		return err
+	}
+	values, err := readPrometheusEnvironment(files.Env)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {
+	if err := writePrometheusWebConfig(files.WebConfig, accessPolicy, values); err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), serviceaccess.HTTPGatewayFiles{}, providerSources)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
@@ -455,6 +460,50 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	}
 	if err := runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("reconcile shared Prometheus after application unregister: %w", err)
+	}
+	return nil
+}
+
+
+func readPrometheusEnvironment(path string) (map[string]string, error) {
+	values := map[string]string{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if key, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok && strings.TrimSpace(key) != "" {
+			values[strings.TrimSpace(key)] = value
+		}
+	}
+	return values, nil
+}
+
+func writePrometheusWebConfig(path string, policy serviceaccess.Policy, values map[string]string) error {
+	var b strings.Builder
+	b.WriteString("tls_server_config:\n")
+	b.WriteString("  cert_file: /run/baseharbor/tls/server.pem\n")
+	b.WriteString("  key_file: /run/baseharbor/tls/server-key.pem\n")
+	b.WriteString("  min_version: TLS12\n")
+	if policy.AuthenticationRequired && policy.Authentication == serviceaccess.AuthenticationMTLS {
+		b.WriteString("  client_ca_file: /run/baseharbor/tls/ca.pem\n")
+		b.WriteString("  client_auth_type: RequireAndVerifyClientCert\n")
+	}
+	username := strings.TrimSpace(values["BASEHARBOR_PROMETHEUS_UI_USER"])
+	password := values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"]
+	if username != "" || password != "" {
+		if username == "" || password == "" {
+			return errors.New("Prometheus native basic auth credentials are incomplete")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash Prometheus native basic auth password: %w", err)
+		}
+		b.WriteString("basic_auth_users:\n")
+		fmt.Fprintf(&b, "  %s: %s\n", strconv.Quote(username), strconv.Quote(string(hash)))
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return fmt.Errorf("write Prometheus native web config: %w", err)
 	}
 	return nil
 }
