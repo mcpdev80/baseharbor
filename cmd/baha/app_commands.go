@@ -172,7 +172,7 @@ func appPreflightCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			var compose bhruntime.Compose
+			var compose bhruntime.RuntimeProvider
 			var platformFiles bhruntime.Files
 			var requiredStatuses []openbao.RequiredSecretStatus
 			var workloadSecurity application.WorkloadSecurityReport
