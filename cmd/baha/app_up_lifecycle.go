@@ -21,7 +21,7 @@ type applicationUpExecution struct {
 	term             *cli.Terminal
 	out              io.Writer
 	files            application.RuntimeFiles
-	compose          bhruntime.Compose
+	compose          bhruntime.RuntimeProvider
 	before           []bhruntime.ProjectResource
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
