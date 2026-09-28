@@ -4,8 +4,6 @@
 
 <h2 align="center">One application contract. Replaceable infrastructure.</h2>
 
-<p align="center"><strong>AI-generated, human-specified, machine-verified.</strong><br>
-<em>KI-generiert, menschlich spezifiziert, maschinell verifiziert.</em></p>
 
 <p align="center">
   <a href="https://github.com/mcpdev80/baseharbor-demo">
@@ -228,3 +226,7 @@ Normal feature, fix, chore and dependency pull requests target `develop`. The `m
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+---
+
+<sub>AI-generated, human-specified, machine-verified.</sub>
