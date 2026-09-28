@@ -153,13 +153,6 @@ func (c Compose) DownProjectRemoveOrphans(ctx context.Context, project, composeF
 }
 
 func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return err
-		}
-		return quadletRemoveProject(ctx, q, true)
-	}
 	if consolidatedProject(project) {
 		return c.removeComposeModule(ctx, project, composeFile, envFile, true)
 	}
@@ -233,31 +226,10 @@ func (c Compose) removeComposeModule(ctx context.Context, project, composeFile, 
 }
 
 func (c Compose) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
-	if c.quadlet {
-		containers, err := c.ListComposeContainers(ctx)
-		if err != nil {
-			return "", err
-		}
-		var lines []string
-		for _, container := range containers {
-			if container.Project == project {
-				lines = append(lines, fmt.Sprintf("%s\t%s\t%t", container.Service, container.Name, container.Running))
-			}
-		}
-		sort.Strings(lines)
-		return strings.Join(lines, "\n"), nil
-	}
 	return c.outputProject(ctx, project, composeFile, envFile, "ps")
 }
 
 func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return "", err
-		}
-		return quadletLogs(ctx, c.command, q, services)
-	}
 	args := []string{"logs", "--no-color", "--tail", "120"}
 	args = append(args, services...)
 	return c.outputProject(ctx, project, composeFile, envFile, args...)
@@ -266,42 +238,8 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // DiagnosticsProject captures stopped/restarting containers and recent logs
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
-	if c.quadlet {
-		q, renderErr := quadletRenderProject(composeFile, envFile, project)
-		status, statusErr := c.StatusProject(ctx, project, composeFile, envFile)
-		logs, logsErr := c.LogsProject(ctx, project, composeFile, envFile)
-		var b strings.Builder
-		if renderErr != nil {
-			fmt.Fprintf(&b, "Quadlet render failed: %v\n", renderErr)
-		}
-		if statusErr != nil {
-			fmt.Fprintf(&b, "Quadlet status failed: %v\n", statusErr)
-		} else {
-			fmt.Fprintf(&b, "Quadlet status:\n%s\n", status)
-		}
-		if renderErr == nil {
-			units := make([]string, 0, len(q.ServiceUnits))
-			for _, unit := range q.ServiceUnits {
-				units = append(units, unit)
-			}
-			sort.Strings(units)
-			for _, unit := range units {
-				unitStatus, _ := quadletSystemctlCombined(ctx, "status", "--no-pager", "--full", unit)
-				if strings.TrimSpace(unitStatus) != "" {
-					fmt.Fprintf(&b, "Quadlet unit %s:\n%s\n", unit, strings.TrimSpace(unitStatus))
-				}
-			}
-		}
-		if logsErr != nil {
-			fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)
-		} else {
-			fmt.Fprintf(&b, "Quadlet logs:\n%s\n", logs)
-		}
-		return strings.TrimSpace(b.String())
-	}
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
 	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
-
 	var b strings.Builder
 	if statusErr != nil {
 		fmt.Fprintf(&b, "compose ps -a failed: %v\n", statusErr)
@@ -323,28 +261,10 @@ func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, e
 }
 
 func (c Compose) ConfigProject(ctx context.Context, project, composeFile, envFile string) error {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return err
-		}
-		return quadletValidateProject(ctx, q)
-	}
 	return c.runProject(ctx, project, composeFile, envFile, "config", "--quiet")
 }
 
 func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error) {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return "", err
-		}
-		container, ok := q.Containers[service]
-		if !ok {
-			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
-		}
-		return quadletExec(ctx, c.command, container, nil, args...)
-	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProject(ctx, project, composeFile, envFile, cmdArgs...)
 }
@@ -353,17 +273,6 @@ func (c Compose) ExecProject(ctx context.Context, project, composeFile, envFile,
 // stdin without placing that input in the host process argument list. It is
 // intended for sensitive operator flows such as OpenBao unseal/authentication.
 func (c Compose) ExecProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, service string, args ...string) (string, error) {
-	if c.quadlet {
-		q, err := quadletRenderProject(composeFile, envFile, project)
-		if err != nil {
-			return "", err
-		}
-		container, ok := q.Containers[service]
-		if !ok {
-			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project)
-		}
-		return quadletExec(ctx, c.command, container, input, args...)
-	}
 	cmdArgs := append([]string{"exec", "-T", service}, args...)
 	return c.outputProjectInput(ctx, project, composeFile, envFile, input, cmdArgs...)
 }
