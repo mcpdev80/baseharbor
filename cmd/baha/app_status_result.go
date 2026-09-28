@@ -184,8 +184,8 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 					Reference:       strings.TrimSpace(brokerFiles.Image),
 					ExpectedVersion: strings.TrimSpace(version),
 				}
-				if compose, composeErr := bhruntime.DetectCompose(ctx); composeErr == nil {
-					identity, identityErr := compose.ProjectServiceImageIdentity(ctx, runtimebroker.ProjectNameForRuntime(resolved.Manifest, files), runtimebroker.ServiceName)
+				if runtimeProvider, runtimeErr := detectRuntimeForTarget(ctx, resolved.Target); runtimeErr == nil {
+					identity, identityErr := runtimeProvider.ProjectServiceImageIdentity(ctx, runtimebroker.ProjectNameForRuntime(resolved.Manifest, files), runtimebroker.ServiceName)
 					if identityErr != nil {
 						runtimeArtifact.Detail = identityErr.Error()
 					} else {
@@ -194,7 +194,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 						runtimeArtifact.Digest = identity.Digest
 					}
 				} else {
-					runtimeArtifact.Detail = composeErr.Error()
+					runtimeArtifact.Detail = runtimeErr.Error()
 				}
 			}
 		}
