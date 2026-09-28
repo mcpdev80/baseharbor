@@ -148,7 +148,7 @@ func openBaoRuntime(ctx context.Context) (bhruntime.RuntimeProvider, bhruntime.F
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}
