@@ -97,7 +97,9 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 			if section == "Observability" {
 				state = "VERIFIED"
 			}
-			if !check.OK {
+			if check.State == "unverified" {
+				state = "UNVERIFIED"
+			} else if !check.OK {
 				state = "FAILED"
 			}
 			term.Result(state, check.Name, statusHumanDetail(term, check))
@@ -147,6 +149,8 @@ func statusHumanDetailValue(check application.StatusCheck, verbose bool) string 
 		return "runtime broker is not ready"
 	case check.Name == "workload" && strings.Contains(strings.ToLower(check.Detail), "openbao"):
 		return "required secrets unavailable because OpenBao is not running"
+	case strings.HasPrefix(check.Name, "workload/") && check.State == "unverified":
+		return "workload is running; readiness has no positive verification signal"
 	case strings.HasPrefix(check.Name, "workload/"):
 		return "workload service is not ready"
 	case check.Name == "logs":
