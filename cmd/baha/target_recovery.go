@@ -26,7 +26,6 @@ func defaultTargetRecoveryFile(target string) (string, error) {
 	return filepath.Join(root, "baseharbor-recovery", target, "openbao-recovery.json"), nil
 }
 
-
 func preflightNewTargetRecoveryFile(ctx context.Context, explicit string) (string, string, error) {
 	path, source, err := resolveTargetRecoveryFile(ctx, explicit)
 	if err != nil {
