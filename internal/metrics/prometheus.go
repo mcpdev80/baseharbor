@@ -237,6 +237,10 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 	return nil
 }
 
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
 	reconcileCtx, cancel := context.WithTimeout(ctx, providerReconcileTimeout)
 	defer cancel()
@@ -248,6 +252,11 @@ func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capabil
 	files, err := d.ensureProviderFiles(reconcileCtx)
 	if err != nil {
 		return err
+	}
+	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(reconcileCtx, placement.Project, "prometheus-access", "baseharbor-internal-prometheus-access"); err != nil {
+			return fmt.Errorf("remove legacy Prometheus access gateway: %w", err)
+		}
 	}
 	if err := d.runtime.ConfigProject(reconcileCtx, placement.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Prometheus provider configuration: %w", err)
