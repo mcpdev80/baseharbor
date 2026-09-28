@@ -376,9 +376,6 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	if c.command == "" {
 		return "", "", ErrRuntimeNotFound
 	}
-	if c.quadlet {
-		return "", "", nil
-	}
 	project = strings.TrimSpace(project)
 	service = strings.TrimSpace(service)
 	if project == "" || service == "" {
