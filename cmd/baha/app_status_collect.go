@@ -69,7 +69,7 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 		return &applicationStatusCollection{}, false, err
 	}
 
-	compose, err := detectComposeForTarget(ctx, resolved.Target)
+	compose, err := detectRuntimeForTarget(ctx, resolved.Target)
 	if err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
