@@ -175,6 +175,7 @@ func TestWorkloadOnlyOverrideUsesExplicitEmptyService(t *testing.T) {
 }
 
 func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := Manifest{
 		Version:     CurrentVersion,
 		Name:        "portable-networks",
