@@ -134,17 +134,17 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
 	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.RuntimeProvider{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.RuntimeProvider{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	return compose, files, nil
 }
@@ -152,17 +152,17 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.RuntimeProvider, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
 	compose, err := detectComposeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
 	return compose, nil
 }
