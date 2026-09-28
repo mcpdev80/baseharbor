@@ -10,7 +10,7 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestApplicationSecretBackupRestoreRealOpenBao(t *testing.T) {
@@ -29,7 +29,7 @@ func TestApplicationSecretBackupRestoreRealOpenBao(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
