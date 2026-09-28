@@ -25,6 +25,7 @@ const (
 	stateVersion        = 1
 	gatewayPort         = 443
 	rootlessGatewayPort = 8443
+	fallbackGatewayPortStart = 18443
 )
 
 type Runtime interface {
@@ -289,7 +290,10 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
 		return err
 	}
-	hostPort := gatewayHostPort(runtime)
+	hostPort, err := resolveGatewayHostPort(files, current, runtime)
+	if err != nil {
+		return err
+	}
 	current.HostPort = hostPort
 	if err := saveState(files.State, current); err != nil {
 		return err
@@ -333,7 +337,12 @@ func URLForRuntime(target, host string, runtime Runtime) string {
 			return canonicalURL(host, current.HostPort)
 		}
 	}
-	return canonicalURL(host, gatewayHostPort(runtime))
+	preferred := gatewayHostPort(runtime)
+	selected, selectErr := selectGatewayHostPort(preferred, 0, false, gatewayPortAvailable)
+	if selectErr != nil {
+		selected = preferred
+	}
+	return canonicalURL(host, selected)
 }
 
 func canonicalURL(host string, port int) string {
@@ -351,6 +360,48 @@ func gatewayHostPort(runtime Runtime) int {
 		}
 	}
 	return gatewayPort
+}
+
+func resolveGatewayHostPort(files Files, current state, runtime Runtime) (int, error) {
+	materialized := false
+	if _, err := os.Stat(files.Compose); err == nil {
+		materialized = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("inspect development gateway runtime: %w", err)
+	}
+	return selectGatewayHostPort(gatewayHostPort(runtime), current.HostPort, materialized, gatewayPortAvailable)
+}
+
+func selectGatewayHostPort(preferred, persisted int, materialized bool, available func(int) bool) (int, error) {
+	if persisted > 0 {
+		if materialized || available(persisted) {
+			return persisted, nil
+		}
+	}
+	if preferred > 0 && available(preferred) {
+		return preferred, nil
+	}
+	for port := fallbackGatewayPortStart; port <= 65535; port++ {
+		if port == preferred || port == persisted {
+			continue
+		}
+		if available(port) {
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("development gateway preferred HTTPS port %d is unavailable and no free fallback port was found", preferred)
+}
+
+func gatewayPortAvailable(port int) bool {
+	if port < 1 || port > 65535 {
+		return false
+	}
+	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
 }
 
 func Routes(target string) ([]Route, error) {
