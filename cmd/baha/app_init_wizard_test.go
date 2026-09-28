@@ -109,7 +109,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 	withWizardTestDir(t, dir)
 
 	oldInput := appInitInput
-	appInitInput = strings.NewReader("\n\n\n\n\n\n\n\n\ny\n")
+	appInitInput = strings.NewReader(strings.Repeat("\n", 32))
 	t.Cleanup(func() { appInitInput = oldInput })
 
 	var out bytes.Buffer
