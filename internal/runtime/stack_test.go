@@ -117,8 +117,8 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 	for _, wanted := range []string{
 		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
 		"BAO_ADDR: https://127.0.0.1:8200",
-		"tls_cert_file",
-		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
+		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
 		"-c ssl=on",
 		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
@@ -243,14 +243,16 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
+func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	text := string(composeYAML)
-	for _, forbidden := range []string{
-		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
-		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+	for _, want := range []string{
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"BAO_ADDR: https://127.0.0.1:8200",
+		"server -config=/run/baseharbor/openbao/openbao.hcl",
 	} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("embedded runtime directly publishes plaintext backend %q", forbidden)
+		if !strings.Contains(text, want) {
+			t.Fatalf("embedded runtime missing native-TLS bootstrap %q", want)
 		}
 	}
 	if strings.Contains(text, "-dev") {
