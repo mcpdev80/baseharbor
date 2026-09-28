@@ -130,7 +130,7 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	certDir := firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir)
 	provider := current.RuntimeProvider
 	if provider == "" {
-		provider = bhruntime.ProviderCompose
+		provider = bhruntime.ProviderDocker
 	}
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
@@ -449,7 +449,7 @@ func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 func loadRepositoryInitStateFromStateRoot(stateRoot string) (repositoryInitState, error) {
 	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
-		return repositoryInitState{RuntimeProvider: bhruntime.ProviderCompose}, nil
+		return repositoryInitState{RuntimeProvider: bhruntime.ProviderDocker}, nil
 	}
 	if err != nil {
 		return repositoryInitState{}, err
