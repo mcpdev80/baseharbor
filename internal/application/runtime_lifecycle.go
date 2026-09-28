@@ -100,11 +100,11 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	return nil
 }
 
-func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
+func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest) ([]bhruntime.ProjectResource, error) {
 	return compose.InspectProjectResources(ctx, RuntimeProjectName(m), ExpectedRuntimeResources(m))
 }
 
-func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
+func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
 	resourceProject := strings.TrimSpace(files.ResourceProject)
 	if resourceProject == "" {
 		resourceProject = RuntimeProjectName(m)
