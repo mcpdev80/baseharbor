@@ -48,14 +48,6 @@ func alloyConfig(registrations []Registration) string {
 	return alloyConfigForModeSources(registrations, nil, bhruntime.LogCollectionSyslog)
 }
 
-func alloyConfigForRuntime(registrations []Registration, runtimeKind string) string {
-	return alloyConfigForModeSources(registrations, nil, logCollectionModeForLegacyRuntime(runtimeKind))
-}
-
-func alloyConfigForRuntimeSources(registrations []Registration, providerSources []observability.SignalSource, runtimeKind string, platformSyslogPort ...int) string {
-	return alloyConfigForModeSources(registrations, providerSources, logCollectionModeForLegacyRuntime(runtimeKind), platformSyslogPort...)
-}
-
 func alloyConfigForModeSources(registrations []Registration, providerSources []observability.SignalSource, mode bhruntime.LogCollectionMode, platformSyslogPort ...int) string {
 	if mode == bhruntime.LogCollectionJournald {
 		return alloyJournalConfig(registrations, providerSources)
@@ -270,18 +262,6 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 		Caddyfile: "./service-access/Caddyfile",
 		Material:  serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
 	})
-}
-
-func providerComposeYAMLForRuntime(placement Placement, registrations []Registration, runtimeKind string) string {
-	access := serviceaccess.HTTPGatewayFiles{
-		Caddyfile: "./service-access/Caddyfile",
-		Material:  serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
-	}
-	return providerComposeYAMLForModeAndAccess(placement, registrations, logCollectionModeForLegacyRuntime(runtimeKind), access)
-}
-
-func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations []Registration, runtimeKind string, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
-	return providerComposeYAMLForModeAndAccess(placement, registrations, logCollectionModeForLegacyRuntime(runtimeKind), access, platformSyslogPort...)
 }
 
 func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Registration, mode bhruntime.LogCollectionMode, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
