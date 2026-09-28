@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
@@ -23,7 +24,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if _, err := bhruntime.ResolveRuntimeProvider(ctx); err != nil {
+	if _, err := runtimeresolver.DefaultRuntimeProvider(ctx); err != nil {
 		t.Skipf("compose runtime unavailable: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
