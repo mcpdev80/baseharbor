@@ -190,7 +190,7 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			if c.workloadStatusErr != nil {
 				return c.workloadStatusErr
 			}
-			if c.workloadStatus.Found && !c.workloadStatus.Ready() {
+			if c.workloadStatus.Found && !c.workloadStatus.Ready() && !c.workloadStatus.RunningUnverified() {
 				return fmt.Errorf("%d/%d selected workload services ready", c.workloadStatus.ReadyCount(), len(c.workloadStatus.Services))
 			}
 			return nil
