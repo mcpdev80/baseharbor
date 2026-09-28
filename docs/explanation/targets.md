@@ -118,6 +118,23 @@ Conceptually:
 
 This makes independent parallel Targets possible without sharing mutable BaseHarbor runtime state accidentally. Shared providers belong to the Target/provider lifecycle rather than to an individual application. In particular, application destroy or rename must not remove the Target-level OpenBao recovery reference or the shared OpenBao provider instance.
 
+For a local development Target, the same Target state also owns the development UX boundary: one configurable development domain (default `baha.localhost`), the target-wide canonical HTTPS gateway state and the local development management credential. None of these belong in `baseharbor.yaml`.
+
+Canonical hosts follow provider placement and avoid repeating ownership information that the Target already knows:
+
+```text
+application workload   <app>.<dev-domain>
+application UI         <app>-<service>.<dev-domain>
+shared provider UI     <service>.<dev-domain>
+external               provider-owned URL
+```
+
+Semantic shared aliases keep the local UX short, for example `auth.<domain>`, `auth-admin.<domain>`, `secrets.<domain>` and `metrics.<domain>`.
+
+Shared PostgreSQL and Valkey are environment-bounded Target providers by default. Their provider lifecycle is shared, while each application still receives isolated logical resources, credentials and bindings.
+
+Internal loopback ports remain implementation detail and are not the normal developer-facing address.
+
 A local Kubernetes/K3s Target is not special: it is simply a Kubernetes Target whose Access definition reaches a local cluster.
 
 ## Target selection

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -59,6 +60,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 
 func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {

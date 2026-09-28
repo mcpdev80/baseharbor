@@ -18,6 +18,54 @@ type PostgresBackup struct {
 	SQL      []byte
 }
 
+func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, dataDir, namespace string) ([]PostgresBackup, error) {
+	if !UsesSharedPostgreSQL(m) {
+		return DumpPostgresInstances(ctx, runtime, m, files)
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return nil, err
+	}
+	appKey := sharedBackendApplicationKey(m)
+	app, ok := state.Applications[appKey]
+	if !ok {
+		return nil, fmt.Errorf("shared PostgreSQL application registration is missing")
+	}
+	if err := verifySharedPostgresStateOwnership(state, appKey); err != nil {
+		return nil, fmt.Errorf("refuse shared PostgreSQL backup: %w", err)
+	}
+	backups := make([]PostgresBackup, 0, len(SQLInstanceNames(m)))
+	for _, instance := range SQLInstanceNames(m) {
+		resource, ok := app.SQL[instance]
+		if !ok {
+			return nil, fmt.Errorf("shared PostgreSQL resource %s is missing", instance)
+		}
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return nil, fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
+		}
+		command := fmt.Sprintf("IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --clean --if-exists --no-owner --no-privileges --format=plain -h 127.0.0.1 -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
+		out, err := runtime.ExecProjectInput(
+			ctx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			[]byte(password+"\n"),
+			sharedPostgresService(m.Environment),
+			"sh", "-ec", command,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("dump shared postgres instance %s: %w", instance, err)
+		}
+		if int64(len(out)) > MaxPostgresBackupBytes {
+			return nil, fmt.Errorf("dump postgres instance %s exceeds maximum backup size", instance)
+		}
+		backups = append(backups, PostgresBackup{Instance: instance, SQL: []byte(out)})
+	}
+	return backups, nil
+}
+
 func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles) ([]PostgresBackup, error) {
 	instances := SQLInstanceNames(m)
 	backups := make([]PostgresBackup, 0, len(instances))
@@ -48,6 +96,59 @@ func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m
 		backups = append(backups, PostgresBackup{Instance: instance, SQL: []byte(out)})
 	}
 	return backups, nil
+}
+
+func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, dataDir, namespace string, backups []PostgresBackup) error {
+	if !UsesSharedPostgreSQL(m) {
+		return RestorePostgresInstances(ctx, runtime, m, files, backups)
+	}
+	if err := ValidatePostgresBackupSet(m, backups); err != nil {
+		return err
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return err
+	}
+	appKey := sharedBackendApplicationKey(m)
+	app, ok := state.Applications[appKey]
+	if !ok {
+		return fmt.Errorf("shared PostgreSQL application registration is missing")
+	}
+	if err := verifySharedPostgresStateOwnership(state, appKey); err != nil {
+		return fmt.Errorf("refuse shared PostgreSQL restore: %w", err)
+	}
+	byInstance := make(map[string][]byte, len(backups))
+	for _, backup := range backups {
+		byInstance[backup.Instance] = backup.SQL
+	}
+	for _, instance := range SQLInstanceNames(m) {
+		resource, ok := app.SQL[instance]
+		if !ok {
+			return fmt.Errorf("shared PostgreSQL resource %s is missing", instance)
+		}
+		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+		if err != nil {
+			return fmt.Errorf("load shared PostgreSQL credential %s for restore: %w", instance, err)
+		}
+		restoreInput := append([]byte(password+"\n"), byInstance[instance]...)
+		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
+		if _, err := runtime.ExecProjectInput(
+			ctx,
+			shared.Project,
+			shared.Compose,
+			shared.Env,
+			restoreInput,
+			sharedPostgresService(m.Environment),
+			"sh", "-ec", command,
+		); err != nil {
+			return fmt.Errorf("restore shared postgres instance %s: %w", instance, err)
+		}
+		if err := verifySharedPostgresDatabaseOwnership(ctx, runtime, shared, m.Environment, resource); err != nil {
+			return fmt.Errorf("verify restored shared postgres instance %s ownership: %w", instance, err)
+		}
+	}
+	return nil
 }
 
 func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m Manifest, files RuntimeFiles, backups []PostgresBackup) error {

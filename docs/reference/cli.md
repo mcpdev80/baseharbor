@@ -30,6 +30,9 @@ baha
 ├── plan
 ├── status
 ├── doctor
+├── login
+├── logout
+├── whoami
 ├── target
 │   ├── list
 │   ├── show
@@ -37,6 +40,9 @@ baha
 │   ├── delete
 │   ├── activate
 │   └── deactivate
+├── dev
+│   ├── domain
+│   └── credentials
 ├── config
 │   └── prompt
 ├── shell-init bash|zsh|fish
@@ -95,6 +101,42 @@ baha
 ```
 
 
+
+## Operator authentication
+
+Trusted local development does not require a BaseHarbor login. Protected environments use the effective Target/Environment OIDC operator boundary:
+
+```bash
+baha login -e test
+baha whoami -e test
+baha logout -e test
+```
+
+`login` uses Authorization Code + PKCE against the configured operator OIDC provider and persists only a short-lived owner-only local session. `whoami` verifies the current session and reports only secret-safe issuer/subject/assurance information. `logout` removes the local session for that Target/Environment.
+
+The first interactive operation against an unconfigured test/prod boundary can guide initial managed-Keycloak or external-OIDC setup. Non-interactive execution never guesses this configuration and fails closed with remediation.
+
+Application-user identity, operator identity and provider-administrator credentials are separate boundaries.
+
+## Development domain and management access
+
+Local development keeps browser-facing routing and provider-administrator convenience in Target-scoped state rather than `baseharbor.yaml`.
+
+```bash
+baha dev domain
+baha dev domain DOMAIN
+
+baha dev credentials
+baha dev credentials --reset
+baha dev credentials --username USER
+baha dev credentials --password-file OWNER_ONLY_FILE
+```
+
+`baha dev domain` shows or changes the effective Target's development domain. The default is `baha.localhost`. The primary application API uses `<app>.<domain>`; additional application surfaces use `<app>-<service>.<domain>`. Shared-provider surfaces use short Target-scoped names such as `pgadmin.<domain>`, `secrets.<domain>`, `auth.<domain>` and `metrics.<domain>`.
+
+`baha dev credentials` is the explicit secret-reveal path for the Target-scoped development management account. The default username is `developer` and BaseHarbor generates a strong password unless one is explicitly installed from an owner-only file. Rotation is reconciled into selected management surfaces on the next `baha up`.
+
+These commands apply only to the local development convenience boundary. Test/prod operator authentication continues to use OIDC sessions and individual identities.
 
 ## Evidence export
 
@@ -502,7 +544,7 @@ baha app init mailflow \
 
 If the name is omitted from the explicit path, `app init` derives it from the current directory. The generated file is intended to be reviewed and committed.
 
-In v0.4, repository deployments initialize protected deployment/runtime state for the current Compose realization through the declarative input resolver. Interactive setup may request a **Public FQDN** and TLS mode. Existing/BYOC certificate mode accepts a source directory, validates the matching certificate/key pair and FQDN coverage, and normalizes the pair into owner-only BaseHarbor state. These deployment details do not become portable fields in `baseharbor.yaml`.
+In v0.4, repository deployments initialize protected deployment/runtime state for the current realization through the declarative input resolver. In `dev`, browser-facing names come only from the Target-scoped development domain and BaseHarbor manages local TLS automatically; `baha app init` does not ask for a second per-application Public FQDN. Change the local domain with `baha dev domain [DOMAIN]`. Test/prod keep explicit deployment-owned Public FQDN/TLS configuration, including Existing/BYOC certificate directories with certificate/key and hostname validation. None of these deployment details become portable fields in `baseharbor.yaml`.
 
 Afterward, commands resolve the nearest repository manifest and normally do not need `NAME`:
 
@@ -703,7 +745,20 @@ Interactive password entry disables terminal echo, requires confirmation and nev
 
 See [backup-and-restore.md](backup-and-restore.md).
 
-## Application updates
+## Development source convergence and application updates
+
+For local development, the current working tree is valid application source. A commit or push is not required before running changed code:
+
+```bash
+# edit application source
+baha up
+```
+
+When the existing application is READY and both the portable application contract plus protected deployment-control state still match the last verified deployment, `baha up` takes a workload-only fast path. It reuses the workload build/config fingerprints to rebuild only build-changed services, recreate only configuration-changed services, wait for service and HTTP/TLS readiness, and then verify overall application readiness. Uncommitted source changes are intentionally accepted on this path.
+
+Changes to `baseharbor.yaml`, protected deployment-control state, an unhealthy/unavailable deployment, or any state that cannot safely prove workload-only convergence use the normal full reconciliation path.
+
+`baha app update` has a different purpose: advancing repository source from its configured Git upstream.
 
 Read-only Git update inspection:
 

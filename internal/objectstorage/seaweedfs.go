@@ -182,10 +182,20 @@ func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
 
 func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, d.dataDir, d.namespace)
+	dataDir := d.dataDir
+	if dataDir == "" || dataDir == "." {
+		var err error
+		dataDir, err = bhruntime.DataDir("")
+		if err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", err
+		}
 	}
-	return EnsureSharedProvider(ctx, d.runtime, d.issuer)
+	if d.app.Services.ObjectStorageManagementUI {
+		if err := RegisterManagementUIConsumerAt(dataDir, d.namespace, d.app); err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", err
+		}
+	}
+	return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, dataDir, d.namespace)
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -439,6 +449,15 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		}
 		values["BASEHARBOR_SEAWEEDFS_PORT"] = strconv.Itoa(port)
 	}
+	managementUI, err := managementUIRequested(dir)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if managementUI {
+		if err := ensureManagementUIValues(values); err != nil {
+			return ProviderFiles{}, err
+		}
+	}
 	if err := writeEnv(files.Env, values); err != nil {
 		return ProviderFiles{}, err
 	}
@@ -450,7 +469,19 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)), 0o600); err != nil {
+	rendered := providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)
+	if managementUI {
+		adminPolicy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(files.Dir, "management-ui"), seaweedAdminAccessSpec())
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		rendered = providerComposeWithManagementUI(rendered, adminAccess)
+	}
+	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return ProviderFiles{}, fmt.Errorf("write SeaweedFS provider compose: %w", err)
 	}
 	if err := os.Chmod(files.Compose, 0o600); err != nil {

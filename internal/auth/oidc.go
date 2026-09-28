@@ -75,10 +75,19 @@ func (v *OIDCVerifier) Verify(ctx context.Context, rawToken string) (*identity.P
 		if token.Issuer != v.issuer || token.Subject == "" {
 			return nil, ErrInvalidToken
 		}
+		var claims struct {
+			ACR string   `json:"acr"`
+			AMR []string `json:"amr"`
+		}
+		if err := token.Claims(&claims); err != nil {
+			return nil, ErrInvalidToken
+		}
 		return &identity.Principal{
-			Issuer:   token.Issuer,
-			Subject:  token.Subject,
-			Audience: append([]string(nil), token.Audience...),
+			Issuer:    token.Issuer,
+			Subject:   token.Subject,
+			Audience:  append([]string(nil), token.Audience...),
+			Assurance: strings.TrimSpace(claims.ACR),
+			Methods:   append([]string(nil), claims.AMR...),
 		}, nil
 	}
 	return nil, ErrInvalidToken

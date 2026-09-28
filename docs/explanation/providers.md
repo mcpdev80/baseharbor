@@ -26,12 +26,50 @@ Bundled providers are resolved through the same provider contract boundary that 
 
 ## Placement
 
-Where applicable:
+BaseHarbor uses one common placement model for capability providers:
 
-- `application`: BaseHarbor owns the application-scoped provider lifecycle;
-- `shared`: multiple applications use an explicitly shared provider boundary;
+- `shared`: BaseHarbor owns a provider lifecycle that can serve multiple applications;
+- `application`: BaseHarbor owns a provider instance dedicated to one application/environment;
 - `external`: BaseHarbor binds to infrastructure it does not own.
 
-A provider must declare what it supports. Unsupported required semantics fail before mutation.
+`shared` is the resource-efficient default where the provider can safely isolate applications. Shared provider infrastructure never means shared application data, credentials or ownership. Logical resources and bindings remain application-scoped.
 
-For implementation requirements, see [Provider contract v1](../spec/provider-contract-v1.md).
+For example:
+
+```text
+one shared PostgreSQL provider
+├── app-a database + least-privilege role
+├── app-b database + least-privilege role
+└── app-c database + least-privilege role
+```
+
+BaseHarbor therefore does not need to start ten PostgreSQL providers merely because ten applications request SQL. An application can still request/demand application-scoped placement when a dedicated provider is required.
+
+Valkey follows the same lifecycle rule while preserving stronger data isolation: the Target owns the shared provider lifecycle, while applications receive isolated cache resources and credentials. A provider MUST NOT claim `shared` support if it cannot prevent cross-application access with the normal ecosystem client boundary.
+
+A provider declares its supported scopes. Unsupported placement fails before mutation; BaseHarbor never silently weakens isolation or changes requested ownership semantics.
+
+### Shared lifecycle versus application resources
+
+A shared provider owns infrastructure at the Target/provider boundary. Applications own only their logical resources and bindings.
+
+Application destroy therefore:
+
+1. removes that application's logical resource, identity and binding;
+2. preserves sibling applications;
+3. preserves the shared provider while it is still in use.
+
+Target/provider destroy removes the provider itself.
+
+This ownership rule applies consistently to databases, caches, object storage, secrets, identity and observability providers where their underlying products support safe multi-application realization.
+
+For normative requirements, see [Provider contract v1](../spec/provider-contract-v1.md).
+
+### PostgreSQL administration versus application access
+
+The shared PostgreSQL reference provider has one internal administration identity, `baseharbor_admin`, owned by the BaseHarbor control plane. It administers provider lifecycle only.
+
+Each registered SQL resource owns a distinct database, least-privilege role and protected credential reference. Application bindings contain only that resource's host, port, database, application role, application credential and trust material. Provider-global administration credentials never cross the provider boundary.
+
+Backup, restore and destroy resolve their resource set from the protected registration rather than enumerating or guessing provider objects. Ambiguous ownership fails closed.
+

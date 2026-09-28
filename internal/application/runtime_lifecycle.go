@@ -23,23 +23,36 @@ func ExpectedRuntimeResourcesForProject(m Manifest, project string) []bhruntime.
 }
 
 func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourceProject string) []bhruntime.ProjectResource {
-	if !HasManagedRuntimeServices(m) {
+	if !HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
 	resources := []bhruntime.ProjectResource{{Kind: "network", Name: ApplicationBackendNetworkNameForProject(resourceProject)}}
-	for _, instance := range SQLInstanceNames(m) {
-		service := runtimeServiceName("postgres", instance)
-		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-		)
+	if !UsesSharedPostgreSQL(m) {
+		for _, instance := range SQLInstanceNames(m) {
+			service := runtimeServiceName("postgres", instance)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+			)
+		}
 	}
-	for _, instance := range CacheInstanceNames(m) {
-		service := runtimeServiceName("valkey", instance)
+	if !UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			service := runtimeServiceName("valkey", instance)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+			)
+		}
+	}
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
+		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
+	}
+	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
 		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},
 		)
 	}
 	return resources
@@ -87,11 +100,11 @@ func CheckManagedRuntimeDefinition(files RuntimeFiles, m Manifest) error {
 	return nil
 }
 
-func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.Compose, m Manifest) ([]bhruntime.ProjectResource, error) {
+func InspectOwnedRuntimeResources(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest) ([]bhruntime.ProjectResource, error) {
 	return compose.InspectProjectResources(ctx, RuntimeProjectName(m), ExpectedRuntimeResources(m))
 }
 
-func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
+func InspectOwnedRuntimeResourcesForFiles(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) ([]bhruntime.ProjectResource, error) {
 	resourceProject := strings.TrimSpace(files.ResourceProject)
 	if resourceProject == "" {
 		resourceProject = RuntimeProjectName(m)

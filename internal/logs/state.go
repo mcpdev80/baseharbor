@@ -115,18 +115,18 @@ func providerFiles(p Placement) ProviderFiles {
 }
 
 func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest) (ProviderFiles, error) {
-	return EnsureProviderFilesForRuntime(ctx, issuer, m, "docker")
+	return EnsureProviderFilesForMode(ctx, issuer, m, bhruntime.LogCollectionSyslog)
 }
 
-func EnsureProviderFilesForRuntime(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+func EnsureProviderFilesForMode(ctx context.Context, issuer serviceaccess.Issuer, m application.Manifest, mode bhruntime.LogCollectionMode) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	return EnsureProviderFilesForRuntimeAt(ctx, issuer, dataDir, "", m, runtimeKind)
+	return EnsureProviderFilesForModeAt(ctx, issuer, dataDir, "", m, mode)
 }
 
-func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, runtimeKind string) (ProviderFiles, error) {
+func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode) (ProviderFiles, error) {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -154,7 +154,7 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 		return ProviderFiles{}, err
 	}
 	platformSyslogPort := 0
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "docker") && hasPlatformProviderLogs(providerSources) {
+	if mode == bhruntime.LogCollectionSyslog && hasPlatformProviderLogs(providerSources) {
 		platformSyslogPort, err = persistedOrAllocatedUDPPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
 		if err != nil {
 			return ProviderFiles{}, err
@@ -174,7 +174,7 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForRuntimeSources(registrations, providerSources, runtimeKind, platformSyslogPort)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, mode, platformSyslogPort)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -192,7 +192,7 @@ func EnsureProviderFilesForRuntimeAt(ctx context.Context, issuer serviceaccess.I
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForRuntimeAndAccess(p, registrations, runtimeKind, accessFiles, platformSyslogPort)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil

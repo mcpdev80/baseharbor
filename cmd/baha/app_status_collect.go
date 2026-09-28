@@ -4,14 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
@@ -19,7 +27,7 @@ type applicationStatusCollection struct {
 	resolved       resolvedApplication
 	manifest       application.Manifest
 	files          application.RuntimeFiles
-	compose        bhruntime.Compose
+	compose        bhruntime.RuntimeProvider
 	services       []string
 	result         application.StatusResult
 	workloadStatus repositoryWorkloadStatus
@@ -61,7 +69,7 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 		return &applicationStatusCollection{}, false, err
 	}
 
-	compose, err := detectComposeForTarget(ctx, resolved.Target)
+	compose, err := detectRuntimeForTarget(ctx, resolved.Target)
 	if err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
@@ -123,9 +131,11 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
 	c.collectObjectStorageCheck(ctx)
 	c.collectTelemetryCheck(ctx)
+	c.collectIdentityCheck(ctx)
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
+	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
 }
 
@@ -154,6 +164,31 @@ func (c *applicationStatusCollection) collectObjectStorageCheck(ctx context.Cont
 	c.result.AddCheck("object-storage", true, fmt.Sprintf("%d bucket(s) passed authenticated S3 Put/Get", len(application.ObjectStorageBucketNames(c.manifest))))
 }
 
+func (c *applicationStatusCollection) collectIdentityCheck(ctx context.Context) {
+	if !application.HasIdentity(c.manifest) {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := verifyExistingManagedIdentity(checkCtx, c.compose, c.resolved, nil); err != nil {
+		c.result.AddCheck("identity/oidc", false, err.Error())
+		return
+	}
+	bindings, err := application.CapabilityBindings(c.manifest)
+	if err != nil {
+		c.result.AddCheck("identity/oidc", false, err.Error())
+		return
+	}
+	provider := "unknown"
+	for _, binding := range bindings {
+		if binding.Resource.Kind == capability.Identity {
+			provider = string(binding.Resource.Provider)
+			break
+		}
+	}
+	c.result.AddCheck("identity/oidc", true, "OIDC discovery, binding and provider state verified via "+provider)
+}
+
 func (c *applicationStatusCollection) collectTelemetryCheck(ctx context.Context) {
 	if !application.HasOTLPTelemetry(c.manifest) {
 		return
@@ -172,14 +207,38 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 	if !c.manifest.Services.SQL {
 		return
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
+	defer cancel()
+	if application.UsesSharedPostgreSQL(c.manifest) {
+		if err := application.VerifySharedPostgreSQL(checkCtx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
+			c.result.AddCheck("postgres", false, "shared provider readiness failed: "+err.Error())
+			return
+		}
+		c.result.AddCheck("postgres", true, fmt.Sprintf("%d app-isolated database resource(s) ready on shared Target provider", len(application.SQLInstanceNames(c.manifest))))
+		resources, err := application.SharedPostgresResourcesAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest)
+		if err != nil {
+			c.result.AddCheck("postgres/resources", false, err.Error())
+			return
+		}
+		for _, resource := range resources {
+			detail := fmt.Sprintf(
+				"scope=%s owner=%s database=%s role=%s credential_scope=%s",
+				resource.ProviderScope,
+				resource.Owner,
+				resource.Database,
+				resource.Role,
+				resource.CredentialScope,
+			)
+			c.result.AddCheck("postgres/"+resource.Instance, true, detail)
+		}
+		c.result.AddCheck("postgres/isolation", true, "shared provider ownership, application role boundaries and cross-application access isolation verified")
+		return
+	}
 	if !containsString(c.services, "postgres") {
 		c.result.AddCheck("postgres", false, "not running")
 		return
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, applicationPostgresStatusTimeout)
-	err := application.VerifyPostgresRuntime(checkCtx, c.compose, c.manifest, c.files)
-	cancel()
-	if err != nil {
+	if err := application.VerifyPostgresRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
 		c.result.AddCheck("postgres", false, "one or more instances failed readiness")
 		return
 	}
@@ -190,18 +249,195 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 	if !c.manifest.Services.Cache {
 		return
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
+	defer cancel()
+	if application.UsesSharedValkey(c.manifest) {
+		if err := application.VerifySharedValkey(checkCtx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); err != nil {
+			c.result.AddCheck("valkey", false, "shared provider readiness failed: "+err.Error())
+			return
+		}
+		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated cache resource(s) ready on shared Target provider", len(application.CacheInstanceNames(c.manifest))))
+		return
+	}
 	if !containsString(c.services, "valkey") {
 		c.result.AddCheck("valkey", false, "not running")
 		return
 	}
-	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
-	err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files)
-	cancel()
-	if err != nil {
+	if err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
 		c.result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
 		return
 	}
 	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
+	if !c.manifest.Services.SQLManagementUI &&
+		!c.manifest.Services.CacheManagementUI &&
+		!c.manifest.Services.ObjectStorageManagementUI &&
+		!c.manifest.Services.SecretsManagementUI &&
+		!c.manifest.Services.IdentityManagementUI &&
+		!c.manifest.Services.ObservabilityManagementUI {
+		return
+	}
+
+	selected := 0
+	ready := 0
+	record := func(name string, err error, detail string) {
+		selected++
+		if err != nil {
+			c.result.AddCheck("management-ui/"+name, false, err.Error())
+			return
+		}
+		ready++
+		c.result.AddCheck("management-ui/"+name, true, detail)
+	}
+
+	for _, result := range application.VerifySharedManagementUIChecks(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest) {
+		detail := result.Name + " shared management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			service := result.Name
+			if result.Name == "redis-commander" {
+				service = "cache"
+			}
+			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, service); hostErr == nil {
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+			}
+		}
+		record(result.Name, result.Err, detail)
+	}
+
+	for _, result := range application.VerifyApplicationManagementUIChecks(ctx, c.manifest, c.files) {
+		detail := result.Name + " reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			service := result.Name
+			if result.Name == "redis-commander" {
+				service = "cache"
+			} else if result.Name == "pgadmin" {
+				service = "pgadmin"
+			}
+			if host, hostErr := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, service); hostErr == nil {
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+			}
+		}
+		record(result.Name, result.Err, detail)
+	}
+
+	if c.manifest.Services.ObjectStorageManagementUI {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := objectstorage.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name)
+		cancel()
+		detail := "object storage management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderSeaweedFS); placementErr == nil && placement.Scope != capability.ScopeExternal {
+				var host string
+				var hostErr error
+				if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "storage")
+				} else {
+					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "storage")
+				}
+				if hostErr == nil {
+					detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+				}
+			}
+		}
+		record("object-storage", err, detail)
+	}
+
+	if c.manifest.Services.SecretsManagementUI {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		platformFiles, err := existingTargetRuntimeFiles(checkCtx)
+		if err == nil {
+			err = verifyOpenBaoManagementUI(checkCtx, platformFiles)
+		}
+		cancel()
+		detail := "OpenBao management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if host, hostErr := devaccess.SharedHost(c.resolved.Target.Name, "openbao"); hostErr == nil {
+				detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+			}
+		}
+		record("openbao", err, detail)
+	}
+
+	if c.manifest.Services.IdentityManagementUI {
+		files, err := identityprovider.ExistingKeycloakFilesAt(c.manifest, c.resolved.TargetStateRoot, c.resolved.Target.Name)
+		if err != nil {
+			record("identity-login", err, "")
+			record("identity-admin", err, "")
+		} else {
+			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			client, checkErr := serviceaccess.NewHTTPClient(files.PublicAccess.Material, false)
+			if checkErr == nil {
+				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.PublicURL, "/")
+			}
+			cancel()
+			loginDetail := "Keycloak user-facing identity UI reachable over TLS"
+			if devaccess.Enabled(c.manifest.Environment) {
+				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
+					var host string
+					var hostErr error
+					if placement.Scope == capability.ScopeShared {
+						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity")
+					} else {
+						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity")
+					}
+					if hostErr == nil {
+						loginDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+					}
+				}
+			}
+			record("identity-login", checkErr, loginDetail)
+
+			checkCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			client, checkErr = serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
+			if checkErr == nil {
+				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.AdminURL, "/")
+			}
+			cancel()
+			adminDetail := "Keycloak administration UI reachable over TLS"
+			if devaccess.Enabled(c.manifest.Environment) {
+				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
+					var host string
+					var hostErr error
+					if placement.Scope == capability.ScopeShared {
+						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity-admin")
+					} else {
+						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin")
+					}
+					if hostErr == nil {
+						adminDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+					}
+				}
+			}
+			record("identity-admin", checkErr, adminDetail)
+		}
+	}
+
+	if c.manifest.Services.ObservabilityManagementUI {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := metricsprovider.VerifyManagementUIAt(checkCtx, c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest)
+		cancel()
+		detail := "Prometheus management UI reachable over TLS"
+		if devaccess.Enabled(c.manifest.Environment) {
+			if placement, placementErr := metricsprovider.PlacementForAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, c.manifest); placementErr == nil {
+				var host string
+				var hostErr error
+				if placement.Scope == capability.ScopeShared {
+					host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "prometheus")
+				} else {
+					host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "prometheus")
+				}
+				if hostErr == nil {
+					detail = devgateway.URLForTarget(c.resolved.Target.Name, host)
+				}
+			}
+		}
+		record("prometheus", err, detail)
+	}
+
+	c.result.AddCheck("management-ui", ready == selected, fmt.Sprintf("%d/%d selected management UI surface(s) reachable", ready, selected))
 }
 
 func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.Context) {
@@ -259,12 +495,30 @@ func (c *applicationStatusCollection) collectRequiredSecretChecks(ctx context.Co
 func (c *applicationStatusCollection) collectWorkloadChecks() {
 	if c.workloadStatus.Found {
 		for _, service := range c.workloadStatus.Services {
-			c.result.AddCheck("workload/"+service.Service, service.Ready, formatWorkloadServiceStatus(service))
+			detail := formatWorkloadServiceStatus(service)
+			if devaccess.Enabled(c.manifest.Environment) {
+				detail = service.State
+				if service.Health != "" {
+					detail += " health=" + service.Health
+				}
+			}
+			c.result.AddCheck("workload/"+service.Service, service.Ready, detail)
 		}
 		if c.workloadErr != nil {
 			c.result.AddCheck("workload", false, c.workloadErr.Error())
 		} else {
 			c.result.AddCheck("workload", c.workloadStatus.Ready(), fmt.Sprintf("%d/%d selected Compose service(s) ready", c.workloadStatus.ReadyCount(), len(c.workloadStatus.Services)))
+		}
+		if devaccess.Enabled(c.manifest.Environment) {
+			if routes, err := devgateway.Routes(c.resolved.Target.Name); err == nil {
+				key := "app/" + c.manifest.Name + "/" + c.manifest.Environment + "/workload-api"
+				for _, route := range routes {
+					if route.Key == key {
+						c.result.AddCheck("api", true, devgateway.URLForTarget(c.resolved.Target.Name, route.Host))
+						break
+					}
+				}
+			}
 		}
 		return
 	}
@@ -300,6 +554,25 @@ func (c *applicationStatusCollection) collectLogsCheck(ctx context.Context) {
 	c.result.AddCheck("logs", true, fmt.Sprintf("%d workload log stream(s) queryable", len(logServices)))
 }
 
+func (c *applicationStatusCollection) collectCanonicalDevelopmentCheck(ctx context.Context) {
+	if !requiresDevelopmentGateway(c.manifest) {
+		return
+	}
+	hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, c.manifest)
+	if err != nil {
+		c.result.AddCheck("canonical-development-urls", false, err.Error())
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	err = devgateway.VerifyHosts(checkCtx, c.resolved.Target.Name, hosts)
+	cancel()
+	if err != nil {
+		c.result.AddCheck("canonical-development-urls", false, err.Error())
+		return
+	}
+	c.result.AddCheck("canonical-development-urls", true, fmt.Sprintf("%d canonical HTTPS endpoint(s) verified", len(hosts)))
+}
+
 func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) {
 	if len(c.manifest.Exposures) == 0 {
 		return
@@ -307,6 +580,27 @@ func (c *applicationStatusCollection) collectExposureCheck(ctx context.Context) 
 	_, exposureErr := inspectManagedExposure(ctx, c.compose, c.manifest, c.files)
 	if exposureErr != nil {
 		c.result.AddCheck("managed-exposure", false, exposureErr.Error())
+		return
+	}
+	if devaccess.Enabled(c.manifest.Environment) {
+		publicCount := 0
+		for _, route := range c.manifest.Exposures {
+			if !strings.EqualFold(route.Visibility, "internal") {
+				publicCount++
+			}
+		}
+		for _, route := range c.manifest.Exposures {
+			label := route.Name
+			if !strings.EqualFold(route.Visibility, "internal") {
+				label = devaccess.ExposureService(route.Name, publicCount)
+			}
+			host, err := devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, label)
+			if err != nil {
+				c.result.AddCheck("managed-exposure/"+route.Name, false, err.Error())
+				continue
+			}
+			c.result.AddCheck("managed-exposure/"+route.Name, true, devgateway.URLForTarget(c.resolved.Target.Name, host))
+		}
 		return
 	}
 	c.result.AddCheck("managed-exposure", true, "configured exposure endpoints are ready")

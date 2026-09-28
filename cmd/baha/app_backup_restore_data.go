@@ -25,7 +25,7 @@ type applicationRestoreData struct {
 	logsHistory      logsprovider.HistoryBackup
 }
 
-func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, selectionArgs recoverySelectionArgs, password []byte, outputPath string) error {
+func captureApplicationBackup(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, selectionArgs recoverySelectionArgs, password []byte, outputPath string) error {
 	m := resolved.Manifest
 	selection, workloadVolumes, err := discoverApplicationRecoverySelection(ctx, compose, resolved, files)
 	if err != nil {
@@ -51,7 +51,7 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.Compose, pl
 	entries = append(entries, recoveryMetadata)
 
 	if selection.HasSelected(applicationbackup.StateSQL) {
-		dumps, err := application.DumpPostgresInstances(ctx, compose, m, files)
+		dumps, err := application.DumpPostgresInstancesAt(ctx, compose, m, files, resolved.TargetStateRoot, resolved.Target.Name)
 		if err != nil {
 			return err
 		}

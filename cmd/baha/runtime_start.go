@@ -42,7 +42,7 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	return nil
 }
 
-func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	for {
@@ -103,7 +103,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	return nil
 }
 
-func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
 	state, err := platformopenbao.Inspect(ctx, compose, files)
 	if err != nil {
 		return err
@@ -131,43 +131,43 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.C
 	return compose.UpProject(ctx, files.Project, files.Compose, files.Env)
 }
 
-func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
 	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
 	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	return compose, files, nil
 }
 
-func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
+func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.RuntimeProvider, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	return compose, nil
 }
 
-func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files, recoveryFile string, out io.Writer) error {
+func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string, out io.Writer) error {
 	var state platformopenbao.State
 	var inspectErr error
 	deadline := time.Now().Add(30 * time.Second)

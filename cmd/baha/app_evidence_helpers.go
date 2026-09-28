@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 func recoveryContributorMetadata(manifest applicationbackup.RecoveryManifest, verifiedSelected bool) []application.RecoveryContributorMetadata {
@@ -36,6 +37,14 @@ func recordApplicationAudit(ctx context.Context, resolved resolvedApplication, o
 		operation,
 		outcome,
 	)
+	if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		event.Actor.Identity = principal.Subject
+		event.Actor.Issuer = principal.Issuer
+		event.Actor.Subject = principal.Subject
+		event.Actor.Assurance = principal.Assurance
+		event.Actor.Methods = append([]string(nil), principal.Methods...)
+		event.AuthorizationResult = "allow"
+	}
 	event.LifecycleResult = outcome
 	event.VerificationResult = verification
 	event.Ownership = "baseharbor"

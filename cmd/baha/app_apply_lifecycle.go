@@ -10,6 +10,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -23,7 +25,7 @@ type applicationApplyExecution struct {
 	out              io.Writer
 	errOut           io.Writer
 	secretService    *applicationsecret.Service
-	compose          bhruntime.Compose
+	compose          bhruntime.RuntimeProvider
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
 	providers        *managedProviderPreflightState
@@ -104,7 +106,7 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 		}})
 	}
 
-	checks = appendManagedProviderPreflights(checks, &e.compose, e.resolved, e.providers, &e.issuer)
+	checks = appendManagedProviderPreflights(checks, e.compose, e.resolved, e.providers, &e.issuer)
 
 	var results []preflight.Result
 	var ok bool
@@ -144,7 +146,7 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 				required = append(required, bhruntime.CapabilityServiceExec)
 			}
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, required...)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
@@ -169,8 +171,42 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	}
 	e.files = files
 
-	if application.HasManagedRuntimeServices(e.manifest) {
+	if devaccess.Enabled(e.manifest.Environment) &&
+		(e.manifest.Services.SQLManagementUI ||
+			e.manifest.Services.CacheManagementUI ||
+			e.manifest.Services.ObjectStorageManagementUI ||
+			e.manifest.Services.SecretsManagementUI ||
+			e.manifest.Services.IdentityManagementUI ||
+			e.manifest.Services.ObservabilityManagementUI ||
+			e.manifest.Services.Identity) {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("prepare developer access: %w", err)
+		}
+		if err := application.ApplyDevelopmentManagementUICredentials(ctx, e.issuer, e.files, e.manifest, credentials.Username, credentials.Password); err != nil {
+			return fmt.Errorf("project developer access into management UIs: %w", err)
+		}
+	}
+
+	if application.HasApplicationScopedRuntimeServices(e.manifest) {
 		if err := e.compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return err
+		}
+	}
+	if application.HasSharedBackends(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling shared data providers", func(progress io.Writer) error {
+			cli.ReportActivityDetail(progress, "reconciling Target-owned PostgreSQL/Valkey provider runtime")
+			_, err := application.ReconcileSharedBackends(
+				ctx,
+				e.compose,
+				e.issuer,
+				e.resolved.TargetStateRoot,
+				e.resolved.Target.Name,
+				e.manifest,
+				e.files,
+			)
+			return err
+		}); err != nil {
 			return err
 		}
 	}
@@ -178,6 +214,37 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return convergeManagedObjectStorage(ctx, progress, e.providers.objectStorage)
 	}); err != nil {
 		return err
+	}
+	if err := activity(ctx, e.term, "Preparing application exposure", func(io.Writer) error {
+		return provisionManagedExposure(ctx, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, e.term, "Reconciling application identity", func(progress io.Writer) error {
+		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
+	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.Identity {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("load developer access for OIDC: %w", err)
+		}
+		if err := activity(ctx, e.term, "Reconciling developer OIDC access", func(io.Writer) error {
+			_, err := identityprovider.EnsureManagedDevelopmentAccess(
+				ctx,
+				e.compose,
+				e.issuer,
+				e.resolved.TargetStateRoot,
+				e.resolved.Target.Name,
+				e.resolved.Target.Name,
+				credentials.Username,
+				credentials.Password,
+			)
+			return err
+		}); err != nil {
+			return err
+		}
 	}
 	if err := e.prepareApplicationSecrets(ctx); err != nil {
 		return err
@@ -215,6 +282,15 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 	if err := checkRequiredApplicationSecrets(ctx, e.compose, e.platformFiles, e.manifest, e.files); err != nil {
 		return fmt.Errorf("required secrets check failed: %w", err)
 	}
+	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.SecretsManagementUI {
+		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		if err != nil {
+			return fmt.Errorf("load developer access for OpenBao: %w", err)
+		}
+		if err := openbao.EnsureDevelopmentUserpass(ctx, e.compose, e.platformFiles, credentials.Username, credentials.Password); err != nil {
+			return fmt.Errorf("reconcile OpenBao developer access: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -227,6 +303,15 @@ func (e *applicationApplyExecution) verifyManagedRuntime(ctx context.Context) er
 		cli.ReportActivityDetail(progress, "checking managed service readiness")
 		for verifyCtx.Err() == nil {
 			verifyErr = verifyDesiredRuntimeServices(verifyCtx, e.compose, e.manifest, e.files)
+			if verifyErr == nil && application.HasSharedBackends(e.manifest) {
+				verifyErr = application.VerifySharedBackends(
+					verifyCtx,
+					e.compose,
+					e.resolved.TargetStateRoot,
+					e.resolved.Target.Name,
+					e.manifest,
+				)
+			}
 			if verifyErr == nil && e.manifest.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
 				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.compose, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
@@ -272,7 +357,7 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 		}); err != nil {
 			return err
 		}
-		printRuntimeBrokerDocs(e.out, e.files)
+		printRuntimeBrokerDocs(e.out, e.resolved.Target.Name, e.manifest, e.files)
 	}
 	if err := activity(ctx, e.term, "Verifying trace ingestion", func(progress io.Writer) error {
 		return verifyManagedTracesAfterTelemetry(ctx, progress, e.providers.traces)
@@ -291,6 +376,13 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
+	}
+	if requiresDevelopmentGateway(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
+			return e.reconcileDevelopmentCanonicalRoutes(ctx)
+		}); err != nil {
+			return err
+		}
 	}
 	if err := reconcileConnectivityForManifest(ctx, e.out, e.compose, e.resolved); err != nil {
 		return fmt.Errorf("reconcile cross-application connectivity: %w", err)

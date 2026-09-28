@@ -61,11 +61,13 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 		return Files{}, errors.New("runtime executor S3 HTTPS endpoint and trust bundle are required")
 	}
 	required := map[string]string{
-		"runtime CA":           identity.CA,
-		"executor certificate": identity.Cert,
-		"executor private key": identity.Key,
-		"S3 admin credentials": adminCredentialsPath,
-		"S3 trust bundle":      s3TrustPath,
+		"runtime CA":                          identity.CA,
+		"executor certificate":                identity.Cert,
+		"executor private key":                identity.Key,
+		"runtime observer client certificate": identity.ClientCert,
+		"runtime observer client key":         identity.ClientKey,
+		"S3 admin credentials":                adminCredentialsPath,
+		"S3 trust bundle":                     s3TrustPath,
 	}
 	var observer ObservabilityBinding
 	if len(observability) > 0 {
@@ -96,22 +98,22 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 		return Files{}, err
 	}
 	identity.Key = executorKeyProjection
+	observerCert, err := projectContainerReadablePublicFile(dir, identity.ClientCert, "observer-client-cert.pem", "runtime observer client certificate")
+	if err != nil {
+		return Files{}, err
+	}
+	observerKey, err := projectContainerReadableSecret(dir, identity.ClientKey, "observer-client-key.pem", "runtime observer client key")
+	if err != nil {
+		return Files{}, err
+	}
+	observer.ClientCert = observerCert
+	observer.ClientKey = observerKey
 	if observer.Endpoint != "" {
 		observerCA, err := projectContainerReadablePublicFile(dir, observer.CA, "observability-ca.pem", "runtime observability CA")
 		if err != nil {
 			return Files{}, err
 		}
-		observerCert, err := projectContainerReadablePublicFile(dir, observer.ClientCert, "observer-client-cert.pem", "runtime observability client certificate")
-		if err != nil {
-			return Files{}, err
-		}
-		observerKey, err := projectContainerReadableSecret(dir, observer.ClientKey, "observer-client-key.pem", "runtime observability client key")
-		if err != nil {
-			return Files{}, err
-		}
 		observer.CA = observerCA
-		observer.ClientCert = observerCert
-		observer.ClientKey = observerKey
 	}
 	s3TrustProjection, err := projectContainerReadablePublicFile(dir, s3TrustPath, "s3-ca.pem", "S3 trust bundle")
 	if err != nil {
@@ -292,15 +294,13 @@ func composeYAMLForNetworks(image string, identity openbao.RuntimeExecutorMTLSFi
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(s3TrustPath+":/run/baseharbor/provider/s3-ca.pem:ro"))
 	if observer.Endpoint != "" {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(observer.CA+":/run/baseharbor/observability/ca.pem:ro"))
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(observer.ClientCert+":/run/baseharbor/observability/client-cert.pem:ro"))
 	}
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(observer.ClientCert+":/run/baseharbor/observability/client-cert.pem:ro"))
 	b.WriteString("      - runtime-resource-state:/var/lib/baseharbor/runtime-resources\n")
 	b.WriteString("    secrets:\n")
 	b.WriteString("      - executor-key\n")
 	b.WriteString("      - s3-admin\n")
-	if observer.Endpoint != "" {
-		b.WriteString("      - observer-client-key\n")
-	}
+	b.WriteString("      - observer-client-key\n")
 	b.WriteString("    networks:\n")
 	b.WriteString("      runtime-control:\n")
 	b.WriteString("        aliases:\n")
@@ -314,10 +314,8 @@ func composeYAMLForNetworks(image string, identity openbao.RuntimeExecutorMTLSFi
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(identity.Key))
 	b.WriteString("  s3-admin:\n")
 	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(adminCredentialsPath))
-	if observer.Endpoint != "" {
-		b.WriteString("  observer-client-key:\n")
-		fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(observer.ClientKey))
-	}
+	b.WriteString("  observer-client-key:\n")
+	fmt.Fprintf(&b, "    file: %s\n", strconv.Quote(observer.ClientKey))
 	b.WriteString("\nvolumes:\n")
 	b.WriteString("  runtime-resource-state:\n")
 	b.WriteString("\nnetworks:\n")

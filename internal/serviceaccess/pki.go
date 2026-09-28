@@ -210,6 +210,10 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
 		return TLSMaterial{}, err
 	} else if valid && trustMatches && previousState.IssuerReference == currentIssuerReference {
+		if !requireClient {
+			material.ClientCertificate = ""
+			material.ClientKey = ""
+		}
 		return material, nil
 	}
 

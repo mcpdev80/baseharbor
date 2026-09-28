@@ -78,6 +78,19 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Resource:    "logs:" + capability.Name,
 				Description: fmt.Sprintf("ensure workload log collection for %s", capability.Name),
 			})
+		case CapabilityIdentity:
+			p.Actions = append(p.Actions,
+				Action{
+					Kind:        "ensure",
+					Resource:    "identity:" + capability.Name,
+					Description: "ensure isolated OIDC application identity",
+				},
+				Action{
+					Kind:        "verify",
+					Resource:    "identity:" + capability.Name,
+					Description: "verify OIDC discovery, client binding and authentication policy",
+				},
+			)
 		default:
 			return Plan{}, fmt.Errorf("unsupported application capability %q", capability.Kind)
 		}

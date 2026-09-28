@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-09-28
+
+### Added
+
+- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, managed/private issuer trust projection through `OIDC_CA_FILE`, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
+- Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
+- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
+- Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
+- Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
+- First-class resource-efficient `shared` placement for the bundled PostgreSQL and Valkey providers while retaining explicit `application` placement; shared provider lifecycle is Target-owned while databases, cache resources, credentials and Service Bindings remain application-isolated.
+- Versioned `baseharbor.runtime/v1` Runtime Provider descriptors and an extensible registry with provider identity, provider version, adopted standards, workload-source compatibility, realization metadata and fail-closed capability negotiation; reusable conformance tests and an AST architecture guard protect the provider-neutral Core boundary.
+
+### Changed
+
+- Status, Doctor, JSON/MCP evidence and application lifecycle now observe and verify managed identity state, operator-authentication context and selected management surfaces.
+- Identity recovery explicitly separates portable application identity intent from provider-held users, MFA and passkey state instead of claiming unsupported provider-global snapshots.
+- Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
+- Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
+- `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
+- Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
+- Repository workloads can explicitly declare `io.baseharbor.workload.protocol=http|https`; HTTPS canonical routes verify the BaseHarbor-projected workload CA and service-name SNI, while invalid declared protocol values fail closed.
+- The v0.4.17 reference demo is HTTPS-only and intentionally has no plaintext HTTP fallback.
+- The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
+- Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
+- Runtime selection now uses explicit `docker` / `podman` provider identity. Compose remains repository workload-source compatibility rather than Runtime Provider identity; new local state defaults to Docker. Podman realization is native Quadlet + `systemd --user` and fails closed without that environment instead of falling back to `podman compose`.
+
+### Fixed
+
+- Development OIDC workload bindings now use the same canonical issuer reported to developers and trust the Target development gateway; provider-internal Keycloak endpoints remain lifecycle/admin-only, including rootless Podman on deterministic HTTPS port 8443.
+- Runtime Executor observer mTLS identity is projected independently of OTLP tracing so logs/metrics observability probes remain valid when tracing is not selected.
+- Podman CI/runtime validation isolates Quadlet generator preflight state and removes stale BaseHarbor user units from the effective user configuration, preventing unrelated worker state from poisoning validation.
+- Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
+- Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
+
+### Security
+
+- Shared PostgreSQL now separates one BaseHarbor-internal `baseharbor_admin` provider identity from per-application database roles and credentials. Provider-admin credentials never enter workload bindings, environment contracts, status, doctor or evidence.
+- Shared PostgreSQL reconciliation hardens database/schema/public privileges, verifies application-role ownership and denies cross-application database access; destroy fails closed unless protected provider state and live PostgreSQL ownership agree.
+- Shared PostgreSQL application roles are `NOINHERIT`, receive no provider-role memberships, cannot connect to provider administration databases, and restores authenticate with the protected application credential rather than a provider-admin or local-trust shortcut.
+- Shared PostgreSQL backup/restore remains application-scoped and derives the exact database set from protected application registrations; sibling databases, roles and credentials are never part of another application's recovery operation.
+- Shared Valkey uses isolated per-application services and credentials inside the Target-owned provider lifecycle, preserving normal Redis/Valkey client compatibility without cross-application key visibility.
+- Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
+- Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
+- Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
+- The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
+
 ## [0.4.16] - 2026-09-26
 
 ### Added

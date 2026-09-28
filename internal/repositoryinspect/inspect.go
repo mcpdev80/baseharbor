@@ -103,6 +103,8 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	if manifest != nil && strings.TrimSpace(manifest.Workload.Compose) != "" {
 		result.SelectedCompose = filepath.ToSlash(manifest.Workload.Compose)
 		result.WorkloadServices = append([]string(nil), manifest.Workload.Services...)
+	} else if rootCompose := singleRootComposeCandidate(result.ComposeCandidates); rootCompose != "" {
+		result.SelectedCompose = rootCompose
 	} else if len(result.ComposeCandidates) == 1 {
 		result.SelectedCompose = result.ComposeCandidates[0]
 	}
@@ -187,6 +189,21 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.Declared, result.Reconciliation = Reconcile(result.Findings, manifest)
 	sortResult(&result)
 	return result, nil
+}
+
+func singleRootComposeCandidate(candidates []string) string {
+	var selected string
+	for _, candidate := range candidates {
+		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
+		if candidate == "" || strings.Contains(candidate, "/") {
+			continue
+		}
+		if selected != "" {
+			return ""
+		}
+		selected = candidate
+	}
+	return selected
 }
 
 func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, error) {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -20,7 +21,7 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("DetectCompose() error = %v", err)
 	}
@@ -97,7 +98,7 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	}
 }
 
-func waitForPostgresBackupRuntime(t *testing.T, ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) {
+func waitForPostgresBackupRuntime(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) {
 	t.Helper()
 	var lastErr error
 	for attempt := 0; attempt < 30; attempt++ {

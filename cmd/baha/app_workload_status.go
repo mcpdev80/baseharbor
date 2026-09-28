@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/endpoint"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -31,7 +33,7 @@ type repositoryWorkloadStatus struct {
 	ConfigDrift []string
 }
 
-func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
+func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return repositoryWorkloadStatus{Found: found, Workload: workload}, err
@@ -80,9 +82,13 @@ func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.Comp
 	}
 	configDrift := changedRepositoryWorkloadConfigServices(configFingerprints, configState)
 
+	protocols, err := repositoryWorkloadProtocols(workload)
+	if err != nil {
+		return repositoryWorkloadStatus{Found: true, Workload: workload}, err
+	}
 	states, stateErr := compose.ServiceStatesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
 	if stateErr == nil {
-		exposures := inspectWorkloadExposures(ctx, expected, states, initState.Hostname)
+		exposures := inspectWorkloadExposures(ctx, expected, states, initState.Hostname, protocols)
 		services := attachWorkloadExposures(buildWorkloadServiceStatuses(expected, states), exposures)
 		status := repositoryWorkloadStatus{Found: true, Workload: workload, Services: services, Exposures: exposures, BuildDrift: buildDrift, ConfigDrift: configDrift}
 		if len(buildDrift) > 0 {
@@ -136,6 +142,20 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 	return result
 }
 
+func terminalWorkloadServiceError(services []workloadServiceStatus) error {
+	var failures []string
+	for _, service := range services {
+		switch service.State {
+		case "exited", "dead":
+			failures = append(failures, service.Service+" "+formatWorkloadServiceStatus(service))
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return fmt.Errorf("application workload service terminated before readiness: %s", strings.Join(failures, "; "))
+}
+
 func attachWorkloadExposures(services []workloadServiceStatus, exposures []workloadExposureStatus) []workloadServiceStatus {
 	byService := make(map[string][]workloadExposureStatus)
 	for _, exposure := range exposures {
@@ -152,7 +172,7 @@ func attachWorkloadExposures(services []workloadServiceStatus, exposures []workl
 	return services
 }
 
-func inspectWorkloadExposures(ctx context.Context, expected []string, states []bhruntime.ServiceState, configuredHostname string) []workloadExposureStatus {
+func inspectWorkloadExposures(ctx context.Context, expected []string, states []bhruntime.ServiceState, configuredHostname string, protocols map[string]string) []workloadExposureStatus {
 	selected := make(map[string]bool, len(expected))
 	for _, name := range expected {
 		selected[name] = true
@@ -165,7 +185,7 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 			continue
 		}
 		for _, publisher := range state.Publishers {
-			scheme, ok := workloadExposureScheme(publisher.TargetPort, publisher.PublishedPort)
+			scheme, ok := workloadExposureSchemeForService(state.Service, protocols, publisher.TargetPort, publisher.PublishedPort)
 			if !ok || publisher.PublishedPort <= 0 || (publisher.Protocol != "" && publisher.Protocol != "tcp") {
 				continue
 			}
@@ -185,7 +205,7 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			ready, detail := probeHTTPExposureTarget(probeCtx, scheme, host, logicalHost, publisher.PublishedPort)
 			cancel()
-			if !ready && scheme == "http" {
+			if !ready && scheme == "http" && strings.TrimSpace(protocols[state.Service]) == "" {
 				probeCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
 				tlsReady, tlsDetail := probeHTTPExposureTarget(probeCtx, "https", host, logicalHost, publisher.PublishedPort)
 				cancel()
@@ -200,6 +220,25 @@ func inspectWorkloadExposures(ctx context.Context, expected []string, states []b
 	}
 	endpoint.SortExposureStatuses(result)
 	return result
+}
+
+func repositoryWorkloadProtocols(workload application.WorkloadFiles) (map[string]string, error) {
+	rel, err := filepath.Rel(workload.RepositoryRoot, workload.Compose)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workload Compose path for transport discovery: %w", err)
+	}
+	analysis, err := repositoryinspect.AnalyzeComposeFile(workload.RepositoryRoot, filepath.ToSlash(rel))
+	if err != nil {
+		return nil, fmt.Errorf("resolve workload transport protocol: %w", err)
+	}
+	return analysis.WorkloadProtocols, nil
+}
+
+func workloadExposureSchemeForService(service string, protocols map[string]string, targetPort, publishedPort int) (string, bool) {
+	if protocol := strings.ToLower(strings.TrimSpace(protocols[service])); protocol == "http" || protocol == "https" {
+		return protocol, true
+	}
+	return workloadExposureScheme(targetPort, publishedPort)
 }
 
 func workloadExposureReadinessError(exposures []workloadExposureStatus) error {

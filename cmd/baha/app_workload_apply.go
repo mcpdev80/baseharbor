@@ -13,13 +13,14 @@ import (
 )
 
 type repositoryWorkloadExecution struct {
-	compose            bhruntime.Compose
+	compose            bhruntime.RuntimeProvider
 	resolved           resolvedApplication
 	files              application.RuntimeFiles
 	workload           application.WorkloadFiles
 	environment        map[string]string
 	composeFiles       []string
 	expectedServices   []string
+	workloadProtocols  map[string]string
 	beforeServices     map[string]struct{}
 	freshStart         bool
 	buildFingerprints  map[string]string
@@ -27,7 +28,7 @@ type repositoryWorkloadExecution struct {
 	buildChanged       map[string]struct{}
 }
 
-func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
+func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return nil, found, err
@@ -78,6 +79,10 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		}
 	}
 
+	workloadProtocols, err := repositoryWorkloadProtocols(workload)
+	if err != nil {
+		return nil, false, err
+	}
 	buildFingerprints, err := resolveRepositoryWorkloadBuildFingerprints(ctx, compose, workload, environment, expectedServices, composeFiles)
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve application workload build identity: %w", err)
@@ -95,6 +100,7 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		environment:        environment,
 		composeFiles:       composeFiles,
 		expectedServices:   expectedServices,
+		workloadProtocols:  workloadProtocols,
 		beforeServices:     beforeServices,
 		freshStart:         len(beforeStates) == 0,
 		buildFingerprints:  buildFingerprints,
@@ -226,9 +232,12 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 		if stateErr != nil {
 			lastErr = stateErr
 		} else {
-			exposures := inspectWorkloadExposures(verifyCtx, e.expectedServices, states, initState.Hostname)
+			exposures := inspectWorkloadExposures(verifyCtx, e.expectedServices, states, initState.Hostname, e.workloadProtocols)
 			services := attachWorkloadExposures(buildWorkloadServiceStatuses(e.expectedServices, states), exposures)
 			lastStatus = repositoryWorkloadStatus{Found: true, Workload: e.workload, Services: services, Exposures: exposures}
+			if terminalErr := terminalWorkloadServiceError(services); terminalErr != nil {
+				return terminalErr
+			}
 			lastErr = workloadExposureReadinessError(exposures)
 		}
 		if lastErr == nil && lastStatus.Ready() {
@@ -242,7 +251,19 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 	if lastErr != nil {
 		return fmt.Errorf("verify application workload readiness after %s: %w", repositoryWorkloadReadinessTimeout, lastErr)
 	}
-	return fmt.Errorf("application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d", repositoryWorkloadReadinessTimeout, lastStatus.ReadyCount(), len(e.expectedServices), lastStatus.ExposureReadyCount(), len(lastStatus.Exposures))
+	var serviceDetails []string
+	for _, service := range lastStatus.Services {
+		serviceDetails = append(serviceDetails, service.Service+"="+formatWorkloadServiceStatus(service))
+	}
+	return fmt.Errorf(
+		"application workload did not reach readiness within %s; services=%d/%d exposures=%d/%d; observed: %s",
+		repositoryWorkloadReadinessTimeout,
+		lastStatus.ReadyCount(),
+		len(e.expectedServices),
+		lastStatus.ExposureReadyCount(),
+		len(lastStatus.Exposures),
+		strings.Join(serviceDetails, ", "),
+	)
 }
 
 func (e *repositoryWorkloadExecution) recordReady(out io.Writer, status repositoryWorkloadStatus) error {

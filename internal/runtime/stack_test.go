@@ -330,7 +330,7 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
 		"user: \"postgres\"",
-		"user: \"openbao\"",
+		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
 		"read_only: true",

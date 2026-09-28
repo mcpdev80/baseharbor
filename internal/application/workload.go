@@ -254,13 +254,17 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	namespace := strings.TrimSpace(strings.ReplaceAll(runtime.Namespace, ".", "-"))
 	objectStorageNetworkName := scopedWorkloadNetworkName("baseharbor-object-storage", namespace)
 	telemetryNetworkName := scopedWorkloadNetworkName("baseharbor-telemetry", namespace)
+	identityNetworkName := ""
 	env, err := containerRuntimeEnvironment(m, values)
 	if err != nil {
 		return "", err
 	}
 	managedRuntime := HasManagedRuntimeServices(m)
+	serviceBindings := managedRuntime || HasIdentity(m)
 	runtimeBroker := RequiresRuntimeBroker(m)
-	backendNetwork := managedRuntime || runtimeBroker
+	applicationBackendNetwork := HasApplicationScopedRuntimeServices(m) || runtimeBroker
+	sharedBackendNetwork := HasSharedBackends(m)
+	backendNetwork := applicationBackendNetwork || sharedBackendNetwork
 	objectStorage := HasObjectStorage(m)
 	runtimeObjectStorageServices := map[string]struct{}{}
 	for _, permission := range m.Runtime.Permissions {
@@ -273,6 +277,26 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 	}
 	hasRuntimeObjectStorage := len(runtimeObjectStorageServices) > 0
 	telemetryManaged := HasOTLPTelemetry(m) && values["OTLP_PROVIDER"] == string(capability.ProviderOTelCollector)
+	identityManaged := false
+	if HasIdentity(m) {
+		provider, err := referenceCapabilityProvider(capability.Identity)
+		if err != nil {
+			return "", err
+		}
+		identityManaged = provider.Kind == capability.ProviderKeycloak
+		if identityManaged {
+			identityNetworkName, err = IdentityProviderNetworkName(m, namespace)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	canonicalDevWorkload := strings.EqualFold(strings.TrimSpace(m.Environment), "dev") && len(services) == 1
+	canonicalDevNetworkName := ""
+	if canonicalDevWorkload {
+		canonicalDevNetworkName = DevelopmentWorkloadNetworkNameForProject(runtimeProject)
+	}
+
 	metricsServices := map[string]struct{}{}
 	metricsNetworkName := ""
 	hasMetricsIntent := len(m.Metrics.Sources) > 0 || HasRuntimeMetricsPermissions(m)
@@ -314,10 +338,11 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		_, runtimeObjectStorage := runtimeObjectStorageServices[service]
 		serviceObjectStorage := objectStorage || runtimeObjectStorage
 		hasEnvironment := len(env) > 0 || HasOTLPTelemetry(m)
-		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || metricsSource || exposed
+		hasNetworks := backendNetwork || serviceObjectStorage || telemetryManaged || identityManaged || metricsSource || exposed || canonicalDevWorkload
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
 		hasBackendTLS := managedRuntime
+		hasServiceBindings := serviceBindings
 
 		if !hasEnvironment && !hasNetworks {
 			fmt.Fprintf(&b, "  %s: {}\n", service)
@@ -327,12 +352,33 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		fmt.Fprintf(&b, "  %s:\n", service)
 		if hasEnvironment {
 			b.WriteString("    environment:\n")
-			serviceEnv := make(map[string]string, len(env)+3)
+			serviceEnv := make(map[string]string, len(env)+6)
 			for key, value := range env {
 				serviceEnv[key] = value
 			}
-			if managedRuntime {
+			if serviceBindings {
 				serviceEnv["SERVICE_BINDING_ROOT"] = workloadServiceBindingRoot
+			}
+			if HasIdentity(m) {
+				issuer, err := requireRuntimeValue(values, "IDENTITY_CONTAINER_ISSUER")
+				if err != nil {
+					return "", err
+				}
+				clientID, err := requireRuntimeValue(values, "IDENTITY_CLIENT_ID")
+				if err != nil {
+					return "", err
+				}
+				serviceEnv["OIDC_ISSUER"] = issuer
+				serviceEnv["OIDC_CLIENT_ID"] = clientID
+				if len(m.Identity.Scopes) > 0 {
+					serviceEnv["OIDC_SCOPES"] = strings.Join(m.Identity.Scopes, " ")
+				}
+				if strings.TrimSpace(values["IDENTITY_CLIENT_SECRET"]) != "" {
+					serviceEnv["OIDC_CLIENT_SECRET_FILE"] = IdentityWorkloadClientSecretFile
+				}
+				if strings.TrimSpace(values["IDENTITY_CA_FILE"]) != "" {
+					serviceEnv["OIDC_CA_FILE"] = "/run/baseharbor/service-bindings/identity/ca.crt"
+				}
 			}
 			if HasOTLPTelemetry(m) {
 				serviceEnv["OTEL_SERVICE_NAME"] = service
@@ -347,9 +393,9 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(serviceEnv[key]))
 			}
 		}
-		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS {
+		if hasTelemetryTLS || hasObjectStorageTLS || hasBackendTLS || hasServiceBindings {
 			b.WriteString("    volumes:\n")
-			if hasBackendTLS {
+			if hasServiceBindings {
 				projection := workloadServiceBindingProjectionDir(runtime)
 				fmt.Fprintf(&b, "      - %s\n", strconv.Quote(projection+":"+workloadServiceBindingRoot+":ro"))
 			}
@@ -378,9 +424,12 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		}
 		if hasNetworks {
 			b.WriteString("    networks:\n")
-			if !metricsSource && !exposed {
-				if backendNetwork {
+			if !metricsSource && !exposed && !canonicalDevWorkload {
+				if applicationBackendNetwork {
 					b.WriteString("      - baseharbor-backend\n")
+				}
+				if sharedBackendNetwork {
+					b.WriteString("      - baseharbor-shared-backend\n")
 				}
 				if serviceObjectStorage {
 					b.WriteString("      - baseharbor-object-storage\n")
@@ -388,16 +437,25 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				if telemetryManaged {
 					b.WriteString("      - baseharbor-telemetry\n")
 				}
+				if identityManaged {
+					b.WriteString("      - baseharbor-identity\n")
+				}
 				continue
 			}
-			if backendNetwork {
+			if applicationBackendNetwork {
 				b.WriteString("      baseharbor-backend: {}\n")
+			}
+			if sharedBackendNetwork {
+				b.WriteString("      baseharbor-shared-backend: {}\n")
 			}
 			if serviceObjectStorage {
 				b.WriteString("      baseharbor-object-storage: {}\n")
 			}
 			if telemetryManaged {
 				b.WriteString("      baseharbor-telemetry: {}\n")
+			}
+			if identityManaged {
+				b.WriteString("      baseharbor-identity: {}\n")
 			}
 			if metricsSource {
 				b.WriteString("      baseharbor-metrics:\n")
@@ -409,13 +467,22 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 				b.WriteString("        aliases:\n")
 				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(service))
 			}
+			if canonicalDevWorkload {
+				b.WriteString("      baseharbor-dev-workload:\n")
+				b.WriteString("        aliases:\n")
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(DevelopmentWorkloadAlias(m)))
+			}
 		}
 	}
-	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || len(metricsServices) > 0 || len(exposedServices) > 0 {
+	if backendNetwork || objectStorage || hasRuntimeObjectStorage || telemetryManaged || identityManaged || len(metricsServices) > 0 || len(exposedServices) > 0 || canonicalDevWorkload {
 		b.WriteString("networks:\n")
-		if backendNetwork {
+		if applicationBackendNetwork {
 			b.WriteString("  baseharbor-backend:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", applicationBackendNetworkForRuntime(m, runtimeProject))
+		}
+		if sharedBackendNetwork {
+			b.WriteString("  baseharbor-shared-backend:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(SharedBackendNetworkName(runtime.Namespace, m.Environment)))
 		}
 		if objectStorage || hasRuntimeObjectStorage {
 			b.WriteString("  baseharbor-object-storage:\n    external: true\n")
@@ -425,6 +492,10 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 			b.WriteString("  baseharbor-telemetry:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(telemetryNetworkName))
 		}
+		if identityManaged {
+			b.WriteString("  baseharbor-identity:\n    external: true\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(identityNetworkName))
+		}
 		if len(metricsServices) > 0 {
 			b.WriteString("  baseharbor-metrics:\n    external: true\n")
 			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(metricsNetworkName))
@@ -432,6 +503,10 @@ func workloadOverrideYAMLForFiles(m Manifest, services []string, values map[stri
 		if len(exposedServices) > 0 {
 			b.WriteString("  baseharbor-exposure:\n")
 			fmt.Fprintf(&b, "    name: %s\n", applicationExposureNetworkForRuntime(m, runtimeProject))
+		}
+		if canonicalDevWorkload {
+			b.WriteString("  baseharbor-dev-workload:\n")
+			fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(canonicalDevNetworkName))
 		}
 	}
 	return b.String(), nil
@@ -588,10 +663,14 @@ func postgresContainerConnectionURL(values map[string]string, instance string) (
 	query := url.Values{}
 	query.Set("sslmode", "verify-ca")
 	query.Set("sslrootcert", postgresTLSCAContainerPath(instance))
+	host := strings.TrimSpace(values[postgresContainerHostKey(instance)])
+	if host == "" {
+		host = postgresAccessService(instance)
+	}
 	u := &url.URL{
 		Scheme:   "postgresql",
 		User:     url.UserPassword(username, password),
-		Host:     net.JoinHostPort(postgresAccessService(instance), "5432"),
+		Host:     net.JoinHostPort(host, "5432"),
 		Path:     "/" + database,
 		RawQuery: query.Encode(),
 	}
@@ -603,10 +682,14 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 	if err != nil {
 		return "", err
 	}
+	host := strings.TrimSpace(values[valkeyContainerHostKey(instance)])
+	if host == "" {
+		host = valkeyAccessService(instance)
+	}
 	u := &url.URL{
 		Scheme: "rediss",
 		User:   url.UserPassword("default", password),
-		Host:   net.JoinHostPort(valkeyAccessService(instance), "6379"),
+		Host:   net.JoinHostPort(host, "6379"),
 		Path:   "/0",
 	}
 	return u.String(), nil

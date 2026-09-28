@@ -21,7 +21,7 @@ import (
 type managedTracesExecution struct {
 	execution       *capability.Execution
 	driver          *tracesprovider.Driver
-	runtime         bhruntime.Compose
+	runtime         bhruntime.RuntimeProvider
 	manifest        application.Manifest
 	enabled         bool
 	placement       tracesprovider.Placement
@@ -32,7 +32,7 @@ type managedTracesExecution struct {
 	namespace       string
 }
 
-func prepareManagedTraces(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
+func prepareManagedTraces(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
 	m := resolved.Manifest
 	if !application.HasTraceSignal(m) {
 		return nil, nil

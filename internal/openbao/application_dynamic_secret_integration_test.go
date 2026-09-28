@@ -10,6 +10,7 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 func TestDynamicApplicationSecretLifecycleRealOpenBao(t *testing.T) {
@@ -28,7 +29,7 @@ func TestDynamicApplicationSecretLifecycleRealOpenBao(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,17 +16,21 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
-const repositoryAppliedFingerprintName = "applied-desired-state.sha256"
+const (
+	repositoryAppliedFingerprintName        = "applied-desired-state.sha256"
+	repositoryAppliedControlFingerprintName = "applied-control-state.sha256"
+)
 
 type repositoryUpDecision string
 
 const (
-	repositoryUpApply repositoryUpDecision = "apply"
-	repositoryUpStart repositoryUpDecision = "start"
-	repositoryUpNoop  repositoryUpDecision = "noop"
+	repositoryUpApply         repositoryUpDecision = "apply"
+	repositoryUpWorkloadApply repositoryUpDecision = "workload-apply"
+	repositoryUpStart         repositoryUpDecision = "start"
+	repositoryUpNoop          repositoryUpDecision = "noop"
 )
 
-func decideRepositoryUp(state string, runtimeDefinitionOK, fingerprintMatch bool) repositoryUpDecision {
+func decideRepositoryUp(state string, runtimeDefinitionOK, fingerprintMatch, controlFingerprintMatch bool) repositoryUpDecision {
 	switch state {
 	case "stopped":
 		if runtimeDefinitionOK && fingerprintMatch {
@@ -36,12 +40,50 @@ func decideRepositoryUp(state string, runtimeDefinitionOK, fingerprintMatch bool
 		if runtimeDefinitionOK && fingerprintMatch {
 			return repositoryUpNoop
 		}
+		if runtimeDefinitionOK && controlFingerprintMatch {
+			return repositoryUpWorkloadApply
+		}
 	}
 	return repositoryUpApply
 }
 
 func repositoryAppliedFingerprintPath(files application.RuntimeFiles) string {
 	return filepath.Join(files.Dir, repositoryAppliedFingerprintName)
+}
+
+func repositoryAppliedControlFingerprintPath(files application.RuntimeFiles) string {
+	return filepath.Join(files.Dir, repositoryAppliedControlFingerprintName)
+}
+
+func repositoryControlStateFingerprint(resolved resolvedApplication) (string, error) {
+	if !resolved.FromRepository {
+		return "", nil
+	}
+	h := sha256.New()
+	write := func(name string, data []byte) {
+		_, _ = io.WriteString(h, name)
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	}
+
+	manifestPath := strings.TrimSpace(resolved.ManifestPath)
+	if manifestPath == "" {
+		return "", errors.New("repository application manifest path is unavailable")
+	}
+	manifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return "", fmt.Errorf("read application contract for control fingerprint: %w", err)
+	}
+	write("baseharbor.yaml", manifest)
+
+	if data, err := os.ReadFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err == nil {
+		write(".baseharbor/init.env", data)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read repository deployment control state: %w", err)
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApplication) (string, error) {
@@ -153,15 +195,22 @@ func repositoryFingerprintMatches(ctx context.Context, resolved resolvedApplicat
 	return strings.TrimSpace(string(expected)) == current, nil
 }
 
-func recordRepositoryAppliedFingerprint(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) error {
-	if !resolved.FromRepository {
-		return nil
+func repositoryControlFingerprintMatches(resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	expected, err := os.ReadFile(repositoryAppliedControlFingerprintPath(files))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
 	}
-	digest, err := repositoryDesiredStateFingerprint(ctx, resolved)
 	if err != nil {
-		return err
+		return false, err
 	}
-	path := repositoryAppliedFingerprintPath(files)
+	current, err := repositoryControlStateFingerprint(resolved)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(expected)) == current, nil
+}
+
+func writeRepositoryFingerprint(path, digest string) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(digest+"\n"), 0o600); err != nil {
 		return err
@@ -172,6 +221,27 @@ func recordRepositoryAppliedFingerprint(ctx context.Context, resolved resolvedAp
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func recordRepositoryAppliedFingerprint(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) error {
+	if !resolved.FromRepository {
+		return nil
+	}
+	digest, err := repositoryDesiredStateFingerprint(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	controlDigest, err := repositoryControlStateFingerprint(resolved)
+	if err != nil {
+		return err
+	}
+	if err := writeRepositoryFingerprint(repositoryAppliedFingerprintPath(files), digest); err != nil {
+		return err
+	}
+	if err := writeRepositoryFingerprint(repositoryAppliedControlFingerprintPath(files), controlDigest); err != nil {
 		return err
 	}
 	return nil
@@ -197,6 +267,10 @@ func repositoryUpCurrentDecision(ctx context.Context, resolved resolvedApplicati
 	if err != nil {
 		return repositoryUpApply, files, err
 	}
+	controlFingerprintMatch, err := repositoryControlFingerprintMatches(resolved, files)
+	if err != nil {
+		return repositoryUpApply, files, err
+	}
 	status, err := collectApplicationStatus(ctx, resolved.Store, nil)
 	if err != nil {
 		return repositoryUpApply, files, nil
@@ -204,5 +278,5 @@ func repositoryUpCurrentDecision(ctx context.Context, resolved resolvedApplicati
 	if status.State == "running" && !status.Ready {
 		return repositoryUpApply, files, nil
 	}
-	return decideRepositoryUp(status.State, runtimeDefinitionOK, fingerprintMatch), files, nil
+	return decideRepositoryUp(status.State, runtimeDefinitionOK, fingerprintMatch, controlFingerprintMatch), files, nil
 }

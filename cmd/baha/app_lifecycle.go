@@ -11,6 +11,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -40,7 +42,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			var compose bhruntime.Compose
+			var compose bhruntime.RuntimeProvider
 			var before []bhruntime.ProjectResource
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
@@ -53,7 +55,7 @@ func appDownCommand(store application.Store) *cli.Command {
 				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
-					compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+					compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 					return err
 				}},
 				{Name: "runtime configuration", Run: func(ctx context.Context) error {
@@ -73,6 +75,9 @@ func appDownCommand(store application.Store) *cli.Command {
 
 			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
+			}
+			if err := removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m); err != nil {
+				return err
 			}
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
@@ -131,6 +136,22 @@ func appDownCommand(store application.Store) *cli.Command {
 	}
 }
 
+func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, m application.Manifest) error {
+	if !devaccess.Enabled(m.Environment) {
+		return nil
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return fmt.Errorf("load target runtime for development route suspension: %w", err)
+	}
+	issuer := openbao.NewServiceIssuer(compose, files)
+	owner := "app/" + m.Name + "/" + m.Environment
+	if err := devgateway.RemoveOwners(ctx, compose, issuer, resolved.Target.Name, owner); err != nil {
+		return fmt.Errorf("suspend canonical development routes before application down: %w", err)
+	}
+	return nil
+}
+
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
@@ -162,6 +183,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	if err := execution.cleanupProviderState(ctx); err != nil {
+		return err
+	}
+	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}
 	if err := execution.removeApplicationState(); err != nil {

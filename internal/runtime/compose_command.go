@@ -35,9 +35,6 @@ func (c Compose) outputProject(ctx context.Context, project, composeFile, envFil
 }
 
 func (c Compose) outputProjectInputProgress(ctx context.Context, project, composeFile, envFile string, input []byte, onProgress func(string), args ...string) (string, error) {
-	if c.quadlet {
-		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
-	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}
@@ -71,9 +68,6 @@ func (c Compose) outputProjectInputProgress(ctx context.Context, project, compos
 }
 
 func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, envFile string, input []byte, args ...string) (string, error) {
-	if c.quadlet {
-		return "", errors.New("internal error: Podman Quadlet runtime attempted Compose execution")
-	}
 	if c.command == "" {
 		return "", ErrRuntimeNotFound
 	}

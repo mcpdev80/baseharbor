@@ -25,7 +25,7 @@ services:
   openbao:
     image: docker.io/openbao/openbao:2.6.3
     restart: unless-stopped
-    user: "openbao"
+    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

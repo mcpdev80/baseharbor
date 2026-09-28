@@ -10,7 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type doctorRepairClass string
@@ -172,14 +171,18 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
-	compose, err := bhruntime.DetectCompose(ctx)
+	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
-	if err := compose.Config(ctx, files.Compose, files.Env); err != nil {
+	runtimeProvider, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
 		return err
 	}
-	if err := compose.Up(ctx, files.Compose, files.Env); err != nil {
+	if err := runtimeProvider.Config(ctx, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if err := runtimeProvider.Up(ctx, files.Compose, files.Env); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "Repair applied: existing runtime definition converged without changing configuration.")

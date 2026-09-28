@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 var (
@@ -117,6 +118,8 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	}
 	ctx = withTargetOverride(ctx, target)
 	ctx = cli.WithOutputOptions(ctx, opts)
+	ctx = operatorauth.WithEnforcement(ctx)
+	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 

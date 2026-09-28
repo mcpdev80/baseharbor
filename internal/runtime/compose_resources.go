@@ -14,7 +14,7 @@ func (c Compose) ProjectServiceLogDriver(ctx context.Context, project, service s
 	if project == "" || service == "" {
 		return "", errors.New("project and service are required")
 	}
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -47,28 +47,18 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, composeFil
 	var moduleServices map[string]struct{}
 	if consolidatedProject(project) && strings.TrimSpace(composeFile) != "" {
 		moduleServices = map[string]struct{}{}
-		if c.quadlet {
-			q, err := quadletRenderProject(composeFile, envFile, project)
-			if err != nil {
-				return nil, err
-			}
-			for service := range q.ServiceUnits {
+		out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if service := strings.TrimSpace(line); service != "" {
 				moduleServices[service] = struct{}{}
-			}
-		} else {
-			out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
-			if err != nil {
-				return nil, err
-			}
-			for _, line := range strings.Split(out, "\n") {
-				if service := strings.TrimSpace(line); service != "" {
-					moduleServices[service] = struct{}{}
-				}
 			}
 		}
 	}
 
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -163,25 +153,13 @@ func (c Compose) InspectProjectResources(ctx context.Context, project string, re
 		}
 
 		existingNames := map[string]struct{}{}
-		if c.quadlet {
-			for name := range wanted {
-				exists, err := quadletRuntimeResourceExists(ctx, kind, name)
-				if err != nil {
-					return nil, err
-				}
-				if exists {
-					existingNames[name] = struct{}{}
-				}
-			}
-		} else {
-			listed, err := c.directOutput(ctx, listArgs...)
-			if err != nil {
-				return nil, err
-			}
-			for _, line := range strings.Split(listed, "\n") {
-				if name := strings.TrimSpace(line); name != "" {
-					existingNames[name] = struct{}{}
-				}
+		listed, err := c.directOutput(ctx, listArgs...)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(listed, "\n") {
+			if name := strings.TrimSpace(line); name != "" {
+				existingNames[name] = struct{}{}
 			}
 		}
 
@@ -288,7 +266,7 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 	return nil
 }
 
-func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer, error) {
+func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer, error) {
 	out, err := c.directOutput(ctx, "container", "ls", "-aq")
 	if err != nil {
 		return nil, err
@@ -314,7 +292,7 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 		return nil, err
 	}
 
-	var result []ComposeContainer
+	var result []RuntimeContainer
 	for _, line := range strings.Split(inspected, "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "|")
 		if len(parts) != 7 {
@@ -326,7 +304,7 @@ func (c Compose) ListComposeContainers(ctx context.Context) ([]ComposeContainer,
 		if name == "" || project == "" || service == "" {
 			continue
 		}
-		result = append(result, ComposeContainer{
+		result = append(result, RuntimeContainer{
 			Name:    name,
 			Project: project,
 			Service: service,
@@ -343,7 +321,7 @@ func (c Compose) ProjectServiceImageIdentity(ctx context.Context, project, servi
 	if project == "" || service == "" {
 		return ImageIdentity{}, errors.New("project and service are required for image identity")
 	}
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return ImageIdentity{}, err
 	}
@@ -398,15 +376,12 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 	if c.command == "" {
 		return "", "", ErrRuntimeNotFound
 	}
-	if c.quadlet {
-		return "", "", nil
-	}
 	project = strings.TrimSpace(project)
 	service = strings.TrimSpace(service)
 	if project == "" || service == "" {
 		return "", "", errors.New("project and service are required")
 	}
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return "", "", err
 	}

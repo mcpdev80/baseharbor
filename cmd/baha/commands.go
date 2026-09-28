@@ -137,6 +137,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 		targetCommand(),
+		devCommand(),
 		configCommand(),
 		shellInitCommand(),
 		promptCommand(),
@@ -150,6 +151,9 @@ func rootCommand() *cli.Command {
 		connectionsCommand(),
 		openBaoCommand(),
 		trustCommand(),
+		operatorLoginCommand(),
+		operatorLogoutCommand(),
+		operatorWhoAmICommand(),
 		updateCommand(),
 		{
 			Name:    "version",

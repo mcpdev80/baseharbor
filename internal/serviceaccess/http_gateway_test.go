@@ -1,16 +1,35 @@
 package serviceaccess
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCaddyfileRequiresClientCertificateWhenRequested(t *testing.T) {
-	got := caddyfile("http://prometheus:9090", 8443, AuthenticationMTLS)
+	got := caddyfile("http://prometheus:9090", 8443, AuthenticationMTLS, "", "")
 	for _, want := range []string{"auto_https disable_redirects", "tls /certs/server.pem /certs/server-key.pem", "mode require_and_verify", "reverse_proxy http://prometheus:9090"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway config missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestHTTPClientDoesNotLoadOptionalClientIdentity(t *testing.T) {
+	dir := t.TempDir()
+	policy, err := Resolve("dev", "test-http-client", AuthenticationNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	material, err := EnsureTLSMaterial(context.Background(), newTestIssuer(t), policy, dir, "localhost", "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	material.ClientCertificate = filepath.Join(dir, "missing-client.pem")
+	material.ClientKey = filepath.Join(dir, "missing-client-key.pem")
+	if _, err := NewHTTPClient(material, false); err != nil {
+		t.Fatalf("optional client identity must be ignored when mTLS is not required: %v", err)
 	}
 }
 
@@ -38,7 +57,7 @@ func TestGatewayComposePublishesOnlyTLSPort(t *testing.T) {
 }
 
 func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
-	got := caddyfile("http://prometheus:9090", 8443, AuthenticationToken)
+	got := caddyfile("http://prometheus:9090", 8443, AuthenticationToken, "", "")
 	for _, want := range []string{
 		"Bearer {$BASEHARBOR_ACCESS_TOKEN}",
 		"respond @unauthorized 401",
@@ -50,6 +69,19 @@ func TestCaddyfileRequiresBearerTokenWhenSelected(t *testing.T) {
 	}
 	if strings.Contains(got, "client_auth") {
 		t.Fatalf("token gateway unexpectedly requires mTLS:\n%s", got)
+	}
+}
+
+func TestCaddyfileSupportsHashedBasicAuth(t *testing.T) {
+	got := caddyfile("http://prometheus:9090", 8443, AuthenticationNative, "developer", "$2a$10$example")
+	for _, want := range []string{
+		"basic_auth",
+		"developer $2a$10$example",
+		"reverse_proxy http://prometheus:9090",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("basic auth gateway config missing %q:\n%s", want, got)
+		}
 	}
 }
 

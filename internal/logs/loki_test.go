@@ -15,7 +15,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/providerconformance"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -283,7 +285,7 @@ func TestLokiConfigBindsIPv4ForLoopbackPublishing(t *testing.T) {
 func TestPodmanJournalConfigAcceptsComposeAndQuadletWorkloadNames(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	m := application.New("demo", "dev", false, false, false)
-	files, err := logs.EnsureProviderFilesForRuntime(context.Background(), serviceissuer.New(t), m, "podman")
+	files, err := logs.EnsureProviderFilesForMode(context.Background(), serviceissuer.New(t), m, bhruntime.LogCollectionJournald)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,5 +320,62 @@ func TestUnregisterApplicationWithoutRegistrationDoesNotRequireIssuer(t *testing
 	}
 	if runtime.server != nil {
 		t.Fatal("absent registration unexpectedly mutated Loki runtime")
+	}
+}
+
+func TestProviderLogSourceVerificationRejectsInvalidSemanticIdentity(t *testing.T) {
+	m := application.New("demo", "dev", false, false, false)
+	base := observability.SignalSource{
+		ID:               "postgresql:demo:postgres",
+		Kind:             observability.SignalLogs,
+		Provider:         capability.ProviderPostgreSQL,
+		Class:            observability.SourceApplicationProvider,
+		Scope:            capability.ScopeApplication,
+		OwnerApplication: "demo",
+		Target:           observability.RuntimeTarget("bh-local-demo-dev", "postgres"),
+		Protocol:         "stdout-stderr",
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*observability.SignalSource)
+	}{
+		{
+			name: "wrong owner",
+			mutate: func(source *observability.SignalSource) {
+				source.OwnerApplication = "other"
+			},
+		},
+		{
+			name: "missing provider",
+			mutate: func(source *observability.SignalSource) {
+				source.Provider = ""
+			},
+		},
+		{
+			name: "wrong signal kind",
+			mutate: func(source *observability.SignalSource) {
+				source.Kind = observability.SignalMetrics
+				source.Network = "provider"
+				source.Path = "/metrics"
+				source.Protocol = "openmetrics"
+			},
+		},
+		{
+			name: "invalid service identity",
+			mutate: func(source *observability.SignalSource) {
+				source.Target = "runtime://bh-local-demo-dev/"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := base
+			tt.mutate(&source)
+			if err := logs.VerifyProviderSourcesAt(context.Background(), m, []observability.SignalSource{source}, t.TempDir(), "local"); err == nil {
+				t.Fatal("invalid normalized log source unexpectedly accepted")
+			}
+		})
 	}
 }

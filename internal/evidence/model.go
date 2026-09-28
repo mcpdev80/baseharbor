@@ -25,8 +25,12 @@ const (
 )
 
 type Actor struct {
-	Interface string `json:"interface"`
-	Identity  string `json:"identity,omitempty"`
+	Interface string   `json:"interface"`
+	Identity  string   `json:"identity,omitempty"`
+	Issuer    string   `json:"issuer,omitempty"`
+	Subject   string   `json:"subject,omitempty"`
+	Assurance string   `json:"assurance,omitempty"`
+	Methods   []string `json:"authentication_methods,omitempty"`
 }
 
 type Record struct {
@@ -60,24 +64,26 @@ type Recovery struct {
 }
 
 type AuditEvent struct {
-	SchemaVersion      string    `json:"schema_version"`
-	ID                 string    `json:"id"`
-	Timestamp          time.Time `json:"timestamp"`
-	Actor              Actor     `json:"actor"`
-	Target             string    `json:"target"`
-	Application        string    `json:"application"`
-	Environment        string    `json:"environment"`
-	Operation          string    `json:"operation"`
-	Capability         string    `json:"capability,omitempty"`
-	Resource           string    `json:"resource,omitempty"`
-	Provider           string    `json:"provider,omitempty"`
-	Placement          string    `json:"placement,omitempty"`
-	Ownership          string    `json:"ownership,omitempty"`
-	PolicyResult       string    `json:"policy_result,omitempty"`
-	LifecycleResult    string    `json:"lifecycle_result,omitempty"`
-	VerificationResult string    `json:"verification_result,omitempty"`
-	Outcome            string    `json:"outcome"`
-	Detail             string    `json:"detail,omitempty"`
+	SchemaVersion       string    `json:"schema_version"`
+	ID                  string    `json:"id"`
+	Timestamp           time.Time `json:"timestamp"`
+	Actor               Actor     `json:"actor"`
+	Target              string    `json:"target"`
+	Application         string    `json:"application"`
+	Environment         string    `json:"environment"`
+	Operation           string    `json:"operation"`
+	Capability          string    `json:"capability,omitempty"`
+	Resource            string    `json:"resource,omitempty"`
+	Provider            string    `json:"provider,omitempty"`
+	Placement           string    `json:"placement,omitempty"`
+	Ownership           string    `json:"ownership,omitempty"`
+	PolicyResult        string    `json:"policy_result,omitempty"`
+	AuthorizationResult string    `json:"authorization_result,omitempty"`
+	CorrelationID       string    `json:"correlation_id,omitempty"`
+	LifecycleResult     string    `json:"lifecycle_result,omitempty"`
+	VerificationResult  string    `json:"verification_result,omitempty"`
+	Outcome             string    `json:"outcome"`
+	Detail              string    `json:"detail,omitempty"`
 }
 
 type Integrity struct {
@@ -129,8 +135,18 @@ func NewAuditEvent(ctx context.Context, target, application, environment, operat
 		Operation:     strings.TrimSpace(operation),
 		Outcome:       strings.TrimSpace(outcome),
 	}
+	event.CorrelationID = auditCorrelationID(event)
 	event.ID = auditEventID(event)
 	return event
+}
+
+func auditCorrelationID(event AuditEvent) string {
+	copy := event
+	copy.ID = ""
+	copy.CorrelationID = ""
+	data, _ := json.Marshal(copy)
+	sum := sha256.Sum256(append([]byte("correlation:"), data...))
+	return hex.EncodeToString(sum[:12])
 }
 
 func (e AuditEvent) Validate() error {

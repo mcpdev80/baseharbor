@@ -134,8 +134,13 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	if err := m.Validate(); err != nil {
 		return err
 	}
+	devSetup, err := collectGuidedDevAccess(ctx, reader, out, m)
+	if err != nil {
+		return err
+	}
 
 	printAdoptionSummary(out, m, d, selection.secretPolicies)
+	printGuidedDevAccessSummary(out, devSetup)
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
 		fmt.Fprintln(out, "----------------------------------------")
@@ -148,7 +153,11 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	}
 	if !confirm {
 		fmt.Fprintln(out, "No changes were made.")
+		zeroBytes(devSetup.password)
 		return nil
+	}
+	if err := applyGuidedDevAccess(devSetup); err != nil {
+		return fmt.Errorf("configure local development access: %w", err)
 	}
 	return writeRepositoryManifest(m, out)
 }
@@ -171,7 +180,7 @@ func detectedApplicationManifest(name, environment string, sql, cache, objectSto
 }
 
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
-	if quick && len(d.ComposeCandidates) > 1 {
+	if quick && len(d.ComposeCandidates) > 1 && strings.TrimSpace(d.Compose) == "" {
 		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
 	}
 	if quick && len(d.AmbiguousServices) > 0 {

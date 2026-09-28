@@ -1,6 +1,6 @@
 # Managed Service Access Inventory
 
-Status: normative inventory for the current v0.4.15 Compose reference runtime.
+Status: normative inventory for the current v0.4.17 Compose reference runtime.
 
 This inventory records the actual managed network-service boundary behind issue #397. It describes deployment/runtime behavior only. None of these provider products or concrete security mechanisms become portable application intent.
 
@@ -8,9 +8,9 @@ This inventory records the actual managed network-service boundary behind issue 
 
 | Environment | TLS | Human/developer access | Workload/service auth |
 | --- | --- | --- | --- |
-| dev | mandatory | local/loopback access is zero-ceremony; no developer-held mTLS certificate or copied token is required | native credentials or automatically projected service bindings; mTLS remains available where the runtime already uses it |
-| test | mandatory | fully automatable | protected generated credentials, mTLS or another configured service-access mechanism |
-| prod | mandatory | no anonymous management/observability access | authentication is mandatory; native auth, mTLS, scoped token or a configured external adapter may satisfy policy |
+| dev | mandatory | trusted-local operator mode; local/loopback access is zero-ceremony and no `baha login` is required | native credentials or automatically projected service bindings; mTLS remains available where the runtime already uses it |
+| test | mandatory | BaseHarbor application operations require an authenticated Target/Environment OIDC operator; management UIs remain restricted/non-public by default | protected generated credentials, mTLS or another configured service-access mechanism |
+| prod | mandatory | BaseHarbor application operations require an authenticated Target/Environment OIDC operator; no anonymous management/observability access | authentication is mandatory; native auth, mTLS, scoped token or a configured external adapter may satisfy policy |
 
 For shared HTTP providers, the service-access state never silently downgrades from an authentication-required environment back to anonymous access when a later reconciliation only sees development consumers.
 
@@ -23,8 +23,11 @@ Loopback and internal networks are defense in depth. They are not treated as aut
 | Control-plane PostgreSQL | host loopback plus control-plane network | native PostgreSQL TLS | native PostgreSQL credentials; control-plane `pg_hba.conf` requires TLS and SCRAM-SHA-256 | generated BaseHarbor protected state; certificate lifecycle through the selected service-access issuer | PostgreSQL native TLS/auth |
 | Application PostgreSQL | host loopback plus application backend network | native PostgreSQL TLS | generated per-application database credentials | generated BaseHarbor application runtime state; CA projected through secure file binding | PostgreSQL native TLS/auth |
 | Valkey / Redis-compatible cache | application backend network; host access through loopback TLS gateway | TLS gateway in front of the native Valkey service | generated per-application `requirepass` credential | generated BaseHarbor application runtime state; CA projected through secure file binding | Valkey native password + shared TCP TLS gateway |
-| OpenBao | control-plane network; host loopback through HTTPS gateway | HTTPS/TLS gateway | OpenBao native authentication; manager operations use least-privilege AppRole policy | OpenBao owns managed-local issuer state and CA private key; manager credentials are protected state | OpenBao native auth behind shared HTTPS access layer |
-| SeaweedFS S3 | provider network; host loopback through HTTPS gateway | HTTPS/TLS gateway | native S3 access key/secret; bucket/user actions scoped by generated SeaweedFS S3 user policy | provider-admin credentials remain inside provider/executor boundary; application credentials are scoped protected bindings | SeaweedFS native S3 auth behind shared HTTPS access layer |
+| OpenBao | control-plane network; host loopback through HTTPS gateway; optional web UI uses the same restricted surface | HTTPS/TLS gateway | OpenBao native authentication; manager operations use least-privilege AppRole policy; web UI does not receive application credentials automatically | OpenBao owns managed-local issuer state and CA private key; manager credentials are protected state | OpenBao native auth behind shared HTTPS access layer |
+| SeaweedFS S3 | provider network; host loopback through HTTPS gateway; optional shared Admin UI on a separate loopback HTTPS surface | HTTPS/TLS gateway | native S3 access key/secret for applications; SeaweedFS-native authentication for the Admin UI | provider-admin credentials remain inside provider state; application credentials are scoped protected bindings | SeaweedFS native S3 auth plus separate shared admin surface |
+| Managed Keycloak identity | provider-internal network; browser-facing OIDC/login surface plus separate loopback admin surface | HTTPS/TLS gateways | standard OIDC/OAuth2 for applications/users; Keycloak-native admin authentication remains provider administration | application client secret is protected application binding state; provider-admin credentials remain provider state | OIDC discovery/JWKS/client verification plus isolated admin surface |
+| pgAdmin companion | application runtime; host loopback only | native HTTPS | pgAdmin-native login; managed PostgreSQL connections are preconfigured through protected runtime state | UI login and database credentials remain BaseHarbor application runtime state and are not application intent | app-scoped optional management UI |
+| Redis Commander companion | application runtime; host loopback through HTTPS proxy | HTTPS/TLS gateway + HTTP Basic | generated UI Basic Auth plus application-scoped cache credential behind the UI | UI and cache credentials remain BaseHarbor application runtime state | app-scoped optional management UI |
 | Prometheus | provider/internal networks; developer endpoint on host loopback | HTTPS/TLS gateway | dev resolves to zero-ceremony local TLS access; test/prod require selected service-access auth, currently mTLS by default unless another configured adapter is selected | certificate lifecycle through selected issuer; client material is protected/generated state | shared HTTP service-access gateway |
 | Loki | internal/provider networks; developer endpoint on host loopback | HTTPS/TLS gateway | same environment-aware service-access policy as Prometheus; application ingestion remains registration/scoping controlled | certificate lifecycle through selected issuer; collector/provider state remains BaseHarbor-owned | shared HTTP service-access gateway plus Loki/Alloy registration boundary |
 | Tempo | trace provider network; developer endpoint on host loopback | HTTPS/TLS gateway | environment-aware service-access auth; mTLS is the current managed default where authentication is required | certificate lifecycle through selected issuer | shared HTTP service-access gateway |
@@ -32,7 +35,7 @@ Loopback and internal networks are defense in depth. They are not treated as aut
 | Application Runtime Broker | application backend/control networks; docs listener loopback only | native HTTPS | application-scoped mTLS identity plus protected runtime bearer/service tokens | leaf identities issued through managed issuer; app token and permissions are application-scoped protected state | runtime broker |
 | Runtime Provider Executor | internal `baseharbor-runtime-control` network only; no host-published API port | native HTTPS | requires and verifies client certificate | executor leaf identity through managed issuer; provider-admin credentials stay inside executor boundary | runtime executor |
 | Managed HTTP exposure | provider/application exposure network and configured listener | HTTPS/TLS according to deployment TLS state | application-facing auth remains application/provider responsibility unless a later identity/auth capability is selected | current public ingress certificate lifecycle remains separate deployment TLS state | exposure provider |
-| Grafana | not currently instantiated by the v0.4.15 reference runtime | n/a | n/a | n/a | n/a |
+| Grafana | not currently instantiated by the v0.4.17 reference runtime | n/a | n/a | n/a | n/a |
 
 ## PKI / trust source models
 

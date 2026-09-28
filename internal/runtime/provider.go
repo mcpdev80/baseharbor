@@ -1,145 +1,42 @@
 package runtime
 
-import (
-	"context"
-	"fmt"
-	"strings"
-)
+import runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 
-// ProviderKind identifies the runtime implementation selected for application
-// workloads. It is deployment configuration, not part of the portable
-// application contract.
-type ProviderKind string
+type ProviderKind = runtimecontract.ProviderKind
 
 const (
-	// ProviderCompose is retained only as the legacy auto-detect compatibility
-	// value. New target-owned runtime selections use concrete provider identities.
-	ProviderCompose    ProviderKind = "compose"
-	ProviderDocker     ProviderKind = "docker"
-	ProviderPodman     ProviderKind = "podman"
-	ProviderKubernetes ProviderKind = "kubernetes"
-	ProviderOpenShift  ProviderKind = "openshift"
+	ProviderDocker     = runtimecontract.ProviderDocker
+	ProviderPodman     = runtimecontract.ProviderPodman
+	ProviderKubernetes = runtimecontract.ProviderKubernetes
+	ProviderOpenShift  = runtimecontract.ProviderOpenShift
 )
 
-// RuntimeCapability names portable runtime behavior that orchestration may
-// require from a provider. These capabilities describe the runtime substrate,
-// not application capabilities such as PostgreSQL or object storage.
-type RuntimeCapability string
+type RuntimeCapability = runtimecontract.RuntimeCapability
+
+const RuntimeProviderContractVersion = runtimecontract.RuntimeProviderContractVersion
 
 const (
-	CapabilityWorkloadLifecycle RuntimeCapability = "workload-lifecycle"
-	CapabilityServiceExec       RuntimeCapability = "service-exec"
-	CapabilityPublishedPorts    RuntimeCapability = "published-ports"
-	CapabilityResourceOwnership RuntimeCapability = "resource-ownership"
+	CapabilityWorkloadLifecycle = runtimecontract.CapabilityWorkloadLifecycle
+	CapabilityServiceExec       = runtimecontract.CapabilityServiceExec
+	CapabilityPublishedPorts    = runtimecontract.CapabilityPublishedPorts
+	CapabilityResourceOwnership = runtimecontract.CapabilityResourceOwnership
 )
 
-// ProviderCapabilities describes runtime behavior that orchestration may rely
-// on. Capability providers such as PostgreSQL, Valkey or object storage are a
-// separate axis and must not be encoded here.
-type ProviderCapabilities struct {
-	WorkloadLifecycle bool
-	ServiceExec       bool
-	PublishedPorts    bool
-	ResourceOwnership bool
-}
-
-func (c ProviderCapabilities) Supports(capability RuntimeCapability) bool {
-	switch capability {
-	case CapabilityWorkloadLifecycle:
-		return c.WorkloadLifecycle
-	case CapabilityServiceExec:
-		return c.ServiceExec
-	case CapabilityPublishedPorts:
-		return c.PublishedPorts
-	case CapabilityResourceOwnership:
-		return c.ResourceOwnership
-	default:
-		return false
-	}
-}
-
-// Provider is the minimal runtime-provider seam. It deliberately exposes only
-// provider identity and runtime capabilities at this stage; provider-specific
-// lifecycle inputs stay behind the concrete implementation until a portable
-// operation has a demonstrated second implementation.
-type Provider interface {
-	Kind() ProviderKind
-	Capabilities() ProviderCapabilities
-}
+type ProviderCapabilities = runtimecontract.ProviderCapabilities
+type ProviderDescriptor = runtimecontract.ProviderDescriptor
+type Provider = runtimecontract.Provider
+type ProviderFactory = runtimecontract.ProviderFactory
+type ProviderRegistration = runtimecontract.ProviderRegistration
+type ProviderRegistry = runtimecontract.ProviderRegistry
 
 func ParseProviderKind(value string) (ProviderKind, error) {
-	kind := ProviderKind(strings.TrimSpace(strings.ToLower(value)))
-	if kind == "" {
-		kind = ProviderCompose
-	}
-	switch kind {
-	case ProviderCompose, ProviderDocker, ProviderPodman, ProviderKubernetes, ProviderOpenShift:
-		return kind, nil
-	default:
-		return "", fmt.Errorf("unsupported runtime provider %q", value)
-	}
+	return runtimecontract.ParseProviderKind(value)
 }
 
-// RequireCapabilities validates runtime requirements before orchestration
-// starts. Providers must satisfy every requested capability; BaseHarbor never
-// silently downgrades runtime behavior because a provider lacks a feature.
+func NewProviderRegistry(registrations ...ProviderRegistration) (*ProviderRegistry, error) {
+	return runtimecontract.NewProviderRegistry(registrations...)
+}
+
 func RequireCapabilities(provider Provider, required ...RuntimeCapability) error {
-	if provider == nil {
-		return fmt.Errorf("runtime provider is required")
-	}
-	caps := provider.Capabilities()
-	for _, capability := range required {
-		if capability == "" {
-			return fmt.Errorf("runtime provider %s: empty capability requirement", provider.Kind())
-		}
-		if !caps.Supports(capability) {
-			return fmt.Errorf("runtime provider %s does not support required capability %q", provider.Kind(), capability)
-		}
-	}
-	return nil
-}
-
-func (c Compose) Kind() ProviderKind {
-	if c.provider != "" {
-		return c.provider
-	}
-	return ProviderCompose
-}
-
-func (Compose) Capabilities() ProviderCapabilities {
-	return ProviderCapabilities{
-		WorkloadLifecycle: true,
-		ServiceExec:       true,
-		PublishedPorts:    true,
-		ResourceOwnership: true,
-	}
-}
-
-// DetectProviderForKind resolves the explicitly selected deployment runtime.
-// Provider selection belongs to deployment/environment state and must never be
-// inferred from the portable application contract.
-func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, error) {
-	normalized, err := ParseProviderKind(string(kind))
-	if err != nil {
-		return nil, err
-	}
-	switch normalized {
-	case ProviderCompose:
-		return detectCompose(ctx)
-	case ProviderDocker:
-		return detectDockerCompose(ctx)
-	case ProviderPodman:
-		return detectPodmanCompose(ctx)
-	case ProviderKubernetes, ProviderOpenShift:
-		return nil, fmt.Errorf("runtime provider %q is not executable in v0.4.15", normalized)
-	default:
-		return nil, fmt.Errorf("runtime provider %q is not implemented", normalized)
-	}
-}
-
-// DetectProvider preserves the v0.3/v0.4 Compose-default compatibility path.
-// Deployment-aware callers should use DetectProviderForKind with the explicit
-// provider stored in protected deployment state.
-func DetectProvider(ctx context.Context) (Provider, error) {
-	return DetectProviderForKind(ctx, ProviderCompose)
+	return runtimecontract.RequireCapabilities(provider, required...)
 }

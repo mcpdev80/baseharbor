@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"io"
 	"strings"
 )
@@ -132,6 +133,36 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 		if m.Services.ObjectStorage {
 			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
+		}
+	}
+
+	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+		fmt.Fprintln(out, "\nDeveloper management access")
+		fmt.Fprintln(out, "  Scope         target / dev")
+		fmt.Fprintln(out, "  Username      developer (default)")
+		fmt.Fprintln(out, "  Credentials   managed by BaseHarbor")
+		fmt.Fprintln(out, "  Reveal        baha dev credentials")
+	}
+
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+		fmt.Fprintln(out, "\nManagement UIs")
+		if m.Services.SQLManagementUI {
+			fmt.Fprintln(out, "  PostgreSQL    pgAdmin")
+		}
+		if m.Services.CacheManagementUI {
+			fmt.Fprintln(out, "  Cache         Redis Commander")
+		}
+		if m.Services.ObjectStorageManagementUI {
+			fmt.Fprintln(out, "  Object Storage provider administration UI")
+		}
+		if m.Services.SecretsManagementUI {
+			fmt.Fprintln(out, "  Secrets       OpenBao UI")
+		}
+		if m.Services.IdentityManagementUI {
+			fmt.Fprintln(out, "  Identity      provider administration UI")
+		}
+		if m.Services.ObservabilityManagementUI {
+			fmt.Fprintln(out, "  Observability Prometheus UI")
 		}
 	}
 

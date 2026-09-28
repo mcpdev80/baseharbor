@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -24,7 +26,7 @@ type applicationDoctorCollector struct {
 	runtimeErr        error
 	serviceTLS        []application.BackendTLSLifecycleObservation
 	serviceTLSErr     error
-	compose           bhruntime.Compose
+	compose           bhruntime.RuntimeProvider
 	running           []string
 	platformFiles     bhruntime.Files
 	requiredStatuses  []openbao.RequiredSecretStatus
@@ -52,6 +54,7 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		State:           "ready",
 		Healthy:         true,
 		Checks:          []preflight.Result{},
+		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, m.Environment),
 		manifest:        m,
 	}
 
@@ -71,6 +74,14 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 	}
 	if runtimeErr == nil {
 		collector.serviceTLS, collector.serviceTLSErr = application.InspectBackendTLSLifecycle(files, m)
+		if collector.serviceTLSErr == nil && application.HasSharedBackends(m) {
+			sharedTLS, err := application.InspectSharedBackendTLSLifecycleAt(resolved.TargetStateRoot, resolved.Target.Name, m)
+			if err != nil {
+				collector.serviceTLSErr = err
+			} else {
+				collector.serviceTLS = append(collector.serviceTLS, sharedTLS...)
+			}
+		}
 	}
 	return collector, false, nil
 }
@@ -89,6 +100,12 @@ func (c *applicationDoctorCollector) runChecks(ctx context.Context) {
 func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 	m := c.manifest
 	return []preflight.Check{
+		{Name: "operator authentication", Run: func(context.Context) error {
+			if c.result.OperatorAuth.Status == "DEGRADED" || c.result.OperatorAuth.Status == "NOT_CONFIGURED" {
+				return fmt.Errorf("%s", c.result.OperatorAuth.Detail)
+			}
+			return nil
+		}},
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
@@ -114,6 +131,27 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			}
 			return nil
 		}},
+		{Name: "managed identity", Run: func(ctx context.Context) error {
+			if !application.HasIdentity(m) {
+				return nil
+			}
+			if c.runtimeErr != nil {
+				return c.runtimeErr
+			}
+			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, nil)
+		}},
+		{Name: "canonical development URLs", Run: func(ctx context.Context) error {
+			if !requiresDevelopmentGateway(m) {
+				return nil
+			}
+			hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, m)
+			if err != nil {
+				return err
+			}
+			verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			return devgateway.VerifyHosts(verifyCtx, c.resolved.Target.Name, hosts)
+		}},
 		{Name: "managed runtime definition", Run: func(context.Context) error {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
@@ -122,7 +160,7 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 		}},
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			c.compose, err = detectComposeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			c.compose, err = detectRuntimeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
@@ -221,36 +259,104 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 		}})
 	}
 	if m.Services.SQL {
-		checks = append(checks,
-			preflight.Check{Name: "postgres running", Run: func(context.Context) error {
-				if !containsString(c.running, "postgres") {
-					return errors.New("no postgres instance is running")
+		if application.UsesSharedPostgreSQL(m) {
+			checks = append(checks, preflight.Check{Name: "postgres shared isolation", Run: func(ctx context.Context) error {
+				return application.VerifySharedPostgreSQL(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
+			}})
+			if resources, err := application.SharedPostgresResourcesAt(c.resolved.TargetStateRoot, c.resolved.Target.Name, m); err == nil {
+				for _, resource := range resources {
+					resource := resource
+					checks = append(checks, preflight.Check{
+						Name: "postgres/" + resource.Instance + " ownership",
+						Run: func(context.Context) error {
+							if resource.ProviderScope != "shared" || resource.CredentialScope != "application" || resource.Owner != m.Name+"/"+m.Environment {
+								return fmt.Errorf(
+									"unexpected shared PostgreSQL ownership: scope=%s owner=%s credential_scope=%s",
+									resource.ProviderScope, resource.Owner, resource.CredentialScope,
+								)
+							}
+							return nil
+						},
+					})
 				}
-				return nil
-			}},
-			preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
-				if !containsString(c.running, "postgres") {
-					return errors.New("no postgres instance is running")
-				}
-				return application.VerifyPostgresRuntime(ctx, c.compose, m, c.files)
-			}},
-		)
+			} else {
+				checks = append(checks, preflight.Check{Name: "postgres shared resource ownership", Run: func(context.Context) error { return err }})
+			}
+		} else {
+			checks = append(checks,
+				preflight.Check{Name: "postgres running", Run: func(context.Context) error {
+					if !containsString(c.running, "postgres") {
+						return errors.New("no postgres instance is running")
+					}
+					return nil
+				}},
+				preflight.Check{Name: "postgres readiness", Run: func(ctx context.Context) error {
+					if !containsString(c.running, "postgres") {
+						return errors.New("no postgres instance is running")
+					}
+					return application.VerifyPostgresRuntime(ctx, c.compose, m, c.files)
+				}},
+			)
+		}
 	}
 	if m.Services.Cache {
-		checks = append(checks,
-			preflight.Check{Name: "valkey running", Run: func(context.Context) error {
-				if !containsString(c.running, "valkey") {
-					return errors.New("no valkey instance is running")
+		if application.UsesSharedValkey(m) {
+			checks = append(checks, preflight.Check{Name: "valkey shared isolation", Run: func(ctx context.Context) error {
+				return application.VerifySharedValkey(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
+			}})
+		} else {
+			checks = append(checks,
+				preflight.Check{Name: "valkey running", Run: func(context.Context) error {
+					if !containsString(c.running, "valkey") {
+						return errors.New("no valkey instance is running")
+					}
+					return nil
+				}},
+				preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
+					if !containsString(c.running, "valkey") {
+						return errors.New("no valkey instance is running")
+					}
+					return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
+				}},
+			)
+		}
+	}
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.ObservabilityManagementUI {
+		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
+			if c.runtimeErr != nil {
+				return c.runtimeErr
+			}
+			if m.Services.SQLManagementUI || m.Services.CacheManagementUI {
+				if err := application.VerifyApplicationManagementUIs(ctx, m, c.files); err != nil {
+					return err
 				}
-				return nil
-			}},
-			preflight.Check{Name: "valkey readiness", Run: func(ctx context.Context) error {
-				if !containsString(c.running, "valkey") {
-					return errors.New("no valkey instance is running")
+				for _, result := range application.VerifySharedManagementUIChecks(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, m) {
+					if result.Err != nil {
+						return result.Err
+					}
 				}
-				return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
-			}},
-		)
+			}
+			if m.Services.ObjectStorageManagementUI {
+				if err := objectstorage.VerifyManagementUIAt(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name); err != nil {
+					return err
+				}
+			}
+			if m.Services.SecretsManagementUI {
+				platformFiles, err := existingTargetRuntimeFiles(ctx)
+				if err != nil {
+					return err
+				}
+				if err := verifyOpenBaoManagementUI(ctx, platformFiles); err != nil {
+					return err
+				}
+			}
+			if m.Services.ObservabilityManagementUI {
+				if err := metricsprovider.VerifyManagementUIAt(ctx, c.resolved.TargetStateRoot, c.resolved.Target.Name, m); err != nil {
+					return err
+				}
+			}
+			return nil
+		}})
 	}
 	return checks
 }

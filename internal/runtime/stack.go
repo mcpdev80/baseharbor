@@ -169,12 +169,22 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	return nil
 }
 
+func ControlPlaneNetworkName(resourceProject string) string {
+	resourceProject = strings.TrimSpace(resourceProject)
+	if resourceProject == "" {
+		resourceProject = "baseharbor"
+	}
+	return resourceProject + "-default"
+}
+
 func renderComposeForProject(project string) string {
 	project = strings.TrimSpace(project)
 	if project == "" {
 		project = "baseharbor"
 	}
-	return strings.ReplaceAll(string(composeYAML), "name: baseharbor-secrets", "name: "+project+"-secrets")
+	rendered := strings.ReplaceAll(string(composeYAML), "name: baseharbor-secrets", "name: "+project+"-secrets")
+	rendered = strings.ReplaceAll(rendered, "  default: {}\n", "  default:\n    name: "+ControlPlaneNetworkName(project)+"\n")
+	return rendered
 }
 
 func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial) error {

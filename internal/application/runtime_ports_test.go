@@ -9,6 +9,7 @@ import (
 )
 
 func TestReallocateRuntimePortsPreservesCredentials(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("port-retry", "dev", true, true, false)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)

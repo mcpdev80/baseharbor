@@ -93,7 +93,7 @@ func TestInspectWorkloadExposuresDeduplicatesIPv4IPv6Publishers(t *testing.T) {
 			{URL: "::", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
 		},
 	}}
-	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "")
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "", nil)
 	if len(exposures) != 1 {
 		t.Fatalf("expected one deduplicated exposure, got %#v", exposures)
 	}
@@ -117,7 +117,7 @@ func TestInspectWorkloadExposuresUsesConfiguredHostnameForLoopbackProbe(t *testi
 			{URL: "0.0.0.0", TargetPort: 80, PublishedPort: port, Protocol: "tcp"},
 		},
 	}}
-	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "mail.example.test")
+	exposures := inspectWorkloadExposures(context.Background(), []string{"edge"}, states, "mail.example.test", nil)
 	if len(exposures) != 1 {
 		t.Fatalf("expected one exposure, got %#v", exposures)
 	}
@@ -205,5 +205,30 @@ func TestFormatWorkloadServiceStatus(t *testing.T) {
 	}
 	if got := formatWorkloadServiceStatus(workloadServiceStatus{State: "not running"}); got != "not running" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWorkloadExposureSchemeForServiceHonorsExplicitHTTPSOnPort8080(t *testing.T) {
+	scheme, ok := workloadExposureSchemeForService("demo-app", map[string]string{"demo-app": "https"}, 8080, 8080)
+	if !ok || scheme != "https" {
+		t.Fatalf("scheme=%q ok=%v, want https,true", scheme, ok)
+	}
+}
+
+func TestWorkloadExposureSchemeForServiceFallsBackWhenUndeclared(t *testing.T) {
+	got, ok := workloadExposureSchemeForService("api", nil, 8080, 8080)
+	want, wantOK := workloadExposureScheme(8080, 8080)
+	if got != want || ok != wantOK {
+		t.Fatalf("scheme=%q ok=%v, want %q,%v", got, ok, want, wantOK)
+	}
+}
+
+func TestTerminalWorkloadServiceError(t *testing.T) {
+	if err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "api", State: "running", Ready: false}}); err != nil {
+		t.Fatalf("running service must remain retryable: %v", err)
+	}
+	err := terminalWorkloadServiceError([]workloadServiceStatus{{Service: "demo-app", State: "exited", Health: "unhealthy"}})
+	if err == nil || !strings.Contains(err.Error(), "demo-app exited health=unhealthy") {
+		t.Fatalf("expected terminal service detail, got %v", err)
 	}
 }

@@ -13,6 +13,14 @@ import (
 	"strings"
 )
 
+func PublishNetworkName(project string) string {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		project = "baseharbor-metrics"
+	}
+	return project + "-prometheus-publish"
+}
+
 func ProviderEndpoint(files ProviderFiles) (string, error) {
 	data, err := os.ReadFile(files.Env)
 	if err != nil {
@@ -149,7 +157,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	// separate publish network so Docker/Podman can expose only its loopback
 	// HTTPS port without making the backend network host-reachable.
 	b.WriteString("  access:\n    internal: true\n")
-	b.WriteString("  publish: {}\n")
+	fmt.Fprintf(&b, "  publish:\n    name: %s\n", strconv.Quote(PublishNetworkName(placement.Project)))
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i, registration := range registrations {
 			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))

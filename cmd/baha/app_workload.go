@@ -50,7 +50,7 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	return nil
 }
 
-func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
+func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
 	if !resolved.FromRepository {
 		return application.WorkloadSecurityReport{}, nil
 	}
@@ -85,6 +85,37 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	return report, report.Error()
 }
 
+func preflightRepositoryWorkloadSecuritySource(resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
+	if !resolved.FromRepository {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	repositoryRoot := resolved.repositoryRoot()
+	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
+	if err != nil || !found {
+		return application.WorkloadSecurityReport{}, err
+	}
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, fmt.Errorf("read repository Compose for security preflight: %w", err)
+	}
+	report, err := application.AnalyzeComposeSecuritySource(resolved.Manifest, data)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	selectedSet := make(map[string]struct{}, len(selected))
+	for _, service := range selected {
+		selectedSet[service] = struct{}{}
+	}
+	filtered := report.Findings[:0]
+	for _, finding := range report.Findings {
+		if _, ok := selectedSet[finding.Service]; ok {
+			filtered = append(filtered, finding)
+		}
+	}
+	report.Findings = filtered
+	return report, report.Error()
+}
+
 func workloadSecurityPreflightEnvironment(m application.Manifest) map[string]string {
 	required := application.RequiredSecretNames(m)
 	if len(required) == 0 {
@@ -101,7 +132,7 @@ func workloadSecurityPreflightEnvironment(m application.Manifest) map[string]str
 	return environment
 }
 
-func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadSecurityReport, error) {
+func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadSecurityReport, error) {
 	if !resolved.FromRepository {
 		return application.WorkloadSecurityReport{}, nil
 	}
@@ -122,7 +153,7 @@ func preflightResolvedRepositoryWorkloadSecurity(ctx context.Context, compose bh
 
 func analyzeResolvedRepositoryWorkloadSecurity(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	workload application.WorkloadFiles,
 	environment map[string]string,
@@ -176,7 +207,7 @@ type renderedComposeConfig struct {
 	} `json:"services"`
 }
 
-func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, environment map[string]string) (application.WorkloadBindingPlan, error) {
+func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, workload application.WorkloadFiles, environment map[string]string) (application.WorkloadBindingPlan, error) {
 	// Binding discovery inspects the repository-owned Compose model only.
 	// BaseHarbor-generated overrides add platform bindings after discovery and
 	// must not change which bindings the application itself declared.
@@ -222,7 +253,7 @@ func repositoryWorkloadBindingPlan(ctx context.Context, compose bhruntime.Compos
 	return plan, nil
 }
 
-func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string) ([]string, error) {
+func repositoryWorkloadComposeFiles(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string) ([]string, error) {
 	composeFiles := []string{workload.Compose, workload.Override}
 	rewriteOverride, enabled, err := materializeManagedServiceReferenceRewrite(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
@@ -293,7 +324,7 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 	if len(resolved.Manifest.Secrets.Required) == 0 && len(resolved.Manifest.Secrets.Optional) == 0 {
 		return environment, nil
 	}
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +465,7 @@ func activeSelectedWorkloadServices(active, selected []string) []string {
 	return result
 }
 
-func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	execution, found, err := prepareRepositoryWorkloadExecution(ctx, out, compose, resolved, files)
 	if err != nil || !found {
 		return false, err
@@ -456,7 +487,7 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 	return true, nil
 }
 
-func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if errors.Is(err, os.ErrNotExist) && resolved.FromRepository {
 		return stopRepositoryWorkloadRecovery(ctx, compose, resolved, files)
@@ -501,7 +532,7 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, reso
 	return true, nil
 }
 
-func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
 	repositoryRoot := resolved.repositoryRoot()
 	services, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
 	if err != nil || !found {
@@ -543,7 +574,7 @@ func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.Compo
 	return true, nil
 }
 
-func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, []string, bool, error) {
+func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, []string, bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return workload, nil, found, err
@@ -563,7 +594,7 @@ func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.Compose, r
 	return workload, running, true, err
 }
 
-func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (int, bool, error) {
+func checkRepositoryWorkloadReady(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (int, bool, error) {
 	status, err := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
 	if err != nil || !status.Found {
 		return status.ReadyCount(), status.Found, err

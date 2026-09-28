@@ -9,6 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -44,15 +45,11 @@ storage_config:
 }
 
 func alloyConfig(registrations []Registration) string {
-	return alloyConfigForRuntime(registrations, "docker")
+	return alloyConfigForModeSources(registrations, nil, bhruntime.LogCollectionSyslog)
 }
 
-func alloyConfigForRuntime(registrations []Registration, runtimeKind string) string {
-	return alloyConfigForRuntimeSources(registrations, nil, runtimeKind)
-}
-
-func alloyConfigForRuntimeSources(registrations []Registration, providerSources []observability.SignalSource, runtimeKind string, platformSyslogPort ...int) string {
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+func alloyConfigForModeSources(registrations []Registration, providerSources []observability.SignalSource, mode bhruntime.LogCollectionMode, platformSyslogPort ...int) string {
+	if mode == bhruntime.LogCollectionJournald {
 		return alloyJournalConfig(registrations, providerSources)
 	}
 	port := 0
@@ -261,18 +258,13 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 }
 
 func providerComposeYAML(placement Placement, registrations []Registration) string {
-	return providerComposeYAMLForRuntime(placement, registrations, "docker")
-}
-
-func providerComposeYAMLForRuntime(placement Placement, registrations []Registration, runtimeKind string) string {
-	access := serviceaccess.HTTPGatewayFiles{
+	return providerComposeYAMLForModeAndAccess(placement, registrations, bhruntime.LogCollectionSyslog, serviceaccess.HTTPGatewayFiles{
 		Caddyfile: "./service-access/Caddyfile",
 		Material:  serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"},
-	}
-	return providerComposeYAMLForRuntimeAndAccess(placement, registrations, runtimeKind, access)
+	})
 }
 
-func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations []Registration, runtimeKind string, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
+func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Registration, mode bhruntime.LogCollectionMode, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
 	platformPort := 0
 	if len(platformSyslogPort) > 0 {
 		platformPort = platformSyslogPort[0]
@@ -306,7 +298,7 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	fmt.Fprintf(&b, "  %s:\n", alloyService)
 	fmt.Fprintf(&b, "    image: %s\n", AlloyImage)
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("    user: \"0:0\"\n")
 		b.WriteString("    command: [\"run\", \"--server.http.listen-addr=127.0.0.1:12345\", \"--storage.path=/tmp/alloy-data\", \"/etc/alloy/config.alloy\"]\n")
 	} else {
@@ -319,13 +311,13 @@ func providerComposeYAMLForRuntimeAndAccess(placement Placement, registrations [
 	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
 	} else {
 		b.WriteString("      - alloy-data:/var/lib/alloy/data\n")
 	}
-	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+	if mode == bhruntime.LogCollectionJournald {
 		// Journal collection does not need a host-published syslog listener.
 	} else if len(registrations) > 0 {
 		b.WriteString("    ports:\n")

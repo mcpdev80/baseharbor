@@ -3,6 +3,7 @@ package repositoryinspect
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -22,6 +23,7 @@ type composeService struct {
 	Ports                   []string
 	HealthCheck             bool
 	DatabaseBootstrap       bool
+	WorkloadProtocol        string
 }
 
 type composeDocument struct {
@@ -82,6 +84,13 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		if raw, ok := definition["healthcheck"]; ok && raw != nil {
 			item.HealthCheck = true
 		}
+		if raw, ok := definition["labels"]; ok {
+			protocol, err := composeBaseHarborWorkloadProtocol(raw)
+			if err != nil {
+				return nil, fmt.Errorf("Compose service %q: %w", name, err)
+			}
+			item.WorkloadProtocol = protocol
+		}
 		if raw, ok := definition["volumes"]; ok {
 			item.DatabaseBootstrap = composeUsesDatabaseInitDirectory(raw)
 		}
@@ -106,17 +115,59 @@ type ReclaimableComposeVolume struct {
 
 type renderedComposeVolumeModel struct {
 	Services map[string]struct {
-		Image   string `json:"image"`
-		Volumes []struct {
-			Type   string `json:"type"`
-			Source string `json:"source"`
-			Target string `json:"target"`
-		} `json:"volumes"`
+		Image   string                       `json:"image"`
+		Volumes []renderedComposeVolumeMount `json:"volumes"`
 	} `json:"services"`
 	Volumes map[string]struct {
 		Name     string `json:"name"`
 		External bool   `json:"external"`
 	} `json:"volumes"`
+}
+
+type renderedComposeVolumeMount struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+func (m *renderedComposeVolumeMount) UnmarshalJSON(data []byte) error {
+	var object struct {
+		Type   string `json:"type"`
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	if len(data) > 0 && data[0] == '{' {
+		if err := json.Unmarshal(data, &object); err != nil {
+			return err
+		}
+		m.Type = object.Type
+		m.Source = object.Source
+		m.Target = object.Target
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ":")
+	if len(parts) == 1 {
+		m.Type = "volume"
+		m.Target = parts[0]
+		return nil
+	}
+	m.Source = strings.TrimSpace(parts[0])
+	m.Target = strings.TrimSpace(parts[1])
+	if filepath.IsAbs(m.Source) || strings.HasPrefix(m.Source, "./") || strings.HasPrefix(m.Source, "../") {
+		m.Type = "bind"
+	} else {
+		m.Type = "volume"
+	}
+	return nil
 }
 
 // ReclaimableReplacedInfrastructureVolumes returns only named volumes whose
@@ -269,4 +320,34 @@ func composePortValues(raw any) []string {
 		}
 	}
 	return ports
+}
+
+func composeBaseHarborWorkloadProtocol(raw any) (string, error) {
+	const key = "io.baseharbor.workload.protocol"
+	labels := map[string]string{}
+	switch typed := raw.(type) {
+	case map[string]any:
+		for name, value := range typed {
+			labels[strings.TrimSpace(name)] = strings.TrimSpace(fmt.Sprint(value))
+		}
+	case []any:
+		for _, entry := range typed {
+			value := strings.TrimSpace(fmt.Sprint(entry))
+			name, setting, ok := strings.Cut(value, "=")
+			if ok {
+				labels[strings.TrimSpace(name)] = strings.TrimSpace(setting)
+			}
+		}
+	}
+	rawProtocol, declared := labels[key]
+	if !declared {
+		return "", nil
+	}
+	protocol := strings.ToLower(strings.TrimSpace(rawProtocol))
+	switch protocol {
+	case "http", "https":
+		return protocol, nil
+	default:
+		return "", fmt.Errorf("%s must be http or https, got %q", key, rawProtocol)
+	}
 }
