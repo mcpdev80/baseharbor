@@ -235,7 +235,7 @@ func TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources(t *te
 		}
 	}
 	joined := strings.Join(runtime.calls[0].args, " ") + "\n" + strings.Join(runtime.calls[1].args, " ")
-	if !strings.Contains(joined, "-d app_a_dev") || !strings.Contains(joined, "-d app_a_dev_analytics") {
+	if !strings.Contains(joined, "-d 'app_a_dev'") || !strings.Contains(joined, "-d 'app_a_dev_analytics'") {
 		t.Fatalf("shared backup did not select both app-a databases: %q", joined)
 	}
 }
@@ -277,11 +277,11 @@ func TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources(t *testing.T
 	if err := RestorePostgresInstancesAt(context.Background(), runtime, m, RuntimeFiles{}, root, "baha", backup); err != nil {
 		t.Fatalf("RestorePostgresInstancesAt() error = %v", err)
 	}
-	if len(runtime.calls) != 2 {
-		t.Fatalf("calls = %d, want restore + ownership verify", len(runtime.calls))
+	if len(runtime.calls) != 3 {
+		t.Fatalf("calls = %d, want restore + role/database ownership verification", len(runtime.calls))
 	}
 	restore := strings.Join(runtime.calls[0].args, " ")
-	if !strings.Contains(restore, "-U baha_app_a_dev -d app_a_dev") {
+	if !strings.Contains(restore, "-U 'baha_app_a_dev' -d 'app_a_dev'") {
 		t.Fatalf("restore escaped application resource: %q", restore)
 	}
 	if strings.Contains(restore, "baseharbor_admin") {
