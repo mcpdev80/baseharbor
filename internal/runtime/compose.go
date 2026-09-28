@@ -59,15 +59,17 @@ func (c Compose) Engine() string {
 // callers. Provider selection itself is centralized in DetectProvider so new
 // runtime implementations do not require application-contract changes.
 func DetectCompose(ctx context.Context) (Compose, error) {
-	provider, err := DetectProvider(ctx)
-	if err != nil {
-		return Compose{}, err
+	return detectCompose(ctx)
+}
+
+func detectRuntimeProvider(ctx context.Context) (RuntimeProvider, error) {
+	if docker, err := detectDockerCompose(ctx); err == nil {
+		return DockerProvider{Compose: docker}, nil
 	}
-	compose, ok := provider.(Compose)
-	if !ok {
-		return Compose{}, fmt.Errorf("selected runtime provider %q is not compatible with the Compose runtime path", provider.Kind())
+	if podman, err := detectPodmanCompose(ctx); err == nil {
+		return PodmanProvider{Compose: podman}, nil
 	}
-	return compose, nil
+	return nil, ErrRuntimeNotFound
 }
 
 func detectCompose(ctx context.Context) (Compose, error) {
