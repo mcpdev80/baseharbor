@@ -104,7 +104,7 @@ func (e *applicationUpExecution) runPreflight(ctx context.Context) error {
 		}
 	}
 
-	checks = appendManagedProviderPreflights(checks, e.compose, e.resolved, e.providers, &e.issuer)
+	checks = appendManagedProviderPreflights(checks, &e.compose, e.resolved, e.providers, &e.issuer)
 
 	var results []preflight.Result
 	var ok bool
