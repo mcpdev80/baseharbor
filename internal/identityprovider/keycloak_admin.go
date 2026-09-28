@@ -86,20 +86,19 @@ type keycloakUserCredential struct {
 }
 
 type keycloakUser struct {
-	ID            string                    `json:"id,omitempty"`
-	Username      string                    `json:"username"`
-	Email         string                    `json:"email,omitempty"`
-	Enabled       bool                      `json:"enabled"`
-	EmailVerified bool                      `json:"emailVerified,omitempty"`
-	Credentials   []keycloakUserCredential  `json:"credentials,omitempty"`
-	Attributes    map[string][]string       `json:"attributes,omitempty"`
+	ID            string                   `json:"id,omitempty"`
+	Username      string                   `json:"username"`
+	Email         string                   `json:"email,omitempty"`
+	Enabled       bool                     `json:"enabled"`
+	EmailVerified bool                     `json:"emailVerified,omitempty"`
+	Credentials   []keycloakUserCredential `json:"credentials,omitempty"`
+	Attributes    map[string][]string      `json:"attributes,omitempty"`
 }
 
 type keycloakRole struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
-
 
 func (a *keycloakAdmin) login(ctx context.Context) error {
 	form := url.Values{}
@@ -195,11 +194,11 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 	}
 
 	desired := keycloakUser{
-		Username: username,
-		Email: username + "@baseharbor.local",
-		Enabled: true,
+		Username:      username,
+		Email:         username + "@baseharbor.local",
+		Enabled:       true,
 		EmailVerified: true,
-		Credentials: []keycloakUserCredential{{Type: "password", Value: password, Temporary: false}},
+		Credentials:   []keycloakUserCredential{{Type: "password", Value: password, Temporary: false}},
 		Attributes: map[string][]string{
 			"baseharbor.scope": []string{"developer-access"},
 		},

@@ -57,7 +57,6 @@ func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T)
 	assertTargets("traces", traces)
 }
 
-
 func TestManagedRuntimeObservabilityExcludesSharedBackendServices(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")

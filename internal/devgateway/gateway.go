@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	stateVersion         = 1
-	gatewayPort          = 443
-	rootlessGatewayPort  = 8443
+	stateVersion        = 1
+	gatewayPort         = 443
+	rootlessGatewayPort = 8443
 )
 
 type Runtime interface {
@@ -416,7 +416,7 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			RootCAs: roots,
+			RootCAs:    roots,
 			ServerName: route.Host,
 		},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -710,4 +710,3 @@ func projectReadable(source, target string) error {
 	}
 	return nil
 }
-

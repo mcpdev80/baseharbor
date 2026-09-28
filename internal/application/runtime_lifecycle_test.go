@@ -115,7 +115,6 @@ func TestStoreDeleteOnlyRemovesRequestedApplication(t *testing.T) {
 	}
 }
 
-
 func TestExpectedRuntimeResourcesExcludeSharedOnlyBackends(t *testing.T) {
 	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
 	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")

@@ -64,26 +64,26 @@ type Recovery struct {
 }
 
 type AuditEvent struct {
-	SchemaVersion      string    `json:"schema_version"`
-	ID                 string    `json:"id"`
-	Timestamp          time.Time `json:"timestamp"`
-	Actor              Actor     `json:"actor"`
-	Target             string    `json:"target"`
-	Application        string    `json:"application"`
-	Environment        string    `json:"environment"`
-	Operation          string    `json:"operation"`
-	Capability         string    `json:"capability,omitempty"`
-	Resource           string    `json:"resource,omitempty"`
-	Provider           string    `json:"provider,omitempty"`
-	Placement          string    `json:"placement,omitempty"`
-	Ownership          string    `json:"ownership,omitempty"`
-	PolicyResult       string    `json:"policy_result,omitempty"`
-	AuthorizationResult string   `json:"authorization_result,omitempty"`
-	CorrelationID      string    `json:"correlation_id,omitempty"`
-	LifecycleResult    string    `json:"lifecycle_result,omitempty"`
-	VerificationResult string    `json:"verification_result,omitempty"`
-	Outcome            string    `json:"outcome"`
-	Detail             string    `json:"detail,omitempty"`
+	SchemaVersion       string    `json:"schema_version"`
+	ID                  string    `json:"id"`
+	Timestamp           time.Time `json:"timestamp"`
+	Actor               Actor     `json:"actor"`
+	Target              string    `json:"target"`
+	Application         string    `json:"application"`
+	Environment         string    `json:"environment"`
+	Operation           string    `json:"operation"`
+	Capability          string    `json:"capability,omitempty"`
+	Resource            string    `json:"resource,omitempty"`
+	Provider            string    `json:"provider,omitempty"`
+	Placement           string    `json:"placement,omitempty"`
+	Ownership           string    `json:"ownership,omitempty"`
+	PolicyResult        string    `json:"policy_result,omitempty"`
+	AuthorizationResult string    `json:"authorization_result,omitempty"`
+	CorrelationID       string    `json:"correlation_id,omitempty"`
+	LifecycleResult     string    `json:"lifecycle_result,omitempty"`
+	VerificationResult  string    `json:"verification_result,omitempty"`
+	Outcome             string    `json:"outcome"`
+	Detail              string    `json:"detail,omitempty"`
 }
 
 type Integrity struct {

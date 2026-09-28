@@ -10,22 +10,22 @@ import (
 func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T) {
 	routes := normalizedRoutes([]Route{
 		{
-			Owner: "app/demo/dev",
-			Key: "app:demo:api:swagger",
-			Host: "demo-api.baseharbor.localhost",
+			Owner:      "app/demo/dev",
+			Key:        "app:demo:api:swagger",
+			Host:       "demo-api.baseharbor.localhost",
 			PathPrefix: "/swagger",
-			Upstream: "https://baseharbor-runtime:8081",
-			Network: "baseharbor-local-demo-dev_default",
-			TrustFile: "/tmp/runtime-ca.pem",
+			Upstream:   "https://baseharbor-runtime:8081",
+			Network:    "baseharbor-local-demo-dev_default",
+			TrustFile:  "/tmp/runtime-ca.pem",
 			ServerName: "baseharbor-runtime",
 		},
 		{
-			Owner: "app/demo/dev",
-			Key: "app:demo:api",
-			Host: "demo-api.baseharbor.localhost",
-			Upstream: "https://bh-dev-demo-api:8443",
-			Network: "baseharbor-local-demo-dev_default",
-			TrustFile: "/tmp/app-ca.pem",
+			Owner:      "app/demo/dev",
+			Key:        "app:demo:api",
+			Host:       "demo-api.baseharbor.localhost",
+			Upstream:   "https://bh-dev-demo-api:8443",
+			Network:    "baseharbor-local-demo-dev_default",
+			TrustFile:  "/tmp/app-ca.pem",
 			ServerName: "localhost",
 		},
 	})
@@ -63,7 +63,6 @@ func TestNormalizedRoutesOrdersSpecificPathBeforeHostFallback(t *testing.T) {
 	}
 }
 
-
 type testRuntime struct {
 	engine string
 }
@@ -75,8 +74,8 @@ func (r testRuntime) PreferredLocalHTTPSPort() int {
 	}
 	return 443
 }
-func (testRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
-func (testRuntime) UpProject(context.Context, string, string, string) error { return nil }
+func (testRuntime) ConfigProject(context.Context, string, string, string) error  { return nil }
+func (testRuntime) UpProject(context.Context, string, string, string) error      { return nil }
 func (testRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
 
 func TestGatewayHostPortUsesUnprivilegedPortForPodman(t *testing.T) {
@@ -93,7 +92,6 @@ func TestGatewayHostPortUsesUnprivilegedPortForPodman(t *testing.T) {
 		t.Fatalf("podman canonical URL = %q", got)
 	}
 }
-
 
 func TestPruneUnavailableTrustRoutesDropsOnlyStaleHTTPSRoutes(t *testing.T) {
 	dir := t.TempDir()
@@ -118,7 +116,6 @@ func TestPruneUnavailableTrustRoutesDropsOnlyStaleHTTPSRoutes(t *testing.T) {
 	}
 }
 
-
 func TestURLForRuntimeUsesRuntimePortBeforeGatewayStateExists(t *testing.T) {
 	target := "missing-target-" + strings.ReplaceAll(t.Name(), "/", "-")
 
@@ -129,7 +126,6 @@ func TestURLForRuntimeUsesRuntimePortBeforeGatewayStateExists(t *testing.T) {
 		t.Fatalf("podman canonical URL = %q", got)
 	}
 }
-
 
 func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.T) {
 	files := Files{

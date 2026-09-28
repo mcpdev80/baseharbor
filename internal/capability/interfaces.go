@@ -8,12 +8,12 @@ import (
 type ProviderInterfaceClass string
 
 const (
-	InterfaceApplication   ProviderInterfaceClass = "application"
-	InterfaceUserFacing    ProviderInterfaceClass = "user-facing"
+	InterfaceApplication    ProviderInterfaceClass = "application"
+	InterfaceUserFacing     ProviderInterfaceClass = "user-facing"
 	InterfaceAdministration ProviderInterfaceClass = "administration"
-	InterfaceManagement    ProviderInterfaceClass = "management"
-	InterfaceObservability ProviderInterfaceClass = "observability"
-	InterfaceHealth        ProviderInterfaceClass = "health"
+	InterfaceManagement     ProviderInterfaceClass = "management"
+	InterfaceObservability  ProviderInterfaceClass = "observability"
+	InterfaceHealth         ProviderInterfaceClass = "health"
 )
 
 type ProviderInterface struct {
