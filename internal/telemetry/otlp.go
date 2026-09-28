@@ -494,6 +494,7 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
           key_file: /run/baseharbor/tls/server-key.pem
           client_ca_file: /run/baseharbor/tls/ca.pem
           min_version: "1.2"
+          reload_interval: 30s
 exporters:
   debug:
     verbosity: basic
