@@ -13,10 +13,7 @@ const (
 	LogCollectionJournald LogCollectionMode = "journald"
 )
 
-func (c Compose) LogCollectionMode() LogCollectionMode {
-	if c.quadlet {
-		return LogCollectionJournald
-	}
+func (Compose) LogCollectionMode() LogCollectionMode {
 	return LogCollectionSyslog
 }
 
