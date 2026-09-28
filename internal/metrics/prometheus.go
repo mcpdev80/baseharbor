@@ -135,6 +135,7 @@ type ProviderFiles struct {
 	Compose             string
 	Env                 string
 	Config              string
+	WebConfig           string
 	TargetsDir          string
 	ProviderSecurityDir string
 	Registrations       string
