@@ -123,6 +123,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	}
 	publicPolicy.ServerName = keycloakPublicHost
 	providerAlias := devaccess.ProviderAlias(files.Project, "identity")
+	providerAdminAlias := devaccess.ProviderAlias(files.Project, "identity-admin")
 	nativeMaterial, err := serviceaccess.EnsureTLSMaterial(
 		ctx,
 		issuer,
@@ -130,6 +131,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		filepath.Join(dir, "native-tls", "pki"),
 		keycloakPublicHost,
 		providerAlias,
+		providerAdminAlias,
 		"keycloak",
 		"127.0.0.1",
 	)
@@ -298,6 +300,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       identity-internal:
         aliases:
           - keycloak
+          - %q
 
 volumes:
   keycloak-db-data:
@@ -307,7 +310,7 @@ networks:
     name: %s
   identity-internal:
     name: %s
-`, KeycloakImage, keycloakHTTPSPort, hostnameCommand, hostnameEnvironment, keycloakHTTPSPort, devaccess.ProviderAlias(files.Project, "identity"), files.ConsumerNetwork, files.InternalNetwork)
+`, KeycloakImage, keycloakHTTPSPort, hostnameCommand, hostnameEnvironment, keycloakHTTPSPort, devaccess.ProviderAlias(files.Project, "identity"), devaccess.ProviderAlias(files.Project, "identity-admin"), files.ConsumerNetwork, files.InternalNetwork)
 }
 
 func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
