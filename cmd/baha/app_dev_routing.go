@@ -218,7 +218,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 				Upstream:   "https://shared-cache-ui-access:8443",
 				Network:    shared.Network,
 				TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
-				ServerName: "localhost",
+				ServerName: "openbao",
 			}},
 		})
 	} else {
@@ -267,7 +267,7 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 	}
 	identityRoutes := []devgateway.Route{{
 		Key: loginKey, Host: host,
-		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), 8443),
 		Network:    files.ConsumerNetwork,
 		TrustFile:  files.PublicAccess.Material.CA,
 		ServerName: files.PublicAccess.Material.ServerName,
@@ -284,7 +284,7 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 		}
 		identityRoutes = append(identityRoutes, devgateway.Route{
 			Key: adminKey, Host: adminHost,
-			Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
+			Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":8443",
 			Network:    files.InternalNetwork,
 			TrustFile:  files.AdminAccess.Material.CA,
 			ServerName: files.AdminAccess.Material.ServerName,
@@ -470,7 +470,7 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 			Owner: "shared/openbao",
 			Routes: []devgateway.Route{{
 				Key: "shared/openbao", Host: host,
-				Upstream:   "https://openbao-access:8443",
+				Upstream:   "https://openbao:8200",
 				Network:    bhruntime.ControlPlaneNetworkName(resourceProject),
 				TrustFile:  filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
 				ServerName: "localhost",
