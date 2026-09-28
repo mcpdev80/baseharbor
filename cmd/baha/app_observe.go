@@ -335,7 +335,9 @@ func renderApplicationDoctor(
 		term.Section("Workload services")
 		for _, service := range workload.Services {
 			state := "READY"
-			if !service.Ready {
+			if service.Readiness == "unverified" {
+				state = "UNVERIFIED"
+			} else if !service.Ready {
 				state = "FAILED"
 			}
 			term.Result(state, service.Service, formatWorkloadServiceStatus(service))
@@ -376,6 +378,11 @@ func renderApplicationDoctor(
 	}
 
 	if healthy && serviceTLSErr == nil && tlsErr == nil {
+		if workload.RunningUnverified() {
+			fmt.Fprintln(out, "\nRUNNING")
+			fmt.Fprintln(out, "Readiness: UNVERIFIED")
+			return
+		}
 		fmt.Fprintln(out, "\nREADY")
 		return
 	}
