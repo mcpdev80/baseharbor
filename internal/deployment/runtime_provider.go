@@ -16,9 +16,7 @@ type RuntimeProviderState struct {
 	Provider bhruntime.ProviderKind
 }
 
-// RuntimeProviderStateFromValues reads protected deployment state. Missing
-// provider metadata from v0.3 deployments intentionally defaults to Compose so
-// existing installations remain compatible without a migration.
+// RuntimeProviderStateFromValues reads protected deployment state. Missing provider metadata defaults to Docker for new local deployment state.
 func RuntimeProviderStateFromValues(values map[string]string) (RuntimeProviderState, error) {
 	kind, err := bhruntime.ParseProviderKind(values[RuntimeProviderEnvKey])
 	if err != nil {
