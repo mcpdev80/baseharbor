@@ -153,6 +153,7 @@ func providerFilesAt(dir string) (ProviderFiles, error) {
 		Compose:             filepath.Join(dir, "compose.yaml"),
 		Env:                 filepath.Join(dir, "runtime.env"),
 		Config:              filepath.Join(dir, "prometheus.yml"),
+		WebConfig:           filepath.Join(dir, "web-config.yml"),
 		TargetsDir:          filepath.Join(dir, "targets"),
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 		Registrations:       filepath.Join(dir, "registrations.json"),
@@ -202,7 +203,7 @@ func ExistingSharedProviderFiles() (ProviderFiles, error) {
 	dir := placement.Dir
 	files := ProviderFiles{
 		Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"),
-		Config: filepath.Join(dir, "prometheus.yml"), TargetsDir: filepath.Join(dir, "targets"),
+		Config: filepath.Join(dir, "prometheus.yml"), WebConfig: filepath.Join(dir, "web-config.yml"), TargetsDir: filepath.Join(dir, "targets"),
 		ProviderSecurityDir: filepath.Join(dir, "provider-security"),
 	}
 	files.RuntimeCA = filepath.Join(dir, "baseharbor-runtime-ca.pem")
