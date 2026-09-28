@@ -7,7 +7,7 @@ BaseHarbor's current operational control plane is intentionally single-node. On 
 `baha up` materializes the BaseHarbor runtime definition and starts:
 
 - PostgreSQL 18;
-- OpenBao 2.6.x.
+- OpenBao 2.7.x.
 
 Both services bind to loopback by default.
 
@@ -15,7 +15,9 @@ Docker executes the generated runtime through Docker Compose. Podman consumes th
 
 The managed control-plane containers are hardened runtime components rather than privileged bootstrap helpers. PostgreSQL and OpenBao run with explicit non-root identities, read-only root filesystems, all Linux capabilities dropped and `no-new-privileges`. Only the paths that must remain writable are exposed as dedicated volumes or tmpfs mounts.
 
-OpenBao writes its generated local configuration into an ephemeral writable `/openbao/config` tmpfs while durable provider data remains on the dedicated `/openbao/file` volume. BaseHarbor sets the image-supported `SKIP_CHOWN` mode because the container already starts as the non-root `openbao` user; no root startup phase or `CAP_CHOWN` exception is required.
+OpenBao writes its generated local configuration into an ephemeral writable `/openbao/config` tmpfs while durable provider data uses OpenBao Integrated Storage (Raft) on the dedicated `/openbao/raft` volume. BaseHarbor sets the image-supported `SKIP_CHOWN` mode because the container already starts as the non-root `openbao` user; no root startup phase or `CAP_CHOWN` exception is required.
+
+The managed listener terminates TLS natively. OpenBao 2.7 `tls_auto_reload` is enabled so renewed certificate/key contents are picked up without a proxy sidecar or SIGHUP. The current reference runtime is intentionally single-node; the Raft storage model establishes the durable target state without carrying forward the old unreleased `storage.file` layout.
 
 ## First-run port selection
 
