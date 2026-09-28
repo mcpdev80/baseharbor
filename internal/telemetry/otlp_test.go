@@ -148,6 +148,18 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 	}
 }
 
+func TestManagedCollectorClientCertificateRequirementFollowsPolicy(t *testing.T) {
+	dev := collectorConfigWithTraceBackendAccess("", false)
+	if strings.Contains(dev, "client_ca_file:") {
+		t.Fatalf("development collector unexpectedly requires a client certificate:\n%s", dev)
+	}
+
+	managed := collectorConfigWithTraceBackendAccess("", true)
+	if !strings.Contains(managed, "client_ca_file: /run/baseharbor/tls/ca.pem") {
+		t.Fatalf("managed collector is missing required mTLS client CA:\n%s", managed)
+	}
+}
+
 func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 	config := collectorConfigWithTraceBackend("")
 	for _, want := range []string{
