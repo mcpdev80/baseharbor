@@ -7,7 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	runtime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtime dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
 )
 
 func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
@@ -89,7 +89,7 @@ func TestHTTPSRequiresExistingTLS(t *testing.T) {
 }
 
 // structCompose is an explicit zero-value Docker provider; Preflight does not mutate or invoke it.
-type structCompose = runtime.DockerProvider
+type structCompose = dockerprovider.Provider
 
 func capabilityResource(m application.Manifest, name string) capability.Resource {
 	return capability.Resource{Application: m.Name, Kind: capability.ExposureHTTP, Name: name, Provider: capability.ProviderCaddy}
