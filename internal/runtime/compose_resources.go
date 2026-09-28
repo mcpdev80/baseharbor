@@ -47,23 +47,13 @@ func (c Compose) RunningServicesProject(ctx context.Context, project, composeFil
 	var moduleServices map[string]struct{}
 	if consolidatedProject(project) && strings.TrimSpace(composeFile) != "" {
 		moduleServices = map[string]struct{}{}
-		if c.quadlet {
-			q, err := quadletRenderProject(composeFile, envFile, project)
-			if err != nil {
-				return nil, err
-			}
-			for service := range q.ServiceUnits {
+		out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if service := strings.TrimSpace(line); service != "" {
 				moduleServices[service] = struct{}{}
-			}
-		} else {
-			out, err := c.outputProject(ctx, project, composeFile, envFile, "config", "--services")
-			if err != nil {
-				return nil, err
-			}
-			for _, line := range strings.Split(out, "\n") {
-				if service := strings.TrimSpace(line); service != "" {
-					moduleServices[service] = struct{}{}
-				}
 			}
 		}
 	}
