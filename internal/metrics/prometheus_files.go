@@ -464,7 +464,6 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	return nil
 }
 
-
 func readPrometheusEnvironment(path string) (map[string]string, error) {
 	values := map[string]string{}
 	data, err := os.ReadFile(path)
