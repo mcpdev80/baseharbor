@@ -26,7 +26,7 @@ type applicationDoctorCollector struct {
 	runtimeErr        error
 	serviceTLS        []application.BackendTLSLifecycleObservation
 	serviceTLSErr     error
-	compose           bhruntime.Compose
+	compose           bhruntime.RuntimeProvider
 	running           []string
 	platformFiles     bhruntime.Files
 	requiredStatuses  []openbao.RequiredSecretStatus
