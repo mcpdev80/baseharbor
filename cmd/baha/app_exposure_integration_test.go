@@ -206,7 +206,7 @@ networks:
 		t.Fatal(err)
 	}
 	if err := writeRepositoryInitState(root, repositoryInitState{
-		Hostname: "localhost", TLSMode: "local", RuntimeProvider: bhruntime.ProviderCompose,
+		Hostname: "localhost", TLSMode: "local", RuntimeProvider: bhruntime.ProviderDocker,
 	}); err != nil {
 		t.Fatal(err)
 	}
