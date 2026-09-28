@@ -174,7 +174,7 @@ func TestWorkloadOnlyOverrideUsesExplicitEmptyService(t *testing.T) {
 	}
 }
 
-func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
+func TestWorkloadOverrideKeepsBackendAliasFreeWhenDevAliasIsRequired(t *testing.T) {
 	useApplicationScopedDataProviders(t)
 	m := Manifest{
 		Version:     CurrentVersion,
@@ -196,10 +196,10 @@ func TestWorkloadOverrideUsesNetworkSequenceWithoutAliases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(override, "    networks:\n      - baseharbor-backend\n") {
-		t.Fatalf("expected alias-free networks as a Compose sequence:\n%s", override)
+	if !strings.Contains(override, "      baseharbor-backend: {}\n") {
+		t.Fatalf("expected alias-free backend network mapping:\n%s", override)
 	}
-	if strings.Contains(override, "      baseharbor-backend: {}") {
-		t.Fatalf("alias-free network must not require mapping syntax:\n%s", override)
+	if strings.Contains(override, "      baseharbor-backend:\n        aliases:") {
+		t.Fatalf("backend network unexpectedly gained a service alias:\n%s", override)
 	}
 }
