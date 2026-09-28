@@ -88,10 +88,26 @@ func TestParseProviderKindAcceptsKnownProviders(t *testing.T) {
 	}
 }
 
-func TestParseProviderKindRejectsUnknownProvider(t *testing.T) {
-	for _, input := range []string{"compose", "future-runtime"} {
+func TestParseProviderKindAcceptsExtensibleProviderIDs(t *testing.T) {
+	for input, want := range map[string]ProviderKind{
+		"future-runtime":  "future-runtime",
+		"example/runtime": "example/runtime",
+		"compose":         "compose",
+	} {
+		got, err := ParseProviderKind(input)
+		if err != nil {
+			t.Fatalf("ParseProviderKind(%q) error = %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("ParseProviderKind(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestParseProviderKindRejectsInvalidProviderID(t *testing.T) {
+	for _, input := range []string{"bad provider", "/runtime", "runtime/", "runtime//nested", "runtime@"} {
 		if _, err := ParseProviderKind(input); err == nil {
-			t.Fatalf("unknown runtime provider %q unexpectedly accepted", input)
+			t.Fatalf("invalid runtime provider %q unexpectedly accepted", input)
 		}
 	}
 }
@@ -190,3 +206,47 @@ func TestRequireCapabilitiesRejectsContractMismatch(t *testing.T) {
 		t.Fatalf("expected contract-version mismatch, got %v", err)
 	}
 }
+
+func TestProviderRegistryAcceptsThirdPartyDescriptorWithoutCoreEnumeration(t *testing.T) {
+	descriptor := ProviderDescriptor{
+		Kind:            "example/runtime",
+		ContractVersion: RuntimeProviderContractVersion,
+		ProviderVersion: "1.0.0",
+		Standards:       []string{"OCI Runtime Specification"},
+		Capabilities:    ProviderCapabilities{WorkloadLifecycle: true},
+	}
+	registry, err := NewProviderRegistry(ProviderRegistration{
+		Descriptor: descriptor,
+		Factory: func(context.Context) (Provider, error) {
+			return thirdPartyTestProvider{descriptor: descriptor}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := registry.Descriptor("example/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != descriptor.Kind || got.ContractVersion != RuntimeProviderContractVersion {
+		t.Fatalf("unexpected descriptor: %#v", got)
+	}
+	provider, err := registry.Resolve(context.Background(), "example/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.Kind() != "example/runtime" {
+		t.Fatalf("provider kind = %q", provider.Kind())
+	}
+	if err := RequireCapabilities(provider, CapabilityWorkloadLifecycle); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type thirdPartyTestProvider struct {
+	descriptor ProviderDescriptor
+}
+
+func (p thirdPartyTestProvider) Kind() ProviderKind { return p.descriptor.Kind }
+func (p thirdPartyTestProvider) Descriptor() ProviderDescriptor { return p.descriptor }
+func (p thirdPartyTestProvider) Capabilities() ProviderCapabilities { return p.descriptor.Capabilities }
