@@ -290,4 +290,4 @@ The `main` branch represents released source.
 
 ## License
 
-Apache License 2.0. See .
+Apache License 2.0. See [LICENSE](LICENSE).
