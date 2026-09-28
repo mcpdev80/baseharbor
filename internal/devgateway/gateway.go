@@ -345,8 +345,10 @@ func canonicalURL(host string, port int) string {
 }
 
 func gatewayHostPort(runtime Runtime) int {
-	if engine, ok := runtime.(runtimeEngine); ok && strings.EqualFold(strings.TrimSpace(engine.Engine()), "podman") {
-		return rootlessGatewayPort
+	if capable, ok := runtime.(runtimeLocalHTTPS); ok {
+		if port := capable.PreferredLocalHTTPSPort(); port > 0 {
+			return port
+		}
 	}
 	return gatewayPort
 }
