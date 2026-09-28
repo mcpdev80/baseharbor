@@ -8,8 +8,6 @@ import (
 )
 
 // runtimeProviderKindForApplication resolves deployment-owned runtime selection.
-// Named/legacy applications keep the Compose default until deployment metadata
-// exists for those invocation paths as well.
 func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.ProviderKind, error) {
 	provider := bhruntime.ProviderKind(resolved.Target.RuntimeProvider)
 	if provider == "" {
@@ -33,10 +31,4 @@ func detectRuntimeForApplication(ctx context.Context, resolved resolvedApplicati
 		return nil, err
 	}
 	return provider, nil
-}
-
-// detectComposeForApplication is retained as a compatibility name while callers
-// are migrated. It no longer exposes or requires a concrete Compose runtime.
-func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
-	return detectRuntimeForApplication(ctx, resolved, required...)
 }
