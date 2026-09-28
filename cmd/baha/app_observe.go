@@ -215,15 +215,19 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 				})
 			}
-			if result.State == "stopped" || result.State == "not_applied" {
-				return nil
-			}
-			if !result.Ready && result.HasFailures() {
-				return cli.Presented(errors.New("application is not ready"))
-			}
-			return nil
+			return applicationStatusCommandError(result.StatusResult)
 		},
 	}
+}
+
+func applicationStatusCommandError(result application.StatusResult) error {
+	if result.State == "stopped" || result.State == "not_applied" {
+		return nil
+	}
+	if !result.Ready && result.HasFailures() {
+		return cli.Presented(errors.New("application is not ready"))
+	}
+	return nil
 }
 
 func appDoctorCommand(store application.Store) *cli.Command {
