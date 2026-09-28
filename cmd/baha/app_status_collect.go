@@ -27,7 +27,7 @@ type applicationStatusCollection struct {
 	resolved       resolvedApplication
 	manifest       application.Manifest
 	files          application.RuntimeFiles
-	compose        bhruntime.Compose
+	compose        bhruntime.RuntimeProvider
 	services       []string
 	result         application.StatusResult
 	workloadStatus repositoryWorkloadStatus
