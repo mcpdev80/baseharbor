@@ -32,6 +32,28 @@ func (r *StatusResult) AddCheck(name string, ok bool, detail string) {
 	r.AddObservation(name, state, detail)
 }
 
+func (r StatusResult) HasUnverified() bool {
+	for _, check := range r.Checks {
+		if check.State == "unverified" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r StatusResult) HasFailures() bool {
+	for _, check := range r.Checks {
+		if check.OK {
+			continue
+		}
+		if check.State == "unverified" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func (r *StatusResult) AddObservation(name, state, detail string) {
 	ok := state == "ready" || state == "verified"
 	r.Checks = append(r.Checks, StatusCheck{Name: name, OK: ok, State: state, Detail: detail})
