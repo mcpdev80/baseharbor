@@ -20,7 +20,9 @@ The persistent manager bootstrap state is owner-only below the effective Target'
 
 The bundled OpenBao Compose service runs directly as the image's non-root `openbao` user. Its root filesystem is read-only, all Linux capabilities are dropped and `no-new-privileges` is enabled. BaseHarbor does not rely on a root init container or a temporary `CAP_CHOWN` grant.
 
-The image-generated local configuration is written only to an ephemeral writable `/openbao/config` tmpfs. Durable OpenBao data remains on the dedicated `/openbao/file` volume. BaseHarbor enables the image-supported `SKIP_CHOWN` behavior because ownership repair by a privileged entrypoint is neither needed nor permitted by the BaseHarbor security model.
+The image-generated local configuration is written only to an ephemeral writable `/openbao/config` tmpfs. Durable OpenBao data uses Integrated Storage (Raft) on the dedicated `/openbao/raft` volume. BaseHarbor enables the image-supported `SKIP_CHOWN` behavior because ownership repair by a privileged entrypoint is neither needed nor permitted by the BaseHarbor security model.
+
+OpenBao 2.7 terminates TLS directly and uses `tls_auto_reload` for certificate/key renewal. BaseHarbor intentionally does not support the previous unreleased internal `storage.file` layout; v0.4.17 defines Raft as the current managed-runtime architecture.
 
 ## Application secret scope
 
@@ -256,7 +258,6 @@ Still outside this MVP slice:
 - dynamic PostgreSQL credentials
 - moving all BaseHarbor-generated PostgreSQL/Valkey credentials into OpenBao
 - OpenBao token renewal/agent integration
-- TLS/PKI for the bundled OpenBao listener itself
 - KMS/HSM/transit auto-unseal profiles
 
 ## Provider-neutral secure binding in v0.4.5
