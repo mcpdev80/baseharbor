@@ -125,20 +125,33 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	if !status.Ready {
 		return errors.New("managed service issuer is not ready")
 	}
+	bootstrapRestart, err := bhruntime.ControlPlaneServiceAccessNeedsBootstrapRestart(files)
+	if err != nil {
+		return err
+	}
 	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
 		return err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
+	if bootstrapRestart {
+		if err := compose.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("restart control plane for managed PKI transition: %w", err)
+		}
+	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
+	if !bootstrapRestart {
+		if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres", "sh", "-ec", "kill -HUP 1"); err != nil {
+			return fmt.Errorf("reload PostgreSQL native TLS material: %w", err)
+		}
+	}
 
-	// The first native-TLS reconciliation can recreate OpenBao. A Shamir-sealed
-	// instance must be unsealed again before the transition can be considered
-	// complete. Later certificate renewals keep the same file paths and use
-	// SIGHUP to reload certificate/key material in place.
+	// The initial bootstrap trust transition restarts OpenBao so its PostgreSQL
+	// client loads the managed PostgreSQL CA. Later OpenBao listener certificate
+	// rotations are handled by OpenBao 2.7 tls_auto_reload.
 	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
 		return fmt.Errorf("wait for OpenBao after native TLS reconcile: %w", err)
 	}
@@ -156,9 +169,6 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
 			return fmt.Errorf("unseal OpenBao after native TLS reconcile: %w", err)
 		}
-	}
-	if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "openbao", "sh", "-ec", "kill -HUP 1"); err != nil {
-		return fmt.Errorf("reload OpenBao native TLS material: %w", err)
 	}
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		return fmt.Errorf("verify OpenBao manager after native TLS reconcile: %w", err)
