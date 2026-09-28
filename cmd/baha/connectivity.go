@@ -38,7 +38,7 @@ func connectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			compose, err := detectComposeForTarget(ctx, selectedTarget)
+			compose, err := detectRuntimeForTarget(ctx, selectedTarget)
 			if err != nil {
 				return err
 			}
@@ -136,7 +136,7 @@ func disconnectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			compose, err := detectComposeForTarget(ctx, selectedTarget)
+			compose, err := detectRuntimeForTarget(ctx, selectedTarget)
 			if err != nil {
 				return err
 			}
