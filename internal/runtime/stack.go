@@ -239,11 +239,9 @@ func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMateri
 		if len(data) == 0 {
 			return fmt.Errorf("OpenBao TLS material %s is empty", name)
 		}
-		mode := os.FileMode(0o644)
-		if name == "server-key.pem" {
-			mode = 0o600
-		}
-		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, mode); err != nil {
+		// The provider directory remains owner-only (0700), while the bind-mounted
+		// leaf material must be readable by OpenBao's non-root runtime UID.
+		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, 0o644); err != nil {
 			return err
 		}
 	}
