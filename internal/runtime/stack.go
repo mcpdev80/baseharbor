@@ -102,6 +102,12 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 	if err := prepareOpenBaoStorage(stateDir, envPath); err != nil {
 		return Files{}, err
 	}
+	if err := normalizeProjectedFiles(
+		filepath.Join(stateDir, "providers", "postgresql", "runtime"),
+		filepath.Join(stateDir, "providers", "openbao", "runtime"),
+	); err != nil {
+		return Files{}, err
+	}
 	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject}, nil
 }
 
