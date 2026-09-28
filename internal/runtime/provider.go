@@ -228,8 +228,6 @@ func RequireCapabilities(provider Provider, required ...RuntimeCapability) error
 	return nil
 }
 
-func (Compose) Kind() ProviderKind { return ProviderDocker }
-
 type DockerProvider struct{ Compose }
 type PodmanProvider struct{ Compose }
 
@@ -290,11 +288,6 @@ func ProviderDescriptorForKind(kind ProviderKind) (ProviderDescriptor, error) {
 	return defaultRuntimeProviderRegistry.Descriptor(kind)
 }
 
-func (Compose) Descriptor() ProviderDescriptor {
-	descriptor, _ := ProviderDescriptorForKind(ProviderDocker)
-	return descriptor
-}
-
 func (DockerProvider) Descriptor() ProviderDescriptor {
 	descriptor, _ := ProviderDescriptorForKind(ProviderDocker)
 	return descriptor
@@ -309,9 +302,8 @@ func (DockerProvider) PreferredLocalHTTPSPort() int { return 443 }
 func (PodmanProvider) PreferredLocalHTTPSPort() int { return 8443 }
 func (Compose) PreferredLocalHTTPSPort() int        { return 443 }
 
-func (Compose) Capabilities() ProviderCapabilities {
-	return referenceProviderCapabilities
-}
+func (DockerProvider) Capabilities() ProviderCapabilities { return referenceProviderCapabilities }
+func (PodmanProvider) Capabilities() ProviderCapabilities { return referenceProviderCapabilities }
 
 // DetectProviderForKind resolves the explicitly selected deployment runtime.
 // Provider selection belongs to deployment/environment state and must never be
