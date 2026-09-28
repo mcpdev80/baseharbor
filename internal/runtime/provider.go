@@ -51,6 +51,8 @@ type ProviderDescriptor struct {
 	ContractVersion string
 	ProviderVersion string
 	Standards       []string
+	WorkloadSources []string
+	Realization     string
 	Capabilities    ProviderCapabilities
 }
 
@@ -140,6 +142,13 @@ func (r *ProviderRegistry) Register(registration ProviderRegistration) error {
 		return fmt.Errorf("runtime provider %q is already registered", kind)
 	}
 	registration.Descriptor.Standards = append([]string(nil), registration.Descriptor.Standards...)
+	registration.Descriptor.WorkloadSources = append([]string(nil), registration.Descriptor.WorkloadSources...)
+	if len(registration.Descriptor.WorkloadSources) == 0 {
+		return fmt.Errorf("runtime provider %q declares no workload sources", kind)
+	}
+	if strings.TrimSpace(registration.Descriptor.Realization) == "" {
+		return fmt.Errorf("runtime provider %q declares no realization", kind)
+	}
 	r.registrations[kind] = registration
 	return nil
 }
@@ -158,6 +167,7 @@ func (r *ProviderRegistry) Descriptor(kind ProviderKind) (ProviderDescriptor, er
 	}
 	descriptor := registration.Descriptor
 	descriptor.Standards = append([]string(nil), descriptor.Standards...)
+	descriptor.WorkloadSources = append([]string(nil), descriptor.WorkloadSources...)
 	return descriptor, nil
 }
 
@@ -184,6 +194,7 @@ func (r *ProviderRegistry) Resolve(ctx context.Context, kind ProviderKind) (Prov
 	if descriptor.Kind != registration.Descriptor.Kind ||
 		descriptor.ContractVersion != registration.Descriptor.ContractVersion ||
 		descriptor.ProviderVersion != registration.Descriptor.ProviderVersion ||
+		descriptor.Realization != registration.Descriptor.Realization ||
 		descriptor.Capabilities != registration.Descriptor.Capabilities {
 		return nil, fmt.Errorf("runtime provider %q descriptor does not match registry declaration", normalized)
 	}
@@ -248,6 +259,8 @@ var defaultRuntimeProviderRegistry = mustProviderRegistry(
 			ContractVersion: RuntimeProviderContractVersion,
 			ProviderVersion: "0.4.17",
 			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+			WorkloadSources: []string{"compose-spec"},
+			Realization:     "docker-compose",
 			Capabilities:    referenceProviderCapabilities,
 		},
 		Factory: func(ctx context.Context) (Provider, error) {
@@ -264,6 +277,8 @@ var defaultRuntimeProviderRegistry = mustProviderRegistry(
 			ContractVersion: RuntimeProviderContractVersion,
 			ProviderVersion: "0.4.17",
 			Standards:       []string{"OCI Image Specification", "OCI Distribution Specification", "OCI Runtime Specification", "Compose Specification"},
+			WorkloadSources: []string{"compose-spec"},
+			Realization:     "podman-quadlet-systemd-user",
 			Capabilities:    referenceProviderCapabilities,
 		},
 		Factory: func(ctx context.Context) (Provider, error) {
