@@ -237,33 +237,33 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	}
 	resolved, err := resolveApplication(ctx, store, appArgs, "workload access")
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	if !resolved.FromRepository {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
+		return nil, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
 	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	if !found {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("application does not declare a Compose workload")
+		return nil, application.WorkloadFiles{}, nil, nil, fmt.Errorf("application does not declare a Compose workload")
 	}
 	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	return compose, workload, environment, composeFiles, nil
 }
