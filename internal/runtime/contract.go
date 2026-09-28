@@ -5,16 +5,23 @@ import (
 	"io"
 )
 
+// LogSourceAdapter is the runtime-neutral boundary for attaching and verifying
+// container/runtime log sources. The collection transport is provider-owned;
+// Core only depends on the normalized collection mode and semantic verification.
+type LogSourceAdapter interface {
+	LogCollectionMode() LogCollectionMode
+	VerifyProjectServiceLogCollection(context.Context, string, string, string) error
+}
+
 // RuntimeProvider is the provider-neutral execution surface used by BaseHarbor
 // orchestration. Implementations may use Docker Compose, Podman Quadlet or a
 // future runtime mechanism internally, but those mechanics must not leak into
 // application/core orchestration.
 type RuntimeProvider interface {
 	Provider
+	LogSourceAdapter
 
 	PreferredLocalHTTPSPort() int
-	LogCollectionMode() LogCollectionMode
-	VerifyProjectServiceLogCollection(context.Context, string, string, string) error
 
 	Up(context.Context, string, string) error
 	Down(context.Context, string, string) error
@@ -84,3 +91,5 @@ type RuntimeProvider interface {
 
 var _ RuntimeProvider = DockerProvider{}
 var _ RuntimeProvider = PodmanProvider{}
+var _ LogSourceAdapter = DockerProvider{}
+var _ LogSourceAdapter = PodmanProvider{}
