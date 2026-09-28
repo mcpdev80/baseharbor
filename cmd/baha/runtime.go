@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"io"
 	"net"
@@ -180,7 +181,25 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
 	}
 
+	if !opts.ControlPlaneOnly && repositoryApplicationDetectedForUp() {
+		if _, _, err := preflightNewTargetRecoveryFile(parent, opts.RecoveryFile); err != nil {
+			return err
+		}
+	}
+
 	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort})
+}
+
+func repositoryApplicationDetectedForUp() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	if found, err := application.HasRepositoryApplication(cwd); err == nil && found {
+		return true
+	}
+	detected, err := detectAppProject(cwd)
+	return err == nil && detectedApplicationProject(detected)
 }
 
 func selectControlPlanePort(out io.Writer, service, flag string, requested, defaultPort, fallbackStart int) (int, error) {
