@@ -53,33 +53,6 @@ func (c Compose) Engine() string {
 	}
 }
 
-// DetectCompose remains the compatibility entry point for existing v0.3
-// callers. Provider selection itself is centralized in DetectProvider so new
-// runtime implementations do not require application-contract changes.
-func DetectCompose(ctx context.Context) (Compose, error) {
-	return detectCompose(ctx)
-}
-
-func detectRuntimeProvider(ctx context.Context) (RuntimeProvider, error) {
-	if docker, err := detectDockerCompose(ctx); err == nil {
-		return DockerProvider{Compose: docker}, nil
-	}
-	if podman, err := detectPodmanCompose(ctx); err == nil {
-		return PodmanProvider{Compose: podman}, nil
-	}
-	return nil, ErrRuntimeNotFound
-}
-
-func detectCompose(ctx context.Context) (Compose, error) {
-	if docker, err := detectDockerCompose(ctx); err == nil {
-		return docker, nil
-	}
-	if podman, err := detectPodmanCompose(ctx); err == nil {
-		return podman, nil
-	}
-	return Compose{}, ErrRuntimeNotFound
-}
-
 func detectDockerCompose(ctx context.Context) (Compose, error) {
 	path, err := exec.LookPath("docker")
 	if err != nil {
