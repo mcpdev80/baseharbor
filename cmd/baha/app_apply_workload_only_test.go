@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
 )
 
 func TestStartManagedRuntimeSkipsWorkloadOnlyApplication(t *testing.T) {
@@ -19,7 +19,7 @@ func TestStartManagedRuntimeSkipsWorkloadOnlyApplication(t *testing.T) {
 			Services: []string{"coordinator", "docker-engine", "web"},
 		},
 	}
-	if err := startManagedRuntime(context.Background(), io.Discard, bhruntime.DockerProvider{}, m, application.RuntimeFiles{}); err != nil {
+	if err := startManagedRuntime(context.Background(), io.Discard, dockerprovider.Provider{}, m, application.RuntimeFiles{}); err != nil {
 		t.Fatalf("startManagedRuntime() error = %v", err)
 	}
 }
