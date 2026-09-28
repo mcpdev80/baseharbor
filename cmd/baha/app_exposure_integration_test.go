@@ -230,7 +230,7 @@ networks:
 	}, files, workload
 }
 
-func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles) error {
+func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles) error {
 	files := []string{workload.Compose, workload.Override}
 	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, files...); err != nil {
 		return err
@@ -255,7 +255,7 @@ func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.
 	return fmt.Errorf("fixture workload did not become ready: running=%v last_error=%v deadline=%w", lastRunning, lastErr, deadline.Err())
 }
 
-func cleanupManagedExposureFixture(compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
+func cleanupManagedExposureFixture(compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = destroyManagedExposure(ctx, compose, resolved.Manifest, files)
