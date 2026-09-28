@@ -106,6 +106,12 @@ func (c Compose) Kind() ProviderKind {
 	return ProviderCompose
 }
 
+type DockerProvider struct{ Compose }
+type PodmanProvider struct{ Compose }
+
+func (DockerProvider) Kind() ProviderKind { return ProviderDocker }
+func (PodmanProvider) Kind() ProviderKind { return ProviderPodman }
+
 func (Compose) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{
 		WorkloadLifecycle: true,
@@ -125,11 +131,19 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 	}
 	switch normalized {
 	case ProviderCompose:
-		return detectCompose(ctx)
+		return detectRuntimeProvider(ctx)
 	case ProviderDocker:
-		return detectDockerCompose(ctx)
+		compose, err := detectDockerCompose(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return DockerProvider{Compose: compose}, nil
 	case ProviderPodman:
-		return detectPodmanCompose(ctx)
+		compose, err := detectPodmanCompose(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return PodmanProvider{Compose: compose}, nil
 	case ProviderKubernetes, ProviderOpenShift:
 		return nil, fmt.Errorf("runtime provider %q is not executable in v0.4.15", normalized)
 	default:
