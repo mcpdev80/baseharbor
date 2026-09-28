@@ -32,11 +32,10 @@ func TestApplicationComponentsStopped(t *testing.T) {
 	}
 }
 
-
 func TestApplicationStatusCommandError(t *testing.T) {
 	tests := []struct {
-		name   string
-		result application.StatusResult
+		name    string
+		result  application.StatusResult
 		wantErr bool
 	}{
 		{name: "ready", result: application.StatusResult{State: "running", Ready: true}},
