@@ -105,7 +105,7 @@ func reconcileDevelopmentWorkloadChanges(
 	}
 
 	fmt.Fprintln(out, "Development source/configuration changes detected; reconciling workload only...")
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
 		return true, err
 	}
