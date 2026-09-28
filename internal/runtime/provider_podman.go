@@ -91,7 +91,7 @@ func (p PodmanProvider) DestroyProjectRemoveOrphans(ctx context.Context, project
 }
 
 func (p PodmanProvider) StatusProject(ctx context.Context, project, composeFile, envFile string) (string, error) {
-	containers, err := p.ListComposeContainers(ctx)
+	containers, err := p.ListRuntimeContainers(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -518,7 +518,7 @@ func (p PodmanProvider) RunningServicesProject(ctx context.Context, project, com
 			moduleServices[service] = struct{}{}
 		}
 	}
-	containers, err := p.ListComposeContainers(ctx)
+	containers, err := p.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -642,7 +642,7 @@ func (p PodmanProvider) ProjectServiceLogDriver(ctx context.Context, project, se
 	if project == "" || service == "" {
 		return "", errors.New("project and service are required")
 	}
-	containers, err := p.ListComposeContainers(ctx)
+	containers, err := p.ListRuntimeContainers(ctx)
 	if err != nil {
 		return "", err
 	}
