@@ -24,7 +24,7 @@ func requiresObjectStorageProviderAdmin(m application.Manifest) bool {
 type managedObjectStorageExecution struct {
 	execution         *capability.Execution
 	driver            *objectstorage.Driver
-	runtime           bhruntime.Compose
+	runtime           bhruntime.RuntimeProvider
 	manifest          application.Manifest
 	runtimeEnabled    bool
 	developerUsername string
@@ -33,7 +33,7 @@ type managedObjectStorageExecution struct {
 	namespace         string
 }
 
-func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedObjectStorageExecution, error) {
+func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedObjectStorageExecution, error) {
 	m := resolved.Manifest
 	runtimeEnabled := application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
 	if !application.HasObjectStorage(m) && !runtimeEnabled {
