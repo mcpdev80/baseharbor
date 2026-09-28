@@ -42,7 +42,7 @@ func requiresManagedServiceIssuer(m application.Manifest) bool {
 
 func appendManagedProviderPreflights(
 	checks []preflight.Check,
-	compose *bhruntime.Compose,
+	compose *bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
 	issuer *serviceaccess.Issuer,
@@ -106,7 +106,7 @@ func appendManagedProviderPreflights(
 // mutation and deliberately does not create visible capability preflight rows.
 func prepareUndeclaredProviderCleanup(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
 	issuer serviceaccess.Issuer,
