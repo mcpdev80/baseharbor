@@ -324,7 +324,7 @@ func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplica
 	if len(resolved.Manifest.Secrets.Required) == 0 && len(resolved.Manifest.Secrets.Optional) == 0 {
 		return environment, nil
 	}
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
 	if err != nil {
 		return nil, err
 	}
