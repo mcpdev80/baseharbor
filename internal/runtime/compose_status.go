@@ -32,6 +32,10 @@ func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, work
 	return nil, fmt.Errorf("compose service state unavailable; runtime-label fallback: %w", fallbackErr)
 }
 
+func (c Compose) ServiceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
+	return c.serviceStatesFromRuntimeLabels(ctx, project)
+}
+
 func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
 	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
