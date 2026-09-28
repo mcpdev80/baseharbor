@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-var _ Provider = Compose{}
+var _ Provider = DockerProvider{}
 
 type testProvider struct {
 	kind            ProviderKind
@@ -29,24 +29,24 @@ func (p testProvider) Descriptor() ProviderDescriptor {
 	}
 }
 
-func TestComposeProviderMetadata(t *testing.T) {
-	var provider Provider = Compose{}
+func TestDockerProviderMetadata(t *testing.T) {
+	var provider Provider = DockerProvider{}
 	if got, want := provider.Kind(), ProviderDocker; got != want {
 		t.Fatalf("Kind() = %q, want %q", got, want)
 	}
 
 	caps := provider.Capabilities()
 	if !caps.WorkloadLifecycle {
-		t.Fatal("Compose provider must support workload lifecycle")
+		t.Fatal("Docker provider must support workload lifecycle")
 	}
 	if !caps.ServiceExec {
-		t.Fatal("Compose provider must support service exec")
+		t.Fatal("Docker provider must support service exec")
 	}
 	if !caps.PublishedPorts {
-		t.Fatal("Compose provider must support published-port inspection")
+		t.Fatal("Docker provider must support published-port inspection")
 	}
 	if !caps.ResourceOwnership {
-		t.Fatal("Compose provider must support project resource ownership checks")
+		t.Fatal("Docker provider must support project resource ownership checks")
 	}
 }
 
