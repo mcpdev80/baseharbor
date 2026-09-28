@@ -81,3 +81,5 @@ type RuntimeProvider interface {
 }
 
 var _ RuntimeProvider = Compose{}
+var _ RuntimeProvider = DockerProvider{}
+var _ RuntimeProvider = PodmanProvider{}
