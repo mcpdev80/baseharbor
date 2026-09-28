@@ -211,7 +211,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err := application.MaterializeOTLPTLSBinding(d.app, d.files, material.CA, material.ClientCertificate, material.ClientKey); err != nil {
 		return err
 	}
-	containerHost := "otel-collector-access"
+	containerHost := "otel-collector"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		containerHost = strings.TrimSpace(policy.ServerName)
 	}
@@ -540,17 +540,6 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 		}
 	}
 	return "", errors.New("OpenTelemetry Collector port is not materialized")
-}
-
-func otlpAccessSpec() serviceaccess.HTTPGatewaySpec {
-	return serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "otel-collector-access",
-		Upstream:         "http://otel-collector:4318",
-		PublishedPortEnv: "BASEHARBOR_OTLP_PORT",
-		ContainerPort:    8443,
-		Networks:         []string{"telemetry"},
-		RequireClient:    true,
-	}
 }
 
 func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Client, error) {
