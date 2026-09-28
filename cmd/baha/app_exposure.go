@@ -18,7 +18,7 @@ type managedExposureExecution struct {
 	driver    *exposure.Driver
 }
 
-func prepareManagedExposure(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication) (*managedExposureExecution, error) {
+func prepareManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication) (*managedExposureExecution, error) {
 	m := resolved.Manifest
 	if len(m.Exposures) == 0 {
 		return nil, nil
@@ -98,7 +98,7 @@ func rollbackManagedExposure(ctx context.Context, prepared *managedExposureExecu
 	}
 }
 
-func inspectManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) ([]string, error) {
+func inspectManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) ([]string, error) {
 	if len(m.Exposures) == 0 {
 		return nil, nil
 	}
@@ -125,7 +125,7 @@ func exposureNameForServicePort(state exposure.State, service string, publishedP
 	return service
 }
 
-func stopManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func stopManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if len(m.Exposures) == 0 {
 		return nil
 	}
@@ -135,7 +135,7 @@ func stopManagedExposure(ctx context.Context, compose bhruntime.Compose, m appli
 	return nil
 }
 
-func destroyManagedExposure(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func destroyManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if len(m.Exposures) == 0 {
 		return nil
 	}
@@ -145,7 +145,7 @@ func destroyManagedExposure(ctx context.Context, compose bhruntime.Compose, m ap
 	return nil
 }
 
-func managedExposureRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) bool {
+func managedExposureRunning(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) bool {
 	if len(m.Exposures) == 0 {
 		return false
 	}
