@@ -19,7 +19,7 @@ type ProjectResource struct {
 	Name string
 }
 
-type ComposeContainer struct {
+type RuntimeContainer struct {
 	Name    string
 	Project string
 	Service string
