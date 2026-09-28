@@ -8,6 +8,7 @@ import (
 )
 
 func TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 
 	m := New("demo", "dev", true, true, false)
@@ -63,7 +64,7 @@ func TestManagedRuntimeObservabilityExcludesSharedBackendServices(t *testing.T) 
 	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")
 
 	m := New("demo", "dev", true, true, false)
-	m = WithLogsCollection(m, "application-provider")
+	m = WithLogsCollection(m, "application")
 
 	if got := ManagedRuntimeProviderServiceNames(m); len(got) != 0 {
 		t.Fatalf("shared backend services leaked into application runtime observability: %v", got)
