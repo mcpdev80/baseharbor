@@ -25,7 +25,7 @@ type managedIdentityExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedIdentity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
+func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
 	m := resolved.Manifest
 	if !application.HasIdentity(m) {
 		return nil, nil
@@ -151,7 +151,7 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 	return origins, nil
 }
 
-func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) error {
+func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) error {
 	m := resolved.Manifest
 	if !application.HasIdentity(m) {
 		return nil
