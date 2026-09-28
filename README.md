@@ -23,23 +23,31 @@
   </a>
 </p>
 
-**Inspect existing repositories**  
-Discover infrastructure requirements deterministically from code, dependencies, Compose files, ports and configuration. Inspection is implemented in BaseHarbor itself using parsers, rules and repository evidence — no LLM or external AI service is involved.
+BaseHarbor is a **portable application infrastructure control plane**.
+
+It inspects an application repository, turns infrastructure requirements into one explicit application contract, and realizes that contract through replaceable providers. The application keeps using standard protocols and clients; BaseHarbor owns provider selection, policy, lifecycle, credentials, trust, verification and evidence.
+
+The result is one developer workflow from local containers to later Kubernetes/OpenShift targets without rewriting application infrastructure intent around a specific product.
+
+## The idea
+
+**Inspect what the application already says**  
+BaseHarbor deterministically derives repository evidence from code, dependencies, Compose files, ports and configuration. No LLM or external AI service is required for inspection, planning or verification.
 
 **Declare needs, not products**  
-Keep infrastructure intent portable instead of coupling the app to a specific implementation.
+The application asks for SQL, cache, S3, secrets, identity, exposure or observability. PostgreSQL, Valkey, SeaweedFS, OpenBao, Keycloak and other products are provider realizations behind that intent.
 
-**Use standard interfaces**  
-PostgreSQL · Redis/Valkey · S3 · HTTP · OIDC/OAuth2 · OTLP · environment variables · files
+**Keep runtime and workload source separate**  
+Compose is currently a repository workload-source standard. Docker realizes it through Docker Compose; Podman realizes the same portable semantics through native Quadlet + `systemd --user`. Runtime Provider identity is `docker` or `podman`, not `compose`.
 
-**Zero-trust by default**  
-Least privilege · scoped credentials · explicit trust boundaries · fail-closed behavior
+**Use standard interfaces at the application boundary**  
+PostgreSQL · Redis/Valkey · S3 · HTTP(S) · OIDC/OAuth2 · OTLP · Service Binding · environment variables · files
 
-**Built for humans and AI agents**  
-Structured, secret-safe JSON · bounded MCP · no generic shell · no Docker access
+**Secure the lifecycle, not just the container**  
+Least privilege · scoped credentials · explicit trust boundaries · ownership verification · fail-closed behavior · secret-safe evidence
 
-**Explicit deployment destinations**  
-Target + Application + Environment · target-scoped state · Docker/Podman today · Kubernetes/OpenShift later
+**Make the same control plane usable by humans and agents**  
+Human-readable CLI output and structured JSON/MCP expose the same bounded operations. MCP does not provide a generic shell, Docker socket or unrestricted runtime execution.
 
 ```bash
 baha app inspect .
@@ -50,46 +58,54 @@ baha status
 baha doctor
 ```
 
-> **Runtime status:** Docker uses Docker Compose. Podman translates the same Compose-based workload/runtime definitions into native Quadlets managed through rootless `systemd --user`; `podman-compose` is not required. Kubernetes and OpenShift are planned runtime providers and are not implemented yet.
+> **Runtime status:** Docker and Podman are implemented Runtime Providers behind the same portable contract. Docker uses Docker Compose. Podman uses generated Quadlet units managed by rootless `systemd --user`; there is no `podman compose` fallback. Kubernetes and OpenShift are planned providers and are not implemented yet.
 
 ## Why BaseHarbor?
 
-Modern applications depend on databases, caches, secrets, object storage, networking and observability. BaseHarbor keeps those requirements in one application contract while the infrastructure underneath stays replaceable.
+Infrastructure usually becomes application-specific glue: Compose fragments, Helm values, cloud resources, credentials, local setup scripts and environment-specific conventions all describe the same application in different ways.
+
+BaseHarbor puts the stable part in one place:
 
 ```text
-Application
-    |
-    v
-baseharbor.yaml
-    |
-    v
-BaseHarbor
-    |
-    +--> capabilities
-    +--> providers
-    +--> policy + security
-    +--> lifecycle
-    |
-    v
-Docker Compose / Podman Quadlet today
-Kubernetes / OpenShift planned
+Application repository
+        |
+        v
+repository evidence
+        |
+        v
+portable baseharbor.yaml intent
+        |
+        v
+BaseHarbor control plane
+        |
+        +--> Runtime Providers
+        +--> Capability Providers
+        +--> policy + security
+        +--> lifecycle + recovery
+        +--> verification + evidence
+        |
+        v
+Docker / Podman today
+Kubernetes / OpenShift later
 ```
+
+The portable contract stays application-facing. Provider- and runtime-specific objects remain realization details.
 
 ## What you get
 
-- Deterministic repository inspection with **Detected / Suggested / Possible** evidence, implemented in code and driven by parsers, rules and repository evidence — not by AI.
-- Portable application intent with provider-neutral capability boundaries.
+- Deterministic repository inspection with **Detected / Suggested / Possible** evidence.
+- Portable application intent with provider-neutral capability and runtime boundaries.
+- Explicit Runtime Providers with versioned descriptors, capability negotiation and fail-closed selection.
 - PostgreSQL, Valkey/Redis, S3, secrets, managed/external OIDC identity, HTTP exposure, metrics, logs, traces and OTLP.
 - Optional provider management surfaces for pgAdmin, Redis Commander, SeaweedFS Admin, OpenBao, Keycloak and Prometheus.
-- Canonical local development URLs through one Target-scoped domain (default `baha.localhost`) instead of exposing random loopback ports as normal developer UX.
-- One Target-scoped development management login reused across selected local management surfaces; managed OIDC becomes the central development identity when Identity is present, with provider-native adapters only where required.
+- Canonical local development URLs through one Target-scoped domain (default `baha.localhost`) instead of random loopback ports as normal developer UX.
 - Environment-aware operator access: trusted local operation in dev; authenticated OIDC operator access in test/prod.
-- A canonical guided developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
-- First-class deployment Targets with XDG-backed configuration and target-scoped runtime/deployment state.
-- Plan, preflight, policy and explicit apply remain available for automation and troubleshooting.
+- A canonical developer path: `baha app init` -> select/inspect Target -> `baha up` -> verified READY.
+- First-class deployment Targets with target-scoped runtime/deployment state.
+- Plan, preflight, policy and explicit apply for automation and troubleshooting.
 - Backup/restore, updates, runtime-created resources and explicit app-to-app connectivity.
 - Provider placement for application-scoped, shared or externally managed infrastructure.
-- Resource-efficient shared providers as the normal BaseHarbor model: one Target-owned provider can serve many applications while databases, cache resources, credentials, bindings and destroy ownership remain application-isolated.
+- Shared provider lifecycle with application-isolated databases, cache resources, credentials, bindings and destroy ownership.
 - Machine-readable results and a versioned local MCP interface for agent workflows.
 
 ## Local development access
@@ -219,7 +235,7 @@ baha version
 
 BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 
-Compose is the complete runtime implementation today. Kubernetes and OpenShift remain future runtime tracks and must preserve the same application contract when implemented.
+Docker and Podman are the implemented Runtime Providers today. Docker realizes Compose workload input through Docker Compose; Podman realizes it through native Quadlet + rootless `systemd --user`. Kubernetes and OpenShift remain future runtime tracks and must preserve the same portable application contract when implemented.
 
 Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch represents released source.
 
@@ -229,4 +245,4 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ---
 
-<sub>AI-generated, human-specified, machine-verified.</sub>
+<sub>Human-specified, machine-verified. AI can integrate through the bounded MCP surface, but BaseHarbor's core inspection, planning and verification are deterministic.</sub>
