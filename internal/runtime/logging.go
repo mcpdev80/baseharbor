@@ -6,13 +6,6 @@ import (
 	"strings"
 )
 
-type LogCollectionMode string
-
-const (
-	LogCollectionSyslog   LogCollectionMode = "syslog"
-	LogCollectionJournald LogCollectionMode = "journald"
-)
-
 func (Compose) LogCollectionMode() LogCollectionMode {
 	return LogCollectionSyslog
 }
