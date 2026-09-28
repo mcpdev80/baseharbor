@@ -156,3 +156,39 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 		t.Fatalf("gateway Compose became privileged:\n%s", got)
 	}
 }
+
+
+func TestSelectGatewayHostPortFallsBackAndPersists(t *testing.T) {
+	availability := map[int]bool{443: false, 18443: false, 18444: true}
+	available := func(port int) bool { return availability[port] }
+
+	selected, err := selectGatewayHostPort(443, 0, false, available)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected != 18444 {
+		t.Fatalf("selected fallback = %d, want 18444", selected)
+	}
+
+	availability[18444] = false
+	selected, err = selectGatewayHostPort(443, 18444, true, available)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected != 18444 {
+		t.Fatalf("materialized persisted port = %d, want 18444", selected)
+	}
+}
+
+func TestSelectGatewayHostPortMovesFromStalePersistedPort(t *testing.T) {
+	availability := map[int]bool{443: false, 18443: true, 18444: false}
+	available := func(port int) bool { return availability[port] }
+
+	selected, err := selectGatewayHostPort(443, 18444, false, available)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected != 18443 {
+		t.Fatalf("replacement fallback = %d, want 18443", selected)
+	}
+}
