@@ -228,7 +228,7 @@ func EnsureRuntimeModuleOverrideForModeAt(
 	}
 
 	port := 0
-	if !mode == bhruntime.LogCollectionJournald {
+	if mode != bhruntime.LogCollectionJournald {
 		switch class {
 		case observability.SourceApplicationProvider:
 			registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
