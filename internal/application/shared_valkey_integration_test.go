@@ -140,7 +140,7 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 	}
 }
 
-func setSharedValkeySentinel(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, m Manifest, instance string, resource sharedValkeyResource, value string) {
+func setSharedValkeySentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, m Manifest, instance string, resource sharedValkeyResource, value string) {
 	t.Helper()
 	password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 	if err != nil {
@@ -157,7 +157,7 @@ func setSharedValkeySentinel(t *testing.T, ctx context.Context, compose bhruntim
 	}
 }
 
-func readSharedValkeySentinel(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, m Manifest, instance string, resource sharedValkeyResource) string {
+func readSharedValkeySentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, m Manifest, instance string, resource sharedValkeyResource) string {
 	t.Helper()
 	password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 	if err != nil {
