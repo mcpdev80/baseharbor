@@ -24,7 +24,7 @@ const (
 	KeycloakImage      = "quay.io/keycloak/keycloak:26.7.4"
 	KeycloakService    = "keycloak"
 	keycloakPublicHost = "identity.localhost"
-	keycloakHTTPSPort = 8443
+	keycloakHTTPSPort  = 8443
 )
 
 type KeycloakRuntime interface {
@@ -333,11 +333,17 @@ func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) 
 	}
 	var err error
 	material.CA, err = project(material.CA, "ca.pem")
-	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
 	material.ServerCertificate, err = project(material.ServerCertificate, "server.pem")
-	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
 	material.ServerKey, err = project(material.ServerKey, "server-key.pem")
-	if err != nil { return serviceaccess.TLSMaterial{}, err }
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
 	return material, nil
 }
 
