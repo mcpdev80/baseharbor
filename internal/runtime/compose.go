@@ -37,10 +37,8 @@ type ImageIdentity struct {
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
 type Compose struct {
-	command  string
-	prefix   []string
-	quadlet  bool
-	provider ProviderKind
+	command string
+	prefix  []string
 }
 
 func (c Compose) Engine() string {
