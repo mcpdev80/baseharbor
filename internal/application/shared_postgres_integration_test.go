@@ -178,8 +178,20 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	if err := ReleaseApplicationProviderRegistryAt(dataDir, appB); err != nil {
 		t.Fatalf("ReleaseApplicationProviderRegistryAt(appB) error = %v", err)
 	}
-	if _, err := os.Stat(shared.State); !os.IsNotExist(err) {
-		t.Fatalf("shared provider state still exists after last consumer destroy: err=%v", err)
+	state, err = loadSharedBackendState(shared.State, "dev")
+	if err != nil {
+		t.Fatalf("load state after last consumer destroy: %v", err)
+	}
+	if len(state.Applications) != 0 {
+		t.Fatalf("shared provider applications after last consumer destroy = %d, want 0", len(state.Applications))
+	}
+	if state.PostgresAdminCredential == "" {
+		t.Fatal("shared PostgreSQL provider admin credential was removed with last application")
+	}
+	if out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService("dev"), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", "SELECT current_user"); err != nil {
+		t.Fatalf("shared PostgreSQL provider stopped after last application destroy: %v", err)
+	} else if strings.TrimSpace(out) != "baseharbor_admin" {
+		t.Fatalf("provider admin after last application destroy = %q", strings.TrimSpace(out))
 	}
 }
 
