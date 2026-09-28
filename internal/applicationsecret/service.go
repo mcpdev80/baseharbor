@@ -25,7 +25,7 @@ const applicationSecretOperationTimeout = 60 * time.Second
 type Service struct {
 	store         application.Store
 	runtimeClient *openbao.ApplicationRuntimeClient
-	compose       *bhruntime.Compose
+	compose       *bhruntime.RuntimeProvider
 	platformFiles *bhruntime.Files
 	manifest      *application.Manifest
 	runtimeFiles  *application.RuntimeFiles
@@ -35,11 +35,11 @@ func New(store application.Store) *Service {
 	return &Service{store: store}
 }
 
-func NewForRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files) *Service {
+func NewForRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files) *Service {
 	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
 }
 
-func NewForApplicationRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
+func NewForApplicationRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
 	return &Service{
 		store:         store,
 		compose:       &compose,
@@ -170,7 +170,7 @@ func (s *Service) Delete(ctx context.Context, name, key string) error {
 
 type resolvedApplication struct {
 	manifest        application.Manifest
-	compose         bhruntime.Compose
+	compose         bhruntime.RuntimeProvider
 	platformFiles   bhruntime.Files
 	identity        openbao.ApplicationIdentity
 	credentialsPath string
@@ -213,7 +213,7 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if err := application.CheckRuntimePermissions(files); err != nil {
 		return resolvedApplication{}, err
 	}
-	var compose bhruntime.Compose
+	var compose bhruntime.RuntimeProvider
 	if s.compose != nil {
 		compose = *s.compose
 	} else {
