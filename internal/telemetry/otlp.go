@@ -356,17 +356,18 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_OTLP_PORT="+port+"\n"), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Config, []byte(collectorConfigWithTraceBackend(traceEndpoint)), 0o644); err != nil {
+	accessPolicy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	requireClientCertificate := accessPolicy.AuthenticationRequired && accessPolicy.Authentication == serviceaccess.AuthenticationMTLS
+	if err := os.WriteFile(files.Config, []byte(collectorConfigWithTraceBackendAccess(traceEndpoint, requireClientCertificate)), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	// The Collector image runs as a non-root user. This generated configuration
 	// contains no credentials and must be readable through the read-only bind
 	// mount, while the provider directory and runtime.env remain owner-only.
 	if err := os.Chmod(files.Config, 0o644); err != nil {
-		return ProviderFiles{}, err
-	}
-	accessPolicy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
-	if err != nil {
 		return ProviderFiles{}, err
 	}
 	accessPolicy.ServerName = "otel-collector"
@@ -487,6 +488,10 @@ func collectorConfig() string {
 }
 
 func collectorConfigWithTraceBackend(traceEndpoint string) string {
+	return collectorConfigWithTraceBackendAccess(traceEndpoint, true)
+}
+
+func collectorConfigWithTraceBackendAccess(traceEndpoint string, requireClientCertificate bool) string {
 	traceExporters := "[debug]"
 	extraExporter := ""
 	if strings.TrimSpace(traceEndpoint) != "" {
@@ -501,8 +506,7 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
         tls:
           cert_file: /run/baseharbor/tls/server.pem
           key_file: /run/baseharbor/tls/server-key.pem
-          client_ca_file: /run/baseharbor/tls/ca.pem
-          min_version: "1.2"
+%s          min_version: "1.2"
           reload_interval: 30s
 exporters:
   debug:
@@ -526,7 +530,12 @@ exporters:
     logs:
       receivers: [otlp]
       exporters: [debug]
-`, extraExporter, traceExporters)
+`, extraExporter, func() string {
+		if requireClientCertificate {
+			return "          client_ca_file: /run/baseharbor/tls/ca.pem\\n"
+		}
+		return ""
+	}(), traceExporters)
 }
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
