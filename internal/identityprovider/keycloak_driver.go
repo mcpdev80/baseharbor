@@ -22,8 +22,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-type keycloakRuntimeEngine interface {
-	Engine() string
+type keycloakRuntimeLocalHTTPS interface {
+	PreferredLocalHTTPSPort() int
 }
 
 type KeycloakDriver struct {
