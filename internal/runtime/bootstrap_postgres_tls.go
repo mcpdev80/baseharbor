@@ -82,7 +82,13 @@ func ensureBootstrapPostgresTLS(stateDir string) error {
 	if err := writePEM(keyPath, "PRIVATE KEY", keyDER, 0o644); err != nil {
 		return err
 	}
-	return nil
+	const hba = `local all all trust
+hostssl all all 0.0.0.0/0 scram-sha-256
+hostssl all all ::/0 scram-sha-256
+hostnossl all all 0.0.0.0/0 reject
+hostnossl all all ::/0 reject
+`
+	return os.WriteFile(filepath.Join(dir, "pg_hba.conf"), []byte(hba), 0o644)
 }
 
 func filesExist(paths ...string) bool {
