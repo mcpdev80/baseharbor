@@ -6,8 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,8 +44,8 @@ type KeycloakFiles struct {
 	PublicURL          string
 	CanonicalPublicURL string
 	AdminURL           string
-	PublicAccess    serviceaccess.HTTPGatewayFiles
-	AdminAccess     serviceaccess.HTTPGatewayFiles
+	PublicAccess       serviceaccess.HTTPGatewayFiles
+	AdminAccess        serviceaccess.HTTPGatewayFiles
 }
 
 func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) (KeycloakFiles, error) {

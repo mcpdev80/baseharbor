@@ -323,7 +323,6 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 	return nil
 }
 
-
 func logCollectionModeForLegacyRuntime(runtimeKind string) bhruntime.LogCollectionMode {
 	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
 		return bhruntime.LogCollectionJournald

@@ -15,8 +15,10 @@ func (r testKeycloakRuntime) PreferredLocalHTTPSPort() int {
 	return 443
 }
 func (r testKeycloakRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
-func (r testKeycloakRuntime) UpProject(context.Context, string, string, string) error { return nil }
-func (r testKeycloakRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
+func (r testKeycloakRuntime) UpProject(context.Context, string, string, string) error     { return nil }
+func (r testKeycloakRuntime) DestroyProject(context.Context, string, string, string) error {
+	return nil
+}
 
 func TestManagedOperatorCanonicalBaseURL(t *testing.T) {
 	tests := []struct {

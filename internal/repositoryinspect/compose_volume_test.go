@@ -85,7 +85,6 @@ func TestReclaimableReplacedInfrastructureVolumesDoesNotGuessUnknownService(t *t
 	}
 }
 
-
 func TestReclaimableReplacedInfrastructureVolumesAcceptsShortSyntax(t *testing.T) {
 	rendered := []byte(`{
 	  "services": {

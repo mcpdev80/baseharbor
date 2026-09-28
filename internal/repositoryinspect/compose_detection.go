@@ -322,7 +322,6 @@ func composePortValues(raw any) []string {
 	return ports
 }
 
-
 func composeBaseHarborWorkloadProtocol(raw any) (string, error) {
 	const key = "io.baseharbor.workload.protocol"
 	labels := map[string]string{}
