@@ -22,21 +22,21 @@ func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.
 // moves existing Compose orchestration behind the provider seam incrementally.
 // Future providers must not be coerced into Compose behavior: selection and
 // capability checks happen before the current Compose-only operation proceeds.
-func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.Compose, error) {
+func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
 	kind, err := runtimeProviderKindForApplication(resolved)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return bhruntime.RuntimeProvider{}, err
 	}
 	provider, err := bhruntime.DetectProviderForKind(ctx, kind)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return bhruntime.RuntimeProvider{}, err
 	}
 	if err := bhruntime.RequireCapabilities(provider, required...); err != nil {
-		return bhruntime.Compose{}, err
+		return bhruntime.RuntimeProvider{}, err
 	}
-	compose, ok := provider.(bhruntime.Compose)
+	compose, ok := provider.(bhruntime.RuntimeProvider)
 	if !ok {
-		return bhruntime.Compose{}, fmt.Errorf("runtime provider %s is not implemented for Compose-backed orchestration", provider.Kind())
+		return bhruntime.RuntimeProvider{}, fmt.Errorf("runtime provider %s is not implemented for Compose-backed orchestration", provider.Kind())
 	}
 	return compose, nil
 }
