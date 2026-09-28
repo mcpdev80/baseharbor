@@ -13,8 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
-	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
