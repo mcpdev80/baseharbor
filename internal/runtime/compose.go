@@ -41,18 +41,6 @@ type Compose struct {
 	prefix  []string
 }
 
-func (c Compose) Engine() string {
-	base := filepath.Base(strings.TrimSpace(c.command))
-	switch base {
-	case "podman":
-		return "podman"
-	case "docker":
-		return "docker"
-	default:
-		return base
-	}
-}
-
 func detectDockerCompose(ctx context.Context) (Compose, error) {
 	path, err := exec.LookPath("docker")
 	if err != nil {
