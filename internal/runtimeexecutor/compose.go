@@ -61,13 +61,13 @@ func EnsureFilesAt(dataDir, namespace string, identity openbao.RuntimeExecutorMT
 		return Files{}, errors.New("runtime executor S3 HTTPS endpoint and trust bundle are required")
 	}
 	required := map[string]string{
-		"runtime CA":                         identity.CA,
-		"executor certificate":               identity.Cert,
-		"executor private key":               identity.Key,
+		"runtime CA":                          identity.CA,
+		"executor certificate":                identity.Cert,
+		"executor private key":                identity.Key,
 		"runtime observer client certificate": identity.ClientCert,
 		"runtime observer client key":         identity.ClientKey,
-		"S3 admin credentials":               adminCredentialsPath,
-		"S3 trust bundle":                    s3TrustPath,
+		"S3 admin credentials":                adminCredentialsPath,
+		"S3 trust bundle":                     s3TrustPath,
 	}
 	var observer ObservabilityBinding
 	if len(observability) > 0 {

@@ -14,7 +14,7 @@ type testProvider struct {
 	contractVersion string
 }
 
-func (p testProvider) Kind() ProviderKind { return p.kind }
+func (p testProvider) Kind() ProviderKind                 { return p.kind }
 func (p testProvider) Capabilities() ProviderCapabilities { return p.caps }
 func (p testProvider) Descriptor() ProviderDescriptor {
 	version := p.contractVersion
@@ -252,6 +252,6 @@ type thirdPartyTestProvider struct {
 	descriptor ProviderDescriptor
 }
 
-func (p thirdPartyTestProvider) Kind() ProviderKind { return p.descriptor.Kind }
-func (p thirdPartyTestProvider) Descriptor() ProviderDescriptor { return p.descriptor }
+func (p thirdPartyTestProvider) Kind() ProviderKind                 { return p.descriptor.Kind }
+func (p thirdPartyTestProvider) Descriptor() ProviderDescriptor     { return p.descriptor }
 func (p thirdPartyTestProvider) Capabilities() ProviderCapabilities { return p.descriptor.Capabilities }

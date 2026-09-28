@@ -156,7 +156,6 @@ func TestEnsureFilesProjectsExecutorPrivateKeyForNonRootRuntime(t *testing.T) {
 	}
 }
 
-
 func TestComposeYAMLMountsObserverIdentityWithoutOTLP(t *testing.T) {
 	got := composeYAML(
 		"baseharbor-runtime:test",

@@ -9,7 +9,7 @@ import (
 type LogCollectionMode string
 
 const (
-	LogCollectionSyslog  LogCollectionMode = "syslog"
+	LogCollectionSyslog   LogCollectionMode = "syslog"
 	LogCollectionJournald LogCollectionMode = "journald"
 )
 
