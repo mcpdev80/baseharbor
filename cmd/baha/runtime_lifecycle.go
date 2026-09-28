@@ -77,7 +77,7 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
