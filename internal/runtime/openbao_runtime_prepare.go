@@ -74,5 +74,5 @@ listener "tcp" {
 
 api_addr = "https://openbao:8200"
 `, escaped)
-	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o600)
+	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
 }
