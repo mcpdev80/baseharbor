@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
 - Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
 - First-class resource-efficient `shared` placement for the bundled PostgreSQL and Valkey providers while retaining explicit `application` placement; shared provider lifecycle is Target-owned while databases, cache resources, credentials and Service Bindings remain application-isolated.
+- Versioned `baseharbor.runtime/v1` Runtime Provider descriptors and an extensible registry with provider identity, provider version, adopted standards, workload-source compatibility, realization metadata and fail-closed capability negotiation; reusable conformance tests and an AST architecture guard protect the provider-neutral Core boundary.
 
 ### Changed
 
@@ -29,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The v0.4.17 reference demo is HTTPS-only and intentionally has no plaintext HTTP fallback.
 - The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
 - Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
+- Runtime selection now uses explicit `docker` / `podman` provider identity. Compose remains repository workload-source compatibility rather than Runtime Provider identity; new local state defaults to Docker. Podman realization is native Quadlet + `systemd --user` and fails closed without that environment instead of falling back to `podman compose`.
 
 ### Fixed
 
