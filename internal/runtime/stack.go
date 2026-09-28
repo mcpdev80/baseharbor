@@ -134,10 +134,6 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return fmt.Errorf("prepare OpenBao native TLS: %w", err)
 	}
-	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
-		return fmt.Errorf("project OpenBao native TLS: %w", err)
-	}
-
 	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return err
@@ -153,6 +149,14 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	)
 	if err != nil {
 		return fmt.Errorf("prepare control-plane PostgreSQL native TLS: %w", err)
+	}
+	// Issue every replacement certificate while the currently running control
+	// plane still sees one coherent trust set. Only after all issuer calls have
+	// succeeded do we replace the runtime projections. This avoids a split
+	// state where BAO_CACERT trusts the new CA while OpenBao still presents the
+	// bootstrap certificate.
+	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
+		return fmt.Errorf("project OpenBao native TLS: %w", err)
 	}
 	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
 		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
