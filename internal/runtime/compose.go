@@ -97,12 +97,8 @@ func detectPodmanCompose(ctx context.Context) (Compose, error) {
 	if err != nil {
 		return Compose{}, ErrRuntimeNotFound
 	}
-	if QuadletAvailable(ctx) {
-		return Compose{command: path}, nil
-	}
-	cmd := exec.CommandContext(ctx, path, "compose", "version")
-	if err := cmd.Run(); err != nil {
-		return Compose{}, ErrRuntimeNotFound
+	if !QuadletAvailable(ctx) {
+		return Compose{}, fmt.Errorf("%w: Podman Quadlet and the user systemd session are required", ErrRuntimeNotFound)
 	}
 	return Compose{command: path}, nil
 }
