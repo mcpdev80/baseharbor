@@ -183,6 +183,9 @@ func TestProviderDescriptorRegistryDeclaresReferenceProviders(t *testing.T) {
 		if descriptor.ProviderVersion == "" {
 			t.Fatalf("descriptor %q has empty provider version", kind)
 		}
+		if len(descriptor.WorkloadSources) == 0 || descriptor.Realization == "" {
+			t.Fatalf("descriptor %q lacks source/realization compatibility: %#v", kind, descriptor)
+		}
 		if !descriptor.Capabilities.WorkloadLifecycle || !descriptor.Capabilities.ResourceOwnership {
 			t.Fatalf("descriptor %q is missing required reference capabilities: %#v", kind, descriptor.Capabilities)
 		}
@@ -213,6 +216,8 @@ func TestProviderRegistryAcceptsThirdPartyDescriptorWithoutCoreEnumeration(t *te
 		ContractVersion: RuntimeProviderContractVersion,
 		ProviderVersion: "1.0.0",
 		Standards:       []string{"OCI Runtime Specification"},
+		WorkloadSources: []string{"compose-spec"},
+		Realization:     "example-runtime",
 		Capabilities:    ProviderCapabilities{WorkloadLifecycle: true},
 	}
 	registry, err := NewProviderRegistry(ProviderRegistration{
