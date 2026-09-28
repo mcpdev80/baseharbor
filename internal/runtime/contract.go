@@ -13,6 +13,8 @@ type RuntimeProvider interface {
 	Provider
 
 	Engine() string
+	LogCollectionMode() LogCollectionMode
+	VerifyProjectServiceLogCollection(context.Context, string, string, string) error
 
 	Up(context.Context, string, string) error
 	Down(context.Context, string, string) error
