@@ -45,7 +45,7 @@ REVOKE ALL ON DATABASE openbao FROM PUBLIC;
 GRANT CONNECT ON DATABASE openbao TO openbao;
 EOSQL
 `
-	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o700)
+	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
 }
 
 func writeOpenBaoRuntimeConfig(stateDir, secret string) error {
