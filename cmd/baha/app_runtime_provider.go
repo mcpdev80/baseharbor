@@ -18,25 +18,25 @@ func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.
 	return bhruntime.ParseProviderKind(string(provider))
 }
 
-// detectComposeForApplication is the transitional adapter used while v0.4
-// moves existing Compose orchestration behind the provider seam incrementally.
-// Future providers must not be coerced into Compose behavior: selection and
-// capability checks happen before the current Compose-only operation proceeds.
-func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
+// detectRuntimeForApplication resolves the target-selected runtime through the
+// provider-neutral execution contract and validates required runtime capabilities.
+func detectRuntimeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
 	kind, err := runtimeProviderKindForApplication(resolved)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
-	provider, err := bhruntime.DetectProviderForKind(ctx, kind)
+	provider, err := bhruntime.ResolveRuntimeProviderForKind(ctx, kind)
 	if err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
 	if err := bhruntime.RequireCapabilities(provider, required...); err != nil {
-		return bhruntime.RuntimeProvider{}, err
+		return nil, err
 	}
-	compose, ok := provider.(bhruntime.RuntimeProvider)
-	if !ok {
-		return bhruntime.RuntimeProvider{}, fmt.Errorf("runtime provider %s is not implemented for Compose-backed orchestration", provider.Kind())
-	}
-	return compose, nil
+	return provider, nil
+}
+
+// detectComposeForApplication is retained as a compatibility name while callers
+// are migrated. It no longer exposes or requires a concrete Compose runtime.
+func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
+	return detectRuntimeForApplication(ctx, resolved, required...)
 }
