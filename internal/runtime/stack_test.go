@@ -173,7 +173,7 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 	for _, wanted := range []string{
 		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
 		"BAO_ADDR: https://127.0.0.1:8200",
-		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
 		"-c ssl=on",
@@ -314,7 +314,7 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 		"-c ssl=on",
 		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
 		"BAO_ADDR: https://127.0.0.1:8200",
-		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded runtime missing native-TLS bootstrap %q", want)
@@ -329,7 +329,7 @@ func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
 	for _, wanted := range []string{
 		"docker.io/openbao/openbao:2.7.0",
-		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
 		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
