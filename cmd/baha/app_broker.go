@@ -37,7 +37,7 @@ func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
 
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
-func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
+func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
@@ -157,7 +157,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
-func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.Compose, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
+func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
 	}
@@ -264,7 +264,7 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	return errors.New("runtime provider executor is not running")
 }
 
-func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
+func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var lastErr error
@@ -281,7 +281,7 @@ func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.Compose, m ap
 	}
 }
 
-func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
@@ -386,7 +386,7 @@ func printRuntimeBrokerDocs(out io.Writer, target string, m application.Manifest
 	fmt.Fprintf(out, "[INFO] runtime-broker    Swagger/OpenAPI: %s\n", url)
 }
 
-func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func destroyRuntimeBroker(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
@@ -411,7 +411,7 @@ func destroyRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m appl
 	return nil
 }
 
-func stopRuntimeBroker(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func stopRuntimeBroker(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
