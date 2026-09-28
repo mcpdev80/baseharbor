@@ -261,7 +261,7 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 	for _, required := range []string{
 		"  openbao:\n",
 		"docker.io/openbao/openbao:2.7.0",
-		"server -config=/run/baseharbor/openbao/openbao.hcl",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
 	} {
