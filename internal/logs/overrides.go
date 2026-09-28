@@ -44,14 +44,22 @@ func EnsureWorkloadOverride(m application.Manifest, runtime application.RuntimeF
 }
 
 func EnsureWorkloadOverrideForRuntime(m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
+	return EnsureWorkloadOverrideForMode(m, runtime, services, logCollectionModeForLegacyRuntime(runtimeKind))
+}
+
+func EnsureWorkloadOverrideForMode(m application.Manifest, runtime application.RuntimeFiles, services []string, mode bhruntime.LogCollectionMode) (string, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return "", err
 	}
-	return EnsureWorkloadOverrideForRuntimeAt(dataDir, "", m, runtime, services, runtimeKind)
+	return EnsureWorkloadOverrideForModeAt(dataDir, "", m, runtime, services, mode)
 }
 
 func EnsureWorkloadOverrideForRuntimeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, runtimeKind string) (string, error) {
+	return EnsureWorkloadOverrideForModeAt(dataDir, namespace, m, runtime, services, logCollectionModeForLegacyRuntime(runtimeKind))
+}
+
+func EnsureWorkloadOverrideForModeAt(dataDir, namespace string, m application.Manifest, runtime application.RuntimeFiles, services []string, mode bhruntime.LogCollectionMode) (string, error) {
 	registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
 	if err != nil {
 		return "", err
@@ -65,7 +73,7 @@ func EnsureWorkloadOverrideForRuntimeAt(dataDir, namespace string, m application
 	for _, service := range services {
 		fmt.Fprintf(&b, "  %s:\n", service)
 		b.WriteString("    logging:\n")
-		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		if mode == bhruntime.LogCollectionJournald {
 			b.WriteString("      driver: journald\n")
 			continue
 		}
@@ -145,6 +153,20 @@ func EnsureRuntimeModuleOverrideForRuntimeAt(
 	class observability.SourceClass,
 	allowedServices []string,
 ) (string, bool, error) {
+	return EnsureRuntimeModuleOverrideForModeAt(dataDir, namespace, m, dir, filename, project, logCollectionModeForLegacyRuntime(runtimeKind), class, allowedServices)
+}
+
+func EnsureRuntimeModuleOverrideForModeAt(
+	dataDir string,
+	namespace string,
+	m application.Manifest,
+	dir string,
+	filename string,
+	project string,
+	mode bhruntime.LogCollectionMode,
+	class observability.SourceClass,
+	allowedServices []string,
+) (string, bool, error) {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return "", false, err
@@ -206,7 +228,7 @@ func EnsureRuntimeModuleOverrideForRuntimeAt(
 	}
 
 	port := 0
-	if !strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+	if !mode == bhruntime.LogCollectionJournald {
 		switch class {
 		case observability.SourceApplicationProvider:
 			registration, err := ApplicationRegistrationAt(dataDir, namespace, m)
@@ -239,7 +261,7 @@ func EnsureRuntimeModuleOverrideForRuntimeAt(
 	for _, source := range services {
 		fmt.Fprintf(&b, "  %s:\n", source.Service)
 		b.WriteString("    logging:\n")
-		if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		if mode == bhruntime.LogCollectionJournald {
 			b.WriteString("      driver: journald\n")
 			continue
 		}
@@ -299,4 +321,12 @@ func RemoveWorkloadOverride(runtime application.RuntimeFiles) error {
 		return err
 	}
 	return nil
+}
+
+
+func logCollectionModeForLegacyRuntime(runtimeKind string) bhruntime.LogCollectionMode {
+	if strings.EqualFold(strings.TrimSpace(runtimeKind), "podman") {
+		return bhruntime.LogCollectionJournald
+	}
+	return bhruntime.LogCollectionSyslog
 }
