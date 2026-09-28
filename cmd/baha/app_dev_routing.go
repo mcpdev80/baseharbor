@@ -508,10 +508,10 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 		Owner: owner,
 		Routes: []devgateway.Route{{
 			Key: key, Host: host,
-			Upstream:   "https://" + service + ":8443",
+			Upstream:   "https://" + service + ":9090",
 			Network:    metrics.PublishNetworkName(placement.Project),
 			TrustFile:  filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
-			ServerName: "localhost",
+			ServerName: "prometheus",
 		}},
 	})
 	return nil
