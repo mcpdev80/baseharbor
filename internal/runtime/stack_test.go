@@ -63,6 +63,50 @@ func TestEnsureFilesPreservesExistingSecret(t *testing.T) {
 	}
 }
 
+func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenBaoDBPassword == "" || cfg.OpenBaoDBPassword == cfg.PostgresPassword {
+		t.Fatal("OpenBao storage must use a dedicated PostgreSQL credential")
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(config)
+	for _, want := range []string{
+		`storage "postgresql"`,
+		"sslmode=verify-full",
+		"tls_auto_reload          = true",
+		"X25519MLKEM768",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("OpenBao 2.7 runtime config missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{`storage "file"`, `storage "raft"`} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("OpenBao runtime contains obsolete storage backend %q", forbidden)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
+		filepath.Join(dir, "providers", "postgresql", "runtime", "ca.pem"),
+		filepath.Join(dir, "providers", "openbao", "runtime", "ca.pem"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("OpenBao bootstrap prerequisite %s: %v", path, err)
+		}
+	}
+}
+
 func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
 	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
