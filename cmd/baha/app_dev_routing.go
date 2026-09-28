@@ -218,7 +218,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 				Upstream:   "https://shared-cache-ui-access:8443",
 				Network:    shared.Network,
 				TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
-				ServerName: "openbao",
+				ServerName: "localhost",
 			}},
 		})
 	} else {
@@ -473,7 +473,7 @@ func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Con
 				Upstream:   "https://openbao:8200",
 				Network:    bhruntime.ControlPlaneNetworkName(resourceProject),
 				TrustFile:  filepath.Join(filepath.Dir(e.platformFiles.Compose), "providers", "openbao", "service-access", "pki", "ca.pem"),
-				ServerName: "localhost",
+				ServerName: "openbao",
 			}},
 		})
 	}
