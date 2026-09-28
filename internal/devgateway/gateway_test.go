@@ -157,7 +157,6 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 	}
 }
 
-
 func TestSelectGatewayHostPortFallsBackAndPersists(t *testing.T) {
 	availability := map[int]bool{443: false, 18443: false, 18444: true}
 	available := func(port int) bool { return availability[port] }
