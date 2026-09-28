@@ -32,6 +32,8 @@ jobs:
   docker-runtime:
     env:
       BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
 
