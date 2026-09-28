@@ -39,7 +39,6 @@ type ImageIdentity struct {
 type Compose struct {
 	command string
 	prefix  []string
-	quadlet bool // temporary until legacy branches are removed below
 }
 
 func (c Compose) Engine() string {
