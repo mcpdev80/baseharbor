@@ -111,6 +111,13 @@ func requiresDevelopmentManagementAccess(m application.Manifest) bool {
 		m.Services.ObservabilityManagementUI
 }
 
+type developmentRoutePlan struct {
+	target    string
+	appOwner  string
+	appRoutes []devgateway.Route
+	groups    []devgateway.OwnerRoutes
+}
+
 func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
 	if !requiresDevelopmentGateway(e.manifest) {
 		return nil
@@ -119,23 +126,55 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 	if _, err := devaccess.EnsureDomain(target); err != nil {
 		return fmt.Errorf("prepare development domain: %w", err)
 	}
+	plan := &developmentRoutePlan{
+		target:    target,
+		appOwner:  "app/" + e.manifest.Name + "/" + e.manifest.Environment,
+		appRoutes: make([]devgateway.Route, 0, 8),
+	}
+	for _, step := range []func(context.Context, *developmentRoutePlan) error{
+		e.addDevelopmentBackendRoutes,
+		e.addDevelopmentIdentityRoutes,
+		e.addDevelopmentWorkloadRoutes,
+		e.addDevelopmentExposureRoutes,
+		e.addDevelopmentManagementRoutes,
+	} {
+		if err := step(ctx, plan); err != nil {
+			return err
+		}
+	}
+	plan.groups = append(plan.groups, devgateway.OwnerRoutes{Owner: plan.appOwner, Routes: plan.appRoutes})
+	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, target, plan.groups...); err != nil {
+		return fmt.Errorf("reconcile canonical development routes: %w", err)
+	}
+	if err := devgateway.Verify(ctx, target); err != nil {
+		return fmt.Errorf("verify canonical development routes: %w", err)
+	}
+	routes, err := devgateway.Routes(target)
+	if err != nil {
+		return err
+	}
+	e.term.Section("Development URLs")
+	for _, route := range routes {
+		if route.Owner == plan.appOwner || strings.HasPrefix(route.Owner, "shared/") {
+			e.term.Result("READY", route.Key, devgateway.URLForTarget(target, route.Host))
+		}
+	}
+	return nil
+}
 
-	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
-	appRoutes := make([]devgateway.Route, 0, 8)
-	groups := []devgateway.OwnerRoutes{}
-
+func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Context, plan *developmentRoutePlan) error {
 	if e.manifest.Services.SQLManagementUI {
 		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderPostgreSQL)
 		if err != nil {
 			return err
 		}
 		if placement.Scope == capability.ScopeShared {
-			host, err := devaccess.SharedHost(target, "pgadmin")
+			host, err := devaccess.SharedHost(plan.target, "pgadmin")
 			if err != nil {
 				return err
 			}
-			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, target, e.manifest.Environment)
-			groups = append(groups, devgateway.OwnerRoutes{
+			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, plan.target, e.manifest.Environment)
+			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 				Owner: "shared/postgresql",
 				Routes: []devgateway.Route{{
 					Key: "shared/postgresql", Host: host,
@@ -146,12 +185,12 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				}},
 			})
 		} else {
-			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "pgadmin")
+			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "pgadmin")
 			if err != nil {
 				return err
 			}
-			appRoutes = append(appRoutes, devgateway.Route{
-				Key: appOwner + "/pgadmin", Host: host,
+			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+				Key: plan.appOwner + "/pgadmin", Host: host,
 				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "pgadmin") + ":8443",
 				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
 				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "postgres", "pki", "ca.pem"),
@@ -159,148 +198,161 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			})
 		}
 	}
-	if e.manifest.Services.CacheManagementUI {
-		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderValkey)
+	if !e.manifest.Services.CacheManagementUI {
+		return nil
+	}
+	placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderValkey)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeShared {
+		host, err := devaccess.SharedHost(plan.target, "cache")
 		if err != nil {
 			return err
 		}
-		if placement.Scope == capability.ScopeShared {
-			host, err := devaccess.SharedHost(target, "cache")
-			if err != nil {
-				return err
-			}
-			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, target, e.manifest.Environment)
-			groups = append(groups, devgateway.OwnerRoutes{
-				Owner: "shared/valkey",
-				Routes: []devgateway.Route{{
-					Key: "shared/valkey", Host: host,
-					Upstream:   "https://shared-cache-ui-access:8443",
-					Network:    shared.Network,
-					TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
-					ServerName: "localhost",
-				}},
-			})
-		} else {
-			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "cache")
-			if err != nil {
-				return err
-			}
-			appRoutes = append(appRoutes, devgateway.Route{
-				Key: appOwner + "/cache", Host: host,
-				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
-				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
+		shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, plan.target, e.manifest.Environment)
+		plan.groups = append(plan.groups, devgateway.OwnerRoutes{
+			Owner: "shared/valkey",
+			Routes: []devgateway.Route{{
+				Key: "shared/valkey", Host: host,
+				Upstream:   "https://shared-cache-ui-access:8443",
+				Network:    shared.Network,
+				TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
 				ServerName: "localhost",
-			})
-		}
-	}
-	if e.manifest.Services.Identity {
-		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderKeycloak)
+			}},
+		})
+	} else {
+		host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "cache")
 		if err != nil {
 			return err
 		}
-		if placement.Scope != capability.ScopeExternal {
-			files, err := identityprovider.ExistingKeycloakFilesAt(e.manifest, e.resolved.TargetStateRoot, target)
-			if err != nil {
-				return err
-			}
-			owner := appOwner
-			loginKey := appOwner + "/identity"
-			adminKey := appOwner + "/identity-admin"
-			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "identity")
-			if placement.Scope == capability.ScopeShared {
-				owner = "shared/keycloak"
-				loginKey = owner + "/login"
-				adminKey = owner + "/admin"
-				host, err = devaccess.SharedHost(target, "identity")
-			}
-			if err != nil {
-				return err
-			}
-			identityRoutes := []devgateway.Route{{
-				Key: loginKey, Host: host,
-				Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
-				Network:    files.ConsumerNetwork,
-				TrustFile:  files.PublicAccess.Material.CA,
-				ServerName: files.PublicAccess.Material.ServerName,
-			}}
-			if e.manifest.Services.IdentityManagementUI {
-				var adminHost string
-				if placement.Scope == capability.ScopeShared {
-					adminHost, err = devaccess.SharedHost(target, "identity-admin")
-				} else {
-					adminHost, err = devaccess.ApplicationHost(target, e.manifest.Name, "identity-admin")
-				}
-				if err != nil {
-					return err
-				}
-				identityRoutes = append(identityRoutes, devgateway.Route{
-					Key: adminKey, Host: adminHost,
-					Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
-					Network:    files.InternalNetwork,
-					TrustFile:  files.AdminAccess.Material.CA,
-					ServerName: files.AdminAccess.Material.ServerName,
-				})
-			}
-			if placement.Scope == capability.ScopeShared {
-				groups = append(groups, devgateway.OwnerRoutes{Owner: owner, Routes: identityRoutes})
-			} else {
-				appRoutes = append(appRoutes, identityRoutes...)
-			}
-		}
+		plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+			Key: plan.appOwner + "/cache", Host: host,
+			Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
+			Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+			TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
+			ServerName: "localhost",
+		})
 	}
-	if len(e.manifest.Exposures) == 0 && application.HasExplicitWorkload(e.manifest) {
-		selected, composePath, found, err := application.SelectedWorkloadServices(e.resolved.repositoryRoot(), e.manifest)
-		if err != nil {
-			return err
-		}
-		if found && len(selected) == 1 {
-			relative := composePath
-			if rel, relErr := filepath.Rel(e.resolved.repositoryRoot(), composePath); relErr == nil {
-				relative = rel
-			}
-			analysis, err := repositoryinspect.AnalyzeComposeFile(e.resolved.repositoryRoot(), relative)
-			if err != nil {
-				return err
-			}
-			var ports []int
-			for _, item := range analysis.Ports {
-				if item.Service != selected[0] {
-					continue
-				}
-				if port, ok := composeTargetPort(item.Value); ok {
-					ports = append(ports, port)
-				}
-			}
-			if len(ports) == 1 {
-				host, err := devaccess.ApplicationHost(target, e.manifest.Name, "api")
-				if err != nil {
-					return err
-				}
-				protocol := strings.ToLower(strings.TrimSpace(analysis.WorkloadProtocols[selected[0]]))
-				if protocol == "https" {
-					ca := filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem")
-					if info, statErr := os.Stat(ca); statErr != nil || !info.Mode().IsRegular() {
-						if statErr != nil {
-							return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s: %w", selected[0], ca, statErr)
-						}
-						return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s to be a regular file", selected[0], ca)
-					}
-				}
-				appRoutes = append(appRoutes, developmentWorkloadRoute(
-					appOwner,
-					host,
-					application.DevelopmentWorkloadAlias(e.manifest),
-					application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
-					e.files,
-					selected[0],
-					ports[0],
-					protocol,
-				))
-			}
-		}
-	}
+	return nil
+}
 
+func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Context, plan *developmentRoutePlan) error {
+	if !e.manifest.Services.Identity {
+		return nil
+	}
+	placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderKeycloak)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return nil
+	}
+	files, err := identityprovider.ExistingKeycloakFilesAt(e.manifest, e.resolved.TargetStateRoot, plan.target)
+	if err != nil {
+		return err
+	}
+	owner := plan.appOwner
+	loginKey := plan.appOwner + "/identity"
+	adminKey := plan.appOwner + "/identity-admin"
+	host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "identity")
+	if placement.Scope == capability.ScopeShared {
+		owner = "shared/keycloak"
+		loginKey = owner + "/login"
+		adminKey = owner + "/admin"
+		host, err = devaccess.SharedHost(plan.target, "identity")
+	}
+	if err != nil {
+		return err
+	}
+	identityRoutes := []devgateway.Route{{
+		Key: loginKey, Host: host,
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(files.Project, "identity"), files.PublicPort),
+		Network:    files.ConsumerNetwork,
+		TrustFile:  files.PublicAccess.Material.CA,
+		ServerName: files.PublicAccess.Material.ServerName,
+	}}
+	if e.manifest.Services.IdentityManagementUI {
+		var adminHost string
+		if placement.Scope == capability.ScopeShared {
+			adminHost, err = devaccess.SharedHost(plan.target, "identity-admin")
+		} else {
+			adminHost, err = devaccess.ApplicationHost(plan.target, e.manifest.Name, "identity-admin")
+		}
+		if err != nil {
+			return err
+		}
+		identityRoutes = append(identityRoutes, devgateway.Route{
+			Key: adminKey, Host: adminHost,
+			Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":9443",
+			Network:    files.InternalNetwork,
+			TrustFile:  files.AdminAccess.Material.CA,
+			ServerName: files.AdminAccess.Material.ServerName,
+		})
+	}
+	if placement.Scope == capability.ScopeShared {
+		plan.groups = append(plan.groups, devgateway.OwnerRoutes{Owner: owner, Routes: identityRoutes})
+	} else {
+		plan.appRoutes = append(plan.appRoutes, identityRoutes...)
+	}
+	return nil
+}
+
+func (e *applicationApplyExecution) addDevelopmentWorkloadRoutes(_ context.Context, plan *developmentRoutePlan) error {
+	if len(e.manifest.Exposures) != 0 || !application.HasExplicitWorkload(e.manifest) {
+		return nil
+	}
+	selected, composePath, found, err := application.SelectedWorkloadServices(e.resolved.repositoryRoot(), e.manifest)
+	if err != nil || !found || len(selected) != 1 {
+		return err
+	}
+	relative := composePath
+	if rel, relErr := filepath.Rel(e.resolved.repositoryRoot(), composePath); relErr == nil {
+		relative = rel
+	}
+	analysis, err := repositoryinspect.AnalyzeComposeFile(e.resolved.repositoryRoot(), relative)
+	if err != nil {
+		return err
+	}
+	var ports []int
+	for _, item := range analysis.Ports {
+		if item.Service == selected[0] {
+			if port, ok := composeTargetPort(item.Value); ok {
+				ports = append(ports, port)
+			}
+		}
+	}
+	if len(ports) != 1 {
+		return nil
+	}
+	host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "api")
+	if err != nil {
+		return err
+	}
+	protocol := strings.ToLower(strings.TrimSpace(analysis.WorkloadProtocols[selected[0]]))
+	if protocol == "https" {
+		ca := filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem")
+		if info, statErr := os.Stat(ca); statErr != nil || !info.Mode().IsRegular() {
+			if statErr != nil {
+				return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s: %w", selected[0], ca, statErr)
+			}
+			return fmt.Errorf("HTTPS workload service %q requires BaseHarbor workload TLS trust %s to be a regular file", selected[0], ca)
+		}
+	}
+	plan.appRoutes = append(plan.appRoutes, developmentWorkloadRoute(
+		plan.appOwner,
+		host,
+		application.DevelopmentWorkloadAlias(e.manifest),
+		application.DevelopmentWorkloadNetworkNameForProject(e.files.ResourceProject),
+		e.files,
+		selected[0],
+		ports[0],
+		protocol,
+	))
+	return nil
+}
+
+func (e *applicationApplyExecution) addDevelopmentExposureRoutes(_ context.Context, plan *developmentRoutePlan) error {
 	if len(e.manifest.Exposures) > 0 {
 		state, providerFiles, err := exposure.Load(e.files)
 		if err != nil {
@@ -308,10 +360,9 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		}
 		public := make([]exposure.Route, 0, len(state.Routes))
 		for _, route := range state.Routes {
-			if strings.EqualFold(strings.TrimSpace(route.Visibility), "internal") {
-				continue
+			if !strings.EqualFold(strings.TrimSpace(route.Visibility), "internal") {
+				public = append(public, route)
 			}
-			public = append(public, route)
 		}
 		for _, route := range public {
 			label := strings.TrimSpace(route.Name)
@@ -320,7 +371,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			} else if label == "" {
 				label = route.Service
 			}
-			host, err := devaccess.ApplicationHost(target, e.manifest.Name, label)
+			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, label)
 			if err != nil {
 				return err
 			}
@@ -334,8 +385,8 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 				trustFile = filepath.Join(providerFiles.Dir, "routes", route.Name, "cert.pem")
 				serverName = state.Host
 			}
-			appRoutes = append(appRoutes, devgateway.Route{
-				Key:        appOwner + "/exposure/" + route.Name,
+			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+				Key:        plan.appOwner + "/exposure/" + route.Name,
 				Host:       host,
 				Upstream:   fmt.Sprintf("%s://baseharbor-internal-exposure-%s:%d", upstreamScheme, route.Name, containerPort),
 				Network:    state.Network,
@@ -344,54 +395,57 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			})
 		}
 	}
-	if application.RequiresRuntimeBroker(e.manifest) {
-		brokerFiles, err := runtimebroker.Existing(e.files)
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(brokerFiles.DocsURL) != "" {
-			host, err := devaccess.ApplicationHost(target, e.manifest.Name, "api")
-			if err != nil {
-				return err
-			}
-			appRoutes = append(appRoutes, devgateway.Route{
-				Key:        appOwner + "/runtime-docs",
-				Host:       host,
-				PathPrefix: "/swagger",
-				Upstream:   "https://baseharbor-runtime:8081",
-				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-				TrustFile:  filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem"),
-				ServerName: "baseharbor-runtime",
-			})
-		}
+	if !application.RequiresRuntimeBroker(e.manifest) {
+		return nil
 	}
+	brokerFiles, err := runtimebroker.Existing(e.files)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(brokerFiles.DocsURL) == "" {
+		return nil
+	}
+	host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "api")
+	if err != nil {
+		return err
+	}
+	plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+		Key:        plan.appOwner + "/runtime-docs",
+		Host:       host,
+		PathPrefix: "/swagger",
+		Upstream:   "https://baseharbor-runtime:8081",
+		Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+		TrustFile:  filepath.Join(e.files.Bindings, "runtime-identity", "ca.pem"),
+		ServerName: "baseharbor-runtime",
+	})
+	return nil
+}
 
-	groups = append(groups, devgateway.OwnerRoutes{Owner: appOwner, Routes: appRoutes})
-
+func (e *applicationApplyExecution) addDevelopmentManagementRoutes(_ context.Context, plan *developmentRoutePlan) error {
 	if e.manifest.Services.ObjectStorageManagementUI {
 		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderSeaweedFS)
 		if err != nil {
 			return err
 		}
 		if placement.Scope != capability.ScopeExternal {
-			files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target)
+			files, err := objectstorage.ExistingProviderFilesAt(e.resolved.TargetStateRoot, plan.target)
 			if err != nil {
 				return err
 			}
 			var host string
-			owner := appOwner
-			key := appOwner + "/storage"
+			owner := plan.appOwner
+			key := plan.appOwner + "/storage"
 			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(target, "storage")
+				host, err = devaccess.SharedHost(plan.target, "storage")
 				owner = "shared/object-storage"
 				key = owner
 			} else {
-				host, err = devaccess.ApplicationHost(target, e.manifest.Name, "storage")
+				host, err = devaccess.ApplicationHost(plan.target, e.manifest.Name, "storage")
 			}
 			if err != nil {
 				return err
 			}
-			groups = append(groups, devgateway.OwnerRoutes{
+			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 				Owner: owner,
 				Routes: []devgateway.Route{{
 					Key: key, Host: host,
@@ -404,7 +458,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		}
 	}
 	if e.manifest.Services.SecretsManagementUI {
-		host, err := devaccess.SharedHost(target, "openbao")
+		host, err := devaccess.SharedHost(plan.target, "openbao")
 		if err != nil {
 			return err
 		}
@@ -412,7 +466,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		if resourceProject == "" {
 			resourceProject = strings.TrimSpace(e.platformFiles.Project)
 		}
-		groups = append(groups, devgateway.OwnerRoutes{
+		plan.groups = append(plan.groups, devgateway.OwnerRoutes{
 			Owner: "shared/openbao",
 			Routes: []devgateway.Route{{
 				Key: "shared/openbao", Host: host,
@@ -423,58 +477,42 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 			}},
 		})
 	}
-	if e.manifest.Services.ObservabilityManagementUI {
-		placement, err := metrics.PlacementForAt(e.resolved.TargetStateRoot, target, e.manifest)
-		if err != nil {
-			return err
-		}
-		if placement.Scope != capability.ScopeExternal {
-			files, err := metrics.ExistingProviderFilesAt(e.resolved.TargetStateRoot, target, e.manifest)
-			if err != nil {
-				return err
-			}
-			service := "prometheus-access"
-			host, err := devaccess.SharedHost(target, "prometheus")
-			owner := "shared/prometheus"
-			key := "shared/prometheus"
-			if placement.Scope == capability.ScopeApplication {
-				service = "baseharbor-internal-prometheus-access"
-				host, err = devaccess.ApplicationHost(target, e.manifest.Name, "prometheus")
-				owner = appOwner + "/prometheus"
-				key = owner
-			}
-			if err != nil {
-				return err
-			}
-			groups = append(groups, devgateway.OwnerRoutes{
-				Owner: owner,
-				Routes: []devgateway.Route{{
-					Key: key, Host: host,
-					Upstream:   "https://" + service + ":8443",
-					Network:    metrics.PublishNetworkName(placement.Project),
-					TrustFile:  filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
-					ServerName: "localhost",
-				}},
-			})
-		}
+	if !e.manifest.Services.ObservabilityManagementUI {
+		return nil
 	}
-
-	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, target, groups...); err != nil {
-		return fmt.Errorf("reconcile canonical development routes: %w", err)
-	}
-	if err := devgateway.Verify(ctx, target); err != nil {
-		return fmt.Errorf("verify canonical development routes: %w", err)
-	}
-
-	routes, err := devgateway.Routes(target)
+	placement, err := metrics.PlacementForAt(e.resolved.TargetStateRoot, plan.target, e.manifest)
 	if err != nil {
 		return err
 	}
-	e.term.Section("Development URLs")
-	for _, route := range routes {
-		if route.Owner == appOwner || strings.HasPrefix(route.Owner, "shared/") {
-			e.term.Result("READY", route.Key, devgateway.URLForTarget(target, route.Host))
-		}
+	if placement.Scope == capability.ScopeExternal {
+		return nil
 	}
+	files, err := metrics.ExistingProviderFilesAt(e.resolved.TargetStateRoot, plan.target, e.manifest)
+	if err != nil {
+		return err
+	}
+	service := "prometheus-access"
+	host, err := devaccess.SharedHost(plan.target, "prometheus")
+	owner := "shared/prometheus"
+	key := "shared/prometheus"
+	if placement.Scope == capability.ScopeApplication {
+		service = "baseharbor-internal-prometheus-access"
+		host, err = devaccess.ApplicationHost(plan.target, e.manifest.Name, "prometheus")
+		owner = plan.appOwner + "/prometheus"
+		key = owner
+	}
+	if err != nil {
+		return err
+	}
+	plan.groups = append(plan.groups, devgateway.OwnerRoutes{
+		Owner: owner,
+		Routes: []devgateway.Route{{
+			Key: key, Host: host,
+			Upstream:   "https://" + service + ":8443",
+			Network:    metrics.PublishNetworkName(placement.Project),
+			TrustFile:  filepath.Join(files.Dir, "service-access", "pki", "ca.pem"),
+			ServerName: "localhost",
+		}},
+	})
 	return nil
 }

@@ -187,7 +187,6 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
-	workloadStorage := restoreData.workloadStorage
 	logsHistory := restoreData.logsHistory
 	var err error
 	var platformFiles bhruntime.Files
@@ -338,28 +337,8 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if err := verifyDesiredRuntimeServices(ctx, compose, m, files); err != nil {
 		return fmt.Errorf("verify restored PostgreSQL runtime: %w", err)
 	}
-	if recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage) {
-		_, targetVolumes, err := resolveRecoveryWorkloadStorage(ctx, compose, resolved, files, false)
-		if err != nil {
-			return fmt.Errorf("resolve workload storage recovery target: %w", err)
-		}
-		resolvedNames := make([]string, 0, len(targetVolumes))
-		for _, volume := range targetVolumes {
-			resolvedNames = append(resolvedNames, volume.Logical)
-			archive, ok := workloadStorage[volume.Logical]
-			if !ok {
-				return fmt.Errorf("workload recovery payload is missing %q", volume.Logical)
-			}
-			if err := compose.EnsureOwnedVolume(ctx, volume.Project, volume.Volume); err != nil {
-				return err
-			}
-			if err := compose.RestoreOwnedVolume(ctx, volume.Project, volume.Volume, archive); err != nil {
-				return err
-			}
-		}
-		if err := validateRecoveredLogicalResources(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage, resolvedNames); err != nil {
-			return err
-		}
+	if err := restoreSelectedWorkloadStorage(ctx, compose, resolved, files, restoreData); err != nil {
+		return err
 	}
 	if _, err := applyRepositoryWorkload(ctx, out, compose, resolved, files); err != nil {
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
@@ -397,6 +376,31 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
+}
+
+func restoreSelectedWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, restoreData applicationRestoreData) error {
+	if !recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage) {
+		return nil
+	}
+	_, targetVolumes, err := resolveRecoveryWorkloadStorage(ctx, compose, resolved, files, false)
+	if err != nil {
+		return fmt.Errorf("resolve workload storage recovery target: %w", err)
+	}
+	resolvedNames := make([]string, 0, len(targetVolumes))
+	for _, volume := range targetVolumes {
+		resolvedNames = append(resolvedNames, volume.Logical)
+		archive, ok := restoreData.workloadStorage[volume.Logical]
+		if !ok {
+			return fmt.Errorf("workload recovery payload is missing %q", volume.Logical)
+		}
+		if err := compose.EnsureOwnedVolume(ctx, volume.Project, volume.Volume); err != nil {
+			return err
+		}
+		if err := compose.RestoreOwnedVolume(ctx, volume.Project, volume.Volume, archive); err != nil {
+			return err
+		}
+	}
+	return validateRecoveredLogicalResources(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage, resolvedNames)
 }
 
 func restartAfterBackup(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
