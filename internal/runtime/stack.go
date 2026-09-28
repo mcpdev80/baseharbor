@@ -99,6 +99,9 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
+	if err := prepareOpenBaoStorage(stateDir, envPath); err != nil {
+		return Files{}, err
+	}
 	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject}, nil
 }
 
