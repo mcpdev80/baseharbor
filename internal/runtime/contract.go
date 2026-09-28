@@ -13,6 +13,7 @@ type RuntimeProvider interface {
 	Provider
 
 	Engine() string
+	PreferredLocalHTTPSPort() int
 	LogCollectionMode() LogCollectionMode
 	VerifyProjectServiceLogCollection(context.Context, string, string, string) error
 
