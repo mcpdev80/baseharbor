@@ -21,6 +21,18 @@ type Compose struct {
 	prefix  []string
 }
 
+func NewCLIBackend(command string, prefix ...string) Compose {
+	return Compose{command: command, prefix: append([]string(nil), prefix...)}
+}
+
+func (c Compose) CommandPath() string {
+	return c.command
+}
+
+func (c Compose) DirectOutput(ctx context.Context, args ...string) (string, error) {
+	return c.directOutput(ctx, args...)
+}
+
 func detectDockerCompose(ctx context.Context) (Compose, error) {
 	path, err := exec.LookPath("docker")
 	if err != nil {
