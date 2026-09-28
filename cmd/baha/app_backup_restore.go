@@ -182,7 +182,7 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 
 }
 
-func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.Compose, restoreData applicationRestoreData) error {
+func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, restoreData applicationRestoreData) error {
 	m := restoreData.manifest
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
@@ -399,7 +399,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
-func restartAfterBackup(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
+func restartAfterBackup(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication, files application.RuntimeFiles, brokerStopped, workloadStopped, exposureStopped bool) error {
 	var result error
 	if brokerStopped {
 		if err := ensureAndStartRuntimeBroker(ctx, io.Discard, compose, platformFiles, resolved.Manifest, files); err != nil {
@@ -493,7 +493,7 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	return resolved, nil
 }
 
-func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platformFiles bhruntime.Files, resolved resolvedApplication) error {
+func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication) error {
 	m := resolved.Manifest
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
@@ -533,7 +533,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.Compose, platform
 	return nil
 }
 
-func waitForManagedRuntime(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func waitForManagedRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	var last error
