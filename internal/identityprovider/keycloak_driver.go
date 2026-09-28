@@ -271,7 +271,7 @@ func (d *KeycloakDriver) ensureDevelopmentPublicRoute(ctx context.Context) error
 	route := devgateway.Route{
 		Key:        key,
 		Host:       host,
-		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), d.files.PublicPort),
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), keycloakHTTPSPort),
 		Network:    d.files.ConsumerNetwork,
 		TrustFile:  d.files.PublicAccess.Material.CA,
 		ServerName: d.files.PublicAccess.Material.ServerName,
