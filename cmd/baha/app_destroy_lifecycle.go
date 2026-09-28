@@ -113,7 +113,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}})
 	}
