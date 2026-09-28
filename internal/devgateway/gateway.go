@@ -33,8 +33,8 @@ type Runtime interface {
 	DestroyProject(context.Context, string, string, string) error
 }
 
-type runtimeEngine interface {
-	Engine() string
+type runtimeLocalHTTPS interface {
+	PreferredLocalHTTPSPort() int
 }
 
 type Route struct {
