@@ -31,6 +31,8 @@ jobs:
   podman-quadlet:
     env:
       BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 75
 
@@ -148,6 +150,7 @@ jobs:
           cd "$workdir"
 
           recovery="$workdir/openbao-recovery.json"
+          /tmp/baha target create podman-ci --provider podman --access podman-ci --reference local --default
           /tmp/baha up --control-plane-only --yes
           /tmp/baha openbao bootstrap --recovery-file "$recovery"
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
@@ -203,6 +206,7 @@ jobs:
 
           run_integration_test() {
             bash scripts/ci-runtime-reset.sh podman
+            /tmp/baha target create podman-ci --provider podman --access podman-ci --reference local --default
             if ! "$@"; then
               diagnose_quadlet_integration
               return 1
