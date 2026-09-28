@@ -258,6 +258,22 @@ jobs:
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
 
+  shared_postgres:
+    name: pre-release-shared-postgres
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/shared-postgres-validation.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+
+  shared_valkey:
+    name: pre-release-shared-valkey
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/shared-valkey-validation.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+
   mcp_lifecycle:
     name: pre-release-mcp-lifecycle
     needs:
@@ -528,6 +544,8 @@ jobs:
       - validate
       - docker_runtime
       - podman
+      - shared_postgres
+      - shared_valkey
       - mcp_lifecycle
       - observability_full_stack
       - demo_catalog
@@ -549,6 +567,8 @@ jobs:
           Source/build validation	${{ needs.validate.result }}	Formatting, source tests, docs, workflow syntax, snapshot and runtime image build
           Docker runtime core	${{ needs.docker_runtime.result }}	Runtime integration, recovery and observability
           Podman runtime core	${{ needs.podman.result }}	Runtime integration, recovery and observability
+          Shared PostgreSQL	${{ needs.shared_postgres.result }}	Two-application isolation, backup/restore and ownership-safe destroy on real PostgreSQL
+          Shared Valkey	${{ needs.shared_valkey.result }}	Two-application isolation and ownership-safe destroy on real Valkey
           MCP lifecycle	${{ needs.mcp_lifecycle.result }}	Generic-client semantic lifecycle on Docker and Podman/Quadlet
           Observability full stack	${{ needs.observability_full_stack.result }}	Metrics, logs and traces semantic acceptance on Docker and Podman/Quadlet
           External demo revision	success	${{ needs.demo_catalog.outputs.demo_sha }}
@@ -577,6 +597,8 @@ jobs:
           test "${{ needs.validate.result }}" = "success"
           test "${{ needs.docker_runtime.result }}" = "success"
           test "${{ needs.podman.result }}" = "success"
+          test "${{ needs.shared_postgres.result }}" = "success"
+          test "${{ needs.shared_valkey.result }}" = "success"
           test "${{ needs.mcp_lifecycle.result }}" = "success"
           test "${{ needs.observability_full_stack.result }}" = "success"
           test "${{ needs.demo_docker.result }}" = "success"

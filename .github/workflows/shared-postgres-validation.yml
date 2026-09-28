@@ -3,6 +3,12 @@ name: "Validation · Shared PostgreSQL"
 run-name: "Validation · Shared PostgreSQL · ${{ github.sha }}"
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact Git ref or commit SHA to test
+        required: true
+        type: string
   push:
     branches:
       - runtime-validation/shared-postgres
@@ -22,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
