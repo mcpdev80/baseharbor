@@ -69,6 +69,12 @@ type testRuntime struct {
 }
 
 func (r testRuntime) Engine() string { return r.engine }
+func (r testRuntime) PreferredLocalHTTPSPort() int {
+	if r.engine == "podman" {
+		return 8443
+	}
+	return 443
+}
 func (testRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
 func (testRuntime) UpProject(context.Context, string, string, string) error { return nil }
 func (testRuntime) DestroyProject(context.Context, string, string, string) error { return nil }
