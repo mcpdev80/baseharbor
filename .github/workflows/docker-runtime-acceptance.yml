@@ -75,7 +75,162 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)
+      - name: Reset runtime state before recovery test
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Verify control-plane recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Cleanup Docker runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate Docker runtime evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/docker-runtime-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Runner reset	${{ steps.reset.outcome }}	Docker state reset before validation
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Docker and Compose and reports READY
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
+          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          EOF
+          cat >>"$rows" <<EOF
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Docker runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs"
+          cp /tmp/docker-*.txt "$RUNNER_TEMP/docker-runtime-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/docker-runtime-evidence" \
+            "BaseHarbor Docker Runtime Evidence" \
+            "docker-runtime-acceptance" \
+            "$EVIDENCE_REF" \
+            "$(git rev-parse HEAD)" \
+            "$rows"
+
+      - name: Upload Docker runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/docker-runtime-evidence
+          if-no-files-found: error
+          retention-days: 30
+ -count=1 -v; then
+            echo "::group::Docker control-plane diagnostics"
+            docker ps -a || true
+            for container in $(docker ps -a --format '{{.Names}}' | grep -E 'shared-(postgres|openbao)
+      - name: Reset runtime state before recovery test
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Verify control-plane recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Cleanup Docker runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate Docker runtime evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/docker-runtime-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Runner reset	${{ steps.reset.outcome }}	Docker state reset before validation
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Docker and Compose and reports READY
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
+          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          EOF
+          cat >>"$rows" <<EOF
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Docker runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs"
+          cp /tmp/docker-*.txt "$RUNNER_TEMP/docker-runtime-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/docker-runtime-evidence" \
+            "BaseHarbor Docker Runtime Evidence" \
+            "docker-runtime-acceptance" \
+            "$EVIDENCE_REF" \
+            "$(git rev-parse HEAD)" \
+            "$rows"
+
+      - name: Upload Docker runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/docker-runtime-evidence
+          if-no-files-found: error
+          retention-days: 30
+ || true); do
+              echo "===== $container ====="
+              docker inspect "$container" || true
+              docker logs "$container" 2>&1 || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Reset runtime state before recovery test
         shell: bash
