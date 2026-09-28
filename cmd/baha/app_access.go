@@ -246,7 +246,7 @@ func resolveWorkloadAccess(ctx context.Context, store application.Store, appName
 	if err != nil {
 		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
 	if err != nil {
 		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
