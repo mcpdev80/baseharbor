@@ -153,25 +153,13 @@ func (c Compose) InspectProjectResources(ctx context.Context, project string, re
 		}
 
 		existingNames := map[string]struct{}{}
-		if c.quadlet {
-			for name := range wanted {
-				exists, err := quadletRuntimeResourceExists(ctx, kind, name)
-				if err != nil {
-					return nil, err
-				}
-				if exists {
-					existingNames[name] = struct{}{}
-				}
-			}
-		} else {
-			listed, err := c.directOutput(ctx, listArgs...)
-			if err != nil {
-				return nil, err
-			}
-			for _, line := range strings.Split(listed, "\n") {
-				if name := strings.TrimSpace(line); name != "" {
-					existingNames[name] = struct{}{}
-				}
+		listed, err := c.directOutput(ctx, listArgs...)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(listed, "\n") {
+			if name := strings.TrimSpace(line); name != "" {
+				existingNames[name] = struct{}{}
 			}
 		}
 
