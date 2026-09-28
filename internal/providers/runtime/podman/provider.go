@@ -2,10 +2,10 @@ package podman
 
 import (
 	"context"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
-	"os/exec"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
@@ -27,8 +27,8 @@ type ProviderCapabilities = runtimecontract.ProviderCapabilities
 type LogCollectionMode = runtimecontract.LogCollectionMode
 
 const (
-	ProviderPodman         = runtimecontract.ProviderPodman
-	LogCollectionJournald  = runtimecontract.LogCollectionJournald
+	ProviderPodman        = runtimecontract.ProviderPodman
+	LogCollectionJournald = runtimecontract.LogCollectionJournald
 )
 
 var capabilities = ProviderCapabilities{

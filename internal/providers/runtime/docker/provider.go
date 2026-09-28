@@ -41,9 +41,9 @@ func Descriptor() runtimecontract.ProviderDescriptor {
 	}
 }
 
-func (p Provider) Kind() runtimecontract.ProviderKind { return runtimecontract.ProviderDocker }
-func (p Provider) Descriptor() runtimecontract.ProviderDescriptor { return Descriptor() }
+func (p Provider) Kind() runtimecontract.ProviderKind                 { return runtimecontract.ProviderDocker }
+func (p Provider) Descriptor() runtimecontract.ProviderDescriptor     { return Descriptor() }
 func (p Provider) Capabilities() runtimecontract.ProviderCapabilities { return capabilities }
-func (p Provider) PreferredLocalHTTPSPort() int { return 443 }
+func (p Provider) PreferredLocalHTTPSPort() int                       { return 443 }
 
 var _ runtimecontract.RuntimeProvider = (*Provider)(nil)

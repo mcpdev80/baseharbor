@@ -32,7 +32,6 @@ func (c Compose) DirectOutput(ctx context.Context, args ...string) (string, erro
 	return c.directOutput(ctx, args...)
 }
 
-
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
 	return c.UpProject(ctx, "baseharbor", composeFile, envFile)
 }

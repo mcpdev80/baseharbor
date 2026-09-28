@@ -134,7 +134,6 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, source
 	return nil
 }
 
-
 func validateProviderLogSource(m application.Manifest, source observability.SignalSource) error {
 	if err := source.Validate(); err != nil {
 		return fmt.Errorf("provider log source %q: %w", source.ID, err)
