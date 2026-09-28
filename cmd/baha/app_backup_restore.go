@@ -187,7 +187,6 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
-	workloadStorage := restoreData.workloadStorage
 	logsHistory := restoreData.logsHistory
 	var err error
 	var platformFiles bhruntime.Files
