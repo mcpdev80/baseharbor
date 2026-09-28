@@ -59,7 +59,7 @@ type Files struct {
 }
 
 type Driver struct {
-	compose    bhruntime.Compose
+	compose    bhruntime.RuntimeProvider
 	manifest   application.Manifest
 	runtime    application.RuntimeFiles
 	deployment Deployment
@@ -91,7 +91,7 @@ func FilesFor(runtime application.RuntimeFiles) Files {
 	}
 }
 
-func NewDriver(compose bhruntime.Compose, m application.Manifest, runtime application.RuntimeFiles, deployment Deployment) *Driver {
+func NewDriver(compose bhruntime.RuntimeProvider, m application.Manifest, runtime application.RuntimeFiles, deployment Deployment) *Driver {
 	return &Driver{compose: compose, manifest: m, runtime: runtime, deployment: deployment, files: FilesFor(runtime)}
 }
 
@@ -326,7 +326,7 @@ func Load(runtime application.RuntimeFiles) (State, Files, error) {
 	return state, files, nil
 }
 
-func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) (State, []endpoint.ExposureStatus, error) {
+func Inspect(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) (State, []endpoint.ExposureStatus, error) {
 	state, files, err := Load(runtime)
 	if err != nil {
 		return State{}, nil, err
@@ -356,7 +356,7 @@ func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application
 	return state, statuses, nil
 }
 
-func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+func Stop(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) error {
 	state, files, err := Load(runtime)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -367,7 +367,7 @@ func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.Ru
 	return compose.DownProjectRemoveOrphans(ctx, state.Project, files.Compose, files.Env)
 }
 
-func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+func Destroy(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) error {
 	state, files, err := Load(runtime)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
