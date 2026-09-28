@@ -147,7 +147,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 				required = append(required, bhruntime.CapabilityServiceExec)
 			}
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, required...)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
