@@ -60,13 +60,13 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 		return err
 	}
 	platformSyslogPort := 0
-	if runtime.LogCollectionMode() == bhruntime.LogCollectionSyslog && hasPlatformProviderLogs(providerSources) {
+	if logCollectionMode(runtime) == bhruntime.LogCollectionSyslog && hasPlatformProviderLogs(providerSources) {
 		platformSyslogPort, err = persistedOrAllocatedUDPPort(files.Env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT")
 		if err != nil {
 			return err
 		}
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, runtime.LogCollectionMode(), platformSyslogPort)), 0o644); err != nil {
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, logCollectionMode(runtime), platformSyslogPort)), 0o644); err != nil {
 		return err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
@@ -80,7 +80,7 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, runtime.LogCollectionMode(), accessFiles, platformSyslogPort)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, logCollectionMode(runtime), accessFiles, platformSyslogPort)), 0o600); err != nil {
 		return err
 	}
 	if err := runtime.ConfigProject(ctx, p.Project, files.Compose, files.Env); err != nil {
