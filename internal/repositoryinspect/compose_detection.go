@@ -3,6 +3,7 @@ package repositoryinspect
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -114,17 +115,59 @@ type ReclaimableComposeVolume struct {
 
 type renderedComposeVolumeModel struct {
 	Services map[string]struct {
-		Image   string `json:"image"`
-		Volumes []struct {
-			Type   string `json:"type"`
-			Source string `json:"source"`
-			Target string `json:"target"`
-		} `json:"volumes"`
+		Image   string                       `json:"image"`
+		Volumes []renderedComposeVolumeMount `json:"volumes"`
 	} `json:"services"`
 	Volumes map[string]struct {
 		Name     string `json:"name"`
 		External bool   `json:"external"`
 	} `json:"volumes"`
+}
+
+type renderedComposeVolumeMount struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+func (m *renderedComposeVolumeMount) UnmarshalJSON(data []byte) error {
+	var object struct {
+		Type   string `json:"type"`
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	if len(data) > 0 && data[0] == '{' {
+		if err := json.Unmarshal(data, &object); err != nil {
+			return err
+		}
+		m.Type = object.Type
+		m.Source = object.Source
+		m.Target = object.Target
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ":")
+	if len(parts) == 1 {
+		m.Type = "volume"
+		m.Target = parts[0]
+		return nil
+	}
+	m.Source = strings.TrimSpace(parts[0])
+	m.Target = strings.TrimSpace(parts[1])
+	if filepath.IsAbs(m.Source) || strings.HasPrefix(m.Source, "./") || strings.HasPrefix(m.Source, "../") {
+		m.Type = "bind"
+	} else {
+		m.Type = "volume"
+	}
+	return nil
 }
 
 // ReclaimableReplacedInfrastructureVolumes returns only named volumes whose
