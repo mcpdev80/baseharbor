@@ -55,7 +55,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Runtime
 		return err
 	}
 	if len(rules) > 0 {
-		containers, err := compose.ListComposeContainers(ctx)
+		containers, err := compose.ListRuntimeContainers(ctx)
 		if err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhrunt
 	if len(rules) == 0 {
 		return nil
 	}
-	containers, err := compose.ListComposeContainers(ctx)
+	containers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
 		return err
 	}
