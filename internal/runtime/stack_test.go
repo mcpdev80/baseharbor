@@ -142,6 +142,12 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 			t.Fatalf("pg_hba.conf missing %q", wanted)
 		}
 	}
+	if !strings.Contains(text, `"tls_auto_reload":true`) {
+		t.Fatal("OpenBao native TLS must enable tls_auto_reload on 2.7")
+	}
+	if !strings.Contains(text, `"cluster_addr":"https://openbao:8201"`) {
+		t.Fatal("OpenBao Raft runtime must advertise cluster_addr")
+	}
 }
 
 func TestEnsureFilesWithPortsRejectsDuplicatePort(t *testing.T) {
@@ -252,16 +258,19 @@ func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeUsesWritableOpenBaoFileStoragePath(t *testing.T) {
+func TestEmbeddedComposeUsesOpenBaoRaftStorage(t *testing.T) {
 	text := string(composeYAML)
-	if !strings.Contains(text, `"path":"/openbao/file"`) {
-		t.Fatal("openbao file storage must use the image-managed /openbao/file path")
+	if !strings.Contains(text, "docker.io/openbao/openbao:2.7.0") {
+		t.Fatal("managed OpenBao runtime must use OpenBao 2.7.0")
 	}
-	if !strings.Contains(text, "openbao-data:/openbao/file") {
-		t.Fatal("openbao persistent volume must mount at /openbao/file")
+	if !strings.Contains(text, `"storage":{"raft":{"path":"/openbao/raft","node_id":"baseharbor-1"}}`) {
+		t.Fatal("managed OpenBao runtime must use integrated Raft storage")
 	}
-	if strings.Contains(text, "/openbao/data") {
-		t.Fatal("openbao runtime must not use the non-image-managed /openbao/data path")
+	if !strings.Contains(text, "openbao-data:/openbao/raft") {
+		t.Fatal("OpenBao persistent volume must mount at /openbao/raft")
+	}
+	if strings.Contains(text, `"storage":{"file"`) || strings.Contains(text, "/openbao/file") {
+		t.Fatal("legacy OpenBao file storage must not remain in the current runtime")
 	}
 }
 
