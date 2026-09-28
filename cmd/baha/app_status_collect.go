@@ -501,11 +501,20 @@ func (c *applicationStatusCollection) collectWorkloadChecks() {
 				if service.Health != "" {
 					detail += " health=" + service.Health
 				}
+				if service.Readiness != "" {
+					detail += " readiness=" + service.Readiness
+				}
 			}
-			c.result.AddCheck("workload/"+service.Service, service.Ready, detail)
+			if service.Readiness == "unverified" {
+				c.result.AddObservation("workload/"+service.Service, "unverified", detail)
+			} else {
+				c.result.AddCheck("workload/"+service.Service, service.Ready, detail)
+			}
 		}
 		if c.workloadErr != nil {
 			c.result.AddCheck("workload", false, c.workloadErr.Error())
+		} else if c.workloadStatus.RunningUnverified() {
+			c.result.AddObservation("workload", "unverified", fmt.Sprintf("%d selected Compose service(s) running; readiness unverified", len(c.workloadStatus.Services)))
 		} else {
 			c.result.AddCheck("workload", c.workloadStatus.Ready(), fmt.Sprintf("%d/%d selected Compose service(s) ready", c.workloadStatus.ReadyCount(), len(c.workloadStatus.Services)))
 		}
