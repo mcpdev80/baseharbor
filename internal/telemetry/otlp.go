@@ -530,12 +530,12 @@ exporters:
     logs:
       receivers: [otlp]
       exporters: [debug]
-`, extraExporter, func() string {
+`, func() string {
 		if requireClientCertificate {
 			return "          client_ca_file: /run/baseharbor/tls/ca.pem\\n"
 		}
 		return ""
-	}(), traceExporters)
+	}(), extraExporter, traceExporters)
 }
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
