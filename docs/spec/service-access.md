@@ -45,15 +45,15 @@ The following inventory describes the current Compose realization. It is evidenc
 
 | Surface | Exposure | Transport | Authentication | Workload/client trust |
 | --- | --- | --- | --- | --- |
-| OpenBao UI/API | host loopback through `openbao-access`; provider-internal HTTP stays inside the Compose network | HTTPS gateway | OpenBao native token/AppRole semantics remain authoritative | managed/external CA through the service-access issuer boundary |
+| OpenBao UI/API | host loopback plus control-plane network | native HTTPS | OpenBao native token/AppRole semantics remain authoritative | managed/external CA through the service-access issuer boundary |
 | Control-plane PostgreSQL | host loopback only after issuer readiness | native PostgreSQL TLS; plaintext TCP rejected by `hostnossl` policy | PostgreSQL SCRAM/native credentials | managed/external CA; health checks verify the CA |
 | Application PostgreSQL | application backend network plus loopback developer port | native PostgreSQL TLS; plaintext TCP rejected by `hostnossl` policy | application-scoped PostgreSQL credentials | `DATABASE_URL` + read-only `DATABASE_CA_FILE` binding |
 | Application Valkey/Redis | application backend network plus loopback developer port through access gateway | TLS | Valkey password/native authentication | `rediss://` URL + read-only `REDIS_CA_FILE` / `VALKEY_CA_FILE` binding |
-| Prometheus | provider-internal network; loopback HTTPS access gateway | HTTPS | environment policy: dev may be auth-light; managed test/prod requires the selected auth mechanism, with mTLS as the reference realization | CA/client identity projected through service-access state |
+| Prometheus | provider networks plus loopback native HTTPS; canonical dev URL through the Target gateway | native HTTPS | native Basic Auth for configured dev management access; native mTLS for managed test/prod | CA/client identity projected through service-access state |
 | Loki | provider-internal network; loopback HTTPS API gateway | HTTPS | same environment-aware policy boundary as other observability surfaces | CA/client identity projected through service-access state |
 | Tempo | provider-internal network; loopback HTTPS API gateway | HTTPS | same environment-aware policy boundary as other observability surfaces | CA/client identity projected through service-access state |
-| OpenTelemetry Collector | provider-internal network; HTTPS binding to workloads and loopback where enabled | HTTPS | managed test/prod can use mTLS; external endpoints must be HTTPS | `OTEL_EXPORTER_OTLP_CERTIFICATE` and optional client cert/key file bindings |
-| SeaweedFS/S3 | provider-internal network; loopback HTTPS gateway for developer/provider operations | HTTPS | S3/native credentials | `AWS_CA_BUNDLE` / S3 CA file binding |
+| OpenTelemetry Collector | telemetry network plus loopback native HTTPS where enabled | native HTTPS | managed test/prod use native mTLS; external endpoints must be HTTPS | `OTEL_EXPORTER_OTLP_CERTIFICATE` and optional client cert/key file bindings |
+| SeaweedFS/S3 | provider network plus loopback native HTTPS | native HTTPS | S3/native credentials | `AWS_CA_BUNDLE` / S3 CA file binding |
 | Runtime broker / executor | internal runtime-control networks; no generic public provider-admin surface | mTLS plus existing broker token/identity semantics | existing runtime broker SPIFFE/token authorization remains authoritative | runtime CA/client certificate/key file bindings |
 
 ### Network placement is not authentication
