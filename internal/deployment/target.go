@@ -278,7 +278,7 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		if name == "local" {
 			return ResolvedTarget{
 				Name:            "local",
-				RuntimeProvider: "compose",
+				RuntimeProvider: "docker",
 				AccessReference: "local",
 				Scope:           "default",
 			}, nil
