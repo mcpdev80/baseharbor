@@ -28,7 +28,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect Compose runtime: %v", err)
 	}
