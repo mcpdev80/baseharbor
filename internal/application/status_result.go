@@ -5,6 +5,7 @@ package application
 type StatusCheck struct {
 	Name   string `json:"name"`
 	OK     bool   `json:"ok"`
+	State  string `json:"state,omitempty"`
 	Detail string `json:"detail,omitempty"`
 }
 
@@ -24,7 +25,16 @@ type StatusResult struct {
 
 // AddCheck appends one readiness observation and folds failures into Ready.
 func (r *StatusResult) AddCheck(name string, ok bool, detail string) {
-	r.Checks = append(r.Checks, StatusCheck{Name: name, OK: ok, Detail: detail})
+	state := "failed"
+	if ok {
+		state = "ready"
+	}
+	r.AddObservation(name, state, detail)
+}
+
+func (r *StatusResult) AddObservation(name, state, detail string) {
+	ok := state == "ready" || state == "verified"
+	r.Checks = append(r.Checks, StatusCheck{Name: name, OK: ok, State: state, Detail: detail})
 	if !ok {
 		r.Ready = false
 	}
