@@ -141,7 +141,9 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 	}
 }
 
-// ResolveRuntimeProviderForKind resolves an executable runtime implementation\n// behind the provider-neutral orchestration contract.\nfunc ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
+// ResolveRuntimeProviderForKind resolves an executable runtime implementation
+// behind the provider-neutral orchestration contract.
+func ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
 	provider, err := DetectProviderForKind(ctx, kind)
 	if err != nil {
 		return nil, err
