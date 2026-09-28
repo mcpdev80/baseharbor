@@ -52,18 +52,18 @@ func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, provider
 }
 
 type HTTPGatewaySpec struct {
-	ServiceName          string
-	Upstream             string
-	UpstreamTrustFile    string
-	UpstreamServerName   string
-	PublishedPortEnv     string
-	ContainerPort        int
-	Networks             []string
-	NetworkAliases       []string
-	RequireClient        bool
-	DenyPaths            []string
-	BasicAuthUsername    string
-	BasicAuthPassword    string
+	ServiceName        string
+	Upstream           string
+	UpstreamTrustFile  string
+	UpstreamServerName string
+	PublishedPortEnv   string
+	ContainerPort      int
+	Networks           []string
+	NetworkAliases     []string
+	RequireClient      bool
+	DenyPaths          []string
+	BasicAuthUsername  string
+	BasicAuthPassword  string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
