@@ -21,7 +21,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := bhruntime.DetectCompose(ctx); err != nil {
+	if _, err := bhruntime.ResolveRuntimeProvider(ctx); err != nil {
 		t.Skipf("runtime unavailable: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
