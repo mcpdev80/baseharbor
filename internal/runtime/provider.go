@@ -140,6 +140,26 @@ func DetectProviderForKind(ctx context.Context, kind ProviderKind) (Provider, er
 // DetectProvider preserves the v0.3/v0.4 Compose-default compatibility path.
 // Deployment-aware callers should use DetectProviderForKind with the explicit
 // provider stored in protected deployment state.
+// ResolveRuntimeProviderForKind resolves an executable runtime implementation
+// behind the provider-neutral orchestration contract. The type assertion is
+// intentionally contained inside the runtime package so application/core code
+// never depends on a concrete runtime implementation.
+func ResolveRuntimeProviderForKind(ctx context.Context, kind ProviderKind) (RuntimeProvider, error) {
+	provider, err := DetectProviderForKind(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	runtimeProvider, ok := provider.(RuntimeProvider)
+	if !ok {
+		return nil, fmt.Errorf("runtime provider %q does not implement the BaseHarbor runtime contract", provider.Kind())
+	}
+	return runtimeProvider, nil
+}
+
+func ResolveRuntimeProvider(ctx context.Context) (RuntimeProvider, error) {
+	return ResolveRuntimeProviderForKind(ctx, ProviderCompose)
+}
+
 func DetectProvider(ctx context.Context) (Provider, error) {
 	return DetectProviderForKind(ctx, ProviderCompose)
 }
