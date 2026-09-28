@@ -325,7 +325,6 @@ func TestResolveNativeAuthenticationDoesNotAcceptGenericOverride(t *testing.T) {
 	}
 }
 
-
 func TestCanonicalCertificateDNSNameStripsTrailingDot(t *testing.T) {
 	got, err := canonicalCertificateDNSName("Example.BaseHarbor.")
 	if err != nil {
