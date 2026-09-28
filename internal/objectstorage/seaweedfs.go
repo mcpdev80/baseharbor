@@ -265,7 +265,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err != nil {
 		return fmt.Errorf("load S3 service trust material: %w", err)
 	}
-	containerHost := "seaweedfs-access"
+	containerHost := "seaweedfs"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		containerHost = strings.TrimSpace(policy.ServerName)
 	}
