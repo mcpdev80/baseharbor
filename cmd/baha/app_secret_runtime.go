@@ -9,7 +9,7 @@ import (
 )
 
 func resolvedApplicationSecretService(ctx context.Context, resolved resolvedApplication) (*applicationsecret.Service, error) {
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
 	if err != nil {
 		return nil, err
 	}
