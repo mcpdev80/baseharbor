@@ -47,7 +47,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
-    command: server -config=/run/baseharbor/openbao/openbao.hcl
+    command: ["server", "-config=/run/baseharbor/openbao/openbao.hcl"]
     environment:
       SKIP_CHOWN: "1"
       BAO_ADDR: https://127.0.0.1:8200
