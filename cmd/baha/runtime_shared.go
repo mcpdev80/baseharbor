@@ -23,7 +23,7 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
