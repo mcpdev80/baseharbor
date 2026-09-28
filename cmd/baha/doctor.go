@@ -10,7 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type doctorRepairClass string
