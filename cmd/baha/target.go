@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 type targetInspectionResult struct {
@@ -435,7 +436,7 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 }
 
 func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
-	provider, err := bhruntime.ResolveRuntimeProviderForKind(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
+	provider, err := runtimeresolver.RuntimeProvider(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
 		return nil, err
 	}
