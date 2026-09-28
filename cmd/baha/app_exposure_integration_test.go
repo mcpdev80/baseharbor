@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -26,7 +27,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.ResolveRuntimeProvider(ctx)
+	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
