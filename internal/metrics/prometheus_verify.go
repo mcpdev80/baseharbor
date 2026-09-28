@@ -225,6 +225,7 @@ func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Clie
 	if err != nil {
 		return nil, err
 	}
+	policy.ServerName = "prometheus"
 	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
 	if err != nil {
 		return nil, fmt.Errorf("load Prometheus service access identity: %w", err)
