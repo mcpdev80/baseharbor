@@ -88,8 +88,8 @@ func TestHTTPSRequiresExistingTLS(t *testing.T) {
 	}
 }
 
-// structCompose is the zero value runtime Compose; Preflight does not mutate or invoke it.
-type structCompose = runtime.Compose
+// structCompose is an explicit zero-value Docker provider; Preflight does not mutate or invoke it.
+type structCompose = runtime.DockerProvider
 
 func capabilityResource(m application.Manifest, name string) capability.Resource {
 	return capability.Resource{Application: m.Name, Kind: capability.ExposureHTTP, Name: name, Provider: capability.ProviderCaddy}
