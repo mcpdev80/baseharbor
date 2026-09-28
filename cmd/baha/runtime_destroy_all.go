@@ -231,7 +231,7 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
 		return
 	}
-	containers, err := compose.ListComposeContainers(ctx)
+	containers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
 		return
@@ -421,7 +421,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 	if rulesErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-policy", Detail: rulesErr.Error()})
 	} else if len(rules) > 0 {
-		containers, listErr := compose.ListComposeContainers(ctx)
+		containers, listErr := compose.ListRuntimeContainers(ctx)
 		if listErr != nil {
 			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: listErr.Error()})
 		} else {
