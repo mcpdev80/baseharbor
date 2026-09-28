@@ -14,7 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
@@ -39,7 +39,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatalf("runtime up: %v", err)
 	}
 	defer func() { _ = runtimeDown(context.Background(), io.Discard) }()
-	compose, err := runtimeresolver.DefaultRuntimeProvider(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
