@@ -140,7 +140,7 @@ func targetCommand() *cli.Command {
 							access = target.Access.Reference
 							scope = target.Scope
 						} else {
-							provider = "compose"
+							provider = "docker"
 							access = "local"
 							scope = "default"
 							marks = append(marks, "implicit")
@@ -440,10 +440,4 @@ func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarge
 		return nil, err
 	}
 	return provider, nil
-}
-
-// detectComposeForTarget remains as a compatibility name for existing callers.
-// It resolves the provider-neutral runtime contract and does not expose Compose.
-func detectComposeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
-	return detectRuntimeForTarget(ctx, target)
 }
