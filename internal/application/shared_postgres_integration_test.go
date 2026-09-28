@@ -182,19 +182,19 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	}
 }
 
-func seedSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, resource sharedPostgresResource, value string) {
+func seedSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, resource sharedPostgresResource, value string) {
 	t.Helper()
 	sql := "CREATE TABLE isolation_probe (value text NOT NULL); INSERT INTO isolation_probe VALUES (" + quotePostgresLiteral(value) + ");"
 	execSharedPostgresAsApp(t, ctx, compose, shared, resource, sql)
 }
 
-func setSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, resource sharedPostgresResource, value string) {
+func setSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, resource sharedPostgresResource, value string) {
 	t.Helper()
 	sql := "UPDATE isolation_probe SET value=" + quotePostgresLiteral(value)
 	execSharedPostgresAsApp(t, ctx, compose, shared, resource, sql)
 }
 
-func readSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, resource sharedPostgresResource) string {
+func readSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, resource sharedPostgresResource) string {
 	t.Helper()
 	password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 	if err != nil {
@@ -208,7 +208,7 @@ func readSharedPostgresSentinel(t *testing.T, ctx context.Context, compose bhrun
 	return strings.TrimSpace(out)
 }
 
-func execSharedPostgresAsApp(t *testing.T, ctx context.Context, compose bhruntime.Compose, shared SharedBackendFiles, resource sharedPostgresResource, sql string) {
+func execSharedPostgresAsApp(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, resource sharedPostgresResource, sql string) {
 	t.Helper()
 	password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 	if err != nil {
