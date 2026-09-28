@@ -27,6 +27,30 @@ type HTTPGatewayFiles struct {
 	AuthToken string
 }
 
+type NativeTLSFiles struct {
+	Dir      string
+	Material TLSMaterial
+}
+
+func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, providerDir string, serverNames ...string) (NativeTLSFiles, error) {
+	if issuer == nil {
+		return NativeTLSFiles{}, errors.New("native TLS issuer is required")
+	}
+	dir := filepath.Join(providerDir, "service-access")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return NativeTLSFiles{}, fmt.Errorf("create native service access state: %w", err)
+	}
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), serverNames...)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	projected, err := projectGatewayMaterial(dir, material)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	return NativeTLSFiles{Dir: dir, Material: projected}, nil
+}
+
 type HTTPGatewaySpec struct {
 	ServiceName       string
 	Upstream          string
