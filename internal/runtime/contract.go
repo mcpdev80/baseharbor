@@ -17,8 +17,3 @@ type RuntimeContainer = runtimecontract.RuntimeContainer
 type ImageIdentity = runtimecontract.ImageIdentity
 type PublishedPort = runtimecontract.PublishedPort
 type ServiceState = runtimecontract.ServiceState
-
-var _ RuntimeProvider = DockerProvider{}
-var _ RuntimeProvider = PodmanProvider{}
-var _ LogSourceAdapter = DockerProvider{}
-var _ LogSourceAdapter = PodmanProvider{}
