@@ -378,7 +378,6 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
-
 func restoreSelectedWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, restoreData applicationRestoreData) error {
 	if !recoveryManifestHasSelected(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage) {
 		return nil
