@@ -141,12 +141,15 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("    ports:\n")
 	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090\"\n")
 	b.WriteString("    networks:\n")
+	publishAlias := "prometheus-access"
 	if placement.Scope == capability.ScopeApplication {
 		b.WriteString("      access:\n        aliases:\n          - prometheus\n")
+		publishAlias = "baseharbor-internal-prometheus-access"
 	} else {
 		b.WriteString("      - access\n")
 	}
-	b.WriteString("      publish:\n        aliases:\n          - prometheus-access\n")
+	b.WriteString("      publish:\n        aliases:\n")
+	fmt.Fprintf(&b, "          - %s\n", publishAlias)
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i := range registrations {
 			fmt.Fprintf(&b, "      - metrics-%d\n", i)
