@@ -42,7 +42,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			var compose bhruntime.Compose
+			var compose bhruntime.RuntimeProvider
 			var before []bhruntime.ProjectResource
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
@@ -136,7 +136,7 @@ func appDownCommand(store application.Store) *cli.Command {
 	}
 }
 
-func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, m application.Manifest) error {
+func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, m application.Manifest) error {
 	if !devaccess.Enabled(m.Environment) {
 		return nil
 	}
