@@ -112,7 +112,7 @@ func appNewCommand() *cli.Command {
 					Satisfied:       result.Validation.Satisfied,
 				})
 			}
-			fmt.Fprintf(out, "created %s (%s) with %s\n", result.Manifest.Name, result.Manifest.Environment, adapterID)
+			fmt.Fprintf(out, "created %s (%s) with %s\n", result.Manifest.Name, result.Manifest.Environment, result.Profile.Metadata.Name)
 			for _, path := range result.FilePaths {
 				fmt.Fprintf(out, "  %s\n", path)
 			}
