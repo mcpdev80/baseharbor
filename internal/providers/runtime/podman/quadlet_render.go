@@ -184,6 +184,9 @@ func quadletRenderServiceImage(result *QuadletProject, composePath, project, ser
 		if image == "" {
 			return "", fmt.Errorf("Compose service %q has neither image nor build", serviceName)
 		}
+		if quadletLocalBaseHarborImage(image) {
+			image = "localhost/" + image
+		}
 		return image, nil
 	}
 
@@ -204,6 +207,21 @@ func quadletRenderServiceImage(result *QuadletProject, composePath, project, ser
 		project, serviceName, unitBase, systemdEscapeValue(contextDir), systemdEscapeValue(dockerfile),
 	)
 	return unitBase + ".build", nil
+}
+
+func quadletLocalBaseHarborImage(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" || strings.Contains(image, "/") {
+		return false
+	}
+	name := image
+	if at := strings.IndexByte(name, '@'); at >= 0 {
+		name = name[:at]
+	}
+	if colon := strings.LastIndexByte(name, ':'); colon >= 0 {
+		name = name[:colon]
+	}
+	return strings.HasPrefix(name, "baseharbor-")
 }
 
 func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, service quadletComposeService) string {
@@ -259,6 +277,9 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 
 	unit.WriteString("\n[Container]\n")
 	fmt.Fprintf(unit, "Image=%s\nContainerName=%s\n", image, containerName)
+	if strings.HasPrefix(image, "localhost/baseharbor-") {
+		unit.WriteString("Pull=never\n")
+	}
 	fmt.Fprintf(unit, "Label=com.docker.compose.project=%s\n", project)
 	fmt.Fprintf(unit, "Label=com.docker.compose.service=%s\n", serviceName)
 	fmt.Fprintf(unit, "Label=io.podman.compose.project=%s\n", project)
