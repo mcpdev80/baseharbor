@@ -57,7 +57,7 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 	add := func(k development.ActionKind, c capability.Kind, n, v string) {
 		out = append(out, development.Action{Kind: k, Component: component.ID, Capability: c, Name: n, Value: v})
 	}
-	add(development.ActionBuild, "", "python", "3.14")
+	add(development.ActionBuild, "", "python", "3.14.7")
 	add(development.ActionHealth, capability.ExposureHTTP, "health", "/healthz")
 	for _, r := range contract.Capabilities {
 		if !a.Supports(r) {
@@ -68,13 +68,13 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 			add(development.ActionBinding, r.Kind, "PORT", "8080")
 			add(development.ActionSource, r.Kind, "http.server", r.Name)
 		case capability.SQL:
-			add(development.ActionDependency, r.Kind, "psycopg", "3.3.6")
+			add(development.ActionDependency, r.Kind, "psycopg[binary]", "3.3.6")
 			add(development.ActionBinding, r.Kind, "DATABASE_URL", "")
 		case capability.KeyValue:
 			add(development.ActionDependency, r.Kind, "redis", "8.1.0")
 			add(development.ActionBinding, r.Kind, "REDIS_URL", "")
 		case capability.ObjectStorageS3:
-			add(development.ActionDependency, r.Kind, "boto3", "1.43.103")
+			add(development.ActionDependency, r.Kind, "boto3", "1.43.104")
 			for _, n := range []string{"S3_ENDPOINT", "S3_BUCKET", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} {
 				add(development.ActionBinding, r.Kind, n, "")
 			}
@@ -127,7 +127,7 @@ func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development
 	return []development.GeneratedFile{
 		{Path: "pyproject.toml", Content: []byte(pyproject.String()), Mode: 0o644},
 		{Path: "app.py", Content: []byte(source), Mode: 0o644},
-		{Path: "Dockerfile", Content: []byte("FROM python:3.14-slim\nWORKDIR /app\nCOPY . .\nRUN pip install --no-cache-dir .\nUSER 65532:65532\nEXPOSE 8080\nCMD [\"python\", \"app.py\"]\n"), Mode: 0o644},
+		{Path: "Dockerfile", Content: []byte("FROM python:3.14.7-slim\nWORKDIR /app\nCOPY . .\nRUN pip install --no-cache-dir .\nUSER 65532:65532\nEXPOSE 8080\nCMD [\"python\", \"app.py\"]\n"), Mode: 0o644},
 		{Path: "compose.yaml", Content: []byte("services:\n  app:\n    build: .\n    expose: [\"8080\"]\n"), Mode: 0o644},
 		{Path: ".env.example", Content: []byte(env), Mode: 0o644},
 	}, nil
