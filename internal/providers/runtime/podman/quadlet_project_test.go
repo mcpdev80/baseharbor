@@ -352,7 +352,6 @@ networks:
 	}
 }
 
-
 func TestRenderComposeProjectQuadletsNeverEmbedsAliasInNetworkValue(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
