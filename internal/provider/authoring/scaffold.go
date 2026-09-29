@@ -47,9 +47,9 @@ func Init(root, id string) (InitResult, error) {
 		return InitResult{}, err
 	}
 	files := map[string][]byte{
-		"provider.yaml": data,
+		"provider.yaml":      data,
 		"config.schema.json": []byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"additionalProperties\": false\n}\n"),
-		"README.md": []byte("# BaseHarbor Capability Provider\n\nImplement the baseharbor.provider/v1 lifecycle behind this descriptor. Run baha provider test . before publishing.\n"),
+		"README.md":          []byte("# BaseHarbor Capability Provider\n\nImplement the baseharbor.provider/v1 lifecycle behind this descriptor. Run baha provider test . before publishing.\n"),
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		return InitResult{}, err
