@@ -352,6 +352,54 @@ networks:
 	}
 }
 
+
+func TestRenderComposeProjectQuadletsNeverEmbedsAliasInNetworkValue(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    networks:
+      managed:
+        aliases:
+          - api-managed
+      external:
+        aliases:
+          - api-external
+networks:
+  managed: {}
+  external:
+    external: true
+    name: baseharbor-external
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "alias-guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, content := range got.Files {
+		if strings.Contains(content, ":alias=") {
+			t.Fatalf("%s contains legacy network alias syntax:\n%s", name, content)
+		}
+	}
+
+	unit := got.Files["alias-guard-api.container"]
+	for _, want := range []string{
+		"Network=alias-guard-managed.network",
+		"Network=baseharbor-external",
+		"NetworkAlias=api",
+		"NetworkAlias=api-managed",
+		"NetworkAlias=api-external",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("alias guard Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+}
+
 func TestRenderComposeProjectQuadletsMapsFileSecrets(t *testing.T) {
 	root := t.TempDir()
 	secret := filepath.Join(root, "broker.key")
