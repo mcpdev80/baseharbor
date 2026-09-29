@@ -139,13 +139,13 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 			return machineMCPFailure(err)
 		}
 		result, err := development.CreateApplication(path, development.NewApplicationRequest{
-			Name:         strings.TrimSpace(input.Name),
-			Environment:  strings.TrimSpace(input.Environment),
-			Adapter:      adapterID,
-			Capabilities: capabilities,
-			Secrets:      append([]string(nil), input.Secrets...),
-			EmitBackstage: input.EmitBackstage,
-			BackstageOwner: input.BackstageOwner,
+			Name:               strings.TrimSpace(input.Name),
+			Environment:        strings.TrimSpace(input.Environment),
+			Adapter:            adapterID,
+			Capabilities:       capabilities,
+			Secrets:            append([]string(nil), input.Secrets...),
+			EmitBackstage:      input.EmitBackstage,
+			BackstageOwner:     input.BackstageOwner,
 			BackstageLifecycle: input.BackstageLifecycle,
 		}, registry)
 		if err != nil {
@@ -246,117 +246,4 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
-		args := machineApplicationArgs(input.Name, input.Environment)
-		args = append(args, "--fix")
-		if err := executeApplicationRepairLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
-			return machineMCPFailure(err)
-		}
-		doctorArgs := machineApplicationArgs(input.Name, input.Environment)
-		doctor, err := collectApplicationDoctor(ctx, store, doctorArgs)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		result := machineLifecycleDoctorResult{
-			Result: applicationlifecycle.NewResult("repair", doctor.Application, doctor.Environment, doctor.State, doctor.Healthy).WithTarget(doctor.Target),
-			Doctor: doctor,
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, machineMCPTool("backup", "Create the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineBackupInput) (*mcp.CallToolResult, any, error) {
-		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
-		passwordFile := strings.TrimSpace(input.PasswordFile)
-		if passwordFile == "" {
-			return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed, "password_file is required.", "Provide an owner-only local password file; plaintext backup passwords are never accepted through MCP.", false))
-		}
-		args := machineApplicationArgs(input.Name, input.Environment)
-		args = append(args, "--password-file", passwordFile)
-		if output := strings.TrimSpace(input.OutputPath); output != "" {
-			args = append(args, "--output", output)
-		}
-		for _, class := range input.IncludeState {
-			args = append(args, "--include-state", class)
-		}
-		for _, class := range input.ExcludeState {
-			args = append(args, "--exclude-state", class)
-		}
-		if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
-			return machineMCPFailure(err)
-		}
-		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "backup")
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		metadata, err := resolved.Store.LastBackup(resolved.Manifest.Name)
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		result := machineBackupResult{
-			Result: applicationlifecycle.NewResult("backup", resolved.Manifest.Name, resolved.Manifest.Environment, "backed_up", true).WithTarget(resolved.Target.Name),
-			Backup: metadata,
-		}
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
-		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
-		backupPath := strings.TrimSpace(input.BackupPath)
-		passwordFile := strings.TrimSpace(input.PasswordFile)
-		if backupPath == "" || passwordFile == "" {
-			return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed, "backup_path and password_file are required.", "Provide the encrypted recovery archive and an owner-only local password file.", false))
-		}
-		args := []string{backupPath}
-		if name := strings.TrimSpace(input.Name); name != "" {
-			args = append(args, name)
-		}
-		args = append(args, "--password-file", passwordFile)
-		if environment := strings.TrimSpace(input.Environment); environment != "" {
-			args = append(args, "--environment", environment)
-		}
-		if err := executeApplicationRestoreLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
-			return machineMCPFailure(err)
-		}
-		statusArgs := machineApplicationArgs(input.Name, input.Environment)
-		status, err := collectApplicationStatusResult(ctx, store, statusArgs)
-		if err == nil {
-			result := machineLifecycleStatusResult{
-				Result: applicationlifecycle.NewResult("restore", status.Application, status.Environment, status.State, status.Ready).WithTarget(status.Target),
-				Status: status,
-			}
-			return nil, result, nil
-		}
-		result := applicationlifecycle.NewResult("restore", strings.TrimSpace(input.Name), strings.TrimSpace(input.Environment), "restored", true)
-		if target, targetErr := effectiveTarget(ctx); targetErr == nil {
-			result = result.WithTarget(target.Name)
-		}
-		result.Detail = "Recovery unit restored and verified by the restore lifecycle; application identity can be discovered with baseharbor.status in repository context."
-		return nil, result, nil
-	})
-
-	mcp.AddTool(server, machineMCPTool("destroy", "Permanently remove BaseHarbor-owned application runtime resources and state. Explicit approval is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineDestroyInput) (*mcp.CallToolResult, any, error) {
-		ctx = withTargetOverride(ctx, input.Target)
-		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
-			return machineMCPFailure(err)
-		}
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
-		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "destroy")
-		if err != nil {
-			return machineMCPFailure(err)
-		}
-		args := machineApplicationArgs(input.Name, input.Environment)
-		args = append(args, "--yes")
-		if input.FullReset {
-			args = append(args, "--full-reset")
-		}
-		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
-			return machineMCPFailure(err)
-		}
-		result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
-		return nil, result, nil
-	})
-}
+		args := machineApplicationArgs(input.Name, input.Environment
