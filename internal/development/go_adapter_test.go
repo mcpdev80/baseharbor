@@ -22,8 +22,9 @@ func TestGoAdapterBootstrapRoundTrip(t *testing.T) {
 		},
 	}
 	profile := StackProfile{
-		SchemaVersion: StackProfileVersion,
-		Name:          "go-service",
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:     ProfileMetadata{Name: "go-service"},
 		Components: []Component{{
 			ID:      "app",
 			Role:    "backend",
