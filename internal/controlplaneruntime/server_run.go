@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -171,6 +172,7 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		}
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
+				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=%v", err)
 				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
