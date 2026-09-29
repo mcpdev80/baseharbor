@@ -232,7 +232,6 @@ func WriteGeneratedFiles(root string, files []GeneratedFile) error {
 	return nil
 }
 
-
 func profileComponentIDs(profile StackProfile) []string {
 	ids := make([]string, 0, len(profile.Components))
 	for _, component := range profile.Components {
@@ -284,7 +283,6 @@ func validateProfileCapabilitySupport(profile StackProfile, requirement capabili
 	return nil
 }
 
-
 func profileCapabilityTarget(profile StackProfile, kind capability.Kind) string {
 	for _, preference := range profile.Capabilities {
 		if preference.Capability == kind && len(preference.Components) > 0 {
@@ -296,7 +294,6 @@ func profileCapabilityTarget(profile StackProfile, kind capability.Kind) string 
 	}
 	return "app"
 }
-
 
 func bootstrapProfileFiles(plan DevelopmentPlan, profile StackProfile, registry Registry) ([]GeneratedFile, error) {
 	multiComponent := len(profile.Components) > 1
