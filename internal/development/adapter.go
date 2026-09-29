@@ -29,10 +29,10 @@ type Validation struct {
 type Adapter interface {
 	Descriptor() extension.Metadata
 	Detect(root string) (Detection, error)
-	Supports(capability.Requirement) bool
-	Plan(application.PortableContract, StackProfile, Component) ([]Action, error)
-	Bootstrap(DevelopmentPlan, Component) ([]GeneratedFile, error)
-	Validate(root string, application.PortableContract, Component) (Validation, error)
+	Supports(requirement capability.Requirement) bool
+	Plan(contract application.PortableContract, profile StackProfile, component Component) ([]Action, error)
+	Bootstrap(plan DevelopmentPlan, component Component) ([]GeneratedFile, error)
+	Validate(root string, contract application.PortableContract, component Component) (Validation, error)
 }
 
 type Registry struct {
