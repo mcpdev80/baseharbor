@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -17,8 +16,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/development/quarkusadapter"
 )
 
+var appNewInput io.Reader = os.Stdin
+
 type appNewOptions struct {
 	Name               string
+	Directory          string
 	Environment        string
 	Stack              string
 	Capabilities       []capability.Kind
@@ -33,19 +35,25 @@ func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			if len(args) == 0 {
+				if noInput(ctx) || !readerIsTerminal(appNewInput) {
+					return usageError("interactive app new requires a terminal", "Provide NAME and --directory <parent> with deterministic flags for CI/non-TTY use.")
+				}
+				return runAppNewWizard(ctx, out, errOut)
+			}
 			options, err := parseAppNewOptions(args)
 			if err != nil {
 				return err
 			}
-			if options.Name == "" {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				options.Name = filepath.Base(cwd)
+			if strings.TrimSpace(options.Name) == "" {
+				return usageError("application NAME is required for deterministic app new", "Use 'baha app new' interactively or pass a name explicitly.")
+			}
+			root, err := resolveNewApplicationRoot(options.Name, options.Directory)
+			if err != nil {
+				return err
 			}
 			adapterID, err := developmentAdapterID(options.Stack)
 			if err != nil {
@@ -55,7 +63,7 @@ func appNewCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			result, err := development.CreateApplication(".", development.NewApplicationRequest{
+			result, err := development.CreateApplication(root, development.NewApplicationRequest{
 				Name:               options.Name,
 				Environment:        options.Environment,
 				Adapter:            adapterID,
@@ -129,7 +137,7 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			for _, kind := range []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP} {
 				addCapability(kind)
 			}
-		case "--environment", "-e", "--stack", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
+		case "--environment", "-e", "--directory", "--stack", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
 			if i+1 >= len(args) {
 				return appNewOptions{}, usageError(arg+" requires a value", "Run 'baha app new --help' for usage.")
 			}
@@ -138,6 +146,8 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			switch arg {
 			case "--environment", "-e":
 				options.Environment = value
+			case "--directory":
+				options.Directory = value
 			case "--stack":
 				options.Stack = value
 			case "--backstage-owner":
