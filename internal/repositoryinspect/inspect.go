@@ -290,7 +290,7 @@ func classifyFile(rel string) (string, bool) {
 	case "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
 		"go.mod", "go.sum", "pyproject.toml", "requirements.txt", "poetry.lock",
 		"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
-		"cargo.toml", "cargo.lock", "pom.xml", "build.gradle", "build.gradle.kts", "gradle.properties":
+		"gradle.properties", "cargo.toml", "cargo.lock":
 		return "dependency", true
 	}
 	ext := strings.ToLower(filepath.Ext(base))
