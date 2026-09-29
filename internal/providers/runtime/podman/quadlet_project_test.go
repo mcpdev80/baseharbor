@@ -89,7 +89,7 @@ networks:
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
 		"Volume=baseharbor-demo-db-data.volume:/var/lib/postgresql",
-		"Network=baseharbor-demo_internal:alias=db",
+		"Network=baseharbor-demo-internal.network:alias=db",
 		"Requires=baseharbor-demo-internal-network.service",
 		"After=baseharbor-demo-internal-network.service",
 		"HealthInterval=2s",
@@ -301,7 +301,7 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 		t.Fatalf("implicit default network was not rendered")
 	}
 	unit := got.Files["implicit-network-api.container"]
-	if !strings.Contains(unit, "Network=implicit-network_default:alias=api") {
+	if !strings.Contains(unit, "Network=implicit-network-default.network:alias=api") {
 		t.Fatalf("service was not attached to implicit default network with service alias:\n%s", unit)
 	}
 	if !strings.Contains(unit, "Requires=implicit-network-default-network.service") {
