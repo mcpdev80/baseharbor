@@ -89,7 +89,7 @@ func renderStarterGoMod(descriptor Descriptor) string {
 }
 
 func renderStarterProvider(descriptor Descriptor) string {
-	kind := "provider.Kind(" + fmt.Sprintf("%q", descriptor.ID) + ")"
+	kind := "provider.ProviderKind(" + fmt.Sprintf("%q", descriptor.ID) + ")"
 	capabilityKind := "provider.SQL"
 	if len(descriptor.ServiceContracts) > 0 {
 		switch strings.SplitN(descriptor.ServiceContracts[0], "/", 2)[0] {
