@@ -95,8 +95,9 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	}
 
 	profile := StackProfile{
-		SchemaVersion: StackProfileVersion,
-		Name:          "generated/" + strings.TrimPrefix(adapterID, "development/"),
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:    ProfileMetadata{Name: "generated/" + strings.TrimPrefix(adapterID, "development/")},
 		Components: []Component{{
 			ID:      "app",
 			Role:    "application",
