@@ -15,7 +15,7 @@ type bootstrapAdapter struct{}
 func (bootstrapAdapter) Descriptor() extension.Metadata {
 	return extension.Metadata{SchemaVersion: extension.DescriptorVersion, ID: "development/test", Family: extension.FamilyDevelopment, Version: "0.1.0"}
 }
-func (bootstrapAdapter) Detect(string) (Detection, error) { return Detection{}, nil }
+func (bootstrapAdapter) Detect(string) (Detection, error)     { return Detection{}, nil }
 func (bootstrapAdapter) Supports(capability.Requirement) bool { return true }
 func (bootstrapAdapter) Plan(_ application.PortableContract, _ StackProfile, component Component) ([]Action, error) {
 	return []Action{{Kind: ActionSource, Component: component.ID, Name: "app"}}, nil
