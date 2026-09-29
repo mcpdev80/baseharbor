@@ -14,19 +14,15 @@ import (
 )
 
 func TestDynamicApplicationSecretLifecycleRealOpenBao(t *testing.T) {
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
-		t.Skip("real OpenBao dynamic secret integration test runs in GitHub Actions")
+	if os.Getenv("BASEHARBOR_OPENBAO_APPLICATION_ACCEPTANCE") != "true" {
+		t.Skip("real OpenBao application acceptance is opt-in")
 	}
 
 	root := t.TempDir()
-	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime"), "baseharbor-openbao-dynamic-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
+	files, err := bhruntime.EnsureFilesForProject(filepath.Join(root, ".baseharbor", "runtime"), "baseharbor-openbao-dynamic-ci", bhruntime.Ports{Postgres: 35432, OpenBao: 38200})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=dynamic-integration\nBASEHARBOR_POSTGRES_PORT=35432\nBASEHARBOR_OPENBAO_PORT=38200\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	compose, err := testruntime.Resolve(ctx)
