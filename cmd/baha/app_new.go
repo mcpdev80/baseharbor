@@ -19,6 +19,8 @@ type appNewOptions struct {
 	Directory          string
 	Environment        string
 	Stack              string
+	StackExplicit      bool
+	StackProfile       string
 	Capabilities       []capability.Kind
 	Secrets            []string
 	Output             cliOutputFormat
