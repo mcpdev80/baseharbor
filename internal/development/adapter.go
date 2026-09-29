@@ -2,6 +2,7 @@ package development
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -67,4 +68,22 @@ func (r Registry) Resolve(id string) (Adapter, error) {
 		return nil, fmt.Errorf("development adapter %q is not registered", id)
 	}
 	return adapter, nil
+}
+
+
+func (r Registry) IDs() []string {
+	ids := make([]string, 0, len(r.adapters))
+	for id := range r.adapters {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (r Registry) Supports(id string, kind capability.Kind) bool {
+	adapter, ok := r.adapters[strings.TrimSpace(id)]
+	if !ok {
+		return false
+	}
+	return adapter.Supports(capability.Requirement{Kind: kind})
 }
