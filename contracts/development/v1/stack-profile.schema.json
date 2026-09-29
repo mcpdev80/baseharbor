@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/development/v1/stack-profile.schema.json",
+  "title": "BaseHarbor Stack Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {"const": "baseharbor.dev/v1"},
+    "kind": {"const": "StackProfile"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"name": {"type": "string", "minLength": 1}},
+      "required": ["name"]
+    },
+    "extends": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "role": {"type": "string", "minLength": 1},
+          "adapter": {"type": "string", "minLength": 1}
+        },
+        "required": ["id", "role", "adapter"]
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "capability": {"type": "string", "minLength": 1},
+          "components": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
+          "implementation-preference": {"type": "string"},
+          "development-integration": {"type": "string"}
+        },
+        "required": ["capability"]
+      }
+    }
+  },
+  "required": ["apiVersion", "kind", "metadata", "components"]
+}
