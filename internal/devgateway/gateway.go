@@ -284,17 +284,17 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		}
 		trustTargets[route.Key] = targetPath
 	}
-	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes)), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
-		return err
-	}
 	hostPort, err := resolveGatewayHostPort(files, current, runtime)
 	if err != nil {
 		return err
 	}
 	current.HostPort = hostPort
+	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort)), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
+		return err
+	}
 	if err := saveState(files.State, current); err != nil {
 		return err
 	}
@@ -643,7 +643,7 @@ func normalizedRoutes(routes []Route) []Route {
 	return out
 }
 
-func renderCaddyfile(routes []Route) string {
+func renderCaddyfile(routes []Route, listenPort int) string {
 	var b strings.Builder
 	b.WriteString("{\n  auto_https off\n}\n")
 	renderListener := func(port int) {
@@ -671,8 +671,7 @@ func renderCaddyfile(routes []Route) string {
 		}
 		b.WriteString("  respond 404\n}\n")
 	}
-	renderListener(443)
-	renderListener(8443)
+	renderListener(listenPort)
 	return b.String()
 }
 
@@ -696,7 +695,7 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string, 
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
-	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:8443\"\n", hostPort)
+	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", hostPort, hostPort)
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %q\n", files.Caddyfile+":/etc/caddy/Caddyfile:ro")
 	fmt.Fprintf(&b, "      - %q\n", files.Cert+":/certs/server.pem:ro")
