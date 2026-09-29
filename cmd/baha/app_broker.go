@@ -292,7 +292,7 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 	}
 	project := runtimebroker.ProjectNameForRuntime(m, files)
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
-		"curl", "--fail", "--silent", "--show-error",
+		"curl", "--silent", "--show-error",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
 		"--cacert", "/run/baseharbor/identity/ca.pem",
 		"--cert", "/run/secrets/probe-client-cert",
@@ -303,12 +303,19 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 		return fmt.Errorf("application runtime broker mTLS readiness probe failed: %w", err)
 	}
 	var ready struct {
-		Status  string `json:"status"`
-		Version string `json:"version"`
-		Commit  string `json:"commit"`
+		Status     string `json:"status"`
+		Dependency string `json:"dependency"`
+		Version    string `json:"version"`
+		Commit     string `json:"commit"`
 	}
-	if err := json.Unmarshal([]byte(out), &ready); err != nil || ready.Status != "ready" {
+	if err := json.Unmarshal([]byte(out), &ready); err != nil {
 		return errors.New("application runtime broker readiness response is invalid")
+	}
+	if ready.Status != "ready" {
+		if strings.TrimSpace(ready.Dependency) != "" {
+			return fmt.Errorf("application runtime broker dependency %s is not ready", ready.Dependency)
+		}
+		return errors.New("application runtime broker readiness response is not ready")
 	}
 	if err := verifyRuntimeBrokerBuildIdentity(ready.Version, ready.Commit); err != nil {
 		return err
