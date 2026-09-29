@@ -83,7 +83,7 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		seen[kind] = struct{}{}
 		switch kind {
 		case capability.ExposureHTTP:
-			manifest = application.WithHTTPExposure(manifest, "web", "app", 8080, "http")
+			manifest = application.WithHTTPExposure(manifest, "web", profileCapabilityTarget(profile, capability.ExposureHTTP), 8080, "http")
 		case capability.SQL:
 			manifest.Services.SQL = true
 		case capability.KeyValue:
@@ -276,4 +276,17 @@ func validateProfileCapabilitySupport(profile StackProfile, requirement capabili
 		return fmt.Errorf("stack profile %q has no component that supports %s", profile.Metadata.Name, requirement.Kind)
 	}
 	return nil
+}
+
+
+func profileCapabilityTarget(profile StackProfile, kind capability.Kind) string {
+	for _, preference := range profile.Capabilities {
+		if preference.Capability == kind && len(preference.Components) > 0 {
+			return preference.Components[0]
+		}
+	}
+	if len(profile.Components) > 0 {
+		return profile.Components[0].ID
+	}
+	return "app"
 }
