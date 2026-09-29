@@ -31,10 +31,11 @@ type machineApplicationInput struct {
 }
 
 type machineAppNewInput struct {
-	Path               string   `json:"path,omitempty" jsonschema:"local directory to create the application in; defaults to the current directory"`
+	Directory          string   `json:"directory,omitempty" jsonschema:"parent directory in which BaseHarbor creates a child directory named after the application; required unless the current empty directory already matches the application name"`
 	Name               string   `json:"name" jsonschema:"application name"`
 	Environment        string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
-	Stack              string   `json:"stack,omitempty" jsonschema:"development stack: go, nextjs, python or quarkus; defaults to go"`
+	Stack              string   `json:"stack,omitempty" jsonschema:"built-in development stack; defaults to go when stack_profile is omitted"`
+	StackProfile       string   `json:"stack_profile,omitempty" jsonschema:"reusable Stack Profile name from the effective built-in/user/repository catalog; mutually exclusive with stack"`
 	Capabilities       []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
 	Secrets            []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
 	EmitBackstage      bool     `json:"emit_backstage,omitempty" jsonschema:"emit a static Backstage catalog-info.yaml projection; default false"`
