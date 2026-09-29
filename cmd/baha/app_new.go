@@ -152,10 +152,6 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 				}
 				options.Secrets = append(options.Secrets, value)
 				addCapability(capability.Secrets)
-			case "--backstage-owner":
-				options.BackstageOwner = value
-			case "--backstage-lifecycle":
-				options.BackstageLifecycle = value
 			case "--output", "-o":
 				if value != "json" {
 					return appNewOptions{}, usageError("unsupported output format "+value, "Use --output json.")
