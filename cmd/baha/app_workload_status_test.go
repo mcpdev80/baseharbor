@@ -268,4 +268,10 @@ func TestTerminalWorkloadServiceError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "demo-app exited health=unhealthy") {
 		t.Fatalf("expected terminal service detail, got %v", err)
 	}
+	err = terminalWorkloadServiceError([]workloadServiceStatus{
+		{Service: "demo-app", State: "created", ExitCode: 128, RuntimeError: "failed to set up container networking: port is already allocated"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "created") || !strings.Contains(err.Error(), "exit_code=128") || !strings.Contains(err.Error(), "port is already allocated") {
+		t.Fatalf("created start failure must be terminal with runtime evidence, got %v", err)
+	}
 }
