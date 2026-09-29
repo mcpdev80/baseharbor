@@ -20,9 +20,9 @@ type Adapter struct{}
 func (Adapter) Descriptor() extension.Metadata {
 	return extension.Metadata{
 		SchemaVersion: extension.DescriptorVersion,
-		ID: AdapterID,
-		Family: extension.FamilyDevelopment,
-		Version: "0.1.0",
+		ID:            AdapterID,
+		Family:        extension.FamilyDevelopment,
+		Version:       "0.1.0",
 		Compatibility: extension.Compatibility{Contracts: []string{
 			"exposure.http/v1", "database.sql/v1", "cache.key-value/v1",
 			"object-storage.s3/v1", "secrets/v1", "telemetry.otlp/v1",
@@ -31,13 +31,21 @@ func (Adapter) Descriptor() extension.Metadata {
 }
 
 func (Adapter) Detect(root string) (development.Detection, error) {
-	if strings.TrimSpace(root) == "" { root = "." }
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
 	data, err := os.ReadFile(filepath.Join(root, "package.json"))
-	if os.IsNotExist(err) { return development.Detection{}, nil }
-	if err != nil { return development.Detection{}, err }
+	if os.IsNotExist(err) {
+		return development.Detection{}, nil
+	}
+	if err != nil {
+		return development.Detection{}, err
+	}
 	detected := strings.Contains(strings.ToLower(string(data)), "\"next\"")
 	var evidence []string
-	if detected { evidence = []string{"package.json"} }
+	if detected {
+		evidence = []string{"package.json"}
+	}
 	return development.Detection{Detected: detected, Evidence: evidence}, nil
 }
 
@@ -54,12 +62,14 @@ func (Adapter) Supports(r capability.Requirement) bool {
 func (a Adapter) Plan(contract application.PortableContract, profile development.StackProfile, component development.Component) ([]development.Action, error) {
 	var actions []development.Action
 	add := func(k development.ActionKind, c capability.Kind, name, value string) {
-		actions = append(actions, development.Action{Kind:k, Component:component.ID, Capability:c, Name:name, Value:value})
+		actions = append(actions, development.Action{Kind: k, Component: component.ID, Capability: c, Name: name, Value: value})
 	}
 	add(development.ActionBuild, "", "node", "24")
 	add(development.ActionHealth, capability.ExposureHTTP, "health", "/healthz")
 	for _, r := range contract.Capabilities {
-		if !a.Supports(r) { return nil, fmt.Errorf("Next.js adapter does not support %s", r.Kind) }
+		if !a.Supports(r) {
+			return nil, fmt.Errorf("Next.js adapter does not support %s", r.Kind)
+		}
 		switch r.Kind {
 		case capability.ExposureHTTP:
 			add(development.ActionDependency, r.Kind, "next", "16.3.7")
@@ -77,7 +87,9 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 			add(development.ActionBinding, r.Kind, "S3_ENDPOINT", "")
 			add(development.ActionBinding, r.Kind, "S3_BUCKET", "")
 		case capability.Secrets:
-			for _, s := range contract.Secrets.Required { add(development.ActionBinding, r.Kind, s.Name, "") }
+			for _, s := range contract.Secrets.Required {
+				add(development.ActionBinding, r.Kind, s.Name, "")
+			}
 		case capability.TelemetryOTLP:
 			add(development.ActionDependency, r.Kind, "@opentelemetry/api", "1.9.1")
 			add(development.ActionDependency, r.Kind, "@opentelemetry/sdk-node", "0.222.0")
@@ -94,21 +106,29 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 
 func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development.Component) ([]development.GeneratedFile, error) {
 	var actions []development.Action
-	for _, a := range plan.Actions { if a.Component == component.ID { actions = append(actions, a) } }
+	for _, a := range plan.Actions {
+		if a.Component == component.ID {
+			actions = append(actions, a)
+		}
+	}
 	deps := map[string]string{}
 	bindings := map[string]struct{}{}
 	for _, a := range actions {
-		if a.Kind == development.ActionDependency { deps[a.Name]=a.Value }
-		if a.Kind == development.ActionBinding { bindings[a.Name]=struct{}{} }
+		if a.Kind == development.ActionDependency {
+			deps[a.Name] = a.Value
+		}
+		if a.Kind == development.ActionBinding {
+			bindings[a.Name] = struct{}{}
+		}
 	}
 	return []development.GeneratedFile{
-		{Path:"package.json", Content:[]byte(renderPackage(plan.Application,deps)), Mode:0o644},
-		{Path:"app/page.tsx", Content:[]byte(pageSource()), Mode:0o644},
-		{Path:"app/healthz/route.ts", Content:[]byte(healthSource()), Mode:0o644},
-		{Path:"lib/capabilities.ts", Content:[]byte(capabilitySource(bindings)), Mode:0o644},
-		{Path:"Dockerfile", Content:[]byte(dockerfile()), Mode:0o644},
-		{Path:"compose.yaml", Content:[]byte(compose()), Mode:0o644},
-		{Path:".env.example", Content:[]byte(envExample(bindings)), Mode:0o644},
+		{Path: "package.json", Content: []byte(renderPackage(plan.Application, deps)), Mode: 0o644},
+		{Path: "app/page.tsx", Content: []byte(pageSource()), Mode: 0o644},
+		{Path: "app/healthz/route.ts", Content: []byte(healthSource()), Mode: 0o644},
+		{Path: "lib/capabilities.ts", Content: []byte(capabilitySource(bindings)), Mode: 0o644},
+		{Path: "Dockerfile", Content: []byte(dockerfile()), Mode: 0o644},
+		{Path: "compose.yaml", Content: []byte(compose()), Mode: 0o644},
+		{Path: ".env.example", Content: []byte(envExample(bindings)), Mode: 0o644},
 	}, nil
 }
 
@@ -117,10 +137,20 @@ func (a Adapter) Validate(root string, contract application.PortableContract, co
 }
 
 func renderPackage(app string, deps map[string]string) string {
-	names:=make([]string,0,len(deps)); for n:=range deps { names=append(names,n) }; sort.Strings(names)
+	names := make([]string, 0, len(deps))
+	for n := range deps {
+		names = append(names, n)
+	}
+	sort.Strings(names)
 	var b strings.Builder
 	fmt.Fprintf(&b, "{\n  \"name\": %q,\n  \"private\": true,\n  \"scripts\": {\"dev\": \"next dev\", \"build\": \"next build\", \"start\": \"next start\"},\n  \"dependencies\": {\n", app)
-	for i,n:=range names { comma:=","; if i==len(names)-1 { comma="" }; fmt.Fprintf(&b,"    %q: %q%s\n",n,deps[n],comma) }
+	for i, n := range names {
+		comma := ","
+		if i == len(names)-1 {
+			comma = ""
+		}
+		fmt.Fprintf(&b, "    %q: %q%s\n", n, deps[n], comma)
+	}
 	b.WriteString("  },\n  \"devDependencies\": {\"typescript\": \"^5.9.2\", \"@types/node\": \"^22.18.6\", \"@types/react\": \"^19.1.13\"}\n}\n")
 	return b.String()
 }
@@ -134,10 +164,18 @@ func healthSource() string {
 }
 
 func capabilitySource(bindings map[string]struct{}) string {
-	names:=make([]string,0,len(bindings)); for n:=range bindings { if n!="PORT" { names=append(names,n) } }; sort.Strings(names)
+	names := make([]string, 0, len(bindings))
+	for n := range bindings {
+		if n != "PORT" {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
 	var b strings.Builder
 	b.WriteString("const required = (name: string) => { const value = process.env[name]; if (!value) throw new Error('missing ' + name); return value; };\n")
-	for _,n:=range names { fmt.Fprintf(&b,"export const %s = required(%q);\n", strings.ReplaceAll(strings.ToLower(n),"_",""), n) }
+	for _, n := range names {
+		fmt.Fprintf(&b, "export const %s = required(%q);\n", strings.ReplaceAll(strings.ToLower(n), "_", ""), n)
+	}
 	b.WriteString("// database.sql: pg\n// cache.key-value: ioredis\n// object-storage.s3: @aws-sdk/client-s3\n// telemetry.otlp: @opentelemetry/sdk-node\n")
 	return b.String()
 }
@@ -151,8 +189,16 @@ func compose() string {
 }
 
 func envExample(bindings map[string]struct{}) string {
-	names:=make([]string,0,len(bindings)); for n:=range bindings { if n!="PORT" { names=append(names,n) } }; sort.Strings(names)
+	names := make([]string, 0, len(bindings))
+	for n := range bindings {
+		if n != "PORT" {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
 	var b strings.Builder
-	for _,n:=range names { fmt.Fprintf(&b,"%s=\n",n) }
+	for _, n := range names {
+		fmt.Fprintf(&b, "%s=\n", n)
+	}
 	return b.String()
 }
