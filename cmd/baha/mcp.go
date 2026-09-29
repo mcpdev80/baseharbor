@@ -30,6 +30,15 @@ type machineApplicationInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
+type machineAppNewInput struct {
+	Path         string   `json:"path,omitempty" jsonschema:"local directory to create the application in; defaults to the current directory"`
+	Name         string   `json:"name" jsonschema:"application name"`
+	Environment  string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
+	Stack        string   `json:"stack,omitempty" jsonschema:"development stack; currently go"`
+	Capabilities []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
+	Secrets      []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
+}
+
 type machineUpdateInput struct {
 	Target             string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
 	Environment        string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
