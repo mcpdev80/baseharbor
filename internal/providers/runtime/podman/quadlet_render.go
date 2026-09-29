@@ -380,8 +380,12 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 
 		if network.External {
 			spec := actual
-			for _, alias := range aliases {
-				spec += ":alias=" + alias
+			if len(aliases) > 0 {
+				options := make([]string, 0, len(aliases))
+				for _, alias := range aliases {
+					options = append(options, "alias="+alias)
+				}
+				spec += ":" + strings.Join(options, ",")
 			}
 			fmt.Fprintf(unit, "Network=%s\n", spec)
 			continue
