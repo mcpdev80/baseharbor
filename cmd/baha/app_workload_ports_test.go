@@ -268,7 +268,6 @@ func TestPreflightRepositoryWorkloadPublishedPortsPersistsFallbackForOccupiedFix
 	}
 }
 
-
 func TestResolvedRepositoryWorkloadPortsPreferDeploymentStateOverLegacyOverride(t *testing.T) {
 	repo := t.TempDir()
 	composePath := filepath.Join(repo, "compose.yaml")
