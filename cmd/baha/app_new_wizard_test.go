@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
 func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
@@ -73,5 +76,46 @@ func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Project root:") {
 		t.Fatalf("wizard did not preview project root:\n%s", out.String())
+	}
+}
+
+func TestStackCreateWizardBuildsReusableProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	t.Setenv("HOME", t.TempDir())
+
+	registry, err := referenceDevelopmentRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := strings.NewReader(strings.Join([]string{
+		"team-stack",
+		"1",
+		"go",
+		"app",
+		"application",
+		"1",
+		"",
+	}, "\n"))
+	var out bytes.Buffer
+	selection, err := guidedCreateStackProfile(bufio.NewReader(input), &out, catalog, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !selection.Created || selection.RawProfile == nil {
+		t.Fatalf("wizard did not create reusable profile: %#v", selection)
+	}
+	if selection.SaveScope != development.ProfileScopeUser {
+		t.Fatalf("scope = %q, want user", selection.SaveScope)
+	}
+	if selection.RawProfile.Metadata.Name != "team-stack" {
+		t.Fatalf("name = %q", selection.RawProfile.Metadata.Name)
+	}
+	if len(selection.Effective.Components) != 1 || selection.Effective.Components[0].Adapter != "development/go" {
+		t.Fatalf("unexpected effective profile: %#v", selection.Effective)
 	}
 }
