@@ -133,6 +133,53 @@ networks:
 	}
 }
 
+
+func TestRenderComposeProjectQuadletsPinsLocalBaseHarborImage(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: baseharbor-runtime:demo-candidate
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "local-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["local-image-broker.container"]
+	for _, want := range []string{
+		"Image=localhost/baseharbor-runtime:demo-candidate",
+		"Pull=never",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("local BaseHarbor image Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsLeavesRegistryImagePullable(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: ghcr.io/mcpdev80/baseharbor-runtime:edge
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "registry-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["registry-image-broker.container"]
+	if !strings.Contains(unit, "Image=ghcr.io/mcpdev80/baseharbor-runtime:edge") {
+		t.Fatalf("qualified registry image changed unexpectedly:\n%s", unit)
+	}
+	if strings.Contains(unit, "Pull=never") {
+		t.Fatalf("qualified registry image must retain normal pull semantics:\n%s", unit)
+	}
+}
+
 func TestRenderComposeProjectQuadletsBrokerDoesNotGateSystemdOnCompositeHealth(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
