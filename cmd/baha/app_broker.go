@@ -155,6 +155,15 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		case <-time.After(time.Second):
 		}
 	}
+	diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer diagnosticCancel()
+	if diagnostic, ok := compose.(interface {
+		DiagnosticsProject(context.Context, string, string, string) string
+	}); ok {
+		if details := strings.TrimSpace(diagnostic.DiagnosticsProject(diagnosticCtx, project, brokerFiles.Compose, files.Env)); details != "" {
+			return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s", verifyErr, details)
+		}
+	}
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
 }
 
@@ -292,7 +301,7 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 	}
 	project := runtimebroker.ProjectNameForRuntime(m, files)
 	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
-		"curl", "--silent", "--show-error",
+		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
 		"--cacert", "/run/baseharbor/identity/ca.pem",
 		"--cert", "/run/secrets/probe-client-cert",
