@@ -96,7 +96,7 @@ func openBaoBootstrapCommand() *cli.Command {
 			if err := persistTargetRecoveryFileReference(bootstrapCtx, recoveryPath); err != nil {
 				return fmt.Errorf("persist OpenBao recovery-file reference: %w", err)
 			}
-			if err := reconcileControlPlaneServiceAccess(bootstrapCtx, compose, files); err != nil {
+			if err := reconcileControlPlaneServiceAccess(bootstrapCtx, compose, files, recoveryPath); err != nil {
 				return fmt.Errorf("reconcile control-plane service access after OpenBao bootstrap: %w", err)
 			}
 			fmt.Fprintln(out, "[OK] OpenBao initialized and unsealed")
@@ -133,7 +133,7 @@ func openBaoUnsealCommand() *cli.Command {
 			if err := platformopenbao.CheckManager(unsealCtx, compose, files); err != nil {
 				return errors.New("OpenBao unsealed but manager authentication verification failed")
 			}
-			if err := reconcileControlPlaneServiceAccess(unsealCtx, compose, files); err != nil {
+			if err := reconcileControlPlaneServiceAccess(unsealCtx, compose, files, recoveryPath); err != nil {
 				return fmt.Errorf("reconcile control-plane service access after OpenBao unseal: %w", err)
 			}
 			fmt.Fprintln(out, "[OK] OpenBao is unsealed")
@@ -143,18 +143,18 @@ func openBaoUnsealCommand() *cli.Command {
 	}
 }
 
-func openBaoRuntime(ctx context.Context) (bhruntime.Compose, bhruntime.Files, error) {
+func openBaoRuntime(ctx context.Context) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, err
 	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, fmt.Errorf("BaseHarbor runtime is not initialized: %w", err)
+		return nil, bhruntime.Files{}, fmt.Errorf("BaseHarbor runtime is not initialized: %w", err)
 	}
 	return compose, files, nil
 }

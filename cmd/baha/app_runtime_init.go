@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -127,46 +128,62 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	hostname := firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname)
 	tlsMode := firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode)
 	certDir := firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir)
-	provider := current.RuntimeProvider
-	if provider == "" {
-		provider = bhruntime.ProviderCompose
+	provider, err := runtimeProviderKindForApplication(resolved)
+	if err != nil {
+		return err
 	}
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
 	reader := bufio.NewReader(appInitInput)
-	if hostname == "" {
-		if interactive {
-			hostname, err = promptLine(reader, out, "Public FQDN (example: mailflow.example.com)", "localhost")
-			if err != nil {
-				return err
-			}
-		} else {
-			hostname = "localhost"
+	development := devaccess.Enabled(resolved.Manifest.Environment)
+	if development {
+		if strings.TrimSpace(opts.Hostname) != "" {
+			return usageError("development hostnames are derived from the target development domain", "Use 'baha dev domain [DOMAIN]' to change the target-wide development domain.")
 		}
-	}
-	hostname = strings.TrimSpace(hostname)
-	if err := validateRuntimeHostname(hostname); err != nil {
-		return err
-	}
-
-	needsTLS, err := repositoryWorkloadLooksTLS(repoRoot, resolved.Manifest)
-	if err != nil {
-		return err
-	}
-	if tlsMode == "" && needsTLS {
-		if interactive {
-			tlsMode, err = promptTLSMode(reader, out)
-			if err != nil {
-				return err
-			}
-		} else if hostname == "localhost" {
-			tlsMode = "local"
-		} else {
-			tlsMode = "acme"
+		if strings.TrimSpace(opts.TLSMode) != "" && strings.TrimSpace(opts.TLSMode) != "local" {
+			return usageError("development TLS is managed locally by BaseHarbor", "Remove --tls or use --tls local.")
 		}
-	}
-	if tlsMode == "" {
+		hostname, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "api")
+		if err != nil {
+			return err
+		}
 		tlsMode = "local"
+		certDir = ""
+	} else {
+		if hostname == "" {
+			if interactive {
+				hostname, err = promptLine(reader, out, "Public FQDN (example: mailflow.example.com)", "localhost")
+				if err != nil {
+					return err
+				}
+			} else {
+				hostname = "localhost"
+			}
+		}
+		hostname = strings.TrimSpace(hostname)
+		if err := validateRuntimeHostname(hostname); err != nil {
+			return err
+		}
+
+		needsTLS, err := repositoryWorkloadLooksTLS(repoRoot, resolved.Manifest)
+		if err != nil {
+			return err
+		}
+		if tlsMode == "" && needsTLS {
+			if interactive {
+				tlsMode, err = promptTLSMode(reader, out)
+				if err != nil {
+					return err
+				}
+			} else if hostname == "localhost" {
+				tlsMode = "local"
+			} else {
+				tlsMode = "acme"
+			}
+		}
+		if tlsMode == "" {
+			tlsMode = "local"
+		}
 	}
 
 	tlsDir := filepath.Join(stateRoot, repositoryTLSDirName)
@@ -221,7 +238,13 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	}
 	fmt.Fprintf(out, "Application runtime initialization saved for %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
 	fmt.Fprintf(out, "Runtime provider: %s\n", provider)
-	fmt.Fprintf(out, "FQDN: %s\n", hostname)
+	if development {
+		domain, _ := devaccess.LoadDomain(resolved.Target.Name)
+		fmt.Fprintf(out, "Development domain: %s\n", domain)
+		fmt.Fprintf(out, "Canonical API URL: %s\n", devaccess.CanonicalURL(hostname))
+	} else {
+		fmt.Fprintf(out, "FQDN: %s\n", hostname)
+	}
 	fmt.Fprintf(out, "TLS: %s\n", tlsMode)
 	if certDir != "" {
 		fmt.Fprintf(out, "Certificate source: %s\n", certDir)
@@ -426,7 +449,7 @@ func loadRepositoryInitState(repoRoot string) (repositoryInitState, error) {
 func loadRepositoryInitStateFromStateRoot(stateRoot string) (repositoryInitState, error) {
 	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
 	if errors.Is(err, os.ErrNotExist) {
-		return repositoryInitState{RuntimeProvider: bhruntime.ProviderCompose}, nil
+		return repositoryInitState{RuntimeProvider: bhruntime.ProviderDocker}, nil
 	}
 	if err != nil {
 		return repositoryInitState{}, err

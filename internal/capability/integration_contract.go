@@ -88,6 +88,7 @@ type IntegrationDescriptor struct {
 	SupportedScopes []ProviderScope          `json:"supported_scopes"`
 	Optional        OptionalLifecycleSupport `json:"optional_lifecycle"`
 	Observability   ProviderObservability    `json:"observability,omitempty"`
+	Interfaces      []ProviderInterface      `json:"interfaces,omitempty"`
 }
 
 func (d IntegrationDescriptor) EffectiveServices() ([]ServiceKind, error) {
@@ -189,6 +190,17 @@ func (d IntegrationDescriptor) Validate() error {
 		if _, exists := declared[kind]; !exists {
 			return fmt.Errorf("provider %q capability %q has no versioned capability specification", d.Provider.Kind, kind)
 		}
+	}
+	seenInterfaces := map[string]struct{}{}
+	for _, iface := range d.Interfaces {
+		if err := iface.Validate(); err != nil {
+			return fmt.Errorf("provider %q: %w", d.Provider.Kind, err)
+		}
+		name := strings.TrimSpace(iface.Name)
+		if _, exists := seenInterfaces[name]; exists {
+			return fmt.Errorf("provider %q interface %q is declared more than once", d.Provider.Kind, name)
+		}
+		seenInterfaces[name] = struct{}{}
 	}
 	seenSignals := map[string]struct{}{}
 	for _, signal := range d.Observability.Signals {

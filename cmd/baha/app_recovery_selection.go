@@ -45,7 +45,7 @@ func extractRecoverySelectionArgs(args []string) ([]string, recoverySelectionArg
 	return filtered, selection, nil
 }
 
-func discoverApplicationRecoverySelection(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) (applicationbackup.RecoverySelection, []recoveryWorkloadStorage, error) {
+func discoverApplicationRecoverySelection(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (applicationbackup.RecoverySelection, []recoveryWorkloadStorage, error) {
 	selection, err := applicationbackup.DiscoverManifestRecovery(resolved.Manifest)
 	if err != nil {
 		return applicationbackup.RecoverySelection{}, nil, err
@@ -136,11 +136,11 @@ type recoveryComposeModel struct {
 	} `json:"volumes"`
 }
 
-func discoverRecoveryWorkloadStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles) ([]applicationbackup.RecoveryContributor, []recoveryWorkloadStorage, error) {
+func discoverRecoveryWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) ([]applicationbackup.RecoveryContributor, []recoveryWorkloadStorage, error) {
 	return resolveRecoveryWorkloadStorage(ctx, compose, resolved, files, true)
 }
 
-func resolveRecoveryWorkloadStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles, requireMaterialized bool) ([]applicationbackup.RecoveryContributor, []recoveryWorkloadStorage, error) {
+func resolveRecoveryWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, requireMaterialized bool) ([]applicationbackup.RecoveryContributor, []recoveryWorkloadStorage, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return nil, nil, err

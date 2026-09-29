@@ -54,6 +54,7 @@ jobs:
           cache: false
 
       - name: Reset persistent runner state
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Run generic-client lifecycle acceptance
@@ -92,6 +93,7 @@ jobs:
           cache: false
 
       - name: Reset persistent runner state
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Verify Quadlet-only runtime
@@ -108,7 +110,10 @@ jobs:
             fi
           done
           test -n "$generator"
-          "$generator" --user --dryrun >/dev/null
+          verify_unit_dir="$RUNNER_TEMP/mcp-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/dev/null
 
           mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
           cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
@@ -125,6 +130,9 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
           echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Create Podman test target
+        run: go run ./cmd/baha target create podman-ci --provider podman --access podman-ci --reference local --default
 
       - name: Run generic-client lifecycle acceptance
         run: go test -p 1 ./cmd/baha -run '^TestMCPGenericClientRealApplicationLifecycle$' -count=1 -v

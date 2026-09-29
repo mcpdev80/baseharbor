@@ -5,9 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("mailflow", "prod", true, true, false)
 	resources := ExpectedRuntimeResources(m)
 	wantNames := []string{
@@ -45,6 +48,7 @@ func TestApplicationBackendNetworkNameIsStableAndIsolated(t *testing.T) {
 }
 
 func TestExpectedRuntimeResourcesIncludeNamedInstances(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("mailflow", "prod", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
 	m = WithCacheInstances(m, "cache", "sessions")
@@ -108,5 +112,15 @@ func TestStoreDeleteOnlyRemovesRequestedApplication(t *testing.T) {
 	}
 	if _, _, err := store.Load("two"); err != nil {
 		t.Fatalf("unrelated application was affected: %v", err)
+	}
+}
+
+func TestExpectedRuntimeResourcesExcludeSharedOnlyBackends(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
+	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")
+	m := New("demo", "dev", true, true, false)
+
+	if got := ExpectedRuntimeResourcesForIdentity(m, "bh-demo-dev", "baseharbor-demo-dev"); len(got) != 0 {
+		t.Fatalf("shared-only providers leaked into application runtime ownership: %+v", got)
 	}
 }

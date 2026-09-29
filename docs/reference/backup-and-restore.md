@@ -85,6 +85,8 @@ Supported application-owned state in v0.4.16 includes:
 - `observability.logs` application log history when selected and managed by BaseHarbor;
 - `security.pki` application/runtime identity reconstruction.
 
+Managed `identity.oidc` adds a separate durable recovery contributor. Portable identity intent such as the OIDC client requirement and authentication policy is already carried by application metadata and is reconstructed during convergence. Provider-held users, passwords, TOTP state, WebAuthn/passkey credentials and provider-global identity state are not currently exported by BaseHarbor. Managed identity therefore blocks a complete recovery unit unless `identity.oidc` is explicitly excluded; external OIDC is recorded as external rather than copied.
+
 Application log history is selectable operational history and is excluded by default unless explicitly selected. Metrics and trace history remain explicitly unsupported because BaseHarbor does not yet provide a safe application-scoped restore path for those histories.
 
 External named volumes, bind mounts, external databases, external object stores and other operator-owned state remain outside BaseHarbor recovery ownership. They are represented explicitly as external/excluded contributors rather than copied silently.

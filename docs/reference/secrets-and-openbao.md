@@ -20,7 +20,13 @@ The persistent manager bootstrap state is owner-only below the effective Target'
 
 The bundled OpenBao Compose service runs directly as the image's non-root `openbao` user. Its root filesystem is read-only, all Linux capabilities are dropped and `no-new-privileges` is enabled. BaseHarbor does not rely on a root init container or a temporary `CAP_CHOWN` grant.
 
-The image-generated local configuration is written only to an ephemeral writable `/openbao/config` tmpfs. Durable OpenBao data remains on the dedicated `/openbao/file` volume. BaseHarbor enables the image-supported `SKIP_CHOWN` behavior because ownership repair by a privileged entrypoint is neither needed nor permitted by the BaseHarbor security model.
+The bundled OpenBao runtime uses OpenBao 2.7 with the existing BaseHarbor PostgreSQL control-plane provider as durable storage. BaseHarbor provisions a dedicated `openbao` database and a dedicated least-privilege `openbao` login; the provider-administration identity is never used by the OpenBao process.
+
+The storage connection is TLS-only with PostgreSQL `verify-full`. BaseHarbor bootstraps trust before OpenBao initialization, then rotates PostgreSQL and OpenBao onto the regular OpenBao-issued PKI after the managed issuer is available.
+
+OpenBao terminates TLS directly and uses `tls_auto_reload` for listener certificate/key renewal. Hybrid post-quantum key exchange is preferred where supported while retaining classical fallback interoperability. Pure-PQC remains supported/testable but is not forced as the default compatibility profile.
+
+BaseHarbor intentionally does not implement migration or dual support for the previous unreleased internal `storage.file` or intermediate Raft layouts. v0.4.17 defines PostgreSQL-backed OpenBao as the current managed-runtime architecture.
 
 ## Application secret scope
 
@@ -256,7 +262,6 @@ Still outside this MVP slice:
 - dynamic PostgreSQL credentials
 - moving all BaseHarbor-generated PostgreSQL/Valkey credentials into OpenBao
 - OpenBao token renewal/agent integration
-- TLS/PKI for the bundled OpenBao listener itself
 - KMS/HSM/transit auto-unseal profiles
 
 ## Provider-neutral secure binding in v0.4.5

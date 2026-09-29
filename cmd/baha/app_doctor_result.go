@@ -33,6 +33,7 @@ type applicationDoctorResult struct {
 	RequiredSecrets []applicationDoctorSecretResult              `json:"required_secrets,omitempty"`
 	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
+	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
 
 	manifest               application.Manifest
 	workloadStatus         repositoryWorkloadStatus

@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const GatewayImage = "docker.io/library/caddy:2.11.4-alpine"
@@ -25,13 +27,43 @@ type HTTPGatewayFiles struct {
 	AuthToken string
 }
 
+type NativeTLSFiles struct {
+	Dir      string
+	Material TLSMaterial
+}
+
+func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, providerDir string, serverNames ...string) (NativeTLSFiles, error) {
+	if issuer == nil {
+		return NativeTLSFiles{}, errors.New("native TLS issuer is required")
+	}
+	dir := filepath.Join(providerDir, "service-access")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return NativeTLSFiles{}, fmt.Errorf("create native service access state: %w", err)
+	}
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), serverNames...)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	projected, err := projectGatewayMaterial(dir, material)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	return NativeTLSFiles{Dir: dir, Material: projected}, nil
+}
+
 type HTTPGatewaySpec struct {
-	ServiceName      string
-	Upstream         string
-	PublishedPortEnv string
-	ContainerPort    int
-	Networks         []string
-	RequireClient    bool
+	ServiceName        string
+	Upstream           string
+	UpstreamTrustFile  string
+	UpstreamServerName string
+	PublishedPortEnv   string
+	ContainerPort      int
+	Networks           []string
+	NetworkAliases     []string
+	RequireClient      bool
+	DenyPaths          []string
+	BasicAuthUsername  string
+	BasicAuthPassword  string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
@@ -85,7 +117,19 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		files.AuthToken = token
 	}
-	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication)
+	basicAuthUsername := strings.TrimSpace(spec.BasicAuthUsername)
+	basicAuthHash := ""
+	if basicAuthUsername != "" || spec.BasicAuthPassword != "" {
+		if basicAuthUsername == "" || spec.BasicAuthPassword == "" {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway basic auth requires username and password")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(spec.BasicAuthPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return HTTPGatewayFiles{}, fmt.Errorf("hash HTTP service gateway basic auth password: %w", err)
+		}
+		basicAuthHash = string(hash)
+	}
+	config := caddyfileWithUpstreamTLS(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -175,8 +219,11 @@ func readAuthToken(path string) (string, error) {
 
 func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
 	runtimeDir := filepath.Join(dir, "runtime")
-	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 		return TLSMaterial{}, fmt.Errorf("create service access runtime projection: %w", err)
+	}
+	if err := os.Chmod(runtimeDir, 0o755); err != nil {
+		return TLSMaterial{}, fmt.Errorf("set service access runtime projection permissions: %w", err)
 	}
 	project := func(source, name string) (string, error) {
 		data, err := os.ReadFile(source)
@@ -248,6 +295,9 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	if files.AuthToken != "" {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
 	}
+	if strings.TrimSpace(spec.UpstreamTrustFile) != "" {
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(spec.UpstreamTrustFile+":/upstream/ca.pem:ro"))
+	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
 		alias := strings.TrimSpace(files.Material.ServerName)
@@ -257,20 +307,56 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 			if network == "" {
 				continue
 			}
+			var aliases []string
 			if i == 0 && aliasable {
-				fmt.Fprintf(&b, "      %s:\n", network)
-				b.WriteString("        aliases:\n")
-				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(alias))
-			} else {
+				aliases = append(aliases, alias)
+			}
+			if i == 0 {
+				for _, candidate := range spec.NetworkAliases {
+					candidate = strings.TrimSpace(candidate)
+					if candidate != "" && !containsGatewayAlias(aliases, candidate) {
+						aliases = append(aliases, candidate)
+					}
+				}
+			}
+			if len(aliases) == 0 {
 				fmt.Fprintf(&b, "      %s: {}\n", network)
+				continue
+			}
+			fmt.Fprintf(&b, "      %s:\n", network)
+			b.WriteString("        aliases:\n")
+			for _, candidate := range aliases {
+				fmt.Fprintf(&b, "          - %s\n", strconv.Quote(candidate))
 			}
 		}
 	}
 	return b.String()
 }
 
+func containsGatewayAlias(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 func NewHTTPClient(material TLSMaterial, requireClient bool) (*http.Client, error) {
 	return newHTTPClient(material, requireClient, "")
+}
+
+func NewHTTPClientWithBasicAuth(material TLSMaterial, username, password string) (*http.Client, error) {
+	client, err := newHTTPClient(material, false, "")
+	if err != nil {
+		return nil, err
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return nil, errors.New("service access basic auth requires username and password")
+	}
+	client.Transport = basicAuthTransport{base: client.Transport, username: username, password: password}
+	return client, nil
 }
 
 func NewHTTPClientForPolicy(material TLSMaterial, policy Policy) (*http.Client, error) {
@@ -307,12 +393,9 @@ func newHTTPClient(material TLSMaterial, requireClient bool, bearerToken string)
 		RootCAs:    roots,
 		ServerName: strings.TrimSpace(material.ServerName),
 	}
-	if requireClient && (material.ClientCertificate == "" || material.ClientKey == "") {
-		return nil, errors.New("service access client certificate/key are required")
-	}
-	if material.ClientCertificate != "" || material.ClientKey != "" {
+	if requireClient {
 		if material.ClientCertificate == "" || material.ClientKey == "" {
-			return nil, errors.New("service access client certificate/key must be provided together")
+			return nil, errors.New("service access client certificate/key are required")
 		}
 		cert, err := tls.LoadX509KeyPair(material.ClientCertificate, material.ClientKey)
 		if err != nil {
@@ -330,6 +413,19 @@ func newHTTPClient(material TLSMaterial, requireClient bool, bearerToken string)
 		roundTripper = bearerTransport{base: transport, token: bearerToken}
 	}
 	return &http.Client{Transport: roundTripper, Timeout: 10 * time.Second}, nil
+}
+
+type basicAuthTransport struct {
+	base     http.RoundTripper
+	username string
+	password string
+}
+
+func (t basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Header = req.Header.Clone()
+	clone.SetBasicAuth(t.username, t.password)
+	return t.base.RoundTrip(clone)
 }
 
 type bearerTransport struct {
@@ -387,7 +483,11 @@ func WaitHTTPS(ctx context.Context, client *http.Client, endpoint, path string) 
 	}
 }
 
-func caddyfile(upstream string, port int, authentication AuthenticationMode) string {
+func caddyfile(upstream string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamTLS(upstream, "", "", port, authentication, basicAuthUsername, basicAuthHash, denyPaths...)
+}
+
+func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -400,10 +500,30 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode) str
     }
   }`
 	}
+	var denyBlock strings.Builder
+	for i, path := range denyPaths {
+		path = strings.TrimSpace(path)
+		if path == "" || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\r\n{}") {
+			continue
+		}
+		fmt.Fprintf(&denyBlock, "  @baseharbor_deny_%d path %s*\n  respond @baseharbor_deny_%d 404\n", i, path, i)
+	}
 	if authentication == AuthenticationToken {
 		authBlock = `  @unauthorized not header Authorization "Bearer {$BASEHARBOR_ACCESS_TOKEN}"
   respond @unauthorized 401
 `
+	}
+	if basicAuthUsername != "" {
+		authBlock += fmt.Sprintf("  basic_auth {\n    %s %s\n  }\n", basicAuthUsername, basicAuthHash)
+	}
+	proxy := "  reverse_proxy " + upstream + "\n"
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") && strings.TrimSpace(upstreamTrustFile) != "" {
+		serverName := strings.TrimSpace(upstreamServerName)
+		proxy = "  reverse_proxy " + upstream + " {\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		if serverName != "" {
+			proxy += "      tls_server_name " + serverName + "\n"
+		}
+		proxy += "    }\n  }\n"
 	}
 	return fmt.Sprintf(`{
   auto_https disable_redirects
@@ -411,7 +531,6 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode) str
 
 :%d {
   tls /certs/server.pem /certs/server-key.pem%s
-%s  reverse_proxy %s
-}
-`, port, tlsBlock, authBlock, upstream)
+%s%s%s}
+`, port, tlsBlock, denyBlock.String(), authBlock, proxy)
 }

@@ -31,6 +31,8 @@ jobs:
   podman-quadlet:
     env:
       BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
     runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 75
 
@@ -64,6 +66,7 @@ jobs:
       - name: Reset persistent runner state
         id: reset
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Verify Podman Quadlet runner
@@ -81,7 +84,10 @@ jobs:
             fi
           done
           test -n "$generator"
-          "$generator" --user --dryrun >/tmp/podman-quadlet-generator.txt
+          verify_unit_dir="$RUNNER_TEMP/podman-core-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/tmp/podman-quadlet-generator.txt
 
           mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
           cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
@@ -103,14 +109,14 @@ jobs:
 
       - name: Build BaseHarbor
         id: build
-        run: go build -trimpath -o /tmp/baha ./cmd/baha
+        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
 
       - name: Verify Podman runtime detection
         id: runtime_detection
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/baha doctor | tee /tmp/podman-doctor.txt
+          $RUNNER_TEMP/baha doctor | tee /tmp/podman-doctor.txt
           grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
           grep -Eq '^  OK +quadlet' /tmp/podman-doctor.txt
           grep -q '^READY$' /tmp/podman-doctor.txt
@@ -126,11 +132,17 @@ jobs:
             export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
             systemctl --user --failed --no-pager || true
             systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            systemctl --user status bh-podman-ci-shared-postgres.service --no-pager -l || true
+            systemctl --user status bh-podman-ci-shared-openbao.service --no-pager -l || true
             systemctl --user status baseharbor-podman-ci-dev-postgres.service --no-pager -l || true
             systemctl --user status baseharbor-podman-ci-dev-valkey.service --no-pager -l || true
+            journalctl --user -u bh-podman-ci-shared-postgres.service -n 120 --no-pager || true
+            journalctl --user -u bh-podman-ci-shared-openbao.service -n 120 --no-pager || true
             journalctl --user -u baseharbor-podman-ci-dev-postgres.service -n 80 --no-pager || true
             journalctl --user -u baseharbor-podman-ci-dev-valkey.service -n 80 --no-pager || true
             podman ps -a || true
+            podman logs bh-podman-ci-shared-postgres 2>&1 || true
+            podman logs bh-podman-ci-shared-openbao 2>&1 || true
             unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
             if [ -d "$unit_dir" ]; then
               find "$unit_dir" -maxdepth 1 -type f -name 'baseharbor-*' -printf '%f\n' | sort || true
@@ -144,33 +156,35 @@ jobs:
           cd "$workdir"
 
           recovery="$workdir/openbao-recovery.json"
-          /tmp/baha up --control-plane-only --yes
-          /tmp/baha openbao bootstrap --recovery-file "$recovery"
-          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+          $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
+          $RUNNER_TEMP/baha up --control-plane-only --yes
+          $RUNNER_TEMP/baha openbao bootstrap --recovery-file "$recovery"
+          $RUNNER_TEMP/baha openbao status | grep -q "AppRole login succeeded"
 
-          /tmp/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
-          /tmp/baha app plan podman-ci | tee /tmp/podman-plan.txt
+          $RUNNER_TEMP/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
+          $RUNNER_TEMP/baha app plan podman-ci | tee /tmp/podman-plan.txt
           grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
 
-          /tmp/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
-          timeout 180s /tmp/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
+          timeout 180s $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
 
-          /tmp/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
+          $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
           grep -q "authenticated PING returned PONG" /tmp/podman-status.txt
 
-          /tmp/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
           grep -q '^READY$' /tmp/podman-app-doctor.txt
 
-          /tmp/baha app down podman-ci | tee /tmp/podman-down.txt
-          /tmp/baha app up podman-ci | tee /tmp/podman-up.txt
-          /tmp/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
+          $RUNNER_TEMP/baha app down podman-ci | tee /tmp/podman-down.txt
+          $RUNNER_TEMP/baha app up podman-ci | tee /tmp/podman-up.txt
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
           grep -q '^READY$' /tmp/podman-resume-doctor.txt
 
-          /tmp/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+          $RUNNER_TEMP/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
 
       - name: Reset runtime state before integration tests
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Run runtime integration tests serially
@@ -198,6 +212,7 @@ jobs:
 
           run_integration_test() {
             bash scripts/ci-runtime-reset.sh podman
+            $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
             if ! "$@"; then
               diagnose_quadlet_integration
               return 1
@@ -232,6 +247,7 @@ jobs:
         id: cleanup
         if: always()
         shell: bash
+        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
       - name: Generate Podman evidence

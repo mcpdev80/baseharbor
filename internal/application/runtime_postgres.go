@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -89,6 +90,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := EnsureApplicationManagementUIs(ctx, issuer, files, m); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile application management UIs: %w", err)
+	}
 
 	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
 	if err != nil {
@@ -99,6 +103,11 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	}
 	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
+	}
+	if HasSharedBackends(m) {
+		files.ApplicationEnv = filepath.Join(files.Dir, "application.env")
+		files.Bindings = filepath.Join(files.Dir, "bindings")
+		return files, nil
 	}
 	contract, err := EnsureRuntimeContract(m, files)
 	if err != nil {
@@ -114,7 +123,10 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 	return EnsureRuntime(ctx, issuer, store, m)
 }
 
-func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	if UsesSharedPostgreSQL(m) {
+		return nil
+	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
 		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
@@ -129,7 +141,10 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.Compose, m Man
 	return nil
 }
 
-func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.Compose, m Manifest, files RuntimeFiles) error {
+func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	if UsesSharedValkey(m) {
+		return nil
+	}
 	for _, instance := range CacheInstanceNames(m) {
 		service := runtimeServiceName("valkey", instance)
 		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
@@ -155,21 +170,38 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	if !HasManagedRuntimeServices(m) {
 		return "services: {}\n", nil
 	}
+	sqlInstances := SQLInstanceNames(m)
+	cacheInstances := CacheInstanceNames(m)
+	if UsesSharedPostgreSQL(m) {
+		sqlInstances = nil
+	}
+	if UsesSharedValkey(m) {
+		cacheInstances = nil
+	}
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 {
+		return "services: {}\n", nil
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for _, instance := range SQLInstanceNames(m) {
+	for _, instance := range sqlInstances {
 		writePostgresComposeService(&b, instance)
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range cacheInstances {
 		writeValkeyComposeService(&b, instance)
 		b.WriteString(valkeyGatewayCompose(instance))
 	}
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
+		writePostgresUIComposeService(&b, m)
+	}
+	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
+		writeCacheUIComposeServices(&b, m)
+	}
 	b.WriteString("\nvolumes:\n")
-	for _, instance := range SQLInstanceNames(m) {
+	for _, instance := range sqlInstances {
 		service := runtimeServiceName("postgres", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range cacheInstances {
 		service := runtimeServiceName("valkey", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
@@ -256,6 +288,91 @@ func writeValkeyComposeService(b *strings.Builder, instance string) {
       start_period: 5s
 
 `, service, passwordKey, service, instance)
+}
+
+func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
+	b.WriteString(`  postgres-ui:
+    image: ` + PostgresUIImage + `
+    restart: unless-stopped
+    user: "5050:5050"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${` + PostgresUIEmailEnv + `}
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_ENABLE_TLS: "True"
+      PGADMIN_LISTEN_PORT: "8443"
+      PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+      PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGPASS_FILE: /run/baseharbor/pgpass
+    ports:
+      - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,mode=1777
+    volumes:
+      - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
+      - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
+      - ./providers/management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
+      - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
+`)
+	for _, instance := range SQLInstanceNames(m) {
+		token := envInstanceToken(instance)
+		fmt.Fprintf(b, "      - ./providers/management-ui/postgres/postgres-%s.ca.pem:/run/baseharbor/postgres-%s.ca.pem:ro\n", token, token)
+	}
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "pgadmin"))
+}
+
+func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
+	b.WriteString(`  cache-ui:
+    image: ` + CacheUIImage + `
+    restart: unless-stopped
+    user: "redis"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HTTP_USER: ${` + CacheUIUserEnv + `}
+      HTTP_PASSWORD_FILE: /run/baseharbor/http-password
+      NOSAVE: "true"
+      NO_LOG_DATA: "true"
+      NODE_ENV: production
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    volumes:
+      - ./providers/management-ui/cache/http-password:/run/baseharbor/http-password:ro
+      - ./providers/management-ui/cache/local.json:/redis-commander/config/local.json:ro
+      - ./providers/management-ui/cache/local-production.json:/redis-commander/config/local-production.json:ro
+
+  cache-ui-access:
+    image: ` + UIProxyImage + `
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${` + CacheUIHostPortEnv + `}:8443"
+    volumes:
+      - ./providers/management-ui/cache/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./providers/management-ui/cache/server.pem:/certs/server.pem:ro
+      - ./providers/management-ui/cache/server-key.pem:/certs/server-key.pem:ro
+
+`)
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
@@ -346,6 +463,46 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	if m.Services.SQLManagementUI {
+		if values[PostgresUIEmailEnv] == "" {
+			values[PostgresUIEmailEnv] = "baseharbor@example.com"
+		}
+		if values[PostgresUIPasswordEnv] == "" {
+			value, err := randomApplicationSecret(24)
+			if err != nil {
+				return err
+			}
+			values[PostgresUIPasswordEnv] = value
+		}
+		if values[PostgresUIHostPortEnv] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[PostgresUIHostPortEnv] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
+	if m.Services.CacheManagementUI {
+		if values[CacheUIUserEnv] == "" {
+			values[CacheUIUserEnv] = "baseharbor"
+		}
+		if values[CacheUIPasswordEnv] == "" {
+			value, err := randomApplicationSecret(24)
+			if err != nil {
+				return err
+			}
+			values[CacheUIPasswordEnv] = value
+		}
+		if values[CacheUIHostPortEnv] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[CacheUIHostPortEnv] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
 	for _, bucket := range ObjectStorageBucketNames(m) {
 		accessKey := s3RuntimeKey(bucket, "ACCESS_KEY_ID")
 		secretKey := s3RuntimeKey(bucket, "SECRET_ACCESS_KEY")
@@ -377,14 +534,24 @@ func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
 func runtimeEnvContent(m Manifest, values map[string]string) string {
 	var b strings.Builder
 	for _, instance := range SQLInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
+		for _, suffix := range []string{"DB", "USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := postgresRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
 	for _, instance := range CacheInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE"} {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := valkeyRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
+	}
+	if m.Services.SQLManagementUI {
+		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
+	}
+	if m.Services.CacheManagementUI {
+		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
@@ -405,6 +572,13 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 	}
 	if HasOTLPTelemetry(m) {
 		for _, key := range []string{"OTLP_PROVIDER", "OTLP_HOST_ENDPOINT", "OTLP_CONTAINER_ENDPOINT", OTLPTLSHostCAEnv, OTLPTLSHostClientCertEnv, OTLPTLSHostClientKeyEnv} {
+			if values[key] != "" {
+				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+			}
+		}
+	}
+	if HasIdentity(m) {
+		for _, key := range []string{"IDENTITY_CONTAINER_ISSUER", "IDENTITY_CLIENT_ID", "IDENTITY_CLIENT_SECRET", "IDENTITY_CA_FILE"} {
 			if values[key] != "" {
 				fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 			}
@@ -447,6 +621,26 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 		}
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if err := validatePortValue(values[portKey], portKey); err != nil {
+			return err
+		}
+	}
+	if m.Services.SQLManagementUI {
+		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[PostgresUIHostPortEnv], PostgresUIHostPortEnv); err != nil {
+			return err
+		}
+	}
+	if m.Services.CacheManagementUI {
+		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		if err := validatePortValue(values[CacheUIHostPortEnv], CacheUIHostPortEnv); err != nil {
 			return err
 		}
 	}

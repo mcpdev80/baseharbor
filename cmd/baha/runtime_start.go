@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/mcpdev80/baseharbor/internal/health"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"io"
-	"strings"
-	"time"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func runtimeUp(parent context.Context, out io.Writer) error {
@@ -29,7 +32,7 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	}
 	if state, inspectErr := platformopenbao.Inspect(ctx, compose, files); inspectErr == nil && state.Initialized && !state.Sealed {
 		if managerErr := platformopenbao.CheckManager(ctx, compose, files); managerErr == nil {
-			if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+			if err := reconcileControlPlaneServiceAccess(ctx, compose, files, ""); err != nil {
 				return fmt.Errorf("reconcile control-plane service access: %w", err)
 			}
 		}
@@ -42,7 +45,7 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 	return nil
 }
 
-func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
 	deadline := time.Now().Add(30 * time.Second)
 	var lastErr error
 	for {
@@ -92,7 +95,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
 		return err
 	}
-	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, resolvedRecoveryFile); err != nil {
 		return fmt.Errorf("reconcile control-plane service access: %w", err)
 	}
 	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
@@ -103,7 +106,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	return nil
 }
 
-func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files) error {
+func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string) error {
 	state, err := platformopenbao.Inspect(ctx, compose, files)
 	if err != nil {
 		return err
@@ -122,52 +125,121 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.C
 	if !status.Ready {
 		return errors.New("managed service issuer is not ready")
 	}
+	bootstrapRestart, err := bhruntime.ControlPlaneServiceAccessNeedsBootstrapRestart(files)
+	if err != nil {
+		return err
+	}
 	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
 		return err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
-	return compose.UpProject(ctx, files.Project, files.Compose, files.Env)
-}
-
-func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.Compose, bhruntime.Files, error) {
-	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
-	}
-	compose, err := detectComposeForTarget(ctx, target)
-	if err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
-	}
-	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+	if bootstrapRestart {
+		if err := compose.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("restart control plane for managed PKI transition: %w", err)
+		}
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, bhruntime.Files{}, err
+		return err
+	}
+	if !bootstrapRestart {
+		if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres", "sh", "-ec", "kill -HUP 1"); err != nil {
+			return fmt.Errorf("reload PostgreSQL native TLS material: %w", err)
+		}
+	}
+
+	// The initial bootstrap trust transition restarts OpenBao so its PostgreSQL
+	// client loads the managed PostgreSQL CA. Later OpenBao listener certificate
+	// rotations are handled by OpenBao 2.7 tls_auto_reload.
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("wait for OpenBao after native TLS reconcile: %w", err)
+	}
+	state, err = platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return err
+	}
+	if state.Sealed {
+		if strings.TrimSpace(recoveryFile) == "" {
+			return usageError(
+				"OpenBao restarted while enabling native TLS and is sealed",
+				"Re-run with '--recovery-file PATH' using the recovery material created during bootstrap.",
+			)
+		}
+		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
+			return fmt.Errorf("unseal OpenBao after native TLS reconcile: %w", err)
+		}
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao manager after native TLS reconcile: %w", err)
+	}
+
+	policy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	policy.ServerName = "openbao"
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(filepath.Dir(files.Compose), "providers", "openbao", "service-access", "pki"))
+	if err != nil {
+		return fmt.Errorf("load OpenBao native TLS material: %w", err)
+	}
+	client, err := serviceaccess.NewHTTPClient(material, false)
+	if err != nil {
+		return err
+	}
+	cfg, err := bhruntime.LoadConfig(files.Env)
+	if err != nil {
+		return err
+	}
+	endpoint, err := serviceaccess.LoopbackHTTPSURL(cfg.OpenBaoPort)
+	if err != nil {
+		return err
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := serviceaccess.WaitHTTPS(verifyCtx, client, endpoint, "/v1/sys/health"); err != nil {
+		return fmt.Errorf("verify OpenBao native HTTPS endpoint: %w", err)
+	}
+	return nil
+}
+
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	compose, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return nil, bhruntime.Files{}, err
 	}
 	return compose, files, nil
 }
 
-func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.Compose, error) {
+func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.RuntimeProvider, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	return compose, nil
 }
 
-func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.Compose, files bhruntime.Files, recoveryFile string, out io.Writer) error {
+func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string, out io.Writer) error {
 	var state platformopenbao.State
 	var inspectErr error
 	deadline := time.Now().Add(30 * time.Second)
@@ -206,7 +278,7 @@ func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		return fmt.Errorf("verify OpenBao manager authentication after control-plane start: %w", err)
 	}
-	if err := reconcileControlPlaneServiceAccess(ctx, compose, files); err != nil {
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, recoveryFile); err != nil {
 		return fmt.Errorf("reconcile control-plane service access after start: %w", err)
 	}
 

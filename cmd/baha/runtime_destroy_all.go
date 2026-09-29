@@ -15,7 +15,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -224,12 +226,12 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 	}
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
 		return
 	}
-	containers, err := compose.ListComposeContainers(ctx)
+	containers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: err.Error()})
 		return
@@ -340,7 +342,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 	}
 	resolved, err := resolveRegisteredApplication(target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
 	if err == nil && strings.TrimSpace(target.RuntimeProvider) != "" {
-		compose, composeErr := detectComposeForTarget(parent, target)
+		compose, composeErr := detectRuntimeForTarget(parent, target)
 		if composeErr != nil {
 			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "deployment-fallback-runtime", Detail: composeErr.Error()})
 		} else {
@@ -363,6 +365,11 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 			}
 			if destroyErr := compose.DestroyOwnedProjectResources(parent, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject)); destroyErr != nil {
 				*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "application-runtime " + m.Name + "/" + m.Environment, Detail: destroyErr.Error()})
+			}
+			if application.HasSharedBackends(m) {
+				if releaseErr := application.ReleaseSharedBackendApplication(parent, compose, targetRoot, target.Name, m); releaseErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "shared-data-resources " + m.Name + "/" + m.Environment, Detail: releaseErr.Error()})
+				}
 			}
 			if placement, found, placementErr := application.RegisteredProviderPlacementAt(targetRoot, m, capability.ProviderTempo); placementErr == nil && found && placement.Scope == capability.ScopeApplication {
 				if destroyErr := tracesprovider.DestroyProvider(parent, compose, m); destroyErr != nil {
@@ -403,7 +410,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
-	compose, composeErr := detectComposeForTarget(ctx, target)
+	compose, composeErr := detectRuntimeForTarget(ctx, target)
 	if composeErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-provider", Detail: composeErr.Error()})
 		_ = os.RemoveAll(dataDir)
@@ -414,7 +421,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 	if rulesErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-policy", Detail: rulesErr.Error()})
 	} else if len(rules) > 0 {
-		containers, listErr := compose.ListComposeContainers(ctx)
+		containers, listErr := compose.ListRuntimeContainers(ctx)
 		if listErr != nil {
 			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-runtime", Detail: listErr.Error()})
 		} else {
@@ -451,7 +458,10 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 			*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: resource})
 		}
 	}
+	runCleanup("development-gateway", func() error { return devgateway.DestroyTarget(ctx, compose, target.Name) })
+	runCleanup("identity", func() error { return identityprovider.DestroyAllSharedKeycloakAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("runtime-executor", func() error { return runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name) })
+	runCleanup("data-providers", func() error { return application.DestroyAllSharedBackendsAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("object-storage", func() error { return objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("telemetry", func() error { return telemetry.DestroySharedProviderAt(ctx, compose, dataDir, target.Name) })
 	runCleanup("traces", func() error { return tracesprovider.DestroyAllSharedProvidersAt(ctx, compose, dataDir, target.Name) })

@@ -21,7 +21,7 @@ type applicationUpExecution struct {
 	term             *cli.Terminal
 	out              io.Writer
 	files            application.RuntimeFiles
-	compose          bhruntime.Compose
+	compose          bhruntime.RuntimeProvider
 	before           []bhruntime.ProjectResource
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
@@ -44,6 +44,9 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 		return err
 	}
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
+		return err
+	}
+	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}
 	return execution.finalize(ctx)
@@ -144,7 +147,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 				required = append(required, bhruntime.CapabilityServiceExec)
 			}
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, required...)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
@@ -218,6 +221,16 @@ func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error 
 	}); err != nil {
 		return err
 	}
+	if err := activity(ctx, e.term, "Preparing application exposure", func(io.Writer) error {
+		return provisionManagedExposure(ctx, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, e.term, "Reconciling application identity", func(progress io.Writer) error {
+		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -269,7 +282,7 @@ func (e *applicationUpExecution) convergeApplicationRuntime(ctx context.Context)
 		}); err != nil {
 			return err
 		}
-		printRuntimeBrokerDocs(e.out, e.files)
+		printRuntimeBrokerDocs(e.out, e.resolved.Target.Name, e.manifest, e.files)
 	}
 	if err := activity(ctx, e.term, "Verifying trace ingestion", func(progress io.Writer) error {
 		return verifyManagedTracesAfterTelemetry(ctx, progress, e.providers.traces)
@@ -309,6 +322,23 @@ func (e *applicationUpExecution) convergeApplicationRuntime(ctx context.Context)
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (e *applicationUpExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
+	apply := &applicationApplyExecution{
+		resolved:      e.resolved,
+		manifest:      e.manifest,
+		term:          e.term,
+		out:           e.out,
+		compose:       e.compose,
+		platformFiles: e.platformFiles,
+		issuer:        e.issuer,
+		files:         e.files,
+	}
+	if err := apply.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return fmt.Errorf("reconcile development canonical routes after application restart: %w", err)
 	}
 	return nil
 }

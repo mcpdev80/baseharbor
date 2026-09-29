@@ -324,3 +324,19 @@ func TestResolveNativeAuthenticationDoesNotAcceptGenericOverride(t *testing.T) {
 		t.Fatalf("native provider authentication was overridden: %+v", p)
 	}
 }
+
+func TestCanonicalCertificateDNSNameStripsTrailingDot(t *testing.T) {
+	got, err := canonicalCertificateDNSName("Example.BaseHarbor.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "example.baseharbor" {
+		t.Fatalf("canonical DNS name = %q, want example.baseharbor", got)
+	}
+}
+
+func TestCanonicalCertificateDNSNameRejectsRootOnly(t *testing.T) {
+	if _, err := canonicalCertificateDNSName("."); err == nil {
+		t.Fatal("root-only DNS name must be rejected before issuance")
+	}
+}

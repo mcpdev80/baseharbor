@@ -152,6 +152,13 @@ jobs:
         run: go build -o /tmp/baha ./cmd/baha
       - name: Build runtime broker image
         run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify OpenBao application scope and dynamic secret lifecycle
+        env:
+          BASEHARBOR_OPENBAO_APPLICATION_ACCEPTANCE: "true"
+        run: >-
+          go test ./internal/openbao
+          -run '^(TestDynamicApplicationSecretLifecycleRealOpenBao|TestApplicationScopesRealOpenBaoIsolation)$'
+          -count=1 -v
       - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)

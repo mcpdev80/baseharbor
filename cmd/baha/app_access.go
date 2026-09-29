@@ -230,40 +230,40 @@ func selectAccessInstance(instances []string, requested, kind string) (string, e
 	return "", fmt.Errorf("multiple %s instances exist; choose one: %s", kind, strings.Join(sorted, ", "))
 }
 
-func resolveWorkloadAccess(ctx context.Context, store application.Store, appName string) (bhruntime.Compose, application.WorkloadFiles, map[string]string, []string, error) {
+func resolveWorkloadAccess(ctx context.Context, store application.Store, appName string) (bhruntime.RuntimeProvider, application.WorkloadFiles, map[string]string, []string, error) {
 	var appArgs []string
 	if appName != "" {
 		appArgs = []string{appName}
 	}
 	resolved, err := resolveApplication(ctx, store, appArgs, "workload access")
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	if !resolved.FromRepository {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
+		return nil, application.WorkloadFiles{}, nil, nil, fmt.Errorf("workload access requires a repository-owned baseharbor.yaml")
 	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
-	compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec)
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	if !found {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, fmt.Errorf("application does not declare a Compose workload")
+		return nil, application.WorkloadFiles{}, nil, nil, fmt.Errorf("application does not declare a Compose workload")
 	}
 	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
 	if err != nil {
-		return bhruntime.Compose{}, application.WorkloadFiles{}, nil, nil, err
+		return nil, application.WorkloadFiles{}, nil, nil, err
 	}
 	return compose, workload, environment, composeFiles, nil
 }

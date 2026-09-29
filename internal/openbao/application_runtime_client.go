@@ -3,6 +3,8 @@ package openbao
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +42,32 @@ func NewApplicationRuntimeClient(rawURL string) (*ApplicationRuntimeClient, erro
 		baseURL: parsed,
 		client:  &http.Client{Timeout: 15 * time.Second},
 	}, nil
+}
+
+func NewApplicationRuntimeClientWithCA(rawURL, caFile string) (*ApplicationRuntimeClient, error) {
+	client, err := NewApplicationRuntimeClient(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if client.baseURL.Scheme != "https" {
+		return nil, errors.New("OpenBao runtime CA configuration requires HTTPS")
+	}
+	pemData, err := os.ReadFile(strings.TrimSpace(caFile))
+	if err != nil {
+		return nil, fmt.Errorf("read OpenBao runtime CA certificate: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pemData) {
+		return nil, errors.New("OpenBao runtime CA certificate is invalid")
+	}
+	client.client = &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    pool,
+		}},
+	}
+	return client, nil
 }
 
 func (c *ApplicationRuntimeClient) Check(ctx context.Context, credentialsPath string) error {

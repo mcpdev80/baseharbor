@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -21,13 +22,18 @@ func requiresObjectStorageProviderAdmin(m application.Manifest) bool {
 }
 
 type managedObjectStorageExecution struct {
-	execution      *capability.Execution
-	driver         *objectstorage.Driver
-	manifest       application.Manifest
-	runtimeEnabled bool
+	execution         *capability.Execution
+	driver            *objectstorage.Driver
+	runtime           bhruntime.RuntimeProvider
+	manifest          application.Manifest
+	runtimeEnabled    bool
+	developerUsername string
+	developerPassword string
+	dataDir           string
+	namespace         string
 }
 
-func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedObjectStorageExecution, error) {
+func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedObjectStorageExecution, error) {
 	m := resolved.Manifest
 	runtimeEnabled := application.HasRuntimeCapabilityPermission(m, string(capability.ObjectStorageS3V1.ID))
 	if !application.HasObjectStorage(m) && !runtimeEnabled {
@@ -54,7 +60,19 @@ func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.Compose,
 			return nil, err
 		}
 	}
-	return &managedObjectStorageExecution{execution: execution, driver: driver, manifest: m, runtimeEnabled: runtimeEnabled}, nil
+	prepared := &managedObjectStorageExecution{
+		execution: execution, driver: driver, runtime: compose, manifest: m, runtimeEnabled: runtimeEnabled,
+		dataDir: resolved.TargetStateRoot, namespace: resolved.Target.Name,
+	}
+	if devaccess.Enabled(m.Environment) && m.Services.ObjectStorageManagementUI {
+		credentials, err := devaccess.Ensure(resolved.Target.Name, m.Environment)
+		if err != nil {
+			return nil, fmt.Errorf("prepare SeaweedFS developer access: %w", err)
+		}
+		prepared.developerUsername = credentials.Username
+		prepared.developerPassword = credentials.Password
+	}
+	return prepared, nil
 }
 
 func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *managedObjectStorageExecution) error {
@@ -72,6 +90,18 @@ func convergeManagedObjectStorage(ctx context.Context, out io.Writer, prepared *
 		}
 	} else if prepared.runtimeEnabled {
 		if _, _, _, err := prepared.driver.EnsureSharedProvider(ctx); err != nil {
+			return err
+		}
+	}
+	if prepared.developerUsername != "" {
+		if err := objectstorage.ApplyDevelopmentManagementUICredentialsAt(
+			ctx,
+			prepared.runtime,
+			prepared.dataDir,
+			prepared.namespace,
+			prepared.developerUsername,
+			prepared.developerPassword,
+		); err != nil {
 			return err
 		}
 	}

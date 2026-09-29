@@ -13,8 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
@@ -26,12 +26,14 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect runtime: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
 
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	t.Setenv(application.MetricsCollectSourcesEnv, "application,application-provider,platform-provider")
 	t.Setenv(application.LogsEnabledEnv, "true")

@@ -36,6 +36,8 @@ func ServiceKindForCapability(kind Kind) (ServiceKind, error) {
 		return ServiceObservability, nil
 	case ExposureHTTP:
 		return ServiceExposure, nil
+	case Identity:
+		return ServiceIdentity, nil
 	default:
 		return "", fmt.Errorf("service kind for capability %q is not defined", kind)
 	}

@@ -2,85 +2,156 @@
 
 ## Status
 
-Accepted for v0.4 incremental implementation.
+Accepted for the v0.4.17 pre-freeze runtime boundary.
 
 ## Context
 
-BaseHarbor v0.3 runs application workloads through Docker/Podman Compose. The long-term runtime targets also include Kubernetes and OpenShift, while the portable application contract must remain stable across those environments.
+BaseHarbor must keep one portable application contract while allowing the same desired workload to be realized by different runtime mechanisms.
 
-A runtime provider answers where and through which runtime primitives an application workload is operated. This is separate from capability providers such as PostgreSQL, Valkey, object storage or secrets. It is also separate from the later Delivery Provider axis defined by ADR 0011, which determines how desired runtime realization is applied/reconciled.
+Runtime selection is therefore a deployment concern, not an application capability. It is separate from capability providers such as PostgreSQL, Valkey, object storage, secrets or identity, and separate from the Delivery Provider axis defined by ADR 0011.
 
-If runtime selection leaks into the application contract, an application would need to be rewritten when moving from Compose to Kubernetes or OpenShift. If BaseHarbor guesses a runtime implicitly from host state, production behavior can become ambiguous.
+Repository workload source and runtime provider identity are also separate concepts. A repository may use the Compose Specification as workload input without making "Compose" a runtime provider.
 
 ## Decision
 
-BaseHarbor introduces a typed runtime-provider seam in `internal/runtime`.
+BaseHarbor uses a versioned provider-neutral runtime contract in `internal/runtime/contract`. First-party runtime implementations live behind explicit package boundaries in `internal/providers/runtime/docker` and `internal/providers/runtime/podman`; `internal/runtime/resolver` is the only first-party selection/registration boundary.
 
-The provider exposes:
+The runtime boundary consists of:
 
-- a stable provider kind;
-- explicit runtime capabilities needed by orchestration.
+- a normalized provider identity;
+- a versioned `ProviderDescriptor`;
+- explicit provider capabilities;
+- declared workload-source compatibility;
+- declared runtime realization;
+- a provider registry that maps descriptors to factories;
+- one provider-neutral `RuntimeProvider` execution contract.
 
-The current local provider seam preserves the existing Compose-based application/runtime model. Docker executes that model through Docker Compose; Podman translates it into native Quadlet units managed through rootless `systemd --user`. Future provider kinds may include `kubernetes` and `openshift`.
+The current contract version is:
 
-Runtime provider selection is deployment/environment-owned state. It is not an application capability and must not be selected from portable `baseharbor.yaml` requirements.
+```text
+baseharbor.runtime/v1
+```
 
-During the v0.4 migration, existing `DetectCompose` callers remain supported. Detection is routed through the central provider-selection seam so callers can be migrated incrementally rather than through a repository-wide rewrite.
+Provider selection comes from Target/deployment state. Missing provider metadata for a new local Target resolves to `docker`.
+
+The two implemented local providers are:
+
+```text
+Portable application/workload semantics
+                 |
+        RuntimeProvider contract
+          /                 \
+         /                   \
+DockerProvider           PodmanProvider
+     |                        |
+Docker Compose        Quadlet + systemd --user
+```
+
+Repository Compose remains a workload-source standard:
+
+```text
+Repository workload source
+        |
+Compose Specification
+        |
+normalized semantics
+        |
+selected RuntimeProvider
+```
+
+It is not a provider identity.
+
+## Provider registry
+
+Provider IDs are normalized extensible identifiers rather than a closed product enum. First-party Docker and Podman providers are registered in the default registry, but the registry contract can accept an additional provider descriptor and factory without changing portable application intent.
+
+A provider registration fails closed when:
+
+- the provider ID is invalid or not normalized;
+- the runtime contract version is incompatible;
+- the provider version is missing;
+- workload-source compatibility is undeclared;
+- runtime realization is undeclared;
+- the provider factory is missing;
+- a provider ID is registered twice;
+- the realized provider descriptor does not match its registration.
+
+Kubernetes and OpenShift remain named future provider targets but are not registered as executable providers in v0.4.17.
 
 ## Capability rule
 
-A runtime provider must advertise behavior that orchestration depends on. The initial Compose capability set records support for:
+A runtime provider advertises behavior orchestration may depend on. The initial contract includes:
 
 - workload lifecycle;
 - service exec;
 - published-port inspection;
 - provider-owned resource ownership checks.
 
-A future provider must either support a required runtime capability or fail clearly before mutation. BaseHarbor must not silently reduce lifecycle, security or verification guarantees because a different runtime was selected.
+Capability negotiation is versioned and fail-closed. BaseHarbor does not silently reduce lifecycle, security or verification guarantees when a provider lacks required behavior.
 
-Provider capabilities are runtime mechanics, not application requirements. For example, `database.sql` remains an application capability regardless of whether its selected implementation runs in Compose, Kubernetes, OpenShift or outside the workload runtime entirely.
+Provider capabilities are runtime mechanics, not application requirements. For example, `database.sql` remains the same portable application capability regardless of whether its implementation is application-scoped, shared, external, Docker-backed, Podman-backed or later Kubernetes-backed.
+
+## Docker
+
+`docker` is the default local runtime provider.
+
+Its current workload-source compatibility is `compose-spec`, realized through Docker Compose.
+
+Docker-specific execution stays inside the runtime implementation. Portable orchestration must not branch on Docker product identity.
+
+## Podman
+
+`podman` is realized natively through Quadlet and the user `systemd` manager.
+
+The provider consumes Compose Specification workload input, renders the required Quadlet units and operates them through `systemd --user` and Podman.
+
+There is no `podman compose` fallback. If Podman, Quadlet or the required user-systemd environment is unavailable, provider detection fails closed.
 
 ## Kubernetes and OpenShift implication
 
-Future selection should be explicit through deployment/environment configuration, for example conceptually:
+Kubernetes and OpenShift are later Runtime Provider implementations, not changes to portable application intent.
 
-```text
-runtime: compose
-runtime: kubernetes
-runtime: openshift
-```
+A future provider may realize lifecycle through native resources such as Deployments, StatefulSets, Services, Jobs, PersistentVolumeClaims, NetworkPolicies, Gateway API resources or OpenShift-specific resources. Those objects remain provider implementation details.
 
-The exact public environment schema is intentionally not fixed by this ADR.
+Kubernetes/OpenShift support must register a compatible provider descriptor/factory and satisfy the same portable runtime contract. It must not require Docker/Podman branches in Core.
 
-Kubernetes/OpenShift implementations may realize lifecycle with Deployments, StatefulSets, Services, Jobs, Gateway/Ingress, Routes, PVCs, NetworkPolicies or other native resources. Those objects remain provider implementation details and must not be added to the portable application contract merely to support the provider.
+## Boundary enforcement
 
-OpenShift remains a distinct runtime specialization where its security, Route, SCC, registry or enterprise behavior differs materially from generic Kubernetes.
+A static architecture test scans productive Core packages and rejects:
+
+- legacy `ProviderCompose` / `DetectCompose` identifiers;
+- concrete `runtime.Compose`, `DockerProvider` or `PodmanProvider` references from Core;
+- direct concrete Docker/Podman runtime-package imports;
+- product `Engine()` access from portable Core.
+
+The runtime package also carries a reusable conformance harness for first-party providers.
 
 ## Compatibility
 
-This step does not change:
+v0.4.17 intentionally does not retain the old `compose` runtime-provider identity. There are no production BaseHarbor installations requiring that migration path.
 
-- manifest v1;
-- CLI syntax;
-- persisted application state;
-- Compose lifecycle behavior;
-- backup/restore formats;
-- application-facing environment or binding contracts.
+This decision does preserve:
 
-The local runtime implementation supports Docker Compose and Podman Quadlet execution behind the same portable runtime boundary. Kubernetes and OpenShift remain future provider implementations.
+- portable application manifest semantics;
+- repository Compose workload input;
+- application-facing environment and Service Binding contracts;
+- backup/restore identity;
+- Docker Compose realization;
+- Podman Quadlet realization.
 
 ## Consequences
 
 Positive:
 
-- one selection point exists before Kubernetes/OpenShift implementation begins;
-- existing Compose input compatibility is preserved while Podman execution is native Quadlet;
-- runtime, capability-provider and delivery-provider axes remain separate;
-- provider capability failures can become explicit and fail closed.
+- runtime provider identity is no longer conflated with Compose input;
+- Docker and Podman use the same portable execution boundary;
+- Podman has no hidden Compose fallback;
+- provider discovery is registry/descriptor driven rather than a product switch;
+- later providers can extend the registry without changing portable intent;
+- architectural regression is guarded by tests.
 
-Trade-off:
+Trade-offs:
 
-- existing concrete Compose callers remain during the migration;
-- the provider interface stays intentionally small until a second implementation proves which lifecycle operations are genuinely portable.
-
-That trade-off is deliberate. BaseHarbor should not invent a large generic runtime API before Kubernetes/OpenShift supply real requirements for it.
+- `RuntimeProvider` remains a substantial lifecycle contract because Docker and Podman already prove those operations are shared;
+- Kubernetes and OpenShift must demonstrate conformance before they can be registered;
+- provider-specific realization still exists internally, as intended, but may not leak back into Core.

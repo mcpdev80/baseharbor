@@ -53,14 +53,32 @@ func TestResolveProviderPlacementAllowsSharedBoundary(t *testing.T) {
 	}
 }
 
-func TestResolveProviderPlacementRejectsUnsupportedOverride(t *testing.T) {
-	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
-	_, err := ResolveProviderPlacement(
+func TestResolveProviderPlacementDefaultsPostgresAndValkeyToShared(t *testing.T) {
+	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		placement, err := ResolveProviderPlacement(
+			Manifest{Name: "demo", Environment: "dev"},
+			provider,
+		)
+		if err != nil {
+			t.Fatalf("%s placement error = %v", provider, err)
+		}
+		if placement.Scope != capability.ScopeShared || placement.Ownership != capability.OwnershipBaseHarbor {
+			t.Fatalf("%s placement=%#v", provider, placement)
+		}
+	}
+}
+
+func TestResolveProviderPlacementAllowsDedicatedPostgresOverride(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	placement, err := ResolveProviderPlacement(
 		Manifest{Name: "demo", Environment: "dev"},
 		capability.ProviderPostgreSQL,
 	)
-	if err == nil || !strings.Contains(err.Error(), "does not support placement scope") {
-		t.Fatalf("expected unsupported placement error, got %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if placement.Scope != capability.ScopeApplication {
+		t.Fatalf("placement=%#v", placement)
 	}
 }
 

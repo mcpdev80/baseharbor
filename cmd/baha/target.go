@@ -15,15 +15,17 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 type targetInspectionResult struct {
-	ContractVersion string                    `json:"contract_version"`
-	Target          deployment.ResolvedTarget `json:"target"`
-	Application     string                    `json:"application,omitempty"`
-	Environment     string                    `json:"environment,omitempty"`
-	Repository      string                    `json:"repository,omitempty"`
-	Effective       string                    `json:"effective"`
+	ContractVersion string                             `json:"contract_version"`
+	Target          deployment.ResolvedTarget          `json:"target"`
+	Application     string                             `json:"application,omitempty"`
+	Environment     string                             `json:"environment,omitempty"`
+	Repository      string                             `json:"repository,omitempty"`
+	Effective       string                             `json:"effective"`
+	OperatorAuth    map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 }
 
 type targetOverrideContextKey struct{}
@@ -83,6 +85,18 @@ func targetCommand() *cli.Command {
 			if result.Target.Scope != "" {
 				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
 			}
+			if len(result.OperatorAuth) > 0 {
+				fmt.Fprintln(out, "\nOperator authentication")
+				environments := make([]string, 0, len(result.OperatorAuth))
+				for environment := range result.OperatorAuth {
+					environments = append(environments, environment)
+				}
+				sort.Strings(environments)
+				for _, environment := range environments {
+					auth := result.OperatorAuth[environment]
+					fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
+				}
+			}
 			if result.Application != "" {
 				fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
 				fmt.Fprintf(out, "Environment  %s\n", result.Environment)
@@ -127,7 +141,7 @@ func targetCommand() *cli.Command {
 							access = target.Access.Reference
 							scope = target.Scope
 						} else {
-							provider = "compose"
+							provider = "docker"
 							access = "local"
 							scope = "default"
 							marks = append(marks, "implicit")
@@ -235,6 +249,15 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+	}
+	cfg, cfgErr := deployment.LoadConfig()
+	if cfgErr == nil {
+		if definition, ok := cfg.Targets[target.Name]; ok && len(definition.OperatorAuth) > 0 {
+			result.OperatorAuth = make(map[string]operatorAuthObservation, len(definition.OperatorAuth))
+			for environment := range definition.OperatorAuth {
+				result.OperatorAuth[environment] = collectOperatorAuthObservation(ctx, target.Name, environment)
+			}
+		}
 	}
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
@@ -412,14 +435,10 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 	return target, files, nil
 }
 
-func detectComposeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.Compose, error) {
-	provider, err := bhruntime.DetectProviderForKind(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
+func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
+	provider, err := runtimeresolver.RuntimeProvider(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
-	compose, ok := provider.(bhruntime.Compose)
-	if !ok {
-		return bhruntime.Compose{}, fmt.Errorf("target %q runtime provider %q is not compatible with the local container lifecycle", target.Name, target.RuntimeProvider)
-	}
-	return compose, nil
+	return provider, nil
 }

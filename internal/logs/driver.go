@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -32,7 +33,7 @@ type Runtime interface {
 
 type Driver struct {
 	runtime   Runtime
-	engine    string
+	mode      bhruntime.LogCollectionMode
 	app       application.Manifest
 	issuer    serviceaccess.Issuer
 	client    *http.Client
@@ -40,30 +41,25 @@ type Driver struct {
 	namespace string
 }
 
-type runtimeEngine interface {
-	Engine() string
+type runtimeLogMode interface {
+	LogCollectionMode() bhruntime.LogCollectionMode
 }
 
-func runtimeKind(runtime Runtime) string {
-	if detected, ok := runtime.(runtimeEngine); ok {
-		switch strings.ToLower(strings.TrimSpace(detected.Engine())) {
-		case "podman":
-			return "podman"
-		case "docker":
-			return "docker"
-		}
+func logCollectionMode(runtime Runtime) bhruntime.LogCollectionMode {
+	if detected, ok := runtime.(runtimeLogMode); ok {
+		return detected.LogCollectionMode()
 	}
-	return "docker"
+	return bhruntime.LogCollectionSyslog
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
-	return &Driver{runtime: runtime, engine: runtimeKind(runtime), app: app, issuer: issuer}
+	return &Driver{runtime: runtime, mode: logCollectionMode(runtime), app: app, issuer: issuer}
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{
 		runtime:   runtime,
-		engine:    runtimeKind(runtime),
+		mode:      logCollectionMode(runtime),
 		app:       app,
 		issuer:    issuer,
 		dataDir:   filepath.Clean(dataDir),
@@ -92,9 +88,9 @@ func (d *Driver) placement() (Placement, error) {
 
 func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
 	if d.dataDir != "" && d.dataDir != "." {
-		return EnsureProviderFilesForRuntimeAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.engine)
+		return EnsureProviderFilesForModeAt(ctx, d.issuer, d.dataDir, d.namespace, d.app, d.mode)
 	}
-	return EnsureProviderFilesForRuntime(ctx, d.issuer, d.app, d.engine)
+	return EnsureProviderFilesForMode(ctx, d.issuer, d.app, d.mode)
 }
 
 func (d *Driver) existingProviderFiles() (ProviderFiles, error) {

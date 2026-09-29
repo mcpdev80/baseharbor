@@ -13,9 +13,11 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 	got := composeYAML(
 		"baseharbor-runtime:test",
 		openbao.RuntimeExecutorMTLSFiles{
-			CA:   "/tmp/ca.pem",
-			Cert: "/tmp/executor-cert.pem",
-			Key:  "/tmp/executor-key.pem",
+			CA:         "/tmp/ca.pem",
+			Cert:       "/tmp/executor-cert.pem",
+			Key:        "/tmp/executor-key.pem",
+			ClientCert: "/tmp/observer-client-cert.pem",
+			ClientKey:  "/tmp/observer-client-key.pem",
 		},
 		"/tmp/s3-admin.env",
 		"https://seaweedfs-access:8443",
@@ -31,6 +33,12 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",
+		"healthcheck:",
+		"https://baseharbor-runtime-executor:9443/readyz",
+		"--cert",
+		"/run/baseharbor/observability/client-cert.pem",
+		"--key",
+		"/run/secrets/observer-client-key",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime executor compose missing %q:\n%s", want, got)
@@ -115,9 +123,11 @@ func TestEnsureFilesProjectsExecutorPrivateKeyForNonRootRuntime(t *testing.T) {
 		return path
 	}
 	identity := openbao.RuntimeExecutorMTLSFiles{
-		CA:   write("ca.pem", 0o644),
-		Cert: write("executor-cert.pem", 0o644),
-		Key:  write("executor-key.pem", 0o600),
+		CA:         write("ca.pem", 0o644),
+		Cert:       write("executor-cert.pem", 0o644),
+		Key:        write("executor-key.pem", 0o600),
+		ClientCert: write("observer-client-cert.pem", 0o644),
+		ClientKey:  write("observer-client-key.pem", 0o600),
 	}
 	admin := write("s3-admin.env", 0o600)
 	trust := write("s3-ca.pem", 0o644)
@@ -149,5 +159,33 @@ func TestEnsureFilesProjectsExecutorPrivateKeyForNonRootRuntime(t *testing.T) {
 	}
 	if !strings.Contains(string(compose), projected) {
 		t.Fatalf("runtime executor compose does not use projected private key:\n%s", compose)
+	}
+}
+
+func TestComposeYAMLMountsObserverIdentityWithoutOTLP(t *testing.T) {
+	got := composeYAML(
+		"baseharbor-runtime:test",
+		openbao.RuntimeExecutorMTLSFiles{
+			CA:         "/tmp/ca.pem",
+			Cert:       "/tmp/executor-cert.pem",
+			Key:        "/tmp/executor-key.pem",
+			ClientCert: "/tmp/observer-client-cert.pem",
+			ClientKey:  "/tmp/observer-client-key.pem",
+		},
+		"/tmp/s3-admin.env",
+		"https://seaweedfs-access:8443",
+		"/tmp/s3-ca.pem",
+	)
+
+	for _, want := range []string{
+		"/run/baseharbor/observability/client-cert.pem:ro",
+		"observer-client-key",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime executor compose missing observer mTLS binding %q without OTLP:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "OTEL_EXPORTER_OTLP_ENDPOINT") {
+		t.Fatalf("runtime executor compose unexpectedly enables OTLP without binding:\n%s", got)
 	}
 }

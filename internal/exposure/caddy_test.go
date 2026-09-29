@@ -7,7 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	runtime "github.com/mcpdev80/baseharbor/internal/runtime"
+	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
 )
 
 func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
@@ -17,6 +17,46 @@ func TestCaddyfileUsesLogicalServiceEndpoint(t *testing.T) {
 	}
 	if strings.Contains(got, "container_name") {
 		t.Fatalf("Caddyfile leaked runtime container identity:\n%s", got)
+	}
+}
+
+func TestCaddyfileSeparatesPublicAndWorkloadTransport(t *testing.T) {
+	got := caddyfile(Route{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "https",
+	})
+	for _, want := range []string{
+		"reverse_proxy https://web:8080",
+		"tls_trust_pool file /trust/workload-ca.pem",
+		"tls_server_name web",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("secure workload Caddyfile missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "tls_insecure_skip_verify") {
+		t.Fatalf("secure workload Caddyfile disabled TLS verification:\n%s", got)
+	}
+}
+
+func TestComposeMountsWorkloadTrustOnlyForSecureUpstream(t *testing.T) {
+	files := Files{Dir: "/tmp/provider"}
+	secure := State{Routes: []Route{{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "https", Visibility: "public", PublishedPort: 18080,
+	}}}
+	got := composeYAML(secure, files)
+	if !strings.Contains(got, "/tmp/provider/routes/public/workload-ca.pem:/trust/workload-ca.pem:ro") {
+		t.Fatalf("secure workload compose does not mount runtime trust:\n%s", got)
+	}
+
+	plain := State{Routes: []Route{{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "http", WorkloadProtocol: "http", Visibility: "public", PublishedPort: 18080,
+	}}}
+	got = composeYAML(plain, files)
+	if strings.Contains(got, "workload-ca.pem") {
+		t.Fatalf("plain workload compose unexpectedly mounts runtime trust:\n%s", got)
 	}
 }
 
@@ -48,8 +88,8 @@ func TestHTTPSRequiresExistingTLS(t *testing.T) {
 	}
 }
 
-// structCompose is the zero value runtime Compose; Preflight does not mutate or invoke it.
-type structCompose = runtime.Compose
+// structCompose is an explicit zero-value Docker provider; Preflight does not mutate or invoke it.
+type structCompose = dockerprovider.Provider
 
 func capabilityResource(m application.Manifest, name string) capability.Resource {
 	return capability.Resource{Application: m.Name, Kind: capability.ExposureHTTP, Name: name, Provider: capability.ProviderCaddy}

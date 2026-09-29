@@ -31,18 +31,29 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if shared.ID != "openbao/control-plane" {
 		t.Fatalf("shared=%#v", shared)
 	}
-	pg, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, "alpha", "")
+	pgBoundary := "environment:production"
+	pg, err := registry.ResolvePlacement(
+		capability.ProviderPostgreSQL,
+		capability.ProviderPlacement{
+			Scope:           capability.ScopeShared,
+			SharingBoundary: pgBoundary,
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		"alpha",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pg.OwnerApplication != "alpha" {
+	if pg.ID != sharedProviderInstanceID(capability.ProviderPostgreSQL, pgBoundary) || pg.OwnerApplication != "" {
 		t.Fatalf("postgres=%#v", pg)
 	}
 	if pg.ProviderID != "baseharbor/postgresql" || pg.ProviderVersion != "0.1.0" || pg.ProviderProtocol != capability.ProviderProtocolV1 {
 		t.Fatalf("postgres provider distribution identity=%#v", pg)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, "beta", ""); err == nil {
-		t.Fatal("beta unexpectedly resolved alpha dedicated PostgreSQL")
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Application == "beta" && binding.Resource.Provider == capability.ProviderPostgreSQL {
+			t.Fatalf("beta unexpectedly has PostgreSQL binding %#v", binding)
+		}
 	}
 }
 
@@ -221,8 +232,16 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		t.Fatalf("unrelated metrics policy broke database-only provider registration: %v", err)
 	}
-	if _, err := registry.Resolve(capability.ProviderPostgreSQL, capability.ScopeApplication, m.Name, ""); err != nil {
-		t.Fatalf("PostgreSQL provider not registered: %v", err)
+	if _, err := registry.ResolvePlacement(
+		capability.ProviderPostgreSQL,
+		capability.ProviderPlacement{
+			Scope:           capability.ScopeShared,
+			SharingBoundary: "environment:production",
+			Ownership:       capability.OwnershipBaseHarbor,
+		},
+		m.Name,
+	); err != nil {
+		t.Fatalf("shared PostgreSQL provider not registered: %v", err)
 	}
 }
 
@@ -273,5 +292,116 @@ func TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance(t *testing.
 		if binding.ProviderInstanceID != instance.ID || binding.Resource.Application != m.Name || binding.Resource.Kind != capability.Logs {
 			t.Fatalf("unexpected Loki binding %#v", binding)
 		}
+	}
+}
+
+func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) {
+	stateDir := t.TempDir()
+	dev := New("demo", "dev", true, false, false)
+	prod := New("demo", "prod", true, false, false)
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, prod); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := referenceProviderRegistryStoreAt(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 2 {
+		t.Fatalf("bindings=%#v", registry.Bindings)
+	}
+	seen := map[string]string{}
+	for _, binding := range registry.Bindings {
+		if binding.Resource.Application != "demo" || binding.Resource.Kind != capability.SQL {
+			t.Fatalf("unexpected binding %#v", binding)
+		}
+		seen[binding.Environment] = binding.ProviderInstanceID
+	}
+	devID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:dev")
+	prodID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:prod")
+	if seen["dev"] != devID || seen["prod"] != prodID {
+		t.Fatalf("environment bindings=%#v", seen)
+	}
+	if devID == prodID {
+		t.Fatalf("shared PostgreSQL environments unexpectedly share provider instance %q", devID)
+	}
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 2 {
+		t.Fatalf("reconciling dev removed prod: %#v", registry.Bindings)
+	}
+
+	if err := ReleaseApplicationProviderRegistryAt(stateDir, dev); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "prod" {
+		t.Fatalf("destroying dev changed prod binding: %#v", registry.Bindings)
+	}
+	if len(registry.Instances) != 1 || registry.Instances[0].ID != prodID || registry.Instances[0].OwnerEnvironment != "" {
+		t.Fatalf("destroying dev changed shared provider instance: %#v", registry.Instances)
+	}
+}
+
+func TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile(t *testing.T) {
+	stateDir := t.TempDir()
+	m := New("demo", "dev", true, false, false)
+	store, err := referenceProviderRegistryStoreAt(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registry := capability.NewRegistry()
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.SQL,
+		Name:        "default",
+		Provider:    capability.ProviderPostgreSQL,
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.OwnerEnvironment = ""
+	if err := registry.Register(instance); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Bind(resource, instance.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReconcileReferenceProviderRegistryAt(stateDir, m); err != nil {
+		t.Fatal(err)
+	}
+	registry, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "dev" {
+		t.Fatalf("legacy binding was not migrated: %#v", registry.Bindings)
+	}
+	expectedID := sharedProviderInstanceID(capability.ProviderPostgreSQL, "environment:dev")
+	if len(registry.Instances) != 1 || registry.Instances[0].ID != expectedID || registry.Instances[0].OwnerEnvironment != "" {
+		t.Fatalf("shared provider instance changed during binding migration: %#v", registry.Instances)
 	}
 }

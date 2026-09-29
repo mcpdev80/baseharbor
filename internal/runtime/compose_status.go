@@ -8,45 +8,12 @@ import (
 	"strings"
 )
 
-// PublishedPort is the provider-facing portion of a Compose publisher that is
-// useful for local operational readiness. It deliberately contains no
-// BaseHarbor-specific ingress model; it mirrors existing Compose runtime state.
-type PublishedPort struct {
-	URL           string
-	TargetPort    int
-	PublishedPort int
-	Protocol      string
-}
-
-// ServiceState is the provider-facing runtime state BaseHarbor needs for
-// truthful workload readiness. Health is empty when the service has no
-// healthcheck or the Compose implementation cannot report one.
-type ServiceState struct {
-	Service    string
-	State      string
-	Health     string
-	Publishers []PublishedPort
-}
-
-// Ready reports whether the service is running and, when a health status is
-// available, has reached a healthy terminal state.
-func (s ServiceState) Ready() bool {
-	if !strings.EqualFold(strings.TrimSpace(s.State), "running") {
-		return false
-	}
-	health := strings.ToLower(strings.TrimSpace(s.Health))
-	return health == "" || health == "healthy"
-}
-
 // ServiceStatesProjectFilesEnv returns Compose service state without exposing
 // generated container names to application code. Modern Compose implementations
 // expose JSON state including container health and published ports. Older
 // compatible implementations fall back to the portable running-service query;
 // in that case Health and Publishers remain empty rather than inventing state.
 func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles ...string) ([]ServiceState, error) {
-	if c.quadlet {
-		return c.serviceStatesFromRuntimeLabels(ctx, project)
-	}
 	out, composeErr := c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, "ps", "--format", "json")
 	if composeErr == nil {
 		states, parseErr := parseComposeServiceStates(out)
@@ -65,8 +32,12 @@ func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, work
 	return nil, fmt.Errorf("compose service state unavailable; runtime-label fallback: %w", fallbackErr)
 }
 
+func (c Compose) ServiceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
+	return c.serviceStatesFromRuntimeLabels(ctx, project)
+}
+
 func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project string) ([]ServiceState, error) {
-	containers, err := c.ListComposeContainers(ctx)
+	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, err
 	}

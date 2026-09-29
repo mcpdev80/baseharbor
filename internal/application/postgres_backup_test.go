@@ -3,9 +3,13 @@ package application
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 type postgresBackupCall struct {
@@ -43,6 +47,9 @@ func (f *fakePostgresBackupRuntime) ExecProjectInput(_ context.Context, _, _, _ 
 	f.calls = append(f.calls, postgresBackupCall{service: service, args: append([]string(nil), args...), input: append([]byte(nil), input...)})
 	if err := f.restoreErr[service]; err != nil {
 		return "", err
+	}
+	if strings.Contains(strings.Join(args, " "), "pg_dump") {
+		return f.dumps[service], nil
 	}
 	return "", nil
 }
@@ -150,5 +157,133 @@ func TestRestorePostgresInstancesStopsOnRestoreFailure(t *testing.T) {
 	}
 	if len(runtime.calls) != 1 {
 		t.Fatalf("calls after failed restore = %d, want 1", len(runtime.calls))
+	}
+}
+
+func TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
+	m := WithSQLInstances(New("app-a", "dev", true, false, false), "default", "analytics")
+	root := t.TempDir()
+	shared := SharedBackendFilesAt(root, "baha", m.Environment)
+	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adminRef, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultRef, err := ensureSharedPostgresCredential(shared.Dir, sharedBackendApplicationKey(m), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	analyticsRef, err := ensureSharedPostgresCredential(shared.Dir, sharedBackendApplicationKey(m), "analytics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := sharedBackendState{
+		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef,
+		Applications: map[string]sharedBackendAppState{
+			sharedBackendApplicationKey(m): {
+				Application: m.Name, Environment: m.Environment,
+				SQL: map[string]sharedPostgresResource{
+					"default":   {Database: "app_a_dev", Username: "baha_app_a_dev", CredentialReference: defaultRef},
+					"analytics": {Database: "app_a_dev_analytics", Username: "baha_app_a_dev_analytics", CredentialReference: analyticsRef},
+				},
+			},
+			"app-b/dev": {
+				Application: "app-b", Environment: "dev",
+				SQL: map[string]sharedPostgresResource{
+					"default": {Database: "app_b_dev", Username: "baha_app_b_dev", CredentialReference: "credentials/postgres/app-b-dev-default.password"},
+				},
+			},
+		},
+	}
+	if err := os.MkdirAll(filepath.Join(shared.Dir, "credentials", "postgres"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOwnerOnlyFile(filepath.Join(shared.Dir, "credentials", "postgres", "app-b-dev-default.password"), []byte("app-b-secret\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSharedBackendState(shared.State, state); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &fakePostgresBackupRuntime{dumps: map[string]string{
+		sharedPostgresService(m.Environment): "-- app-a dump\nSELECT 1;\n",
+	}}
+	backups, err := DumpPostgresInstancesAt(context.Background(), runtime, m, RuntimeFiles{}, root, "baha")
+	if err != nil {
+		t.Fatalf("DumpPostgresInstancesAt() error = %v", err)
+	}
+	if len(backups) != 2 {
+		t.Fatalf("backups = %d, want 2", len(backups))
+	}
+	if len(runtime.calls) != 2 {
+		t.Fatalf("calls = %d, want 2", len(runtime.calls))
+	}
+	for _, call := range runtime.calls {
+		joined := strings.Join(call.args, " ")
+		if strings.Contains(joined, "app_b_dev") || strings.Contains(joined, "baha_app_b_dev") {
+			t.Fatalf("shared backup crossed application boundary: %q", joined)
+		}
+		if !strings.Contains(joined, "pg_dump --clean --if-exists --no-owner --no-privileges --format=plain") {
+			t.Fatalf("shared dump args = %q", joined)
+		}
+		if len(call.input) == 0 {
+			t.Fatalf("shared dump credential was not supplied over stdin")
+		}
+	}
+	joined := strings.Join(runtime.calls[0].args, " ") + "\n" + strings.Join(runtime.calls[1].args, " ")
+	if !strings.Contains(joined, "-d 'app_a_dev'") || !strings.Contains(joined, "-d 'app_a_dev_analytics'") {
+		t.Fatalf("shared backup did not select both app-a databases: %q", joined)
+	}
+}
+
+func TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
+	m := New("app-a", "dev", true, false, false)
+	root := t.TempDir()
+	shared := SharedBackendFilesAt(root, "baha", m.Environment)
+	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adminRef, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appRef, err := ensureSharedPostgresCredential(shared.Dir, sharedBackendApplicationKey(m), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := sharedBackendState{
+		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef,
+		Applications: map[string]sharedBackendAppState{
+			sharedBackendApplicationKey(m): {
+				Application: m.Name, Environment: m.Environment,
+				SQL: map[string]sharedPostgresResource{"default": {
+					Database: "app_a_dev", Username: "baha_app_a_dev", CredentialReference: appRef,
+				}},
+			},
+		},
+	}
+	if err := writeSharedBackendState(shared.State, state); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &fakePostgresBackupRuntime{verifyResult: map[string]string{
+		sharedPostgresService(m.Environment): "baha_app_a_dev\n",
+	}}
+	backup := []PostgresBackup{{Instance: "default", SQL: []byte("CREATE TABLE sentinel(value text);\n")}}
+	if err := RestorePostgresInstancesAt(context.Background(), runtime, m, RuntimeFiles{}, root, "baha", backup); err != nil {
+		t.Fatalf("RestorePostgresInstancesAt() error = %v", err)
+	}
+	if len(runtime.calls) != 3 {
+		t.Fatalf("calls = %d, want restore + role/database ownership verification", len(runtime.calls))
+	}
+	restore := strings.Join(runtime.calls[0].args, " ")
+	if !strings.Contains(restore, "-U 'baha_app_a_dev' -d 'app_a_dev'") {
+		t.Fatalf("restore escaped application resource: %q", restore)
+	}
+	if strings.Contains(restore, "baseharbor_admin") {
+		t.Fatalf("restore used provider administrator credentials: %q", restore)
 	}
 }

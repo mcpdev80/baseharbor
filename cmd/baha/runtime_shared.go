@@ -23,7 +23,7 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	compose, err := detectComposeForTarget(ctx, target)
+	compose, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func runtimeDown(parent context.Context, out io.Writer) error {
 	return nil
 }
 
-func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
+func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, out io.Writer) error {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 		return err
 	}
 	if len(rules) > 0 {
-		containers, err := compose.ListComposeContainers(ctx)
+		containers, err := compose.ListRuntimeContainers(ctx)
 		if err != nil {
 			return err
 		}
@@ -106,7 +106,7 @@ func suspendSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose
 	return nil
 }
 
-func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose, out io.Writer) error {
+func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, out io.Writer) error {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.Compose,
 	return nil
 }
 
-func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhruntime.Compose) error {
+func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider) error {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
@@ -187,7 +187,7 @@ func reconcileAllConnectivity(ctx context.Context, out io.Writer, compose bhrunt
 	if len(rules) == 0 {
 		return nil
 	}
-	containers, err := compose.ListComposeContainers(ctx)
+	containers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
 		return err
 	}

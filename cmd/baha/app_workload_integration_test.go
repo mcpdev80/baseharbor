@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect runtime: %v", err)
 	}

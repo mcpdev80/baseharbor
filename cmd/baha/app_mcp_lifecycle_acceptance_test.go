@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
@@ -21,7 +22,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := bhruntime.DetectCompose(ctx); err != nil {
+	if _, err := testruntime.Resolve(ctx); err != nil {
 		t.Skipf("runtime unavailable: %v", err)
 	}
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
@@ -52,7 +53,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("compose.yaml", []byte("services:\n  api:\n    image: alpine:3.22\n    command: [\"sleep\", \"3600\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile("compose.yaml", []byte("services:\n  api:\n    image: alpine:3.22\n    command: [\"sleep\", \"3600\"]\n    healthcheck:\n      test: [\"CMD-SHELL\", \"echo ok\"]\n      interval: 1s\n      timeout: 1s\n      retries: 10\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(".gitignore", []byte(".baseharbor/\n*.bhbackup\nbackup-password\n"), 0o644); err != nil {
@@ -109,7 +110,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	runtime, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 	if err != nil {
 		t.Fatal(err)
 	}

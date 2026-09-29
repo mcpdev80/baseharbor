@@ -7,7 +7,7 @@ BaseHarbor's current operational control plane is intentionally single-node. On 
 `baha up` materializes the BaseHarbor runtime definition and starts:
 
 - PostgreSQL 18;
-- OpenBao 2.6.x.
+- OpenBao 2.7.x.
 
 Both services bind to loopback by default.
 
@@ -15,59 +15,13 @@ Docker executes the generated runtime through Docker Compose. Podman consumes th
 
 The managed control-plane containers are hardened runtime components rather than privileged bootstrap helpers. PostgreSQL and OpenBao run with explicit non-root identities, read-only root filesystems, all Linux capabilities dropped and `no-new-privileges`. Only the paths that must remain writable are exposed as dedicated volumes or tmpfs mounts.
 
-OpenBao writes its generated local configuration into an ephemeral writable `/openbao/config` tmpfs while durable provider data remains on the dedicated `/openbao/file` volume. BaseHarbor sets the image-supported `SKIP_CHOWN` mode because the container already starts as the non-root `openbao` user; no root startup phase or `CAP_CHOWN` exception is required.
+OpenBao 2.7 starts directly on its final storage model: a dedicated `openbao` database and least-privilege `openbao` login inside the existing BaseHarbor PostgreSQL control-plane provider. No separate Raft lifecycle and no compatibility path for unreleased `storage.file` state are retained.
 
-## First-run port selection
+The initial control-plane bootstrap is TLS-only. BaseHarbor creates short-lived bootstrap trust for PostgreSQL and OpenBao, provisions the dedicated OpenBao database/user during first PostgreSQL initialization, and starts OpenBao with PostgreSQL `verify-full`. After OpenBao PKI is ready, BaseHarbor rotates both control-plane services onto managed PKI material.
 
-The default host ports are PostgreSQL `5432` and OpenBao `8200`, but BaseHarbor checks them before first initialization.
+OpenBao terminates HTTPS natively. OpenBao 2.7 `tls_auto_reload` is enabled for listener certificate rotation; PostgreSQL certificate rotation is reconciled independently because PostgreSQL copies its private key into an owner-only tmpfs path at process start.
 
-```bash
-baha up
-```
-
-If a default port is occupied, `baha` proposes a free alternative. Non-interactive setup can accept safe proposals:
-
-```bash
-baha up --yes
-```
-
-Explicit ports are supported and still fail closed when occupied:
-
-```bash
-baha up --postgres-port 15432 --openbao-port 18200
-```
-
-After initialization, `baha up` does not silently rewrite configured ports.
-
-## Runtime state
-
-The control plane and provider state belong to the effective Target. Runtime files are stored below:
-
-```text
-$XDG_DATA_HOME/baseharbor/targets/<target>/
-```
-
-or, when `XDG_DATA_HOME` is unset:
-
-```text
-~/.local/share/baseharbor/targets/<target>/
-```
-
-Typical protected Target state includes:
-
-```text
-targets/<target>/
-├── runtime/
-│   ├── compose.yaml   # canonical generated runtime model; Podman renders this to Quadlet units
-│   ├── runtime.env
-│   └── openbao-admin.env
-├── providers/
-└── deployments/
-```
-
-This boundary allows multiple Docker/Podman Targets to coexist without sharing BaseHarbor-owned runtime state. `BASEHARBOR_STATE_DIR` and repository-local `.baseharbor/runtime` are legacy compatibility inputs for pre-Target runtime state; new v0.4.15 Target-owned state uses the XDG Target root.
-
-Credential-bearing files are owner-only. Generated PostgreSQL credentials and selected ports are preserved across subsequent starts.
+Credential-bearing files are owner-only. Generated PostgreSQL credentials, the dedicated OpenBao storage credential and selected ports are preserved across subsequent starts.
 
 ## Commands
 

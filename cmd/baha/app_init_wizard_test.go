@@ -109,7 +109,7 @@ func TestGuidedInitInteractiveCanAcceptDetectedDefaults(t *testing.T) {
 	withWizardTestDir(t, dir)
 
 	oldInput := appInitInput
-	appInitInput = strings.NewReader("\n\n\n\n\n\n\n\n\ny\n")
+	appInitInput = strings.NewReader(strings.Repeat("\n", 32))
 	t.Cleanup(func() { appInitInput = oldInput })
 
 	var out bytes.Buffer
@@ -400,7 +400,7 @@ func TestPromptCapabilityListNonTTYKeepsDetectedDefaults(t *testing.T) {
 	input := strings.NewReader("\n")
 	appInitInput = input
 	reader := bufio.NewReader(input)
-	defaults := []bool{true, true, false, true, false, false, false}
+	defaults := []bool{true, true, false, true, false, false, false, false}
 
 	got, err := promptCapabilityList(reader, io.Discard, defaults, false)
 	if err != nil {
@@ -419,11 +419,11 @@ func TestPromptCapabilityListNonTTYAcceptsExplicitSelection(t *testing.T) {
 	appInitInput = input
 	reader := bufio.NewReader(input)
 
-	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 7), true)
+	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 8), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []bool{true, false, true, false, false, false, true}
+	want := []bool{true, false, true, false, false, false, true, false}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selection = %#v, want %#v", got, want)
 	}
@@ -524,6 +524,12 @@ func TestAdoptionSummaryMinimal(t *testing.T) {
 
 func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	m := detectedApplicationManifest("demo", "dev", true, true, true, true, true)
+	m.Services.SQLManagementUI = true
+	m.Services.CacheManagementUI = true
+	m.Services.ObjectStorageManagementUI = true
+	m.Services.SecretsManagementUI = true
+	m.Services.IdentityManagementUI = true
+	m.Services.ObservabilityManagementUI = true
 	m = application.WithWorkload(m, "compose.yaml", "api")
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithOTLPTelemetry(m, "traces")
@@ -541,6 +547,13 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 		"SQL Database  detected and confirmed",
 		"Cache         detected and confirmed",
 		"Object Storage detected and confirmed",
+		"Management UIs",
+		"PostgreSQL    pgAdmin",
+		"Cache         Redis Commander",
+		"Object Storage provider administration UI",
+		"Secrets       OpenBao UI",
+		"Identity      provider administration UI",
+		"Observability Prometheus UI",
 		"Observability",
 		"Metrics       expose OpenMetrics HTTP (recommended /metrics)",
 		"BaseHarbor collects workload + supported managed-provider metrics",

@@ -6,7 +6,7 @@ Date: 2026-09-23
 
 ## Context
 
-BaseHarbor already separates portable capabilities from concrete products and defines the language-neutral `baseharbor.provider/v1` protocol. The current reference providers are still implemented inside the BaseHarbor repository because their lifecycle code evolved with the Compose-first runtime.
+BaseHarbor already separates portable capabilities from concrete products and defines the language-neutral `baseharbor.provider/v1` protocol. The current reference providers are still implemented inside the BaseHarbor repository because their lifecycle code evolved from the original Compose-first implementation. Compose is now workload-source compatibility, not Runtime Provider identity.
 
 Creating one repository per provider before the provider contract is frozen would multiply release, CI and compatibility work while the boundary is still changing.
 

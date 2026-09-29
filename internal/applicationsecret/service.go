@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 type Metadata struct {
@@ -25,7 +26,7 @@ const applicationSecretOperationTimeout = 60 * time.Second
 type Service struct {
 	store         application.Store
 	runtimeClient *openbao.ApplicationRuntimeClient
-	compose       *bhruntime.Compose
+	runtime       bhruntime.RuntimeProvider
 	platformFiles *bhruntime.Files
 	manifest      *application.Manifest
 	runtimeFiles  *application.RuntimeFiles
@@ -35,14 +36,14 @@ func New(store application.Store) *Service {
 	return &Service{store: store}
 }
 
-func NewForRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files) *Service {
-	return &Service{store: store, compose: &compose, platformFiles: &platformFiles}
+func NewForRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files) *Service {
+	return &Service{store: store, runtime: compose, platformFiles: &platformFiles}
 }
 
-func NewForApplicationRuntime(store application.Store, compose bhruntime.Compose, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
+func NewForApplicationRuntime(store application.Store, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, manifest application.Manifest, runtimeFiles application.RuntimeFiles) *Service {
 	return &Service{
 		store:         store,
-		compose:       &compose,
+		runtime:       compose,
 		platformFiles: &platformFiles,
 		manifest:      &manifest,
 		runtimeFiles:  &runtimeFiles,
@@ -170,7 +171,7 @@ func (s *Service) Delete(ctx context.Context, name, key string) error {
 
 type resolvedApplication struct {
 	manifest        application.Manifest
-	compose         bhruntime.Compose
+	compose         bhruntime.RuntimeProvider
 	platformFiles   bhruntime.Files
 	identity        openbao.ApplicationIdentity
 	credentialsPath string
@@ -213,11 +214,11 @@ func (s *Service) resolve(ctx context.Context, name string) (resolvedApplication
 	if err := application.CheckRuntimePermissions(files); err != nil {
 		return resolvedApplication{}, err
 	}
-	var compose bhruntime.Compose
-	if s.compose != nil {
-		compose = *s.compose
+	var compose bhruntime.RuntimeProvider
+	if s.runtime != nil {
+		compose = s.runtime
 	} else {
-		compose, err = bhruntime.DetectCompose(ctx)
+		compose, err = runtimeresolver.DefaultRuntimeProvider(ctx)
 		if err != nil {
 			return resolvedApplication{}, err
 		}

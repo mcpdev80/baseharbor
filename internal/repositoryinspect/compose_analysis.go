@@ -74,7 +74,7 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	if err != nil {
 		return ComposeAnalysis{}, fmt.Errorf("read compose file %s: %w", filepath.ToSlash(cleanRel), err)
 	}
-	analysis := ComposeAnalysis{}
+	analysis := ComposeAnalysis{WorkloadProtocols: map[string]string{}}
 	services, err := detectComposeServices(data)
 	if err != nil {
 		return ComposeAnalysis{}, err
@@ -100,6 +100,9 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 			analysis.Ports = append(analysis.Ports, PortEvidence{
 				Path: filepath.ToSlash(cleanRel), Service: service.Name, Value: port,
 			})
+		}
+		if service.WorkloadProtocol != "" {
+			analysis.WorkloadProtocols[service.Name] = service.WorkloadProtocol
 		}
 		if service.HealthCheck {
 			analysis.HealthChecks = append(analysis.HealthChecks, Evidence{

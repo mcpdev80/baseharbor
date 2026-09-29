@@ -27,3 +27,19 @@ func ApplicationExposureNetworkNameForProject(project string) string {
 	}
 	return "baseharbor-exposure-" + project + "_default"
 }
+
+func DevelopmentWorkloadNetworkNameForProject(project string) string {
+	project = strings.TrimSpace(strings.TrimPrefix(project, "baseharbor-"))
+	if project == "" {
+		return ""
+	}
+	return "baseharbor-dev-workload-" + project
+}
+
+func DevelopmentWorkloadAlias(m Manifest) string {
+	name := strings.ToLower(strings.TrimSpace(m.Name))
+	if name == "" {
+		name = "app"
+	}
+	return "bh-dev-" + name + "-api"
+}

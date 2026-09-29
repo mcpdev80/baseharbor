@@ -16,6 +16,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/endpoint"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -32,13 +33,14 @@ type Deployment struct {
 }
 
 type Route struct {
-	Name           string `json:"name"`
-	Service        string `json:"service"`
-	TargetPort     int    `json:"target_port"`
-	Protocol       string `json:"protocol"`
-	Visibility     string `json:"visibility"`
-	PublishedPort  int    `json:"published_port"`
-	TLSFingerprint string `json:"tls_fingerprint,omitempty"`
+	Name             string `json:"name"`
+	Service          string `json:"service"`
+	TargetPort       int    `json:"target_port"`
+	Protocol         string `json:"protocol"`
+	WorkloadProtocol string `json:"workload_protocol,omitempty"`
+	Visibility       string `json:"visibility"`
+	PublishedPort    int    `json:"published_port"`
+	TLSFingerprint   string `json:"tls_fingerprint,omitempty"`
 }
 
 type State struct {
@@ -57,7 +59,7 @@ type Files struct {
 }
 
 type Driver struct {
-	compose    bhruntime.Compose
+	compose    bhruntime.RuntimeProvider
 	manifest   application.Manifest
 	runtime    application.RuntimeFiles
 	deployment Deployment
@@ -89,7 +91,7 @@ func FilesFor(runtime application.RuntimeFiles) Files {
 	}
 }
 
-func NewDriver(compose bhruntime.Compose, m application.Manifest, runtime application.RuntimeFiles, deployment Deployment) *Driver {
+func NewDriver(compose bhruntime.RuntimeProvider, m application.Manifest, runtime application.RuntimeFiles, deployment Deployment) *Driver {
 	return &Driver{compose: compose, manifest: m, runtime: runtime, deployment: deployment, files: FilesFor(runtime)}
 }
 
@@ -275,6 +277,37 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 	}
 }
 
+func (d *Driver) ReconcileWorkloadTransport(ctx context.Context) error {
+	if !d.provisioned {
+		return errors.New("managed exposure must be provisioned before workload transport reconciliation")
+	}
+	running, err := d.compose.RunningServicesProject(ctx, ProjectNameForRuntime(d.manifest, d.runtime), d.files.Compose, d.files.Env)
+	if err != nil {
+		return fmt.Errorf("inspect managed exposure before workload transport reconciliation: %w", err)
+	}
+	state, changed, err := d.ensureFiles()
+	if err != nil {
+		return err
+	}
+	d.state = state
+	if !changed {
+		return nil
+	}
+	d.changed = true
+	if err := d.compose.ConfigProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		return fmt.Errorf("validate managed exposure workload transport: %w", err)
+	}
+	if len(running) > 0 {
+		if err := d.compose.DownProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+			return fmt.Errorf("restart managed exposure for workload transport: %w", err)
+		}
+	}
+	if err := d.compose.UpProject(ctx, state.Project, d.files.Compose, d.files.Env); err != nil {
+		return fmt.Errorf("start managed exposure after workload transport reconciliation: %w", err)
+	}
+	return nil
+}
+
 func (d *Driver) State() State { return d.state }
 
 func Load(runtime application.RuntimeFiles) (State, Files, error) {
@@ -293,7 +326,7 @@ func Load(runtime application.RuntimeFiles) (State, Files, error) {
 	return state, files, nil
 }
 
-func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) (State, []endpoint.ExposureStatus, error) {
+func Inspect(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) (State, []endpoint.ExposureStatus, error) {
 	state, files, err := Load(runtime)
 	if err != nil {
 		return State{}, nil, err
@@ -323,7 +356,7 @@ func Inspect(ctx context.Context, compose bhruntime.Compose, runtime application
 	return state, statuses, nil
 }
 
-func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+func Stop(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) error {
 	state, files, err := Load(runtime)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -334,7 +367,7 @@ func Stop(ctx context.Context, compose bhruntime.Compose, runtime application.Ru
 	return compose.DownProjectRemoveOrphans(ctx, state.Project, files.Compose, files.Env)
 }
 
-func Destroy(ctx context.Context, compose bhruntime.Compose, runtime application.RuntimeFiles) error {
+func Destroy(ctx context.Context, compose bhruntime.RuntimeProvider, runtime application.RuntimeFiles) error {
 	state, files, err := Load(runtime)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -383,7 +416,16 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 	sort.Strings(plannedNames)
 	for _, name := range plannedNames {
 		requirement := d.planned[name]
-		route := Route{Name: name, Service: requirement.Service, TargetPort: requirement.TargetPort, Protocol: requirement.Protocol, Visibility: requirement.Visibility}
+		workloadProtocol := "http"
+		if runtimeAuthorizedService(d.manifest, requirement.Service) {
+			if info, err := os.Stat(filepath.Join(application.RuntimeMTLSHostDir(d.runtime), "ca.pem")); err == nil && info.Mode().IsRegular() {
+				workloadProtocol = "https"
+			}
+		}
+		route := Route{
+			Name: name, Service: requirement.Service, TargetPort: requirement.TargetPort,
+			Protocol: requirement.Protocol, WorkloadProtocol: workloadProtocol, Visibility: requirement.Visibility,
+		}
 		if route.Protocol == "https" {
 			certData, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, "cert.pem"))
 			if err != nil {
@@ -392,7 +434,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 			sum := sha256.Sum256(certData)
 			route.TLSFingerprint = fmt.Sprintf("%x", sum[:])
 		}
-		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && prior.Visibility == route.Visibility && prior.PublishedPort > 0 {
+		if prior, ok := previous[route.Name]; ok && prior.Service == route.Service && prior.TargetPort == route.TargetPort && prior.Protocol == route.Protocol && normalizedWorkloadProtocol(prior.WorkloadProtocol) == route.WorkloadProtocol && prior.Visibility == route.Visibility && prior.PublishedPort > 0 {
 			route.PublishedPort = prior.PublishedPort
 		} else {
 			preferred := 8080
@@ -432,6 +474,15 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 		}
 		if err := writeContainerReadable(filepath.Join(routeDir, "Caddyfile"), []byte(caddyfile(route))); err != nil {
 			return State{}, false, err
+		}
+		if normalizedWorkloadProtocol(route.WorkloadProtocol) == "https" {
+			ca, err := os.ReadFile(filepath.Join(application.RuntimeMTLSHostDir(d.runtime), "ca.pem"))
+			if err != nil {
+				return State{}, false, fmt.Errorf("read workload TLS trust for exposure %q: %w", route.Name, err)
+			}
+			if err := writeContainerReadable(filepath.Join(routeDir, "workload-ca.pem"), ca); err != nil {
+				return State{}, false, err
+			}
 		}
 		if route.Protocol == "https" {
 			for _, name := range []string{"cert.pem", "key.pem"} {
@@ -498,7 +549,11 @@ func composeYAML(state State, files Files) string {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
 		}
-		b.WriteString("    networks:\n      application: {}\n")
+		if normalizedWorkloadProtocol(route.WorkloadProtocol) == "https" {
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "workload-ca.pem")+":/trust/workload-ca.pem:ro"))
+		}
+		b.WriteString("    networks:\n      application:\n        aliases:\n")
+		fmt.Fprintf(&b, "          - %s\n", strconv.Quote(devaccess.ProviderAlias(state.Project, route.Name)))
 	}
 	b.WriteString("networks:\n  application:\n    external: true\n")
 	fmt.Fprintf(&b, "    name: %s\n", state.Network)
@@ -512,7 +567,27 @@ func caddyfile(route Route) string {
 		listen = ":8443"
 		tlsLine = "  tls /certs/cert.pem /certs/key.pem\n"
 	}
+	if normalizedWorkloadProtocol(route.WorkloadProtocol) == "https" {
+		return fmt.Sprintf("%s {\n%s  reverse_proxy https://%s:%d {\n    transport http {\n      tls\n      tls_trust_pool file /trust/workload-ca.pem\n      tls_server_name %s\n    }\n  }\n}\n", listen, tlsLine, route.Service, route.TargetPort, route.Service)
+	}
 	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
+}
+
+func normalizedWorkloadProtocol(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "https") {
+		return "https"
+	}
+	return "http"
+}
+
+func runtimeAuthorizedService(m application.Manifest, service string) bool {
+	service = strings.TrimSpace(service)
+	for _, candidate := range application.RuntimeAuthorizedServices(m) {
+		if candidate == service {
+			return true
+		}
+	}
+	return false
 }
 
 func choosePublishedPort(preferred int, visibility string, used map[int]struct{}) (int, error) {

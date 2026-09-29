@@ -11,7 +11,7 @@ import (
 
 func reconcileGeneratedApplicationSecrets(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	platformFiles bhruntime.Files,
 	m application.Manifest,
 	files application.RuntimeFiles,

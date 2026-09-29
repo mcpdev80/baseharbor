@@ -18,9 +18,19 @@ type managedProviderPreflightState struct {
 	telemetry     *managedTelemetryExecution
 	metrics       *managedMetricsExecution
 	logs          *managedLogsExecution
+	identity      *managedIdentityExecution
 }
 
 func requiresManagedServiceIssuer(m application.Manifest) bool {
+	if requiresDevelopmentGateway(m) {
+		return true
+	}
+	if application.HasIdentity(m) {
+		provider, err := application.IdentityProviderForDeployment()
+		if err != nil || provider.Kind == capability.ProviderKeycloak {
+			return true
+		}
+	}
 	if application.HasManagedRuntimeServices(m) || requiresObjectStorageProviderAdmin(m) {
 		return true
 	}
@@ -32,7 +42,7 @@ func requiresManagedServiceIssuer(m application.Manifest) bool {
 
 func appendManagedProviderPreflights(
 	checks []preflight.Check,
-	compose *bhruntime.Compose,
+	compose *bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
 	issuer *serviceaccess.Issuer,
@@ -81,6 +91,13 @@ func appendManagedProviderPreflights(
 			return err
 		}})
 	}
+	if application.HasIdentity(m) {
+		checks = append(checks, preflight.Check{Name: "managed identity provider", Run: func(ctx context.Context) error {
+			var err error
+			state.identity, err = prepareManagedIdentity(ctx, *compose, resolved, *issuer)
+			return err
+		}})
+	}
 	return checks
 }
 
@@ -89,7 +106,7 @@ func appendManagedProviderPreflights(
 // mutation and deliberately does not create visible capability preflight rows.
 func prepareUndeclaredProviderCleanup(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	state *managedProviderPreflightState,
 	issuer serviceaccess.Issuer,
@@ -126,6 +143,8 @@ func hasProviderCapabilityIntent(m application.Manifest, kind capability.Kind) b
 		return application.HasLogsCollection(m)
 	case capability.ExposureHTTP:
 		return len(m.Exposures) > 0
+	case capability.Identity:
+		return application.HasIdentity(m)
 	default:
 		return false
 	}

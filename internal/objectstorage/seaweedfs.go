@@ -3,19 +3,14 @@ package objectstorage
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -76,6 +71,10 @@ func EnsureSharedProvider(ctx context.Context, runtime Runtime, issuer serviceac
 	return EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, "")
 }
 
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
 func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, AdminCredentials, string, error) {
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
@@ -86,6 +85,11 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 	files, err := EnsureProviderFilesAt(reconcileCtx, issuer, dataDir, namespace)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	if cleaner, ok := runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(reconcileCtx, files.Project, "seaweedfs-access"); err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("remove legacy SeaweedFS access gateway: %w", err)
+		}
 	}
 	if err := runtime.ConfigProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("validate SeaweedFS provider configuration: %w", err)
@@ -182,10 +186,20 @@ func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
 func (d *Driver) Descriptor() capability.Provider { return capability.SeaweedFS }
 
 func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
-	if d.dataDir != "" && d.dataDir != "." {
-		return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, d.dataDir, d.namespace)
+	dataDir := d.dataDir
+	if dataDir == "" || dataDir == "." {
+		var err error
+		dataDir, err = bhruntime.DataDir("")
+		if err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", err
+		}
 	}
-	return EnsureSharedProvider(ctx, d.runtime, d.issuer)
+	if d.app.Services.ObjectStorageManagementUI {
+		if err := RegisterManagementUIConsumerAt(dataDir, d.namespace, d.app); err != nil {
+			return ProviderFiles{}, AdminCredentials{}, "", err
+		}
+	}
+	return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, dataDir, d.namespace)
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -260,7 +274,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if err != nil {
 		return fmt.Errorf("load S3 service trust material: %w", err)
 	}
-	containerHost := "seaweedfs-access"
+	containerHost := "seaweedfs"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		containerHost = strings.TrimSpace(policy.ServerName)
 	}
@@ -439,6 +453,15 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		}
 		values["BASEHARBOR_SEAWEEDFS_PORT"] = strconv.Itoa(port)
 	}
+	managementUI, err := managementUIRequested(dir)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if managementUI {
+		if err := ensureManagementUIValues(values); err != nil {
+			return ProviderFiles{}, err
+		}
+	}
 	if err := writeEnv(files.Env, values); err != nil {
 		return ProviderFiles{}, err
 	}
@@ -446,11 +469,27 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, s3AccessSpec())
+	accessPolicy.ServerName = "seaweedfs"
+	accessMaterial, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, accessPolicy, filepath.Join(files.Dir, "service-access", "pki"), "seaweedfs", "127.0.0.1")
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)), 0o600); err != nil {
+	if err := projectSeaweedNativeTLS(filepath.Join(files.Dir, "service-access", "runtime"), accessMaterial); err != nil {
+		return ProviderFiles{}, err
+	}
+	rendered := providerComposeYAMLWithAccessAndNetwork(serviceaccess.HTTPGatewayFiles{Material: accessMaterial}, files.Network)
+	if managementUI {
+		adminPolicy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(files.Dir, "management-ui"), seaweedAdminAccessSpec())
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		rendered = providerComposeWithManagementUI(rendered, adminAccess)
+	}
+	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return ProviderFiles{}, fmt.Errorf("write SeaweedFS provider compose: %w", err)
 	}
 	if err := os.Chmod(files.Compose, 0o600); err != nil {
@@ -517,9 +556,8 @@ func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string
 	return providerComposeYAMLWithAccessAndNetwork(access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`services:
+func providerComposeYAMLWithAccessAndNetwork(_ serviceaccess.HTTPGatewayFiles, network string) string {
+	return fmt.Sprintf(`services:
   seaweedfs:
     image: %s
     restart: unless-stopped
@@ -529,9 +567,21 @@ func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFil
     security_opt: ["no-new-privileges:true"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
-    command: server -s3 -iam=true -s3.iam.readOnly=false
+    command:
+      - server
+      - -s3
+      - -iam=true
+      - -s3.iam.readOnly=false
+      - -s3.port.https=8443
+      - -s3.cert.file=/run/baseharbor/tls/server.pem
+      - -s3.key.file=/run/baseharbor/tls/server-key.pem
+    ports:
+      - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8443"
     volumes:
       - seaweedfs-data:/data
+      - ./service-access/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
+      - ./service-access/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+      - ./service-access/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
     networks:
       object-storage:
         aliases:
@@ -543,10 +593,30 @@ volumes:
 networks:
   object-storage:
     name: %s
-`, ProviderImage, network))
-	text := b.String()
-	text = strings.Replace(text, "volumes:\n  seaweedfs-data:\n", serviceaccess.HTTPGatewayComposeService(access, s3AccessSpec())+"volumes:\n  seaweedfs-data:\n", 1)
-	return text
+`, ProviderImage, network)
+}
+
+func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{
+		material.CA:                "ca.pem",
+		material.ServerCertificate: "server.pem",
+		material.ServerKey:         "server-key.pem",
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("SeaweedFS TLS material %s is empty", name)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func providerEndpoint(files ProviderFiles) (string, error) {
@@ -594,7 +664,7 @@ func ServiceContainerEndpoint(files ProviderFiles) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	host := "seaweedfs-access"
+	host := "seaweedfs"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		host = strings.TrimSpace(policy.ServerName)
 	}
@@ -611,172 +681,4 @@ func ServiceTrustBundle(files ProviderFiles) (string, error) {
 		return "", err
 	}
 	return material.CA, nil
-}
-
-func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	var last error
-	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/", nil)
-		if err != nil {
-			return err
-		}
-		resp, err := client.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode < http.StatusInternalServerError {
-				return nil
-			}
-			last = fmt.Errorf("HTTP %d", resp.StatusCode)
-		} else {
-			last = err
-		}
-		select {
-		case <-ctx.Done():
-			if last == nil {
-				last = ctx.Err()
-			}
-			return last
-		case <-ticker.C:
-		}
-	}
-}
-
-func signedS3Request(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
-	return signedS3RequestLimit(ctx, client, endpoint, method, bucket, key, credentials, payload, 1<<20)
-}
-
-func signedS3RequestLimit(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
-	return signedS3RequestQuery(ctx, client, endpoint, method, bucket, key, nil, credentials, payload, limit)
-}
-
-func signedS3RequestQuery(ctx context.Context, client *http.Client, endpoint, method, bucket, key string, query url.Values, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
-	path := "/"
-	if bucket != "" {
-		path += escapePath(bucket)
-	}
-	if key != "" {
-		path += "/" + escapePath(key)
-	}
-	return signedAWSRequestQuery(ctx, client, endpoint, "s3", method, path, "", query, credentials, payload, limit)
-}
-
-func signedAWSRequest(ctx context.Context, client *http.Client, endpoint, service, method, path, contentType string, credentials application.ObjectStorageCredentials, payload []byte) (int, []byte, error) {
-	return signedAWSRequestQuery(ctx, client, endpoint, service, method, path, contentType, nil, credentials, payload, 1<<20)
-}
-
-func signedAWSRequestQuery(ctx context.Context, client *http.Client, endpoint, service, method, path, contentType string, query url.Values, credentials application.ObjectStorageCredentials, payload []byte, limit int64) (int, []byte, error) {
-	base, err := url.Parse(endpoint)
-	if err != nil {
-		return 0, nil, err
-	}
-	if strings.TrimSpace(service) == "" {
-		return 0, nil, errors.New("AWS SigV4 service is required")
-	}
-	if path == "" {
-		path = "/"
-	}
-	if limit < 1 {
-		return 0, nil, errors.New("AWS response size limit must be positive")
-	}
-	base.Path = path
-	base.RawQuery = query.Encode()
-	now := time.Now().UTC()
-	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
-	hash := sha256.Sum256(payload)
-	payloadHash := hex.EncodeToString(hash[:])
-	host := base.Host
-	canonicalHeaders := "host:" + host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
-	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
-	canonicalRequest := method + "\n" + base.EscapedPath() + "\n" + base.RawQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
-	scope := dateStamp + "/us-east-1/" + service + "/aws4_request"
-	requestHash := sha256.Sum256([]byte(canonicalRequest))
-	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(requestHash[:])
-	kDate := hmacSHA256([]byte("AWS4"+credentials.SecretAccessKey), dateStamp)
-	kRegion := hmacSHA256(kDate, "us-east-1")
-	kService := hmacSHA256(kRegion, service)
-	kSigning := hmacSHA256(kService, "aws4_request")
-	signature := hex.EncodeToString(hmacSHA256(kSigning, stringToSign))
-	authorization := "AWS4-HMAC-SHA256 Credential=" + credentials.AccessKeyID + "/" + scope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature
-
-	req, err := http.NewRequestWithContext(ctx, method, base.String(), bytes.NewReader(payload))
-	if err != nil {
-		return 0, nil, err
-	}
-	req.Header.Set("X-Amz-Date", amzDate)
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
-	req.Header.Set("Authorization", authorization)
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
-	if err != nil {
-		return resp.StatusCode, nil, err
-	}
-	if int64(len(body)) > limit {
-		return resp.StatusCode, nil, fmt.Errorf("AWS response exceeds recovery limit of %d bytes", limit)
-	}
-	return resp.StatusCode, body, nil
-}
-
-func hmacSHA256(key []byte, value string) []byte {
-	h := hmac.New(sha256.New, key)
-	_, _ = h.Write([]byte(value))
-	return h.Sum(nil)
-}
-
-func escapePath(value string) string {
-	parts := strings.Split(value, "/")
-	for i := range parts {
-		parts[i] = url.PathEscape(parts[i])
-	}
-	return strings.Join(parts, "/")
-}
-
-func parseEnv(data []byte) (map[string]string, error) {
-	values := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || key == "" {
-			return nil, errors.New("invalid SeaweedFS provider environment")
-		}
-		values[key] = value
-	}
-	return values, nil
-}
-
-func writeEnv(path string, values map[string]string) error {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	for _, key := range keys {
-		fmt.Fprintf(&b, "%s=%s\n", key, values[key])
-	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
-		return err
-	}
-	return os.Chmod(path, 0o600)
-}
-
-func allocatePort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port, nil
 }

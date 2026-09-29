@@ -176,7 +176,7 @@ func managedReferenceRewriteValue(kind workloadReferenceRewriteKind, managed map
 
 func materializeManagedServiceReferenceRewrite(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	resolved resolvedApplication,
 	workload application.WorkloadFiles,
 	files application.RuntimeFiles,

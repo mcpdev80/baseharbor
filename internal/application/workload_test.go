@@ -90,6 +90,7 @@ func TestExplicitWorkloadServicesOverrideAutomaticShadowing(t *testing.T) {
 }
 
 func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	root := t.TempDir()
 	composePath := filepath.Join(root, "docker-compose.yml")
 	if err := os.WriteFile(composePath, []byte("services:\n  api:\n    image: alpine\n    networks:\n      - app-internal\nnetworks:\n  app-internal:\n"), 0o644); err != nil {

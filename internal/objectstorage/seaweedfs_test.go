@@ -66,8 +66,10 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	composeText := string(compose)
-	if !strings.Contains(composeText, "server -s3 -iam=true") {
-		t.Fatalf("SeaweedFS IAM is not explicitly enabled:\n%s", composeText)
+	for _, want := range []string{"- server", "- -s3", "- -iam=true"} {
+		if !strings.Contains(composeText, want) {
+			t.Fatalf("SeaweedFS IAM compose missing %q:\n%s", want, composeText)
+		}
 	}
 	if strings.Contains(composeText, "AWS_ACCESS_KEY_ID") || strings.Contains(composeText, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("provider compose contains global S3 credentials:\n%s", composeText)

@@ -145,6 +145,12 @@ func appPlanCommand(store application.Store) *cli.Command {
 				return writeJSON(out, plan)
 			}
 			fmt.Fprintf(out, "Plan for %s (%s)\n", plan.Application, plan.Environment)
+			auth := collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)
+			fmt.Fprintf(out, "Operator access: %s · %s · %s", auth.Mode, auth.Status, auth.Session)
+			if auth.Provider != "" {
+				fmt.Fprintf(out, " · %s", auth.Provider)
+			}
+			fmt.Fprintln(out)
 			for i, action := range plan.Actions {
 				fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
 			}
@@ -166,7 +172,7 @@ func appPreflightCommand(store application.Store) *cli.Command {
 				return err
 			}
 			m := resolved.Manifest
-			var compose bhruntime.Compose
+			var compose bhruntime.RuntimeProvider
 			var platformFiles bhruntime.Files
 			var requiredStatuses []openbao.RequiredSecretStatus
 			var workloadSecurity application.WorkloadSecurityReport
@@ -179,7 +185,7 @@ func appPreflightCommand(store application.Store) *cli.Command {
 				}},
 				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 					var err error
-					compose, err = detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+					compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
 					return err
 				}},
 				{Name: "desired-state plan", Run: func(context.Context) error {

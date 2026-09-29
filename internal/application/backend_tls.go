@@ -48,57 +48,61 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 	if err != nil {
 		return err
 	}
-	for _, instance := range SQLInstanceNames(m) {
-		policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
+	if !UsesSharedPostgreSQL(m) {
+		for _, instance := range SQLInstanceNames(m) {
+			policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			root := backendAccessRoot(files, "postgresql", instance)
+			material, err := serviceaccess.EnsureTLSMaterial(
+				ctx,
+				issuer,
+				policy,
+				filepath.Join(root, "service-access", "pki"),
+				runtimeServiceName("postgres", instance),
+				"127.0.0.1",
+			)
+			if err != nil {
+				return fmt.Errorf("prepare PostgreSQL native TLS for %s: %w", instance, err)
+			}
+			if err := projectPostgresServerMaterial(root, material); err != nil {
+				return fmt.Errorf("project PostgreSQL native TLS for %s: %w", instance, err)
+			}
+			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[postgresTLSCAKey(instance)] = ca
 		}
-		root := backendAccessRoot(files, "postgresql", instance)
-		material, err := serviceaccess.EnsureTLSMaterial(
-			ctx,
-			issuer,
-			policy,
-			filepath.Join(root, "service-access", "pki"),
-			runtimeServiceName("postgres", instance),
-			"127.0.0.1",
-		)
-		if err != nil {
-			return fmt.Errorf("prepare PostgreSQL native TLS for %s: %w", instance, err)
-		}
-		if err := projectPostgresServerMaterial(root, material); err != nil {
-			return fmt.Errorf("project PostgreSQL native TLS for %s: %w", instance, err)
-		}
-		ca, err := projectBackendCA(files, "postgres", instance, material.CA)
-		if err != nil {
-			return err
-		}
-		values[postgresTLSCAKey(instance)] = ca
 	}
-	for _, instance := range CacheInstanceNames(m) {
-		policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
+	if !UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
+			if err != nil {
+				return err
+			}
+			root := backendAccessRoot(files, "valkey", instance)
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
+				ServiceName:      valkeyAccessService(instance),
+				UpstreamHost:     runtimeServiceName("valkey", instance),
+				UpstreamPort:     6379,
+				PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
+				ContainerPort:    6379,
+			})
+			if err != nil {
+				return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
+			}
+			material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+			if err != nil {
+				return err
+			}
+			ca, err := projectBackendCA(files, "valkey", instance, material.CA)
+			if err != nil {
+				return err
+			}
+			values[valkeyTLSCAKey(instance)] = ca
 		}
-		root := backendAccessRoot(files, "valkey", instance)
-		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName:      valkeyAccessService(instance),
-			UpstreamHost:     runtimeServiceName("valkey", instance),
-			UpstreamPort:     6379,
-			PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    6379,
-		})
-		if err != nil {
-			return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
-		}
-		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
-		if err != nil {
-			return err
-		}
-		ca, err := projectBackendCA(files, "valkey", instance, material.CA)
-		if err != nil {
-			return err
-		}
-		values[valkeyTLSCAKey(instance)] = ca
 	}
 	return writeRuntimeEnv(files.Env, m, values)
 }
@@ -196,19 +200,51 @@ type BackendTLSLifecycleObservation struct {
 
 func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLifecycleObservation, error) {
 	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
-	for _, instance := range SQLInstanceNames(m) {
-		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
-		if err != nil {
-			return nil, fmt.Errorf("inspect PostgreSQL TLS lifecycle for %s: %w", instance, err)
+	if !UsesSharedPostgreSQL(m) {
+		for _, instance := range SQLInstanceNames(m) {
+			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
+			if err != nil {
+				return nil, fmt.Errorf("inspect PostgreSQL TLS lifecycle for %s: %w", instance, err)
+			}
+			out = append(out, BackendTLSLifecycleObservation{Kind: "sql", Instance: instance, Lifecycle: lifecycle})
 		}
-		out = append(out, BackendTLSLifecycleObservation{Kind: "sql", Instance: instance, Lifecycle: lifecycle})
 	}
-	for _, instance := range CacheInstanceNames(m) {
-		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "valkey", instance), "service-access", "pki"))
-		if err != nil {
-			return nil, fmt.Errorf("inspect Valkey TLS lifecycle for %s: %w", instance, err)
+	if !UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "valkey", instance), "service-access", "pki"))
+			if err != nil {
+				return nil, fmt.Errorf("inspect Valkey TLS lifecycle for %s: %w", instance, err)
+			}
+			out = append(out, BackendTLSLifecycleObservation{Kind: "cache", Instance: instance, Lifecycle: lifecycle})
 		}
-		out = append(out, BackendTLSLifecycleObservation{Kind: "cache", Instance: instance, Lifecycle: lifecycle})
+	}
+	return out, nil
+}
+
+func InspectSharedBackendTLSLifecycleAt(dataDir, namespace string, m Manifest) ([]BackendTLSLifecycleObservation, error) {
+	if !HasSharedBackends(m) {
+		return nil, nil
+	}
+	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	var out []BackendTLSLifecycleObservation
+	if UsesSharedPostgreSQL(m) {
+		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(shared.Dir, "postgresql", "service-access", "pki"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect shared PostgreSQL TLS lifecycle: %w", err)
+		}
+		for _, instance := range SQLInstanceNames(m) {
+			out = append(out, BackendTLSLifecycleObservation{Kind: "sql", Instance: instance, Lifecycle: lifecycle})
+		}
+	}
+	if UsesSharedValkey(m) {
+		for _, instance := range CacheInstanceNames(m) {
+			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
+			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(root, "service-access", "pki"))
+			if err != nil {
+				return nil, fmt.Errorf("inspect shared Valkey TLS lifecycle for %s: %w", instance, err)
+			}
+			out = append(out, BackendTLSLifecycleObservation{Kind: "cache", Instance: instance, Lifecycle: lifecycle})
+		}
 	}
 	return out, nil
 }

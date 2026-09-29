@@ -70,6 +70,17 @@ func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([
 }
 
 func IssueServiceCertificate(ctx context.Context, executor Executor, files bhruntime.Files, request ServiceCertificateRequest) (ServiceCertificate, error) {
+	var err error
+	request.CommonName, err = canonicalServiceCertificateDNSName(request.CommonName)
+	if err != nil {
+		return ServiceCertificate{}, err
+	}
+	for i, name := range request.DNSNames {
+		request.DNSNames[i], err = canonicalServiceCertificateDNSName(name)
+		if err != nil {
+			return ServiceCertificate{}, err
+		}
+	}
 	if err := validateServiceCertificateRequest(request); err != nil {
 		return ServiceCertificate{}, err
 	}
@@ -196,6 +207,21 @@ func managerToken(ctx context.Context, executor Executor, files bhruntime.Files)
 		return "", fmt.Errorf("authenticate OpenBao manager for service PKI: %w", err)
 	}
 	return token, nil
+}
+
+func canonicalServiceCertificateDNSName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", errors.New("service certificate DNS name is required")
+	}
+	if net.ParseIP(value) != nil {
+		return value, nil
+	}
+	value = strings.TrimSuffix(value, ".")
+	if value == "" || strings.HasSuffix(value, ".") || strings.ContainsAny(value, "\r\n,") {
+		return "", fmt.Errorf("service certificate contains invalid DNS name %q", value)
+	}
+	return strings.ToLower(value), nil
 }
 
 func validateServiceCertificateRequest(request ServiceCertificateRequest) error {

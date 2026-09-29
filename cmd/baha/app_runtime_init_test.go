@@ -39,7 +39,7 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 		TLSMode:         "existing",
 		CertDir:         "/operator/certs",
 		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
-		RuntimeProvider: bhruntime.ProviderCompose,
+		RuntimeProvider: bhruntime.ProviderDocker,
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestRepositoryInitStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=compose\n") {
+	if !strings.Contains(string(data), "BASEHARBOR_RUNTIME_PROVIDER=docker\n") {
 		t.Fatalf("runtime provider missing from init state: %s", data)
 	}
 }
@@ -78,7 +78,7 @@ func TestRuntimeHostnameRoundTripPreservesLiteralDots(t *testing.T) {
 		TLSMode:         "existing",
 		CertDir:         "/operator/certs",
 		TLSDir:          filepath.Join(root, ".baseharbor", "tls"),
-		RuntimeProvider: bhruntime.ProviderCompose,
+		RuntimeProvider: bhruntime.ProviderDocker,
 	}
 	if err := writeRepositoryInitState(root, state); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestRuntimeHostnameRejectsBackslashEscapedDots(t *testing.T) {
 	}
 }
 
-func TestRepositoryInitStateDefaultsLegacyRuntimeProviderToCompose(t *testing.T) {
+func TestRepositoryInitStateDefaultsRuntimeProviderToDocker(t *testing.T) {
 	root := t.TempDir()
 	path := repositoryInitEnvPath(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -121,8 +121,8 @@ func TestRepositoryInitStateDefaultsLegacyRuntimeProviderToCompose(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.RuntimeProvider != bhruntime.ProviderCompose {
-		t.Fatalf("runtime provider = %q, want %q", state.RuntimeProvider, bhruntime.ProviderCompose)
+	if state.RuntimeProvider != bhruntime.ProviderDocker {
+		t.Fatalf("runtime provider = %q, want %q", state.RuntimeProvider, bhruntime.ProviderDocker)
 	}
 }
 
