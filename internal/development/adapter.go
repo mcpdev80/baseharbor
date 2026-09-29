@@ -70,7 +70,6 @@ func (r Registry) Resolve(id string) (Adapter, error) {
 	return adapter, nil
 }
 
-
 func (r Registry) IDs() []string {
 	ids := make([]string, 0, len(r.adapters))
 	for id := range r.adapters {
