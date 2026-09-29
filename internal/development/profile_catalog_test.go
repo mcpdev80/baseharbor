@@ -129,3 +129,15 @@ func TestDerivedProfileCanPersistPlacementOnInheritedComponent(t *testing.T) {
 		t.Fatalf("unexpected inherited placement: %#v", resolved.Profile.Capabilities)
 	}
 }
+
+func TestProfileCatalogRejectsCrossScopeNameCollision(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	repoRoot := t.TempDir()
+	profile := development.BuiltinProfile(goadapter.AdapterID, "go")
+	if _, err := development.SaveProfile(profile, development.ProfileScopeUser, repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := development.LoadProfileCatalog(repoRoot, map[string]development.StackProfile{"go": profile}); err == nil {
+		t.Fatal("cross-scope profile name collision unexpectedly accepted")
+	}
+}
