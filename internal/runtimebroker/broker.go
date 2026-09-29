@@ -47,7 +47,7 @@ func ObservabilityNetworkNameForRuntime(m application.Manifest, files applicatio
 	return ProjectNameForRuntime(m, files) + "-observability"
 }
 
-func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles) (Files, error) {
+func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, openbaoCAPath string) (Files, error) {
 	if !application.RequiresRuntimeBroker(m) {
 		return Files{}, errors.New("application runtime broker requires at least one managed runtime capability")
 	}
@@ -104,7 +104,7 @@ func Ensure(m application.Manifest, appFiles application.RuntimeFiles, mtls open
 	if hasOTLPBinding {
 		otlp = &otlpBinding
 	}
-	content, err := composeYAMLForRuntime(m, appFiles, mtls, tokenProjection, credentialProjection, permissionsPath, serviceTokensPath, image, docsPort, otlp)
+	content, err := composeYAMLForRuntime(m, appFiles, mtls, tokenProjection, credentialProjection, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
 	if err != nil {
 		return Files{}, err
 	}
@@ -350,12 +350,12 @@ func ensureRuntimePermissionsFile(m application.Manifest, appFiles application.R
 	return absolute, nil
 }
 
-func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
-	return composeYAMLForRuntime(m, application.RuntimeFiles{}, mtls, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
+func composeYAML(m application.Manifest, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
+	return composeYAMLForRuntime(m, application.RuntimeFiles{}, mtls, tokenPath, credPath, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
 }
 
-func composeYAMLForRuntime(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
-	config, err := prepareRuntimeBrokerComposeConfig(m, appFiles, mtls, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
+func composeYAMLForRuntime(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (string, error) {
+	config, err := prepareRuntimeBrokerComposeConfig(m, appFiles, mtls, tokenPath, credPath, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort, otlp)
 	if err != nil {
 		return "", err
 	}
