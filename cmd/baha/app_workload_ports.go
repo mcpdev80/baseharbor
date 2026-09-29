@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	workloadPortOverridesFile        = "workload-ports.env"
-	workloadFixedPortOverrideFile    = "workload-fixed-ports.override.yaml"
-	repositoryWorkloadStartTimeout   = 60 * time.Second
-	workloadStartDiagnosticTimeout   = 5 * time.Second
+	workloadPortOverridesFile      = "workload-ports.env"
+	workloadFixedPortOverrideFile  = "workload-fixed-ports.override.yaml"
+	repositoryWorkloadStartTimeout = 60 * time.Second
+	workloadStartDiagnosticTimeout = 5 * time.Second
 )
 
 var (
@@ -606,7 +606,6 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 	}
 	return errors.New("application workload start exhausted host-port retries")
 }
-
 
 func repositoryWorkloadStartTimeoutError(ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles, environment map[string]string, composeFiles []string) error {
 	diagnosticCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workloadStartDiagnosticTimeout)
