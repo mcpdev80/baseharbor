@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -21,8 +22,10 @@ import (
 )
 
 const (
-	workloadPortOverridesFile     = "workload-ports.env"
-	workloadFixedPortOverrideFile = "workload-fixed-ports.override.yaml"
+	workloadPortOverridesFile        = "workload-ports.env"
+	workloadFixedPortOverrideFile    = "workload-fixed-ports.override.yaml"
+	repositoryWorkloadStartTimeout   = 60 * time.Second
+	workloadStartDiagnosticTimeout   = 5 * time.Second
 )
 
 var (
@@ -544,11 +547,17 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 	}
 	const maxAttempts = 4
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := compose.UpProjectFilesSelectedNoBuildProgress(ctx, workload.Project, workload.RepositoryRoot, environment, startServices, func(detail string) {
+		startCtx, cancelStart := context.WithTimeout(ctx, repositoryWorkloadStartTimeout)
+		err := compose.UpProjectFilesSelectedNoBuildProgress(startCtx, workload.Project, workload.RepositoryRoot, environment, startServices, func(detail string) {
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
-		if err == nil {
+		timedOut := errors.Is(startCtx.Err(), context.DeadlineExceeded)
+		cancelStart()
+		if err == nil && !timedOut {
 			return nil
+		}
+		if timedOut {
+			return repositoryWorkloadStartTimeoutError(ctx, compose, workload, environment, composeFiles)
 		}
 		if !bhruntime.IsPortBindingConflict(err) || attempt == maxAttempts {
 			return err
@@ -596,4 +605,30 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 		}
 	}
 	return errors.New("application workload start exhausted host-port retries")
+}
+
+
+func repositoryWorkloadStartTimeoutError(ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles, environment map[string]string, composeFiles []string) error {
+	diagnosticCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workloadStartDiagnosticTimeout)
+	defer cancel()
+	states, err := compose.ServiceStatesProjectFilesEnv(diagnosticCtx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
+	if err != nil {
+		return fmt.Errorf("application workload start did not complete within %s; last runtime state could not be inspected: %v; retry after checking runtime diagnostics", repositoryWorkloadStartTimeout, err)
+	}
+	if len(states) == 0 {
+		return fmt.Errorf("application workload start did not complete within %s; no runtime service state was observable; retry after checking runtime diagnostics", repositoryWorkloadStartTimeout)
+	}
+	var details []string
+	for _, state := range states {
+		detail := state.Service + "=" + strings.ToLower(strings.TrimSpace(state.State))
+		if state.ExitCode != 0 {
+			detail += fmt.Sprintf(" exit_code=%d", state.ExitCode)
+		}
+		if strings.TrimSpace(state.Error) != "" {
+			detail += " error=" + strings.TrimSpace(state.Error)
+		}
+		details = append(details, detail)
+	}
+	sort.Strings(details)
+	return fmt.Errorf("application workload start did not complete within %s; last observed runtime state: %s; retry after resolving the runtime failure or inspect workload logs", repositoryWorkloadStartTimeout, strings.Join(details, ", "))
 }
