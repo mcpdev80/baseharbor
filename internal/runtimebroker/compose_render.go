@@ -258,7 +258,7 @@ func (c runtimeBrokerComposeConfig) writeServiceSecrets(b *strings.Builder) {
 
 func (c runtimeBrokerComposeConfig) writeHealthcheck(b *strings.Builder) {
 	b.WriteString("    healthcheck:\n")
-	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--resolve\", \"baseharbor-runtime:8443:127.0.0.1\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
+	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail-with-body\", \"--silent\", \"--show-error\", \"--resolve\", \"baseharbor-runtime:8443:127.0.0.1\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
 	b.WriteString("      interval: 5s\n")
 	b.WriteString("      timeout: 5s\n")
 	b.WriteString("      retries: 12\n")
