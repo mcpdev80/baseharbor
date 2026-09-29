@@ -216,13 +216,15 @@ networks:
 		"storage-env-internal.network",
 	} {
 		content := got.Files[file]
-		for _, want := range []string{
-			`Environment="XDG_CONFIG_HOME=/tmp/baseharbor-xdg-config"`,
-			`Environment="XDG_DATA_HOME=/tmp/baseharbor-xdg-data"`,
-			`Environment="CONTAINERS_STORAGE_CONF=/tmp/baseharbor-storage.conf"`,
+		if !strings.Contains(content, `Environment="CONTAINERS_STORAGE_CONF=/tmp/baseharbor-storage.conf"`) {
+			t.Fatalf("%s missing Podman storage environment:\n%s", file, content)
+		}
+		for _, forbidden := range []string{
+			"XDG_CONFIG_HOME=/tmp/baseharbor-xdg-config",
+			"XDG_DATA_HOME=/tmp/baseharbor-xdg-data",
 		} {
-			if !strings.Contains(content, want) {
-				t.Fatalf("%s missing Podman process environment %q:\n%s", file, want, content)
+			if strings.Contains(content, forbidden) {
+				t.Fatalf("%s leaked BaseHarbor XDG isolation into Podman storage context %q:\n%s", file, forbidden, content)
 			}
 		}
 	}
