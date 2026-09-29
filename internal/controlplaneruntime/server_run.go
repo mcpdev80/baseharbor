@@ -159,19 +159,19 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		defer cancel()
 		if deps.pool != nil {
 			if err := database.Ping(checkCtx, deps.pool); err != nil {
-				writeNotReady(w)
+				writeNotReady(w, "database")
 				return
 			}
 		}
 		if deps.boundRuntimeClient != nil {
 			if err := deps.boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
-				writeNotReady(w)
+				writeNotReady(w, "openbao")
 				return
 			}
 		}
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
-				writeNotReady(w)
+				writeNotReady(w, "runtime-executor")
 				return
 			}
 		}
