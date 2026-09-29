@@ -238,16 +238,23 @@ func developmentCapabilityKinds(values []string) ([]capability.Kind, error) {
 }
 
 func developmentAdapterID(stack string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(stack)) {
-	case "", "go", goadapter.AdapterID:
-		return goadapter.AdapterID, nil
-	case "nextjs", "next.js", nextjsadapter.AdapterID:
-		return nextjsadapter.AdapterID, nil
-	case "python", pythonadapter.AdapterID:
-		return pythonadapter.AdapterID, nil
-	case "quarkus", quarkusadapter.AdapterID:
-		return quarkusadapter.AdapterID, nil
-	default:
-		return "", usageError("development stack "+stack+" is not available", "Use --stack go, nextjs, python or quarkus.")
+	name := strings.ToLower(strings.TrimSpace(stack))
+	if name == "" {
+		name = "go"
 	}
+	if name == "next.js" {
+		name = "nextjs"
+	}
+	id := name
+	if !strings.HasPrefix(id, "development/") {
+		id = "development/" + id
+	}
+	registry, err := referenceDevelopmentRegistry()
+	if err != nil {
+		return "", err
+	}
+	if _, err := registry.Resolve(id); err != nil {
+		return "", usageError("development stack "+stack+" is not available", "Use 'baha stack list' to see registered stacks and profiles.")
+	}
+	return id, nil
 }
