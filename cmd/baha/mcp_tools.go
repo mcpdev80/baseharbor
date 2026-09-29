@@ -123,7 +123,10 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if name == "" {
 			return machineMCPFailure(usageError("application name is required", "Provide name explicitly."))
 		}
-		var root string
+		var (
+			root string
+			err  error
+		)
 		if strings.TrimSpace(input.Path) != "" {
 			if strings.TrimSpace(input.Directory) != "" {
 				return machineMCPFailure(usageError("path and directory cannot be combined", "Use directory for new clients; path is retained only for MCP compatibility."))
