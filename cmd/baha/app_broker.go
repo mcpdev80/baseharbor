@@ -300,7 +300,31 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	project := runtimebroker.ProjectNameForRuntime(m, files)
-	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect application runtime broker container: %w", err)
+	}
+	brokerFound := false
+	for _, container := range containers {
+		if container.Project != project || container.Service != runtimebroker.ServiceName {
+			continue
+		}
+		brokerFound = true
+		if !container.Running {
+			return errors.New("application runtime broker container is not running")
+		}
+		health := strings.ToLower(strings.TrimSpace(container.Health))
+		if health != "" && health != "healthy" {
+			return fmt.Errorf("application runtime broker container health is %s", health)
+		}
+		break
+	}
+	if !brokerFound {
+		return errors.New("application runtime broker container is missing")
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer probeCancel()
+	out, err := compose.ExecProject(probeCtx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
 		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
 		"--cacert", "/run/baseharbor/identity/ca.pem",
