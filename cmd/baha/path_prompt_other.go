@@ -13,7 +13,7 @@ func promptDirectoryPath(reader *bufio.Reader, out io.Writer, label string) (str
 
 func promptDirectoryPathFrom(reader *bufio.Reader, out io.Writer, label, base string, input io.Reader) (string, error) {
 	if readerIsTerminal(input) {
-		if err := writePathPromptContext(out); err != nil {
+		if err := writePathPromptContextFrom(out, base); err != nil {
 			return "", err
 		}
 	}
