@@ -36,8 +36,9 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := development.StackProfile{
-		SchemaVersion: development.StackProfileVersion,
-		Name:          "go-api",
+		APIVersion: development.StackProfileAPIVersion,
+		Kind:       development.StackProfileKind,
+		Metadata:    development.ProfileMetadata{Name: "go-api"},
 		Components:    []development.Component{{ID: "app", Role: "backend", Adapter: AdapterID}},
 	}
 	actions, err := (Adapter{}).Plan(contract, profile, profile.Components[0])
@@ -53,8 +54,9 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 
 func TestGoAdapterBootstrapIsEcosystemNative(t *testing.T) {
 	profile := development.StackProfile{
-		SchemaVersion: development.StackProfileVersion,
-		Name:          "go-api",
+		APIVersion: development.StackProfileAPIVersion,
+		Kind:       development.StackProfileKind,
+		Metadata:    development.ProfileMetadata{Name: "go-api"},
 		Components:    []development.Component{{ID: "app", Role: "backend", Adapter: AdapterID}},
 	}
 	contract := application.PortableContract{
