@@ -23,6 +23,8 @@ func DefaultEngine() Engine {
 		sqlDetector{},
 		keyValueDetector{},
 		objectStorageDetector{},
+		httpExposureDetector{},
+		secretsDetector{},
 		openMetricsDetector{},
 		otlpDetector{},
 		runtimeAPIDetector{},
