@@ -518,3 +518,33 @@ secrets:
 		t.Fatalf("long-form secret target missing %q:\n%s", want, unit)
 	}
 }
+
+func TestRenderComposeProjectQuadletsUsesResolvedWorkloadPortEnvironment(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  app:
+    image: docker.io/library/alpine:3.22
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectFilesQuadletsEnv(
+		[]string{compose},
+		"",
+		map[string]string{"HTTP_PORT": "8082"},
+		"workload-port-fallback",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["workload-port-fallback-app.container"]
+	if !strings.Contains(unit, "PublishPort=8082:8080") {
+		t.Fatalf("resolved workload port fallback was not rendered into Quadlet:\n%s", unit)
+	}
+	if strings.Contains(unit, "PublishPort=8080:8080") {
+		t.Fatalf("Compose default port leaked through despite resolved fallback:\n%s", unit)
+	}
+}
