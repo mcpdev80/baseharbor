@@ -236,6 +236,7 @@ func TestComposeYAMLUsesNonRootPreparedRuntimeOperationVolume(t *testing.T) {
 		mtls,
 		write("runtime-token"),
 		"",
+		"",
 		write("permissions.json"),
 		write("service-tokens.json"),
 		"baseharbor-runtime:test",
@@ -287,6 +288,7 @@ func TestComposeYAMLSharedOnlyBackendsOwnBrokerNetwork(t *testing.T) {
 		files,
 		mtls,
 		write("runtime-token"),
+		"",
 		"",
 		write("permissions.json"),
 		write("service-tokens.json"),
@@ -362,6 +364,7 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 		mtls,
 		write("runtime-token"),
 		write("openbao.env"),
+		write("openbao-ca.pem"),
 		write("permissions.json"),
 		write("service-tokens.json"),
 		"baseharbor-runtime:test",
@@ -373,7 +376,10 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 	}
 	if !strings.Contains(got, "--resolve") ||
 		!strings.Contains(got, "baseharbor-runtime:8443:127.0.0.1") ||
-		!strings.Contains(got, "https://baseharbor-runtime:8443/readyz") {
+		!strings.Contains(got, "https://baseharbor-runtime:8443/readyz") ||
+		!strings.Contains(got, "BASEHARBOR_RUNTIME_OPENBAO_URL: \"https://openbao:8200\"") ||
+		!strings.Contains(got, "BASEHARBOR_RUNTIME_OPENBAO_CA_FILE: \"/run/baseharbor/openbao/ca.pem\"") ||
+		!strings.Contains(got, "/run/baseharbor/openbao/ca.pem:ro") {
 		t.Fatalf("broker healthcheck is not DNS-independent while preserving TLS hostname:\n%s", got)
 	}
 }
