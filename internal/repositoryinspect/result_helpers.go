@@ -38,7 +38,7 @@ func isDependencyFile(base string) bool {
 	switch base {
 	case "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
 		"go.mod", "go.sum", "pyproject.toml", "requirements.txt", "poetry.lock",
-		"cargo.toml", "cargo.lock":
+		"cargo.toml", "cargo.lock", "pom.xml", "build.gradle", "build.gradle.kts", "gradle.properties":
 		return true
 	default:
 		return false
@@ -47,7 +47,7 @@ func isDependencyFile(base string) bool {
 
 func isSourceFile(base string) bool {
 	switch strings.ToLower(filepath.Ext(base)) {
-	case ".go", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
+	case ".go", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java":
 		return true
 	default:
 		return false
