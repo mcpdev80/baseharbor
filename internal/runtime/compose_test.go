@@ -25,10 +25,10 @@ fi
 
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
 	printf '%s\n' \
-	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy' \
-	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true|' \
-	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy' \
-	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false|'
+	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true||running|0|' \
+	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false||exited|0|'
 	exit 0
 fi
 
@@ -87,5 +87,37 @@ func TestFirstRuntimeLabelPrefersDockerAndFallsBackToPodman(t *testing.T) {
 				t.Fatalf("firstRuntimeLabel(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestListRuntimeContainersCapturesTerminalStartEvidence(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	script := `#!/bin/sh
+set -eu
+if [ "$1" = "container" ] && [ "$2" = "ls" ]; then
+	printf '%s\n' failed1
+	exit 0
+fi
+if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
+	printf '%s\n' '/demo-app|baseharbor-demo-dev|<no value>|demo-app|<no value>|false||created|128|failed to set up container networking: port is already allocated'
+	exit 0
+fi
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	compose := Compose{command: runtimePath}
+	containers, err := compose.ListRuntimeContainers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers) != 1 {
+		t.Fatalf("containers = %#v", containers)
+	}
+	got := containers[0]
+	if got.State != "created" || got.ExitCode != 128 || !strings.Contains(got.Error, "port is already allocated") {
+		t.Fatalf("terminal evidence lost: %#v", got)
 	}
 }

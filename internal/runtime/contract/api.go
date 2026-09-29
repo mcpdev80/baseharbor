@@ -84,11 +84,14 @@ type ProjectResource struct {
 }
 
 type RuntimeContainer struct {
-	Name    string
-	Project string
-	Service string
-	Running bool
-	Health  string
+	Name     string
+	Project  string
+	Service  string
+	Running  bool
+	State    string
+	Health   string
+	ExitCode int
+	Error    string
 }
 
 type ImageIdentity struct {
@@ -108,7 +111,20 @@ type ServiceState struct {
 	Service    string
 	State      string
 	Health     string
+	ExitCode   int
+	Error      string
 	Publishers []PublishedPort
+}
+
+func (s ServiceState) TerminalFailure() bool {
+	state := strings.ToLower(strings.TrimSpace(s.State))
+	if strings.TrimSpace(s.Error) != "" {
+		return true
+	}
+	if state == "exited" || state == "dead" {
+		return true
+	}
+	return state != "running" && s.ExitCode != 0
 }
 
 func (s ServiceState) Ready() bool {

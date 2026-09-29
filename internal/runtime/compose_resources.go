@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -320,7 +321,7 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	args := []string{
 		"container", "inspect", "--format",
-		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`,
+		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
 	}
 	args = append(args, ids...)
 	inspected, err := c.directOutput(ctx, args...)
@@ -330,8 +331,8 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	var result []RuntimeContainer
 	for _, line := range strings.Split(inspected, "\n") {
-		parts := strings.Split(strings.TrimSpace(line), "|")
-		if len(parts) != 7 {
+		parts := strings.SplitN(strings.TrimSpace(line), "|", 10)
+		if len(parts) != 10 {
 			continue
 		}
 		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
@@ -340,12 +341,16 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 		if name == "" || project == "" || service == "" {
 			continue
 		}
+		exitCode, _ := strconv.Atoi(strings.TrimSpace(parts[8]))
 		result = append(result, RuntimeContainer{
-			Name:    name,
-			Project: project,
-			Service: service,
-			Running: strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
-			Health:  strings.TrimSpace(parts[6]),
+			Name:     name,
+			Project:  project,
+			Service:  service,
+			Running:  strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
+			Health:   strings.TrimSpace(parts[6]),
+			State:    strings.TrimSpace(parts[7]),
+			ExitCode: exitCode,
+			Error:    strings.TrimSpace(parts[9]),
 		})
 	}
 	return result, nil
