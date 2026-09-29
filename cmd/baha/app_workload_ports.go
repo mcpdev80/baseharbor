@@ -119,6 +119,20 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 	return nil
 }
 
+func mergeResolvedRepositoryWorkloadPorts(environment map[string]string, resolved resolvedApplication, files application.RuntimeFiles) error {
+	// Resolve persisted values from lower to higher precedence:
+	// legacy workload override < deployment init.env < explicit process env.
+	// Both merge helpers deliberately skip variables explicitly provided by
+	// the operator process environment.
+	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+		return err
+	}
+	if err := mergeRepositoryDeploymentWorkloadPorts(environment, resolved); err != nil {
+		return err
+	}
+	return nil
+}
+
 func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resolved resolvedApplication) error {
 	if !resolved.FromRepository {
 		return nil
