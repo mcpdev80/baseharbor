@@ -295,10 +295,7 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 	if environment == nil {
 		environment = map[string]string{}
 	}
-	if err := mergeRepositoryDeploymentWorkloadPorts(environment, resolved); err != nil {
-		return nil, err
-	}
-	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
 		return nil, err
 	}
 	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
@@ -312,7 +309,7 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 
 func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
-	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
 		return nil, err
 	}
 	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
