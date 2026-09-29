@@ -395,7 +395,6 @@ func quadletRenderServiceHealth(unit *strings.Builder, serviceName string, servi
 	if len(service.Healthcheck.Test) == 0 {
 		return nil
 	}
-	unit.WriteString("Notify=healthy\n")
 	health, err := renderQuadletHealthCommand(service.Healthcheck.Test)
 	if err != nil {
 		return fmt.Errorf("Compose service %q healthcheck: %w", serviceName, err)
