@@ -104,7 +104,10 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 			actual = project + "_" + name
 		}
 		unit := quadletResourceUnitBase(project, name, actual)
-		result.Files[unit+".volume"] = "[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n"
+		var b strings.Builder
+		b.WriteString("[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n")
+		quadletRenderPodmanProcessEnvironment(&b)
+		result.Files[unit+".volume"] = b.String()
 	}
 
 	for name, network := range model.Networks {
@@ -123,6 +126,7 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 		if network.Internal {
 			b.WriteString("Internal=true\n")
 		}
+		quadletRenderPodmanProcessEnvironment(&b)
 		result.Files[unit+".network"] = b.String()
 	}
 }
@@ -202,10 +206,14 @@ func quadletRenderServiceImage(result *QuadletProject, composePath, project, ser
 	if dockerfile == "" {
 		dockerfile = "Dockerfile"
 	}
-	result.Files[unitBase+".build"] = fmt.Sprintf(
-		"[Unit]\nDescription=BaseHarbor Quadlet build for %s/%s\n\n[Build]\nImageTag=localhost/%s:quadlet\nSetWorkingDirectory=%s\nFile=%s\n\n[Service]\nTimeoutStartSec=900\n",
+	var build strings.Builder
+	fmt.Fprintf(&build,
+		"[Unit]\nDescription=BaseHarbor Quadlet build for %s/%s\n\n[Build]\nImageTag=localhost/%s:quadlet\nSetWorkingDirectory=%s\nFile=%s\n",
 		project, serviceName, unitBase, systemdEscapeValue(contextDir), systemdEscapeValue(dockerfile),
 	)
+	build.WriteString("\n[Service]\nTimeoutStartSec=900\n")
+	quadletRenderPodmanProcessEnvironmentEntries(&build)
+	result.Files[unitBase+".build"] = build.String()
 	return unitBase + ".build", nil
 }
 
@@ -490,8 +498,36 @@ func quadletRenderServiceLogging(unit *strings.Builder, service quadletComposeSe
 	}
 }
 
+func quadletRenderPodmanProcessEnvironment(unit *strings.Builder) {
+	var entries strings.Builder
+	quadletRenderPodmanProcessEnvironmentEntries(&entries)
+	if entries.Len() == 0 {
+		return
+	}
+	unit.WriteString("\n[Service]\n")
+	unit.WriteString(entries.String())
+}
+
+func quadletRenderPodmanProcessEnvironmentEntries(unit *strings.Builder) {
+	for _, key := range []string{
+		"XDG_CONFIG_HOME",
+		"XDG_DATA_HOME",
+		"CONTAINERS_STORAGE_CONF",
+		"CONTAINERS_REGISTRIES_CONF",
+		"STORAGE_DRIVER",
+		"STORAGE_OPTS",
+	} {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		fmt.Fprintf(unit, "Environment=%q\n", systemdEscapeValue(key+"="+value))
+	}
+}
+
 func quadletRenderServiceRestart(unit *strings.Builder, service quadletComposeService) error {
 	unit.WriteString("\n[Service]\nTimeoutStartSec=900\n")
+	quadletRenderPodmanProcessEnvironmentEntries(unit)
 	switch strings.ToLower(strings.TrimSpace(service.Restart)) {
 	case "always", "unless-stopped":
 		unit.WriteString("Restart=always\n")
