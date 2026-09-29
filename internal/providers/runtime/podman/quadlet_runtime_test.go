@@ -3,6 +3,7 @@ package podman
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -166,5 +167,36 @@ func TestQuadletChangedServiceUnitsDetectsDefinitionAndEnvironmentChanges(t *tes
 	}
 	if len(units) != 1 || units[0] != "baseharbor-demo-api.service" {
 		t.Fatalf("changed units = %#v, want api service only", units)
+	}
+}
+
+
+func TestQuadletRemoveRuntimeResourceArgsDoesNotForceNetworks(t *testing.T) {
+	got := quadletRemoveRuntimeResourceArgs("network", "shared-net")
+	want := []string{"network", "rm", "shared-net"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("network remove args = %#v, want %#v", got, want)
+	}
+}
+
+func TestQuadletRemoveRuntimeResourceArgsStillForcesVolumes(t *testing.T) {
+	got := quadletRemoveRuntimeResourceArgs("volume", "data")
+	want := []string{"volume", "rm", "-f", "data"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("volume remove args = %#v, want %#v", got, want)
+	}
+}
+
+func TestQuadletNetworkResourceInUseRecognizesPodmanErrors(t *testing.T) {
+	for _, message := range []string{
+		`Error: "demo" has associated containers with it. Use -f to forcibly delete containers and pods: network is being used`,
+		"network demo has active endpoints",
+	} {
+		if !quadletNetworkResourceInUse(message) {
+			t.Fatalf("expected in-use network error to be recognized: %q", message)
+		}
+	}
+	if quadletNetworkResourceInUse("network not found") {
+		t.Fatal("unrelated network error must not be ignored")
 	}
 }
