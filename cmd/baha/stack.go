@@ -106,8 +106,8 @@ func stackShowCommand() *cli.Command {
 			}
 			if format == outputJSON {
 				return writeJSON(out, map[string]any{
-					"scope": entry.Scope,
-					"path": entry.Path,
+					"scope":   entry.Scope,
+					"path":    entry.Path,
 					"sources": resolved.Sources,
 					"profile": resolved.Profile,
 				})
