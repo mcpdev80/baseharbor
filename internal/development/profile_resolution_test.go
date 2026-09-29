@@ -10,24 +10,24 @@ func TestResolveStackProfileChildOverridesParent(t *testing.T) {
 	catalog := ProfileCatalog{
 		"team/base": {
 			APIVersion: StackProfileAPIVersion,
-			Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "team/base"},
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "team/base"},
 			Components: []Component{{ID: "app", Role: "backend", Adapter: "development/go"}},
 			Capabilities: []CapabilityPreference{{
-				Capability: capability.SQL,
-				Components: []string{"app"},
+				Capability:             capability.SQL,
+				Components:             []string{"app"},
 				DevelopmentIntegration: "pgx",
 			}},
 		},
 		"team/custom": {
 			APIVersion: StackProfileAPIVersion,
-			Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "team/custom"},
-			Extends: []string{"team/base"},
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "team/custom"},
+			Extends:    []string{"team/base"},
 			Components: []Component{{ID: "app", Role: "backend", Adapter: "development/quarkus"}},
 			Capabilities: []CapabilityPreference{{
-				Capability: capability.SQL,
-				Components: []string{"app"},
+				Capability:             capability.SQL,
+				Components:             []string{"app"},
 				DevelopmentIntegration: "quarkus-jdbc-postgresql",
 			}},
 		},
@@ -48,18 +48,18 @@ func TestResolveStackProfileRejectsParentConflict(t *testing.T) {
 	catalog := ProfileCatalog{
 		"a": {
 			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "a"},
+			Metadata:   ProfileMetadata{Name: "a"},
 			Components: []Component{{ID: "app", Role: "backend", Adapter: "development/go"}},
 		},
 		"b": {
 			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "b"},
+			Metadata:   ProfileMetadata{Name: "b"},
 			Components: []Component{{ID: "app", Role: "backend", Adapter: "development/python"}},
 		},
 		"c": {
 			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
 			Metadata: ProfileMetadata{Name: "c"},
-			Extends: []string{"a", "b"},
+			Extends:  []string{"a", "b"},
 		},
 	}
 	if _, err := ResolveStackProfile("c", catalog); err == nil {
