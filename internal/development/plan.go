@@ -31,10 +31,10 @@ type Action struct {
 }
 
 type DevelopmentPlan struct {
-	SchemaVersion string              `json:"schema_version"`
-	Application   string              `json:"application"`
-	Profile       string              `json:"profile"`
-	Actions       []Action            `json:"actions"`
+	SchemaVersion string   `json:"schema_version"`
+	Application   string   `json:"application"`
+	Profile       string   `json:"profile"`
+	Actions       []Action `json:"actions"`
 }
 
 func BuildPlan(contract application.PortableContract, profile StackProfile, adapters Registry) (DevelopmentPlan, error) {
