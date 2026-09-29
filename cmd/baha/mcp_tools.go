@@ -11,6 +11,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/nextjsadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/quarkusadapter"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -131,7 +134,7 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		registry, err := development.NewRegistry(goadapter.Adapter{})
+		registry, err := development.NewRegistry(goadapter.Adapter{}, nextjsadapter.Adapter{}, pythonadapter.Adapter{}, quarkusadapter.Adapter{})
 		if err != nil {
 			return machineMCPFailure(err)
 		}
