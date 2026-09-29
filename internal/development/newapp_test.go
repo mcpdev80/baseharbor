@@ -22,9 +22,9 @@ func (bootstrapAdapter) Plan(_ application.PortableContract, _ StackProfile, com
 }
 func (bootstrapAdapter) Bootstrap(_ DevelopmentPlan, _ Component) ([]GeneratedFile, error) {
 	return []GeneratedFile{{
-		Path: "main.go",
+		Path:    "main.go",
 		Content: []byte("package main\n\nimport \"net/http\"\n\nfunc main() { _ = http.ListenAndServe(\":8080\", http.NewServeMux()) }\n"),
-		Mode: 0o644,
+		Mode:    0o644,
 	}}, nil
 }
 func (bootstrapAdapter) Validate(string, application.PortableContract, Component) (Validation, error) {
