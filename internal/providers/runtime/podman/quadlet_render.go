@@ -350,6 +350,9 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 		}
 
 		spec := actual
+		if !network.External {
+			spec = quadletResourceUnitBase(project, networkName, actual) + ".network"
+		}
 		for _, alias := range aliases {
 			spec += ":alias=" + alias
 		}
