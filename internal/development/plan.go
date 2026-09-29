@@ -87,7 +87,6 @@ func BuildPlan(contract application.PortableContract, profile StackProfile, adap
 	return plan, nil
 }
 
-
 func contractForComponent(contract application.PortableContract, profile StackProfile, componentID string) application.PortableContract {
 	filtered := contract
 	filtered.Capabilities = make([]application.CapabilityRequirement, 0, len(contract.Capabilities))
