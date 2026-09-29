@@ -18,20 +18,22 @@ import (
 )
 
 type appNewOptions struct {
-	Name         string
-	Environment  string
-	Stack        string
-	Capabilities []capability.Kind
-	Secrets      []string
-	Output       cliOutputFormat
-	EmitBackstage bool
+	Name               string
+	Environment        string
+	Stack              string
+	Capabilities       []capability.Kind
+	Secrets            []string
+	Output             cliOutputFormat
+	EmitBackstage      bool
+	BackstageOwner     string
+	BackstageLifecycle string
 }
 
 func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [--emit-backstage] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			options, err := parseAppNewOptions(args)
@@ -59,7 +61,9 @@ func appNewCommand() *cli.Command {
 				Adapter:      adapterID,
 				Capabilities: options.Capabilities,
 				Secrets:      options.Secrets,
-				EmitBackstage: options.EmitBackstage,
+				EmitBackstage:      options.EmitBackstage,
+				BackstageOwner:     options.BackstageOwner,
+				BackstageLifecycle: options.BackstageLifecycle,
 			}, registry)
 			if err != nil {
 				return err
@@ -123,7 +127,7 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			for _, kind := range []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP} {
 				addCapability(kind)
 			}
-		case "--environment", "-e", "--stack", "--require-secret", "--output", "-o":
+		case "--environment", "-e", "--stack", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
 			if i+1 >= len(args) {
 				return appNewOptions{}, usageError(arg+" requires a value", "Run 'baha app new --help' for usage.")
 			}
@@ -140,6 +144,10 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 				}
 				options.Secrets = append(options.Secrets, value)
 				addCapability(capability.Secrets)
+			case "--backstage-owner":
+				options.BackstageOwner = value
+			case "--backstage-lifecycle":
+				options.BackstageLifecycle = value
 			case "--output", "-o":
 				if value != "json" {
 					return appNewOptions{}, usageError("unsupported output format "+value, "Use --output json.")
@@ -158,6 +166,9 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 	}
 	if len(options.Capabilities) == 0 {
 		addCapability(capability.ExposureHTTP)
+	}
+	if options.EmitBackstage && strings.TrimSpace(options.BackstageOwner) == "" {
+		return appNewOptions{}, usageError("--emit-backstage requires --backstage-owner", "Provide the Backstage owner explicitly; BaseHarbor never infers portal ownership.")
 	}
 	return options, nil
 }
