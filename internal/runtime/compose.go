@@ -84,7 +84,26 @@ func (c Compose) DestroyProject(ctx context.Context, project, composeFile, envFi
 
 func (c Compose) DestroyProjectRemoveOrphans(ctx context.Context, project, composeFile, envFile string) error {
 	if consolidatedProject(project) {
-		return c.DestroyProject(ctx, project, composeFile, envFile)
+		resources, err := c.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			return fmt.Errorf("inventory owned project resources before full destroy: %w", err)
+		}
+		if err := c.DestroyOwnedProjectResources(ctx, project, resources); err != nil {
+			return fmt.Errorf("destroy owned project resources: %w", err)
+		}
+		remaining, err := c.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			return fmt.Errorf("verify owned project resources after full destroy: %w", err)
+		}
+		if len(remaining) != 0 {
+			var names []string
+			for _, resource := range remaining {
+				names = append(names, resource.Kind+" "+resource.Name)
+			}
+			sort.Strings(names)
+			return fmt.Errorf("owned project resources remain after full destroy: %s", strings.Join(names, ", "))
+		}
+		return nil
 	}
 	return c.runProject(ctx, project, composeFile, envFile, "down", "--volumes", "--remove-orphans")
 }
