@@ -13,7 +13,8 @@ import (
 type NewApplicationRequest struct {
 	Name               string            `json:"name"`
 	Environment        string            `json:"environment,omitempty"`
-	Adapter            string            `json:"adapter"`
+	Adapter            string            `json:"adapter,omitempty"`
+	Profile            *StackProfile     `json:"profile,omitempty"`
 	Capabilities       []capability.Kind `json:"capabilities"`
 	Secrets            []string          `json:"secrets,omitempty"`
 	EmitBackstage      bool              `json:"emit_backstage,omitempty"`
@@ -39,13 +40,30 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	if environment == "" {
 		environment = "dev"
 	}
-	adapterID := strings.TrimSpace(request.Adapter)
-	if adapterID == "" {
-		return BootstrapResult{}, fmt.Errorf("development adapter is required")
-	}
-	adapter, err := registry.Resolve(adapterID)
-	if err != nil {
-		return BootstrapResult{}, err
+	var profile StackProfile
+	if request.Profile != nil {
+		profile = *request.Profile
+		if err := profile.Validate(); err != nil {
+			return BootstrapResult{}, fmt.Errorf("stack profile: %w", err)
+		}
+	} else {
+		adapterID := strings.TrimSpace(request.Adapter)
+		if adapterID == "" {
+			return BootstrapResult{}, fmt.Errorf("development adapter or stack profile is required")
+		}
+		if _, err := registry.Resolve(adapterID); err != nil {
+			return BootstrapResult{}, err
+		}
+		profile = StackProfile{
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "generated/" + strings.TrimPrefix(adapterID, "development/")},
+			Components: []Component{{
+				ID:      "app",
+				Role:    "application",
+				Adapter: adapterID,
+			}},
+		}
 	}
 
 	manifest := application.Manifest{
@@ -54,7 +72,7 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		Environment: environment,
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
-			Services: []string{"app"},
+			Services: profileComponentIDs(profile),
 		},
 	}
 	seen := map[capability.Kind]struct{}{}
@@ -92,29 +110,16 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		return BootstrapResult{}, err
 	}
 	for _, requirement := range contract.Capabilities {
-		if !adapter.Supports(requirement) {
-			return BootstrapResult{}, fmt.Errorf("development adapter %q does not support %s", adapterID, requirement.Kind)
+		if err := validateProfileCapabilitySupport(profile, requirement, registry); err != nil {
+			return BootstrapResult{}, err
 		}
 	}
 
-	profile := StackProfile{
-		APIVersion: StackProfileAPIVersion,
-		Kind:       StackProfileKind,
-		Metadata:   ProfileMetadata{Name: "generated/" + strings.TrimPrefix(adapterID, "development/")},
-		Components: []Component{{
-			ID:      "app",
-			Role:    "application",
-			Adapter: adapterID,
-		}},
-	}
 	plan, err := BuildPlan(contract, profile, registry)
 	if err != nil {
 		return BootstrapResult{}, err
 	}
-	files, err := adapter.Bootstrap(plan, profile.Components[0])
-	if err != nil {
-		return BootstrapResult{}, err
-	}
+	var files []GeneratedFile
 	files = append(files, GeneratedFile{
 		Path:    application.RepositoryManifestName,
 		Content: []byte(manifest.YAML()),
@@ -173,7 +178,15 @@ func CreateApplication(root string, request NewApplicationRequest, registry Regi
 	}
 	bootstrap.Plan = project.Plan
 	bootstrap.FilePaths = append([]string(nil), project.Files...)
-	validation := project.Validations[bootstrap.Profile.Components[0].ID]
+	validation := Validation{Satisfied: project.Satisfied, Capabilities: map[capability.Kind]bool{}}
+	for _, componentValidation := range project.Validations {
+		for kind, satisfied := range componentValidation.Capabilities {
+			if current, exists := validation.Capabilities[kind]; !exists || satisfied {
+				validation.Capabilities[kind] = current || satisfied
+			}
+		}
+		validation.Diagnostics = append(validation.Diagnostics, componentValidation.Diagnostics...)
+	}
 	return CreationResult{BootstrapResult: bootstrap, Validation: validation}, nil
 }
 
@@ -212,6 +225,55 @@ func WriteGeneratedFiles(root string, files []GeneratedFile) error {
 		if err := os.WriteFile(target, file.Content, mode); err != nil {
 			return fmt.Errorf("write generated file %s: %w", file.Path, err)
 		}
+	}
+	return nil
+}
+
+
+func profileComponentIDs(profile StackProfile) []string {
+	ids := make([]string, 0, len(profile.Components))
+	for _, component := range profile.Components {
+		ids = append(ids, component.ID)
+	}
+	return ids
+}
+
+func validateProfileCapabilitySupport(profile StackProfile, requirement capability.Requirement, registry Registry) error {
+	var preferred []string
+	for _, preference := range profile.Capabilities {
+		if preference.Capability == requirement.Kind {
+			preferred = append(preferred, preference.Components...)
+		}
+	}
+	if len(preferred) > 0 {
+		for _, componentID := range preferred {
+			for _, component := range profile.Components {
+				if component.ID != componentID {
+					continue
+				}
+				adapter, err := registry.Resolve(component.Adapter)
+				if err != nil {
+					return err
+				}
+				if !adapter.Supports(requirement) {
+					return fmt.Errorf("stack profile component %q adapter %q does not support %s", component.ID, component.Adapter, requirement.Kind)
+				}
+			}
+		}
+		return nil
+	}
+	var supporting []string
+	for _, component := range profile.Components {
+		adapter, err := registry.Resolve(component.Adapter)
+		if err != nil {
+			return err
+		}
+		if adapter.Supports(requirement) {
+			supporting = append(supporting, component.ID)
+		}
+	}
+	if len(supporting) == 0 {
+		return fmt.Errorf("stack profile %q has no component that supports %s", profile.Metadata.Name, requirement.Kind)
 	}
 	return nil
 }
