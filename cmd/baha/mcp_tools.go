@@ -9,6 +9,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -115,6 +117,53 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 }
 
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
+	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
+		_ = ctx
+		path := strings.TrimSpace(input.Path)
+		if path == "" {
+			path = "."
+		}
+		adapterID, err := developmentAdapterID(input.Stack)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		capabilities, err := developmentCapabilityKinds(input.Capabilities)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		registry, err := development.NewRegistry(goadapter.Adapter{})
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := development.CreateApplication(path, development.NewApplicationRequest{
+			Name:         strings.TrimSpace(input.Name),
+			Environment:  strings.TrimSpace(input.Environment),
+			Adapter:      adapterID,
+			Capabilities: capabilities,
+			Secrets:      append([]string(nil), input.Secrets...),
+		}, registry)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, struct {
+			ContractVersion string                      `json:"contract_version"`
+			Application     string                      `json:"application"`
+			Environment     string                      `json:"environment"`
+			Profile         development.StackProfile    `json:"profile"`
+			DevelopmentPlan development.DevelopmentPlan `json:"development_plan"`
+			Files           []string                    `json:"files"`
+			Validation      development.Validation      `json:"validation"`
+		}{
+			ContractVersion: machine.ContractVersion,
+			Application:     result.Manifest.Name,
+			Environment:     result.Manifest.Environment,
+			Profile:         result.Profile,
+			DevelopmentPlan: result.Plan,
+			Files:           result.FilePaths,
+			Validation:      result.Validation,
+		}, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
