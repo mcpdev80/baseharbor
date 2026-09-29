@@ -84,6 +84,11 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 			add(development.ActionBinding, r.Kind, "OTEL_EXPORTER_OTLP_ENDPOINT", "")
 		}
 	}
+	if contract.Secrets.Managed {
+		for _, secret := range contract.Secrets.Required {
+			add(development.ActionBinding, capability.Secrets, secret.Name, "")
+		}
+	}
 	return actions, nil
 }
 
