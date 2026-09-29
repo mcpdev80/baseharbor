@@ -12,16 +12,16 @@ import (
 )
 
 type NewApplicationRequest struct {
-	Name               string            `json:"name"`
-	Environment        string            `json:"environment,omitempty"`
-	Adapter            string            `json:"adapter,omitempty"`
-	Profile            *StackProfile     `json:"profile,omitempty"`
-	Capabilities       []capability.Kind `json:"capabilities"`
-	Secrets            []string          `json:"secrets,omitempty"`
-	EmitBackstage      bool              `json:"emit_backstage,omitempty"`
-	BackstageOwner     string            `json:"backstage_owner,omitempty"`
-	BackstageLifecycle      string        `json:"backstage_lifecycle,omitempty"`
-	RepositoryStackProfile *StackProfile `json:"repository_stack_profile,omitempty"`
+	Name                   string            `json:"name"`
+	Environment            string            `json:"environment,omitempty"`
+	Adapter                string            `json:"adapter,omitempty"`
+	Profile                *StackProfile     `json:"profile,omitempty"`
+	Capabilities           []capability.Kind `json:"capabilities"`
+	Secrets                []string          `json:"secrets,omitempty"`
+	EmitBackstage          bool              `json:"emit_backstage,omitempty"`
+	BackstageOwner         string            `json:"backstage_owner,omitempty"`
+	BackstageLifecycle     string            `json:"backstage_lifecycle,omitempty"`
+	RepositoryStackProfile *StackProfile     `json:"repository_stack_profile,omitempty"`
 }
 
 type BootstrapResult struct {
