@@ -115,7 +115,8 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	}); err != nil {
 		return fmt.Errorf("register runtime broker observability: %w", err)
 	}
-	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles)
+	openbaoCAPath := filepath.Join(filepath.Dir(platformFiles.Compose), "providers", "openbao", "runtime", "ca.pem")
+	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles, openbaoCAPath)
 	if err != nil {
 		return fmt.Errorf("materialize application runtime broker: %w", err)
 	}
