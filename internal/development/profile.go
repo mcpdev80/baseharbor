@@ -8,7 +8,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
-const StackProfileVersion = "baseharbor.stack-profile/v1"
+const (
+	StackProfileAPIVersion = "baseharbor.dev/v1"
+	StackProfileKind       = "StackProfile"
+)
 
 type Component struct {
 	ID      string `json:"id" yaml:"id"`
@@ -23,50 +26,58 @@ type CapabilityPreference struct {
 	DevelopmentIntegration   string          `json:"development_integration,omitempty" yaml:"development-integration,omitempty"`
 }
 
+type ProfileMetadata struct {
+	Name string `json:"name" yaml:"name"`
+}
+
 type StackProfile struct {
-	SchemaVersion string                 `json:"schema_version" yaml:"apiVersion"`
-	Name          string                 `json:"name" yaml:"name"`
-	Extends       []string               `json:"extends,omitempty" yaml:"extends,omitempty"`
+	APIVersion   string                 `json:"api_version" yaml:"apiVersion"`
+	Kind         string                 `json:"kind" yaml:"kind"`
+	Metadata     ProfileMetadata        `json:"metadata" yaml:"metadata"`
+	Extends      []string               `json:"extends,omitempty" yaml:"extends,omitempty"`
 	Components    []Component            `json:"components" yaml:"components"`
 	Capabilities  []CapabilityPreference `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
 }
 
 func (p StackProfile) Validate() error {
-	if p.SchemaVersion != StackProfileVersion {
-		return fmt.Errorf("stack profile schema version %q is unsupported; expected %q", p.SchemaVersion, StackProfileVersion)
+	if p.APIVersion != StackProfileAPIVersion {
+		return fmt.Errorf("stack profile apiVersion %q is unsupported; expected %q", p.APIVersion, StackProfileAPIVersion)
 	}
-	if strings.TrimSpace(p.Name) == "" {
-		return fmt.Errorf("stack profile name is required")
+	if p.Kind != StackProfileKind {
+		return fmt.Errorf("stack profile kind %q is unsupported; expected %q", p.Kind, StackProfileKind)
+	}
+	if strings.TrimSpace(p.Metadata.Name) == "" {
+		return fmt.Errorf("stack profile metadata.name is required")
 	}
 	if len(p.Components) == 0 {
-		return fmt.Errorf("stack profile %q requires at least one development component", p.Name)
+		return fmt.Errorf("stack profile %q requires at least one development component", p.Metadata.Name)
 	}
 	components := map[string]struct{}{}
 	for _, component := range p.Components {
 		id := strings.TrimSpace(component.ID)
 		if id == "" || strings.TrimSpace(component.Role) == "" || strings.TrimSpace(component.Adapter) == "" {
-			return fmt.Errorf("stack profile %q has incomplete component %#v", p.Name, component)
+			return fmt.Errorf("stack profile %q has incomplete component %#v", p.Metadata.Name, component)
 		}
 		if _, exists := components[id]; exists {
-			return fmt.Errorf("stack profile %q component %q is declared more than once", p.Name, id)
+			return fmt.Errorf("stack profile %q component %q is declared more than once", p.Metadata.Name, id)
 		}
 		components[id] = struct{}{}
 	}
 	seenCapabilities := map[string]struct{}{}
 	for _, preference := range p.Capabilities {
 		if preference.Capability == "" {
-			return fmt.Errorf("stack profile %q capability preference requires capability", p.Name)
+			return fmt.Errorf("stack profile %q capability preference requires capability", p.Metadata.Name)
 		}
 		componentIDs := append([]string(nil), preference.Components...)
 		sort.Strings(componentIDs)
 		key := string(preference.Capability) + ":" + strings.Join(componentIDs, ",")
 		if _, exists := seenCapabilities[key]; exists {
-			return fmt.Errorf("stack profile %q capability preference %q is declared more than once", p.Name, key)
+			return fmt.Errorf("stack profile %q capability preference %q is declared more than once", p.Metadata.Name, key)
 		}
 		seenCapabilities[key] = struct{}{}
 		for _, component := range preference.Components {
 			if _, exists := components[component]; !exists {
-				return fmt.Errorf("stack profile %q capability %q references unknown component %q", p.Name, preference.Capability, component)
+				return fmt.Errorf("stack profile %q capability %q references unknown component %q", p.Metadata.Name, preference.Capability, component)
 			}
 		}
 	}
