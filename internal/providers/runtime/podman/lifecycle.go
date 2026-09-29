@@ -144,6 +144,19 @@ func (p PodmanProvider) DiagnosticsProject(ctx context.Context, project, compose
 				fmt.Fprintf(&b, "Quadlet unit %s:\n%s\n", unit, strings.TrimSpace(unitStatus))
 			}
 		}
+		services := make([]string, 0, len(q.Containers))
+		for service := range q.Containers {
+			services = append(services, service)
+		}
+		sort.Strings(services)
+		for _, service := range services {
+			container := q.Containers[service]
+			cmd := exec.CommandContext(ctx, p.CommandPath(), "inspect", "--format", "{{json .State.Health}}", container)
+			cmd.Env = runtimeCommandEnv(p.CommandPath())
+			if health, err := cmd.CombinedOutput(); err == nil && strings.TrimSpace(string(health)) != "" {
+				fmt.Fprintf(&b, "Podman health %s:\n%s\n", service, strings.TrimSpace(string(health)))
+			}
+		}
 	}
 	if logsErr != nil {
 		fmt.Fprintf(&b, "Quadlet logs failed: %v\n", logsErr)
