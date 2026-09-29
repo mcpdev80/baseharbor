@@ -35,8 +35,8 @@ type StackProfile struct {
 	Kind         string                 `json:"kind" yaml:"kind"`
 	Metadata     ProfileMetadata        `json:"metadata" yaml:"metadata"`
 	Extends      []string               `json:"extends,omitempty" yaml:"extends,omitempty"`
-	Components    []Component            `json:"components" yaml:"components"`
-	Capabilities  []CapabilityPreference `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	Components   []Component            `json:"components" yaml:"components"`
+	Capabilities []CapabilityPreference `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
 }
 
 func (p StackProfile) Validate() error {
