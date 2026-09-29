@@ -5,65 +5,65 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"go.yaml.in/yaml/v3"
-)
-
-const (
-	BackstageAPIVersion       = "backstage.io/v1alpha1"
-	BackstageKind             = "Component"
-	DefaultBackstageLifecycle = "experimental"
 )
 
 type BackstageCatalogOptions struct {
-	Owner     string
-	Lifecycle string
+	Owner     string `json:"owner"`
+	Lifecycle string `json:"lifecycle,omitempty"`
 }
 
-type backstageCatalog struct {
-	APIVersion string                   `yaml:"apiVersion"`
-	Kind       string                   `yaml:"kind"`
-	Metadata   backstageCatalogMetadata `yaml:"metadata"`
-	Spec       backstageCatalogSpec     `yaml:"spec"`
-}
-
-type backstageCatalogMetadata struct {
-	Name        string            `yaml:"name"`
-	Annotations map[string]string `yaml:"annotations,omitempty"`
-}
-
-type backstageCatalogSpec struct {
-	Type      string `yaml:"type"`
-	Lifecycle string `yaml:"lifecycle"`
-	Owner     string `yaml:"owner"`
+func (o BackstageCatalogOptions) Validate() error {
+	if strings.TrimSpace(o.Owner) == "" {
+		return fmt.Errorf("Backstage owner is required when catalog metadata emission is enabled")
+	}
+	switch strings.TrimSpace(o.Lifecycle) {
+	case "", "experimental", "production", "deprecated":
+		return nil
+	default:
+		return fmt.Errorf("unsupported Backstage lifecycle %q", o.Lifecycle)
+	}
 }
 
 func RenderBackstageCatalog(manifest application.Manifest, options BackstageCatalogOptions) (string, error) {
-	owner := strings.TrimSpace(options.Owner)
-	if owner == "" {
-		return "", fmt.Errorf("Backstage owner is required when catalog emission is enabled")
+	if err := options.Validate(); err != nil {
+		return "", err
 	}
 	lifecycle := strings.TrimSpace(options.Lifecycle)
 	if lifecycle == "" {
-		lifecycle = DefaultBackstageLifecycle
+		lifecycle = "experimental"
 	}
-	catalog := backstageCatalog{
-		APIVersion: BackstageAPIVersion,
-		Kind:       BackstageKind,
-		Metadata: backstageCatalogMetadata{
-			Name: manifest.Name,
-			Annotations: map[string]string{
-				"baseharbor.dev/application-contract": application.RepositoryManifestName,
-			},
-		},
-		Spec: backstageCatalogSpec{
-			Type:      "service",
-			Lifecycle: lifecycle,
-			Owner:     owner,
-		},
+	var b strings.Builder
+	b.WriteString("apiVersion: backstage.io/v1alpha1\n")
+	b.WriteString("kind: Component\n")
+	b.WriteString("metadata:\n")
+	fmt.Fprintf(&b, "  name: %s\n", sanitizeCatalogName(manifest.Name))
+	b.WriteString("  annotations:\n")
+	fmt.Fprintf(&b, "    baseharbor.dev/application: %s\n", sanitizeCatalogName(manifest.Name))
+	b.WriteString("spec:\n")
+	b.WriteString("  type: service\n")
+	fmt.Fprintf(&b, "  lifecycle: %s\n", lifecycle)
+	fmt.Fprintf(&b, "  owner: %s\n", strings.TrimSpace(options.Owner))
+	return b.String(), nil
+}
+
+func sanitizeCatalogName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
 	}
-	data, err := yaml.Marshal(catalog)
-	if err != nil {
-		return "", fmt.Errorf("encode Backstage catalog metadata: %w", err)
+	result := strings.Trim(b.String(), "-")
+	if result == "" {
+		return "application"
 	}
-	return string(data), nil
+	return result
 }
