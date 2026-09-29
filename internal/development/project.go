@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"go.yaml.in/yaml/v3"
 )
@@ -260,7 +261,7 @@ func allDeclaredCapabilitiesSatisfied(result repositoryinspect.Result) bool {
 
 func renderMultiComponentCompose(profile StackProfile, sources map[string][]byte) ([]byte, error) {
 	services := map[string]any{}
-	for index, component := range profile.Components {
+	for _, component := range profile.Components {
 		data, ok := sources[component.ID]
 		if !ok {
 			return nil, fmt.Errorf("component %q adapter did not generate compose.yaml", component.ID)
@@ -297,7 +298,7 @@ func renderMultiComponentCompose(profile StackProfile, sources map[string][]byte
 			}
 			service["build"] = build
 		}
-		if index > 0 {
+		if !profileCapabilityAppliesToComponent(profile, capability.ExposureHTTP, component.ID) {
 			delete(service, "ports")
 		}
 		services[component.ID] = service
