@@ -21,8 +21,8 @@ const (
 
 type ProfileEntry struct {
 	Profile StackProfile `json:"profile"`
-	Scope ProfileScope `json:"scope"`
-	Path string `json:"path,omitempty"`
+	Scope   ProfileScope `json:"scope"`
+	Path    string       `json:"path,omitempty"`
 }
 
 type ProfileCatalogEntries map[string]ProfileEntry
@@ -30,8 +30,8 @@ type ProfileCatalogEntries map[string]ProfileEntry
 func BuiltinProfile(adapterID, name string) StackProfile {
 	return StackProfile{
 		APIVersion: StackProfileAPIVersion,
-		Kind: StackProfileKind,
-		Metadata: ProfileMetadata{Name: name},
+		Kind:       StackProfileKind,
+		Metadata:   ProfileMetadata{Name: name},
 		Components: []Component{{ID: "app", Role: "application", Adapter: adapterID}},
 	}
 }
