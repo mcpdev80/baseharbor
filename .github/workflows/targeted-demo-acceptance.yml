@@ -272,6 +272,7 @@ jobs:
             fi
 
             if [ "$runtime" = "podman" ]; then
+              export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               systemctl --user list-units --all --plain --no-legend 'bh-*.service' >"$diagnostics/systemd-units.txt" 2>&1 || true
               mapfile -t units < <(systemctl --user list-units --all --plain --no-legend 'bh-*.service' 2>/dev/null | awk '{print $1}')
               for unit in "${units[@]}"; do
