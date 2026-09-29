@@ -9,10 +9,34 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
+
+func TestProviderComposeYAMLIsValidYAML(t *testing.T) {
+	placement := Placement{
+		Scope:   capability.ScopeShared,
+		Project: "bh-local-shared",
+		Volume:  "baseharbor-prometheus-data",
+	}
+	registrations := []sourceRegistration{
+		{Application: "demo", Environment: "dev", Network: "baseharbor-demo-dev-metrics"},
+	}
+	text := providerComposeYAMLWithProviderNetworks(
+		placement,
+		registrations,
+		[]string{"baseharbor-local-telemetry"},
+		false,
+	)
+
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &document); err != nil {
+		t.Fatalf("Prometheus compose is invalid YAML: %v\n%s", err, text)
+	}
+}
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
