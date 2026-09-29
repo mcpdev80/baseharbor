@@ -138,6 +138,7 @@ func rootCommand() *cli.Command {
 			},
 		},
 		providerCommand(),
+		stackCommand(),
 		targetCommand(),
 		devCommand(),
 		configCommand(),
