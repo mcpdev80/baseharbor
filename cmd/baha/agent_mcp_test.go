@@ -177,12 +177,14 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		}
 		for _, tc := range cases {
 			t.Run(tc.stack, func(t *testing.T) {
-				root := filepath.Join(t.TempDir(), "greenfield")
+				parent := t.TempDir()
+				name := "agent-" + tc.stack
+				root := filepath.Join(parent, name)
 				result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 					Name: "baseharbor.app.new",
 					Arguments: map[string]any{
-						"path":         root,
-						"name":         "agent-" + tc.stack,
+						"directory":    parent,
+						"name":         name,
 						"stack":        tc.stack,
 						"capabilities": []string{"exposure.http", "database.sql", "cache.key-value", "object-storage.s3", "secrets", "telemetry.otlp"},
 						"secrets":      []string{"APP_SECRET"},
