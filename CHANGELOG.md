@@ -45,6 +45,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
 - Fresh repository `baha up` now rejects an existing/stale OpenBao recovery output path before creating or mutating control-plane resources and gives an explicit `--recovery-file` remediation.
 - Workload readiness no longer equates a running container with READY: health checks, HTTP/TLS probes or TCP listener probes provide positive readiness evidence, while workers without a readiness signal are reported RUNNING/UNVERIFIED.
+- Rootless Podman Quadlet networking now uses native `NetworkAlias=` semantics for managed and external networks, preserving managed `.network` references and restoring DNS for runtime-executor, metrics and workload routes.
+- Podman shared-network teardown now preserves networks with active consumers instead of forcibly deleting sibling connectivity.
+- Podman candidate-image build/verification and Quadlet execution now share the same rootless storage context.
+- Podman service-state observation reads published port bindings from the running container so workload HTTP/TLS readiness can be positively verified instead of remaining RUNNING/UNVERIFIED.
 
 ### Security
 
