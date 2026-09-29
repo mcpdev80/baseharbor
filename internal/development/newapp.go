@@ -16,6 +16,7 @@ type NewApplicationRequest struct {
 	Adapter      string            `json:"adapter"`
 	Capabilities []capability.Kind `json:"capabilities"`
 	Secrets      []string          `json:"secrets,omitempty"`
+	EmitBackstage bool              `json:"emit_backstage,omitempty"`
 }
 
 type BootstrapResult struct {
@@ -117,6 +118,13 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		Content: []byte(manifest.YAML()),
 		Mode:    0o644,
 	})
+	if request.EmitBackstage {
+		files = append(files, GeneratedFile{
+			Path:    "catalog-info.yaml",
+			Content: []byte(RenderBackstageCatalog(manifest, contract)),
+			Mode:    0o644,
+		})
+	}
 	paths := make([]string, 0, len(files))
 	for _, file := range files {
 		paths = append(paths, file.Path)
