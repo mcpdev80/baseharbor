@@ -20,7 +20,7 @@ type appNewOptions struct {
 	Stack        string
 	Capabilities []capability.Kind
 	Secrets      []string
-	Output       outputFormat
+	Output       cliOutputFormat
 }
 
 func appNewCommand() *cli.Command {
