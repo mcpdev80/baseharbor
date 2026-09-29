@@ -47,6 +47,11 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 	if err != nil {
 		return ProjectResult{}, fmt.Errorf("resolve project root: %w", err)
 	}
+	_, statErr := os.Stat(root)
+	rootExisted := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return ProjectResult{}, statErr
+	}
 	if err := ensureEmptyProjectRoot(root); err != nil {
 		return ProjectResult{}, err
 	}
@@ -79,8 +84,19 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 	}
 	rollback := true
 	defer func() {
-		if rollback {
+		if !rollback {
+			return
+		}
+		if !rootExisted {
 			_ = os.RemoveAll(root)
+			return
+		}
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			_ = os.RemoveAll(filepath.Join(root, entry.Name()))
 		}
 	}()
 
