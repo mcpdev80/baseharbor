@@ -14,8 +14,8 @@ import (
 type ProfileScope string
 
 const (
-	ProfileScopeBuiltin ProfileScope = "built-in"
-	ProfileScopeUser ProfileScope = "user"
+	ProfileScopeBuiltin    ProfileScope = "built-in"
+	ProfileScopeUser       ProfileScope = "user"
 	ProfileScopeRepository ProfileScope = "repository"
 )
 
