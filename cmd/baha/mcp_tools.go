@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"io"
 	"strings"
 
@@ -122,9 +123,26 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if name == "" {
 			return machineMCPFailure(usageError("application name is required", "Provide name explicitly."))
 		}
-		root, err := resolveNewApplicationRoot(name, input.Directory)
-		if err != nil {
-			return machineMCPFailure(err)
+		var root string
+		if strings.TrimSpace(input.Path) != "" {
+			if strings.TrimSpace(input.Directory) != "" {
+				return machineMCPFailure(usageError("path and directory cannot be combined", "Use directory for new clients; path is retained only for MCP compatibility."))
+			}
+			root, err = expandUserPath(input.Path)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			if !filepath.IsAbs(root) {
+				root, err = filepath.Abs(root)
+				if err != nil {
+					return machineMCPFailure(err)
+				}
+			}
+		} else {
+			root, err = resolveNewApplicationRoot(name, input.Directory)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
 		}
 		capabilities, err := developmentCapabilityKinds(input.Capabilities)
 		if err != nil {
