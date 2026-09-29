@@ -99,29 +99,29 @@ func parseProviderInitArgs(args []string) (string, string, cliOutputFormat, erro
 			format = outputJSON
 		case arg == "-o" || arg == "--output":
 			if i+1 >= len(args) || args[i+1] != "json" {
-				return "", "", "", "", usageError(arg+" requires json", "Use -o json.")
+				return "", "", "", usageError(arg+" requires json", "Use -o json.")
 			}
 			i++
 			format = outputJSON
 		case arg == "--path":
 			if i+1 >= len(args) {
-				return "", "", "", "", usageError("--path requires DIR", "Example: --path ./my-provider")
+				return "", "", "", usageError("--path requires DIR", "Example: --path ./my-provider")
 			}
 			i++
 			root = args[i]
 		case strings.HasPrefix(arg, "--path="):
 			root = strings.TrimPrefix(arg, "--path=")
 		case strings.HasPrefix(arg, "-"):
-			return "", "", "", "", usageError("unknown provider init option "+arg, "Run 'baha provider init --help' for usage.")
+			return "", "", "", usageError("unknown provider init option "+arg, "Run 'baha provider init --help' for usage.")
 		default:
 			if id != "" {
-				return "", "", "", "", usageError("baha provider init accepts one provider ID", "Example: baha provider init example/postgresql")
+				return "", "", "", usageError("baha provider init accepts one provider ID", "Example: baha provider init example/postgresql")
 			}
 			id = arg
 		}
 	}
 	if strings.TrimSpace(id) == "" {
-		return "", "", "", "", usageError("provider ID is required", "Use namespace/name, for example example/postgresql.")
+		return "", "", "", usageError("provider ID is required", "Use namespace/name, for example example/postgresql.")
 	}
 	if strings.TrimSpace(root) == "" {
 		parts := strings.Split(id, "/")
