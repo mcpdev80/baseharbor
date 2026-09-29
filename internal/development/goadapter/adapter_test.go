@@ -38,7 +38,7 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 	profile := development.StackProfile{
 		APIVersion: development.StackProfileAPIVersion,
 		Kind:       development.StackProfileKind,
-		Metadata:    development.ProfileMetadata{Name: "go-api"},
+		Metadata:   development.ProfileMetadata{Name: "go-api"},
 		Components:    []development.Component{{ID: "app", Role: "backend", Adapter: AdapterID}},
 	}
 	actions, err := (Adapter{}).Plan(contract, profile, profile.Components[0])
