@@ -15,6 +15,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
+type greenfieldCapabilityChoice struct {
+	kind  capability.Kind
+	label string
+}
+
 type guidedStackSelection struct {
 	RawProfile      *development.StackProfile
 	Effective       development.StackProfile
@@ -307,11 +312,7 @@ func guidedCreateStackProfile(reader *bufio.Reader, out io.Writer, catalog devel
 }
 
 func guidedGreenfieldCapabilities(reader *bufio.Reader, out io.Writer, profile development.StackProfile, registry development.Registry) ([]capability.Kind, []string, development.StackProfile, error) {
-	type choice struct {
-		kind  capability.Kind
-		label string
-	}
-	candidates := []choice{
+	candidates := []greenfieldCapabilityChoice{
 		{capability.ExposureHTTP, "HTTP"},
 		{capability.SQL, "SQL"},
 		{capability.KeyValue, "Cache"},
@@ -319,7 +320,7 @@ func guidedGreenfieldCapabilities(reader *bufio.Reader, out io.Writer, profile d
 		{capability.Secrets, "Managed Secrets"},
 		{capability.TelemetryOTLP, "Traces / OTLP"},
 	}
-	var available []choice
+	var available []greenfieldCapabilityChoice
 	for _, candidate := range candidates {
 		if profileSupportsKind(profile, registry, candidate.kind) {
 			available = append(available, candidate)
@@ -489,10 +490,7 @@ func parseNumberSet(value string, max int) (map[int]bool, error) {
 	return result, nil
 }
 
-func defaultCapabilitySelection(available []struct {
-	kind capability.Kind
-	label string
-}) string {
+func defaultCapabilitySelection(available []greenfieldCapabilityChoice) string {
 	for i, item := range available {
 		if item.kind == capability.ExposureHTTP {
 			return strconv.Itoa(i + 1)
