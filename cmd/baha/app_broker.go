@@ -262,16 +262,61 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	}); err != nil {
 		return fmt.Errorf("start runtime provider executor: %w", err)
 	}
-	services, err := compose.RunningServicesProject(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env)
-	if err != nil {
-		return fmt.Errorf("inspect runtime provider executor: %w", err)
+	if err := waitRuntimeProviderExecutorReady(ctx, compose, executorFiles, 75*time.Second); err != nil {
+		return err
 	}
-	for _, service := range services {
-		if service == runtimeexecutor.ServiceName {
-			return nil
+	return nil
+}
+
+func waitRuntimeProviderExecutorReady(ctx context.Context, compose bhruntime.RuntimeProvider, files runtimeexecutor.Files, timeout time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var lastState string
+	for {
+		containers, err := compose.ListRuntimeContainers(waitCtx)
+		if err == nil {
+			found := false
+			for _, container := range containers {
+				if container.Project != files.Project || container.Service != runtimeexecutor.ServiceName {
+					continue
+				}
+				found = true
+				if !container.Running {
+					lastState = "container is not running"
+					break
+				}
+				health := strings.ToLower(strings.TrimSpace(container.Health))
+				switch health {
+				case "healthy":
+					return nil
+				case "unhealthy":
+					lastState = "healthcheck is unhealthy"
+				default:
+					lastState = "healthcheck is " + strings.TrimSpace(container.Health)
+					if health == "" {
+						lastState = "healthcheck has no status yet"
+					}
+				}
+				break
+			}
+			if !found {
+				lastState = "container is missing"
+			}
+		} else {
+			lastState = err.Error()
+		}
+
+		select {
+		case <-waitCtx.Done():
+			details := strings.TrimSpace(compose.DiagnosticsProject(context.Background(), files.Project, files.Compose, files.Env))
+			if details != "" {
+				return fmt.Errorf("runtime provider executor is not ready (%s); runtime diagnostics:\n%s", lastState, details)
+			}
+			return fmt.Errorf("runtime provider executor is not ready (%s)", lastState)
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return errors.New("runtime provider executor is not running")
 }
 
 func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
