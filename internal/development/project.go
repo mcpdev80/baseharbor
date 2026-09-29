@@ -25,6 +25,7 @@ type ProjectResult struct {
 	Files         []string                 `json:"files"`
 	Inspection    repositoryinspect.Result `json:"inspection"`
 	Satisfied     bool                     `json:"satisfied"`
+	Validations   map[string]Validation    `json:"validations,omitempty"`
 }
 
 func BootstrapProject(root string, manifest application.Manifest, profile StackProfile, registry Registry) (ProjectResult, error) {
@@ -134,6 +135,7 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		return ProjectResult{}, fmt.Errorf("inspect generated project: %w", err)
 	}
 	satisfied := allDeclaredCapabilitiesSatisfied(inspection)
+	validations := make(map[string]Validation, len(profile.Components))
 	for _, component := range profile.Components {
 		adapter, err := registry.Resolve(component.Adapter)
 		if err != nil {
@@ -143,6 +145,7 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		if err != nil {
 			return ProjectResult{}, fmt.Errorf("validate component %q: %w", component.ID, err)
 		}
+		validations[component.ID] = validation
 		if !validation.Satisfied {
 			satisfied = false
 		}
@@ -156,6 +159,7 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		Files:         files,
 		Inspection:    inspection,
 		Satisfied:     satisfied,
+		Validations:   validations,
 	}
 	if !result.Satisfied {
 		return ProjectResult{}, fmt.Errorf("generated project does not satisfy declared application contract")
