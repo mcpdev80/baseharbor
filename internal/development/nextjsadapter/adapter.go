@@ -56,31 +56,31 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 	add := func(k development.ActionKind, c capability.Kind, name, value string) {
 		actions = append(actions, development.Action{Kind:k, Component:component.ID, Capability:c, Name:name, Value:value})
 	}
-	add(development.ActionBuild, "", "node", "22")
+	add(development.ActionBuild, "", "node", "24")
 	add(development.ActionHealth, capability.ExposureHTTP, "health", "/healthz")
 	for _, r := range contract.Capabilities {
 		if !a.Supports(r) { return nil, fmt.Errorf("Next.js adapter does not support %s", r.Kind) }
 		switch r.Kind {
 		case capability.ExposureHTTP:
-			add(development.ActionDependency, r.Kind, "next", "^15.5.4")
-			add(development.ActionDependency, r.Kind, "react", "^19.1.1")
-			add(development.ActionDependency, r.Kind, "react-dom", "^19.1.1")
+			add(development.ActionDependency, r.Kind, "next", "16.3.7")
+			add(development.ActionDependency, r.Kind, "react", "19.3.0")
+			add(development.ActionDependency, r.Kind, "react-dom", "19.3.0")
 			add(development.ActionBinding, r.Kind, "PORT", "3000")
 		case capability.SQL:
-			add(development.ActionDependency, r.Kind, "pg", "^8.16.3")
+			add(development.ActionDependency, r.Kind, "pg", "8.23.0")
 			add(development.ActionBinding, r.Kind, "DATABASE_URL", "")
 		case capability.KeyValue:
-			add(development.ActionDependency, r.Kind, "ioredis", "^5.7.0")
+			add(development.ActionDependency, r.Kind, "redis", "6.2.1")
 			add(development.ActionBinding, r.Kind, "REDIS_URL", "")
 		case capability.ObjectStorageS3:
-			add(development.ActionDependency, r.Kind, "@aws-sdk/client-s3", "^3.896.0")
+			add(development.ActionDependency, r.Kind, "@aws-sdk/client-s3", "3.1142.0")
 			add(development.ActionBinding, r.Kind, "S3_ENDPOINT", "")
 			add(development.ActionBinding, r.Kind, "S3_BUCKET", "")
 		case capability.Secrets:
 			for _, s := range contract.Secrets.Required { add(development.ActionBinding, r.Kind, s.Name, "") }
 		case capability.TelemetryOTLP:
-			add(development.ActionDependency, r.Kind, "@opentelemetry/api", "^1.9.0")
-			add(development.ActionDependency, r.Kind, "@opentelemetry/sdk-node", "^0.205.0")
+			add(development.ActionDependency, r.Kind, "@opentelemetry/api", "1.9.1")
+			add(development.ActionDependency, r.Kind, "@opentelemetry/sdk-node", "0.222.0")
 			add(development.ActionBinding, r.Kind, "OTEL_EXPORTER_OTLP_ENDPOINT", "")
 		}
 	}
@@ -138,7 +138,7 @@ func capabilitySource(bindings map[string]struct{}) string {
 }
 
 func dockerfile() string {
-	return "FROM node:22-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:22-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 3000\nCMD [\"npm\",\"start\"]\n"
+	return "FROM node:24-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:24-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 3000\nCMD [\"npm\",\"start\"]\n"
 }
 
 func compose() string {
