@@ -10,10 +10,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/development"
-	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/nextjsadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/quarkusadapter"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -122,11 +118,11 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
 		_ = ctx
-		path := strings.TrimSpace(input.Path)
-		if path == "" {
-			path = "."
+		name := strings.TrimSpace(input.Name)
+		if name == "" {
+			return machineMCPFailure(usageError("application name is required", "Provide name explicitly."))
 		}
-		adapterID, err := developmentAdapterID(input.Stack)
+		root, err := resolveNewApplicationRoot(name, input.Directory)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -134,14 +130,36 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		registry, err := development.NewRegistry(goadapter.Adapter{}, nextjsadapter.Adapter{}, pythonadapter.Adapter{}, quarkusadapter.Adapter{})
+		registry, err := referenceDevelopmentRegistry()
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := development.CreateApplication(path, development.NewApplicationRequest{
-			Name:               strings.TrimSpace(input.Name),
+		var adapterID string
+		var profile *development.StackProfile
+		if strings.TrimSpace(input.StackProfile) != "" {
+			if strings.TrimSpace(input.Stack) != "" {
+				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
+			}
+			catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			resolved, err := development.ResolveStackProfile(input.StackProfile, development.ProfileMap(catalog))
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			profile = &resolved.Profile
+		} else {
+			adapterID, err = developmentAdapterID(input.Stack)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+		}
+		result, err := development.CreateApplication(root, development.NewApplicationRequest{
+			Name:               name,
 			Environment:        strings.TrimSpace(input.Environment),
 			Adapter:            adapterID,
+			Profile:            profile,
 			Capabilities:       capabilities,
 			Secrets:            append([]string(nil), input.Secrets...),
 			EmitBackstage:      input.EmitBackstage,
