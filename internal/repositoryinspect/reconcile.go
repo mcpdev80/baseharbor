@@ -126,6 +126,12 @@ func findingMatchesIntent(finding Finding, intent CapabilityIntent) bool {
 	if finding.Name == "" {
 		return true
 	}
+	if finding.Capability == "telemetry.otlp" && intent.Name == "default" {
+		switch finding.Name {
+		case "traces", "metrics", "logs":
+			return true
+		}
+	}
 	return finding.Name == intent.Name
 }
 
