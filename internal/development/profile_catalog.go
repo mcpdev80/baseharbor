@@ -102,6 +102,9 @@ func loadProfileDirectory(result ProfileCatalogEntries, root string, scope Profi
 		if err := profile.Validate(); err != nil {
 			return fmt.Errorf("validate stack profile %s: %w", path, err)
 		}
+		if existing, exists := result[profile.Metadata.Name]; exists {
+			return fmt.Errorf("stack profile %q is defined in both %s and %s scope; rename one profile to make ownership explicit", profile.Metadata.Name, existing.Scope, scope)
+		}
 		result[profile.Metadata.Name] = ProfileEntry{Profile: profile, Scope: scope, Path: path}
 	}
 	return nil
