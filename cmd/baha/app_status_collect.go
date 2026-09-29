@@ -393,6 +393,7 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 			checkCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 			client, checkErr = serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
 			if checkErr == nil {
+				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.AdminURL, "/")
 			}
 			cancel()

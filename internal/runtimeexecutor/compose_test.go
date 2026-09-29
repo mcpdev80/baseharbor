@@ -33,6 +33,12 @@ func TestComposeYAMLUsesNonRootPreparedStateVolume(t *testing.T) {
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",
+		"healthcheck:",
+		"https://baseharbor-runtime-executor:9443/readyz",
+		"--cert",
+		"/run/baseharbor/observability/client-cert.pem",
+		"--key",
+		"/run/secrets/observer-client-key",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runtime executor compose missing %q:\n%s", want, got)

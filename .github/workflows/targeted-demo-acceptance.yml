@@ -215,7 +215,12 @@ jobs:
           git -C "$WORKDIR" checkout --detach FETCH_HEAD
           test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
           cd "$WORKDIR"
-          if [ "$DEMO_GATE" = "release-focused" ]; then
+          if [ "$DEMO_GATE" = "full" ]; then
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash scripts/acceptance.sh
+          elif [ "$DEMO_GATE" = "release-focused" ]; then
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
               BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
               ARTIFACT_DIR="$ARTIFACT_DIR" \
@@ -238,15 +243,51 @@ jobs:
 
           if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             runtime="${{ steps.target.outputs.runtime }}"
+            export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+            export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+            export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
             diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
             mkdir -p "$diagnostics"
 
-            "$runtime" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-            "$runtime" ps -a --format '{{.Names}}\t{{.Ports}}' | grep -E '(^|[[:space:]])(baseharbor-|bh-)|127\.0\.0\.1:443->' >"$diagnostics/baseharbor-ports.tsv" 2>&1 || true
+            runtime_cmd() {
+              if [ "$runtime" = "podman" ]; then
+                env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman "$@"
+              else
+                docker "$@"
+              fi
+            }
 
-            mapfile -t ids < <("$runtime" ps -aq 2>/dev/null || true)
+            runtime_cmd ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
+            runtime_cmd ps -a --format '{{.Names}}\t{{.Ports}}' | grep -E '(^|[[:space:]])(baseharbor-|bh-)|127\.0\.0\.1:443->' >"$diagnostics/baseharbor-ports.tsv" 2>&1 || true
+            runtime_cmd network ls >"$diagnostics/networks.txt" 2>&1 || true
+
+            worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
+            export BASEHARBOR_TARGET="demo-$worker_id"
+            baha_bin="$RUNNER_TEMP/baseharbor-demo-targeted-repo/.tools/bin/baha"
+            if [ -x "$baha_bin" ]; then
+              (
+                cd "$RUNNER_TEMP/baseharbor-demo-targeted-repo"
+                "$baha_bin" doctor --verbose
+              ) >"$diagnostics/baha-doctor-verbose.txt" 2>&1 || true
+            fi
+
+            if [ "$runtime" = "podman" ]; then
+              export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+              systemctl --user list-units --all --plain --no-legend 'bh-*.service' >"$diagnostics/systemd-units.txt" 2>&1 || true
+              mapfile -t units < <(systemctl --user list-units --all --plain --no-legend 'bh-*.service' 2>/dev/null | awk '{print $1}')
+              for unit in "${units[@]}"; do
+                [ -n "$unit" ] || continue
+                safe_unit="${unit//\//_}"
+                systemctl --user status --no-pager --full "$unit" >"$diagnostics/$safe_unit.status.txt" 2>&1 || true
+                journalctl --user --unit "$unit" --no-pager --lines 300 --output cat \
+                  | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
+                  >"$diagnostics/$safe_unit.journal.txt" 2>&1 || true
+              done
+            fi
+
+            mapfile -t ids < <(runtime_cmd ps -aq 2>/dev/null || true)
             for id in "${ids[@]}"; do
-              meta=$("$runtime" inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "$id" 2>/dev/null || true)
+              meta=$(runtime_cmd inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "$id" 2>/dev/null || true)
               IFS='|' read -r name docker_project podman_project <<< "$meta"
               name="${name#/}"
               project="$docker_project"
@@ -256,9 +297,9 @@ jobs:
                 *) continue ;;
               esac
               [ -n "$name" ] || name="$id"
-              "$runtime" inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
-              "$runtime" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
-              "$runtime" logs --tail 300 "$id" \
+              runtime_cmd inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
+              runtime_cmd inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
+              runtime_cmd logs --tail 300 "$id" \
                 | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
                 >"$diagnostics/$name.log" 2>&1 || true
             done

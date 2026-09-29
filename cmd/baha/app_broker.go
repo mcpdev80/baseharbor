@@ -115,7 +115,8 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 	}); err != nil {
 		return fmt.Errorf("register runtime broker observability: %w", err)
 	}
-	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles)
+	openbaoCAPath := filepath.Join(filepath.Dir(platformFiles.Compose), "providers", "openbao", "runtime", "ca.pem")
+	brokerFiles, err := runtimebroker.Ensure(m, files, mtlsFiles, openbaoCAPath)
 	if err != nil {
 		return fmt.Errorf("materialize application runtime broker: %w", err)
 	}
@@ -137,7 +138,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		return fmt.Errorf("start application runtime broker: %w", err)
 	}
 	cli.ReportActivityDetail(progress, "waiting for runtime broker readiness")
-	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	verifyCtx, cancel := context.WithTimeout(ctx, runtimeReadinessTimeout(compose, 60*time.Second))
 	defer cancel()
 	var verifyErr error
 	for verifyCtx.Err() == nil {
@@ -152,6 +153,15 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		select {
 		case <-verifyCtx.Done():
 		case <-time.After(time.Second):
+		}
+	}
+	diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer diagnosticCancel()
+	if diagnostic, ok := compose.(interface {
+		DiagnosticsProject(context.Context, string, string, string) string
+	}); ok {
+		if details := strings.TrimSpace(diagnostic.DiagnosticsProject(diagnosticCtx, project, brokerFiles.Compose, files.Env)); details != "" {
+			return fmt.Errorf("application runtime broker readiness failed: %w; runtime diagnostics:\n%s", verifyErr, details)
 		}
 	}
 	return fmt.Errorf("application runtime broker readiness failed: %w", verifyErr)
@@ -252,16 +262,68 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	}); err != nil {
 		return fmt.Errorf("start runtime provider executor: %w", err)
 	}
-	services, err := compose.RunningServicesProject(ctx, executorFiles.Project, executorFiles.Compose, executorFiles.Env)
-	if err != nil {
-		return fmt.Errorf("inspect runtime provider executor: %w", err)
+	if err := waitRuntimeProviderExecutorReady(ctx, compose, executorFiles, runtimeReadinessTimeout(compose, 75*time.Second)); err != nil {
+		return err
 	}
-	for _, service := range services {
-		if service == runtimeexecutor.ServiceName {
-			return nil
+	return nil
+}
+
+func runtimeReadinessTimeout(compose bhruntime.RuntimeProvider, base time.Duration) time.Duration {
+	if compose != nil && compose.Kind() == bhruntime.ProviderPodman {
+		return base * 49 / 20
+	}
+	return base
+}
+
+func waitRuntimeProviderExecutorReady(ctx context.Context, compose bhruntime.RuntimeProvider, files runtimeexecutor.Files, timeout time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var lastState string
+	for {
+		containers, err := compose.ListRuntimeContainers(waitCtx)
+		if err == nil {
+			found := false
+			for _, container := range containers {
+				if container.Project != files.Project || container.Service != runtimeexecutor.ServiceName {
+					continue
+				}
+				found = true
+				if !container.Running {
+					lastState = "container is not running"
+					break
+				}
+				health := strings.ToLower(strings.TrimSpace(container.Health))
+				switch health {
+				case "healthy":
+					return nil
+				case "unhealthy":
+					lastState = "healthcheck is unhealthy"
+				default:
+					lastState = "healthcheck is " + strings.TrimSpace(container.Health)
+					if health == "" {
+						lastState = "healthcheck has no status yet"
+					}
+				}
+				break
+			}
+			if !found {
+				lastState = "container is missing"
+			}
+		} else {
+			lastState = err.Error()
+		}
+
+		select {
+		case <-waitCtx.Done():
+			details := strings.TrimSpace(compose.DiagnosticsProject(context.Background(), files.Project, files.Compose, files.Env))
+			if details != "" {
+				return fmt.Errorf("runtime provider executor is not ready (%s); runtime diagnostics:\n%s", lastState, details)
+			}
+			return fmt.Errorf("runtime provider executor is not ready (%s)", lastState)
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return errors.New("runtime provider executor is not running")
 }
 
 func waitRuntimeBrokerReady(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles, timeout time.Duration) error {
@@ -285,13 +347,63 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
+	if compose.Kind() == bhruntime.ProviderPodman {
+		project := runtimebroker.ProjectNameForRuntime(m, files)
+		containers, err := compose.ListRuntimeContainers(ctx)
+		if err != nil {
+			return fmt.Errorf("inspect Podman runtime broker container state: %w", err)
+		}
+		for _, container := range containers {
+			if container.Project != project || container.Service != runtimebroker.ServiceName {
+				continue
+			}
+			if !container.Running {
+				return errors.New("application runtime broker container is not running")
+			}
+			switch strings.ToLower(strings.TrimSpace(container.Health)) {
+			case "healthy":
+				return nil
+			case "unhealthy":
+				return errors.New("application runtime broker healthcheck is unhealthy")
+			case "", "starting":
+				return errors.New("application runtime broker healthcheck is not ready")
+			default:
+				return fmt.Errorf("application runtime broker healthcheck state %q is not ready", container.Health)
+			}
+		}
+		return errors.New("application runtime broker container is missing")
+	}
 	brokerFiles, err := runtimebroker.Existing(files)
 	if err != nil {
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
 	project := runtimebroker.ProjectNameForRuntime(m, files)
-	out, err := compose.ExecProject(ctx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
-		"curl", "--fail", "--silent", "--show-error",
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect application runtime broker container: %w", err)
+	}
+	brokerFound := false
+	for _, container := range containers {
+		if container.Project != project || container.Service != runtimebroker.ServiceName {
+			continue
+		}
+		brokerFound = true
+		if !container.Running {
+			return errors.New("application runtime broker container is not running")
+		}
+		health := strings.ToLower(strings.TrimSpace(container.Health))
+		if health != "" && health != "healthy" {
+			return fmt.Errorf("application runtime broker container health is %s", health)
+		}
+		break
+	}
+	if !brokerFound {
+		return errors.New("application runtime broker container is missing")
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer probeCancel()
+	out, err := compose.ExecProject(probeCtx, project, brokerFiles.Compose, files.Env, runtimebroker.ServiceName,
+		"curl", "--silent", "--show-error", "--connect-timeout", "1", "--max-time", "4",
 		"--resolve", "baseharbor-runtime:8443:127.0.0.1",
 		"--cacert", "/run/baseharbor/identity/ca.pem",
 		"--cert", "/run/secrets/probe-client-cert",
@@ -302,12 +414,19 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 		return fmt.Errorf("application runtime broker mTLS readiness probe failed: %w", err)
 	}
 	var ready struct {
-		Status  string `json:"status"`
-		Version string `json:"version"`
-		Commit  string `json:"commit"`
+		Status     string `json:"status"`
+		Dependency string `json:"dependency"`
+		Version    string `json:"version"`
+		Commit     string `json:"commit"`
 	}
-	if err := json.Unmarshal([]byte(out), &ready); err != nil || ready.Status != "ready" {
+	if err := json.Unmarshal([]byte(out), &ready); err != nil {
 		return errors.New("application runtime broker readiness response is invalid")
+	}
+	if ready.Status != "ready" {
+		if strings.TrimSpace(ready.Dependency) != "" {
+			return fmt.Errorf("application runtime broker dependency %s is not ready", ready.Dependency)
+		}
+		return errors.New("application runtime broker readiness response is not ready")
 	}
 	if err := verifyRuntimeBrokerBuildIdentity(ready.Version, ready.Commit); err != nil {
 		return err

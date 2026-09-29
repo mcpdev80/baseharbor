@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -104,6 +105,7 @@ func Run(ctx context.Context, cfg Config) error {
 		checkCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
 		if err := resources.Check(checkCtx); err != nil {
+			log.Printf("runtime executor readiness failed: dependency=seaweedfs endpoint=%s error=%v", cfg.S3Endpoint, err)
 			writeProblem(w, http.StatusServiceUnavailable, "provider not ready")
 			return
 		}

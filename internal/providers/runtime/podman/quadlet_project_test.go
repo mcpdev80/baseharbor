@@ -91,6 +91,8 @@ networks:
 		"Volume=baseharbor-demo-db-data.volume:/var/lib/postgresql",
 		"Network=baseharbor-demo-internal.network",
 		"NetworkAlias=db",
+		"Requires=baseharbor-demo-internal-network.service",
+		"After=baseharbor-demo-internal-network.service",
 		"HealthInterval=2s",
 		"HealthTimeout=3s",
 		"HealthRetries=4",
@@ -101,7 +103,7 @@ networks:
 		}
 	}
 	if !strings.Contains(db, "Notify=healthy") {
-		t.Fatalf("healthchecked Quadlet service must delay systemd readiness until healthy:\n%s", db)
+		t.Fatalf("healthchecked provider dependency must delay systemd readiness until healthy:\n%s", db)
 	}
 	if !strings.Contains(got.Files["baseharbor-demo-internal.network"], "Internal=true") {
 		t.Fatalf("internal network lost semantics:\n%s", got.Files["baseharbor-demo-internal.network"])
@@ -129,6 +131,128 @@ networks:
 		if !strings.Contains(worker, want) {
 			t.Fatalf("worker Quadlet missing %q:\n%s", want, worker)
 		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsPinsLocalBaseHarborImage(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: baseharbor-runtime:demo-candidate
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "local-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["local-image-broker.container"]
+	for _, want := range []string{
+		"Image=localhost/baseharbor-runtime:demo-candidate",
+		"Pull=never",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("local BaseHarbor image Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsLeavesRegistryImagePullable(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: ghcr.io/mcpdev80/baseharbor-runtime:edge
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "registry-image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["registry-image-broker.container"]
+	if !strings.Contains(unit, "Image=ghcr.io/mcpdev80/baseharbor-runtime:edge") {
+		t.Fatalf("qualified registry image changed unexpectedly:\n%s", unit)
+	}
+	if strings.Contains(unit, "Pull=never") {
+		t.Fatalf("qualified registry image must retain normal pull semantics:\n%s", unit)
+	}
+}
+
+func TestRenderComposeProjectQuadletsPreservesPodmanStorageEnvironment(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/baseharbor-xdg-config")
+	t.Setenv("XDG_DATA_HOME", "/tmp/baseharbor-xdg-data")
+	t.Setenv("CONTAINERS_STORAGE_CONF", "/tmp/baseharbor-storage.conf")
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte("FROM scratch\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    build:
+      context: .
+    volumes:
+      - data:/data
+    networks:
+      - internal
+volumes:
+  data: {}
+networks:
+  internal: {}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "storage-env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{
+		"storage-env-api.container",
+		"storage-env-api.build",
+		"storage-env-data.volume",
+		"storage-env-internal.network",
+	} {
+		content := got.Files[file]
+		if !strings.Contains(content, `Environment="CONTAINERS_STORAGE_CONF=/tmp/baseharbor-storage.conf"`) {
+			t.Fatalf("%s missing Podman storage environment:\n%s", file, content)
+		}
+		for _, forbidden := range []string{
+			"XDG_CONFIG_HOME=/tmp/baseharbor-xdg-config",
+			"XDG_DATA_HOME=/tmp/baseharbor-xdg-data",
+		} {
+			if strings.Contains(content, forbidden) {
+				t.Fatalf("%s leaked BaseHarbor XDG isolation into Podman storage context %q:\n%s", file, forbidden, content)
+			}
+		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsBrokerDoesNotGateSystemdOnCompositeHealth(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: ghcr.io/example/runtime:test
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-broker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-broker-broker.container"]
+	if strings.Contains(unit, "Notify=healthy") {
+		t.Fatalf("runtime broker must leave composite readiness to BaseHarbor:\n%s", unit)
+	}
+	if !strings.Contains(unit, "HealthCmd=true") {
+		t.Fatalf("runtime broker must retain its container healthcheck:\n%s", unit)
 	}
 }
 
@@ -214,6 +338,7 @@ networks:
 	for _, want := range []string{
 		"PublishPort=8080:8080",
 		"Network=baseharbor-demo-backend",
+		"NetworkAlias=api",
 		"NetworkAlias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
@@ -224,6 +349,53 @@ networks:
 	env := got.Files["baseharbor-workload-demo-api.env"]
 	if !strings.Contains(env, "ORIGINAL=base") || !strings.Contains(env, "MANAGED=yes") {
 		t.Fatalf("merged environment incomplete:\n%s", env)
+	}
+}
+
+func TestRenderComposeProjectQuadletsNeverEmbedsAliasInNetworkValue(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    networks:
+      managed:
+        aliases:
+          - api-managed
+      external:
+        aliases:
+          - api-external
+networks:
+  managed: {}
+  external:
+    external: true
+    name: baseharbor-external
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "alias-guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, content := range got.Files {
+		if strings.Contains(content, ":alias=") {
+			t.Fatalf("%s contains legacy network alias syntax:\n%s", name, content)
+		}
+	}
+
+	unit := got.Files["alias-guard-api.container"]
+	for _, want := range []string{
+		"Network=alias-guard-managed.network",
+		"Network=baseharbor-external",
+		"NetworkAlias=api",
+		"NetworkAlias=api-managed",
+		"NetworkAlias=api-external",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("alias guard Quadlet missing %q:\n%s", want, unit)
+		}
 	}
 }
 
@@ -276,8 +448,11 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 		t.Fatalf("implicit default network was not rendered")
 	}
 	unit := got.Files["implicit-network-api.container"]
-	if !strings.Contains(unit, "Network=implicit-network-default.network") {
-		t.Fatalf("service was not attached to implicit default network:\n%s", unit)
+	if !strings.Contains(unit, "Network=implicit-network-default.network") || !strings.Contains(unit, "NetworkAlias=api") {
+		t.Fatalf("service was not attached to implicit default network with service alias:\n%s", unit)
+	}
+	if !strings.Contains(unit, "Requires=implicit-network-default-network.service") {
+		t.Fatalf("service does not depend on implicit default network unit:\n%s", unit)
 	}
 }
 

@@ -128,9 +128,9 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	hostname := firstNonEmpty(strings.TrimSpace(opts.Hostname), current.Hostname)
 	tlsMode := firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode)
 	certDir := firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir)
-	provider := current.RuntimeProvider
-	if provider == "" {
-		provider = bhruntime.ProviderDocker
+	provider, err := runtimeProviderKindForApplication(resolved)
+	if err != nil {
+		return err
 	}
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)

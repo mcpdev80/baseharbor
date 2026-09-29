@@ -2,8 +2,11 @@ package podman
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -138,10 +141,15 @@ func serviceStatesFromRuntimeLabels(ctx context.Context, backend bhruntime.Compo
 		}
 		current, exists := byService[container.Service]
 		if !exists || (current.State != "running" && state == "running") {
+			publishers, err := podmanContainerPublishedPorts(ctx, backend, container.Name)
+			if err != nil {
+				return nil, fmt.Errorf("inspect published ports for %s: %w", container.Name, err)
+			}
 			byService[container.Service] = ServiceState{
-				Service: container.Service,
-				State:   state,
-				Health:  container.Health,
+				Service:    container.Service,
+				State:      state,
+				Health:     container.Health,
+				Publishers: publishers,
 			}
 		}
 	}
@@ -155,6 +163,71 @@ func serviceStatesFromRuntimeLabels(ctx context.Context, backend bhruntime.Compo
 		states = append(states, byService[service])
 	}
 	return states, nil
+}
+
+type podmanPortBinding struct {
+	HostIP   string `json:"HostIp"`
+	HostPort string `json:"HostPort"`
+}
+
+type podmanInspectNetworkSettings struct {
+	Ports map[string][]podmanPortBinding `json:"Ports"`
+}
+
+type podmanInspectContainer struct {
+	NetworkSettings podmanInspectNetworkSettings `json:"NetworkSettings"`
+}
+
+func podmanContainerPublishedPorts(ctx context.Context, backend bhruntime.Compose, container string) ([]bhruntime.PublishedPort, error) {
+	out, err := backend.DirectOutput(ctx, "container", "inspect", strings.TrimSpace(container))
+	if err != nil {
+		return nil, err
+	}
+	return parsePodmanPublishedPorts(out)
+}
+
+func parsePodmanPublishedPorts(out string) ([]bhruntime.PublishedPort, error) {
+	var rows []podmanInspectContainer
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rows); err != nil {
+		return nil, fmt.Errorf("decode Podman container inspect: %w", err)
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("Podman container inspect returned %d rows", len(rows))
+	}
+	var result []bhruntime.PublishedPort
+	for target, bindings := range rows[0].NetworkSettings.Ports {
+		rawPort, protocol, ok := strings.Cut(strings.TrimSpace(target), "/")
+		if !ok {
+			continue
+		}
+		targetPort, err := strconv.Atoi(rawPort)
+		if err != nil || targetPort < 1 || targetPort > 65535 {
+			continue
+		}
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		for _, binding := range bindings {
+			publishedPort, err := strconv.Atoi(strings.TrimSpace(binding.HostPort))
+			if err != nil || publishedPort < 1 || publishedPort > 65535 {
+				continue
+			}
+			result = append(result, bhruntime.PublishedPort{
+				URL:           strings.TrimSpace(binding.HostIP),
+				TargetPort:    targetPort,
+				PublishedPort: publishedPort,
+				Protocol:      protocol,
+			})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].TargetPort != result[j].TargetPort {
+			return result[i].TargetPort < result[j].TargetPort
+		}
+		if result[i].PublishedPort != result[j].PublishedPort {
+			return result[i].PublishedPort < result[j].PublishedPort
+		}
+		return result[i].URL < result[j].URL
+	})
+	return result, nil
 }
 
 var _ runtimecontract.RuntimeProvider = (*Provider)(nil)

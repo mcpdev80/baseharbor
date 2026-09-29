@@ -38,3 +38,20 @@ func TestDevelopmentDomainRejectsNonDNSInput(t *testing.T) {
 		}
 	}
 }
+
+func TestDevelopmentAliasesAreDNSLabelSafe(t *testing.T) {
+	longOwner := "bh-demo-podman-native-external-alias-shared"
+	got := ProviderAlias(longOwner, "identity-admin")
+	if len(got) > 63 {
+		t.Fatalf("ProviderAlias() length = %d, want <= 63: %q", len(got), got)
+	}
+	if !domainLabel.MatchString(got) {
+		t.Fatalf("ProviderAlias() is not a valid DNS label: %q", got)
+	}
+	if got != ProviderAlias(longOwner, "identity-admin") {
+		t.Fatalf("ProviderAlias() must be deterministic")
+	}
+	if got == ProviderAlias(longOwner+"-other", "identity-admin") {
+		t.Fatalf("ProviderAlias() must retain collision resistance for long owners")
+	}
+}

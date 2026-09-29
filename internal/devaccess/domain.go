@@ -1,6 +1,7 @@
 package devaccess
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -116,21 +117,28 @@ func CanonicalURL(host string) string {
 }
 
 func ApplicationAlias(app, service string) string {
-	app = normalizeHostToken(app)
-	service = normalizeHostToken(service)
-	if app == "" || service == "" {
-		return ""
-	}
-	return "bh-dev-" + app + "-" + service
+	return developmentAlias(app, service)
 }
 
 func ProviderAlias(project, service string) string {
-	project = normalizeHostToken(project)
+	return developmentAlias(project, service)
+}
+
+func developmentAlias(owner, service string) string {
+	owner = normalizeHostToken(owner)
 	service = normalizeHostToken(service)
-	if project == "" || service == "" {
+	if owner == "" || service == "" {
 		return ""
 	}
-	return "bh-dev-" + project + "-" + service
+	alias := "bh-dev-" + owner + "-" + service
+	if len(alias) <= 63 {
+		return alias
+	}
+	sum := sha256.Sum256([]byte(alias))
+	suffix := fmt.Sprintf("-%x", sum[:8])
+	prefixLen := 63 - len(suffix)
+	prefix := strings.Trim(alias[:prefixLen], "-")
+	return prefix + suffix
 }
 
 func normalizeDomain(value string) (string, error) {
