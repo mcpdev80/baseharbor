@@ -161,7 +161,13 @@ func CreateApplication(root string, request NewApplicationRequest, registry Regi
 	if strings.TrimSpace(root) == "" {
 		root = "."
 	}
-	project, err := BootstrapProject(root, bootstrap.Manifest, bootstrap.Profile, registry)
+	var extras []GeneratedFile
+	for _, file := range bootstrap.Files {
+		if file.Path == "catalog-info.yaml" {
+			extras = append(extras, file)
+		}
+	}
+	project, err := BootstrapProject(root, bootstrap.Manifest, bootstrap.Profile, registry, extras...)
 	if err != nil {
 		return CreationResult{}, err
 	}
