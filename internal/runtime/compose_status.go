@@ -56,10 +56,15 @@ func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project str
 		}
 		current, exists := byService[container.Service]
 		if !exists || (current.State != "running" && state == "running") {
+			if strings.TrimSpace(container.State) != "" {
+				state = container.State
+			}
 			byService[container.Service] = ServiceState{
-				Service: container.Service,
-				State:   state,
-				Health:  container.Health,
+				Service:  container.Service,
+				State:    state,
+				Health:   container.Health,
+				ExitCode: container.ExitCode,
+				Error:    container.Error,
 			}
 		}
 	}
