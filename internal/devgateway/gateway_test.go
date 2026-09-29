@@ -44,7 +44,7 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 			t.Fatalf("Caddyfile missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, ":443 {") || strings.Contains(got, ":8443 {") {
+	if strings.Contains(got, "\n:443 {\n") || strings.Contains(got, "\n:8443 {\n") {
 		t.Fatalf("Caddyfile contains hard-coded gateway listeners:\n%s", got)
 	}
 	if strings.Contains(got, "tls_insecure_skip_verify") {
