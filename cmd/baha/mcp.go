@@ -31,6 +31,7 @@ type machineApplicationInput struct {
 }
 
 type machineAppNewInput struct {
+	Path               string   `json:"path,omitempty" jsonschema:"deprecated compatibility field: exact empty project root; prefer directory for new clients"`
 	Directory          string   `json:"directory,omitempty" jsonschema:"parent directory in which BaseHarbor creates a child directory named after the application; required unless the current empty directory already matches the application name"`
 	Name               string   `json:"name" jsonschema:"application name"`
 	Environment        string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
