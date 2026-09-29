@@ -130,6 +130,48 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	}, nil
 }
 
+type CreationResult struct {
+	BootstrapResult
+	Validation Validation `json:"validation"`
+}
+
+func CreateApplication(root string, request NewApplicationRequest, registry Registry) (CreationResult, error) {
+	bootstrap, err := BootstrapApplication(request, registry)
+	if err != nil {
+		return CreationResult{}, err
+	}
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
+	if err := WriteGeneratedFiles(root, bootstrap.Files); err != nil {
+		return CreationResult{}, err
+	}
+
+	cleanup := true
+	defer func() {
+		if !cleanup {
+			return
+		}
+		for _, file := range bootstrap.Files {
+			_ = os.Remove(filepath.Join(root, filepath.Clean(file.Path)))
+		}
+	}()
+
+	adapter, err := registry.Resolve(bootstrap.Profile.Components[0].Adapter)
+	if err != nil {
+		return CreationResult{}, err
+	}
+	validation, err := adapter.Validate(root, bootstrap.Contract, bootstrap.Profile.Components[0])
+	if err != nil {
+		return CreationResult{}, fmt.Errorf("validate generated application: %w", err)
+	}
+	if !validation.Satisfied {
+		return CreationResult{}, fmt.Errorf("generated application does not satisfy its contract: %s", strings.Join(validation.Diagnostics, "; "))
+	}
+	cleanup = false
+	return CreationResult{BootstrapResult: bootstrap, Validation: validation}, nil
+}
+
 func WriteGeneratedFiles(root string, files []GeneratedFile) error {
 	if strings.TrimSpace(root) == "" {
 		root = "."
