@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
