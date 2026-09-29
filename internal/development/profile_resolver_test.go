@@ -46,18 +46,22 @@ func TestProfileCatalogResolveComposesDeterministically(t *testing.T) {
 func TestProfileCatalogResolveRejectsConflict(t *testing.T) {
 	catalog := ProfileCatalog{
 		"a": {
-			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "a"},
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "a"},
 			Components: []Component{{ID: "app", Role: "backend", Adapter: "development/go"}},
 		},
 		"b": {
-			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "b"},
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "b"},
 			Components: []Component{{ID: "app", Role: "frontend", Adapter: "development/nextjs"}},
 		},
 		"root": {
-			APIVersion: StackProfileAPIVersion, Kind: StackProfileKind,
-			Metadata: ProfileMetadata{Name: "root"}, Extends: []string{"a", "b"},
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "root"},
+			Extends:    []string{"a", "b"},
 			Components: []Component{{ID: "root", Role: "service", Adapter: "development/go"}},
 		},
 	}
@@ -68,8 +72,20 @@ func TestProfileCatalogResolveRejectsConflict(t *testing.T) {
 
 func TestProfileCatalogResolveRejectsCycle(t *testing.T) {
 	catalog := ProfileCatalog{
-		"a": {APIVersion: StackProfileAPIVersion, Kind: StackProfileKind, Metadata: ProfileMetadata{Name: "a"}, Extends: []string{"b"}, Components: []Component{{ID: "a", Role: "backend", Adapter: "development/go"}}},
-		"b": {APIVersion: StackProfileAPIVersion, Kind: StackProfileKind, Metadata: ProfileMetadata{Name: "b"}, Extends: []string{"a"}, Components: []Component{{ID: "b", Role: "backend", Adapter: "development/go"}}},
+		"a": {
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "a"},
+			Extends:    []string{"b"},
+			Components: []Component{{ID: "a", Role: "backend", Adapter: "development/go"}},
+		},
+		"b": {
+			APIVersion: StackProfileAPIVersion,
+			Kind:       StackProfileKind,
+			Metadata:   ProfileMetadata{Name: "b"},
+			Extends:    []string{"a"},
+			Components: []Component{{ID: "b", Role: "backend", Adapter: "development/go"}},
+		},
 	}
 	if _, err := catalog.Resolve("a"); err == nil {
 		t.Fatal("expected composition cycle")
