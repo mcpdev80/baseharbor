@@ -39,7 +39,6 @@ func TestDevelopmentDomainRejectsNonDNSInput(t *testing.T) {
 	}
 }
 
-
 func TestDevelopmentAliasesAreDNSLabelSafe(t *testing.T) {
 	longOwner := "bh-demo-podman-native-external-alias-shared"
 	got := ProviderAlias(longOwner, "identity-admin")
