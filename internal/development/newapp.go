@@ -11,12 +11,14 @@ import (
 )
 
 type NewApplicationRequest struct {
-	Name         string            `json:"name"`
-	Environment  string            `json:"environment,omitempty"`
-	Adapter      string            `json:"adapter"`
-	Capabilities []capability.Kind `json:"capabilities"`
-	Secrets      []string          `json:"secrets,omitempty"`
-	EmitBackstage bool              `json:"emit_backstage,omitempty"`
+	Name               string            `json:"name"`
+	Environment        string            `json:"environment,omitempty"`
+	Adapter            string            `json:"adapter"`
+	Capabilities       []capability.Kind `json:"capabilities"`
+	Secrets            []string          `json:"secrets,omitempty"`
+	EmitBackstage      bool              `json:"emit_backstage,omitempty"`
+	BackstageOwner     string            `json:"backstage_owner,omitempty"`
+	BackstageLifecycle string            `json:"backstage_lifecycle,omitempty"`
 }
 
 type BootstrapResult struct {
@@ -119,9 +121,16 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		Mode:    0o644,
 	})
 	if request.EmitBackstage {
+		catalog, err := RenderBackstageCatalog(manifest, BackstageCatalogOptions{
+			Owner:     request.BackstageOwner,
+			Lifecycle: request.BackstageLifecycle,
+		})
+		if err != nil {
+			return BootstrapResult{}, err
+		}
 		files = append(files, GeneratedFile{
 			Path:    "catalog-info.yaml",
-			Content: []byte(RenderBackstageCatalog(manifest, contract)),
+			Content: []byte(catalog),
 			Mode:    0o644,
 		})
 	}
