@@ -206,7 +206,7 @@ func parseStackCreateOptions(args []string) (stackCreateOptions, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
-		case "--extends", "--component", "--scope", "--output", "-o":
+		case "--extends", "--component", "--capability", "--scope", "--output", "-o":
 			if i+1 >= len(args) {
 				return stackCreateOptions{}, usageError(arg+" requires a value", "Run 'baha stack create --help' for usage.")
 			}
@@ -221,6 +221,12 @@ func parseStackCreateOptions(args []string) (stackCreateOptions, error) {
 					return stackCreateOptions{}, err
 				}
 				options.Profile.Components = append(options.Profile.Components, component)
+			case "--capability":
+				preference, err := parseStackCapabilityPreference(value)
+				if err != nil {
+					return stackCreateOptions{}, err
+				}
+				options.Profile.Capabilities = append(options.Profile.Capabilities, preference)
 			case "--scope":
 				switch value {
 				case "user":
@@ -288,4 +294,27 @@ func parseStackOutput(args []string) (cliOutputFormat, []string, error) {
 		}
 	}
 	return format, rest, nil
+}
+
+
+func parseStackCapabilityPreference(value string) (development.CapabilityPreference, error) {
+	parts := strings.SplitN(value, "=", 2)
+	if len(parts) != 2 {
+		return development.CapabilityPreference{}, usageError("invalid --capability "+value, "Use KIND=COMPONENT[,COMPONENT], for example database.sql=api.")
+	}
+	kinds, err := developmentCapabilityKinds([]string{strings.TrimSpace(parts[0])})
+	if err != nil {
+		return development.CapabilityPreference{}, err
+	}
+	components := splitWizardItems(parts[1])
+	if len(components) == 0 {
+		return development.CapabilityPreference{}, fmt.Errorf("capability placement requires at least one component")
+	}
+	for i := range components {
+		components[i] = slugifyAppName(components[i])
+		if components[i] == "" {
+			return development.CapabilityPreference{}, fmt.Errorf("invalid capability component")
+		}
+	}
+	return development.CapabilityPreference{Capability: kinds[0], Components: components}, nil
 }
