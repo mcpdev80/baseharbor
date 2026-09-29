@@ -149,7 +149,6 @@ func parseComposeServiceStates(out string) ([]ServiceState, error) {
 	return states, nil
 }
 
-
 func (c Compose) enrichServiceStatesFromRuntimeContainers(ctx context.Context, project string, states []ServiceState) ([]ServiceState, error) {
 	containers, err := c.ListRuntimeContainers(ctx)
 	if err != nil {
