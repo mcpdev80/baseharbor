@@ -25,8 +25,9 @@ func (testAdapter) Validate(string, application.PortableContract, Component) (Va
 
 func TestStackProfileSupportsMultipleComponents(t *testing.T) {
 	profile := StackProfile{
-		SchemaVersion: StackProfileVersion,
-		Name:          "fullstack",
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:     ProfileMetadata{Name: "fullstack"},
 		Components: []Component{
 			{ID: "frontend", Role: "frontend", Adapter: "development/nextjs"},
 			{ID: "backend", Role: "backend", Adapter: "development/go"},
@@ -43,8 +44,9 @@ func TestStackProfileSupportsMultipleComponents(t *testing.T) {
 
 func TestStackProfileRejectsUnknownCapabilityComponent(t *testing.T) {
 	profile := StackProfile{
-		SchemaVersion: StackProfileVersion,
-		Name:          "bad",
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:     ProfileMetadata{Name: "bad"},
 		Components:    []Component{{ID: "backend", Role: "backend", Adapter: "development/go"}},
 		Capabilities:  []CapabilityPreference{{Capability: capability.SQL, Components: []string{"worker"}}},
 	}
@@ -59,8 +61,9 @@ func TestBuildPlanIsDeterministicAcrossComponents(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := StackProfile{
-		SchemaVersion: StackProfileVersion,
-		Name:          "fullstack",
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:     ProfileMetadata{Name: "fullstack"},
 		Components: []Component{
 			{ID: "frontend", Role: "frontend", Adapter: "development/nextjs"},
 			{ID: "backend", Role: "backend", Adapter: "development/go"},
