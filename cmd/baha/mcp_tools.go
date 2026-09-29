@@ -139,13 +139,13 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 			return machineMCPFailure(err)
 		}
 		result, err := development.CreateApplication(path, development.NewApplicationRequest{
-			Name:         strings.TrimSpace(input.Name),
-			Environment:  strings.TrimSpace(input.Environment),
-			Adapter:      adapterID,
-			Capabilities: capabilities,
-			Secrets:      append([]string(nil), input.Secrets...),
-			EmitBackstage: input.EmitBackstage,
-			BackstageOwner: input.BackstageOwner,
+			Name:               strings.TrimSpace(input.Name),
+			Environment:        strings.TrimSpace(input.Environment),
+			Adapter:            adapterID,
+			Capabilities:       capabilities,
+			Secrets:            append([]string(nil), input.Secrets...),
+			EmitBackstage:      input.EmitBackstage,
+			BackstageOwner:     input.BackstageOwner,
 			BackstageLifecycle: input.BackstageLifecycle,
 		}, registry)
 		if err != nil {
