@@ -172,7 +172,8 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		if err != nil {
 			return ProjectResult{}, err
 		}
-		validation, err := adapter.Validate(root, contract, component)
+		componentContract := contractForComponent(contract, profile, component.ID)
+		validation, err := adapter.Validate(root, componentContract, component)
 		if err != nil {
 			return ProjectResult{}, fmt.Errorf("validate component %q: %w", component.ID, err)
 		}
