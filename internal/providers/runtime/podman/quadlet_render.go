@@ -378,23 +378,12 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 			aliases = append(aliases, alias)
 		}
 
-		if network.External {
-			spec := actual
-			if len(aliases) > 0 {
-				options := make([]string, 0, len(aliases))
-				for _, alias := range aliases {
-					options = append(options, "alias="+alias)
-				}
-				spec += ":" + strings.Join(options, ",")
-			}
-			fmt.Fprintf(unit, "Network=%s\n", spec)
-			continue
+		spec := actual
+		if !network.External {
+			// Keep managed Quadlet network references ending in .network so the
+			// generator can resolve the matching network unit and its dependency.
+			spec = quadletResourceUnitBase(project, networkName, actual) + ".network"
 		}
-
-		// Keep managed Quadlet network references ending in .network so the
-		// generator can resolve the matching network unit and its dependency.
-		// NetworkAlias is the native Quadlet key for aliases on that network.
-		spec := quadletResourceUnitBase(project, networkName, actual) + ".network"
 		fmt.Fprintf(unit, "Network=%s\n", spec)
 		for _, alias := range aliases {
 			fmt.Fprintf(unit, "NetworkAlias=%s\n", alias)
