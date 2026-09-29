@@ -10,10 +10,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/development"
-	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/nextjsadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
-	"github.com/mcpdev80/baseharbor/internal/development/quarkusadapter"
 )
 
 var appNewInput io.Reader = os.Stdin
@@ -35,7 +31,7 @@ func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus | --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) == 0 {
@@ -55,18 +51,36 @@ func appNewCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			adapterID, err := developmentAdapterID(options.Stack)
+			registry, err := referenceDevelopmentRegistry()
 			if err != nil {
 				return err
 			}
-			registry, err := development.NewRegistry(goadapter.Adapter{}, nextjsadapter.Adapter{}, pythonadapter.Adapter{}, quarkusadapter.Adapter{})
-			if err != nil {
-				return err
+			var adapterID string
+			var profile *development.StackProfile
+			if strings.TrimSpace(options.StackProfile) != "" {
+				if options.StackExplicit {
+					return usageError("--stack and --stack-profile cannot be combined", "Select either a built-in adapter stack or one reusable Stack Profile.")
+				}
+				catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+				if err != nil {
+					return err
+				}
+				resolved, err := development.ResolveStackProfile(options.StackProfile, development.ProfileMap(catalog))
+				if err != nil {
+					return err
+				}
+				profile = &resolved.Profile
+			} else {
+				adapterID, err = developmentAdapterID(options.Stack)
+				if err != nil {
+					return err
+				}
 			}
 			result, err := development.CreateApplication(root, development.NewApplicationRequest{
 				Name:               options.Name,
 				Environment:        options.Environment,
 				Adapter:            adapterID,
+				Profile:            profile,
 				Capabilities:       options.Capabilities,
 				Secrets:            options.Secrets,
 				EmitBackstage:      options.EmitBackstage,
@@ -137,7 +151,7 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			for _, kind := range []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP} {
 				addCapability(kind)
 			}
-		case "--environment", "-e", "--directory", "--stack", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
+		case "--environment", "-e", "--directory", "--stack", "--stack-profile", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
 			if i+1 >= len(args) {
 				return appNewOptions{}, usageError(arg+" requires a value", "Run 'baha app new --help' for usage.")
 			}
@@ -150,6 +164,9 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 				options.Directory = value
 			case "--stack":
 				options.Stack = value
+				options.StackExplicit = true
+			case "--stack-profile":
+				options.StackProfile = value
 			case "--backstage-owner":
 				options.BackstageOwner = value
 				options.EmitBackstage = true
