@@ -258,7 +258,6 @@ func allDeclaredCapabilitiesSatisfied(result repositoryinspect.Result) bool {
 	return true
 }
 
-
 func renderMultiComponentCompose(profile StackProfile, sources map[string][]byte) ([]byte, error) {
 	services := map[string]any{}
 	for _, component := range profile.Components {
