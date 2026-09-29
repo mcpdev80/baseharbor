@@ -65,3 +65,35 @@ func TestWriteGeneratedFilesIsFailClosed(t *testing.T) {
 		t.Fatal("expected overwrite rejection")
 	}
 }
+
+func TestCreateApplicationWritesRepositoryStackProfileAtomically(t *testing.T) {
+	registry, err := NewRegistry(bootstrapAdapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := StackProfile{
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:   ProfileMetadata{Name: "team-stack"},
+		Components: []Component{{ID: "app", Role: "application", Adapter: "development/test"}},
+	}
+	raw := StackProfile{
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:   ProfileMetadata{Name: "team-stack"},
+		Components: []Component{{ID: "app", Role: "application", Adapter: "development/test"}},
+	}
+	root := filepath.Join(t.TempDir(), "demo")
+	_, err = CreateApplication(root, NewApplicationRequest{
+		Name:                   "demo",
+		Profile:                &effective,
+		Capabilities:           []capability.Kind{capability.ExposureHTTP},
+		RepositoryStackProfile: &raw,
+	}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".baseharbor", "stacks", "team-stack.yaml")); err != nil {
+		t.Fatalf("repository stack profile missing: %v", err)
+	}
+}
