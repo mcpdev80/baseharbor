@@ -64,7 +64,7 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 	add := func(k development.ActionKind, c capability.Kind, name, value string) {
 		actions = append(actions, development.Action{Kind: k, Component: component.ID, Capability: c, Name: name, Value: value})
 	}
-	add(development.ActionBuild, "", "node", "24")
+	add(development.ActionBuild, "", "node", "24.21.0")
 	add(development.ActionHealth, capability.ExposureHTTP, "health", "/healthz")
 	for _, r := range contract.Capabilities {
 		if !a.Supports(r) {
@@ -72,7 +72,7 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 		}
 		switch r.Kind {
 		case capability.ExposureHTTP:
-			add(development.ActionDependency, r.Kind, "next", "16.3.7")
+			add(development.ActionDependency, r.Kind, "next", "16.3.6")
 			add(development.ActionDependency, r.Kind, "react", "19.3.0")
 			add(development.ActionDependency, r.Kind, "react-dom", "19.3.0")
 			add(development.ActionBinding, r.Kind, "PORT", "3000")
@@ -151,7 +151,7 @@ func renderPackage(app string, deps map[string]string) string {
 		}
 		fmt.Fprintf(&b, "    %q: %q%s\n", n, deps[n], comma)
 	}
-	b.WriteString("  },\n  \"devDependencies\": {\"typescript\": \"^5.9.2\", \"@types/node\": \"^22.18.6\", \"@types/react\": \"^19.1.13\"}\n}\n")
+	b.WriteString("  },\n  \"devDependencies\": {\"typescript\": \"7.0.2\", \"@types/node\": \"24.19.0\", \"@types/react\": \"19.3.0\"}\n}\n")
 	return b.String()
 }
 
@@ -181,7 +181,7 @@ func capabilitySource(bindings map[string]struct{}) string {
 }
 
 func dockerfile() string {
-	return "FROM node:24-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:24-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 3000\nCMD [\"npm\",\"start\"]\n"
+	return "FROM node:24.21.0-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:24.21.0-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 3000\nCMD [\"npm\",\"start\"]\n"
 }
 
 func compose() string {
