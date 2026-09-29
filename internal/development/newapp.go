@@ -278,6 +278,9 @@ func validateProfileCapabilitySupport(profile StackProfile, requirement capabili
 	if len(supporting) == 0 {
 		return fmt.Errorf("stack profile %q has no component that supports %s", profile.Metadata.Name, requirement.Kind)
 	}
+	if len(supporting) > 1 {
+		return fmt.Errorf("stack profile %q has ambiguous placement for %s across components %s; declare capability.components explicitly", profile.Metadata.Name, requirement.Kind, strings.Join(supporting, ", "))
+	}
 	return nil
 }
 
