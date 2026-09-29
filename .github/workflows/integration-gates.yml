@@ -155,7 +155,10 @@ jobs:
       - name: Verify OpenBao application scope and dynamic secret lifecycle
         env:
           BASEHARBOR_OPENBAO_APPLICATION_ACCEPTANCE: "true"
-        run: go test ./internal/openbao -run '^(TestDynamicApplicationSecretLifecycleRealOpenBao|TestApplicationScopesRealOpenBaoIsolation)      - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
+        run: >-
+          go test ./internal/openbao
+          -run '^(TestDynamicApplicationSecretLifecycleRealOpenBao|TestApplicationScopesRealOpenBaoIsolation)$'
+          -count=1 -v
         run: |
           workdir=$(mktemp -d)
           cd "$workdir"
