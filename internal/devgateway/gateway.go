@@ -331,6 +331,10 @@ func URLForTarget(target, host string) string {
 // reconciliation the runtime determines the same deterministic host port that
 // Reconcile will persist (Docker 443, rootless Podman 8443).
 func URLForRuntime(target, host string, runtime Runtime) string {
+	return urlForRuntime(target, host, runtime, gatewayPortAvailable)
+}
+
+func urlForRuntime(target, host string, runtime Runtime, available func(int) bool) string {
 	files, err := FilesFor(target)
 	if err == nil {
 		if current, loadErr := loadState(files.State); loadErr == nil {
@@ -338,7 +342,7 @@ func URLForRuntime(target, host string, runtime Runtime) string {
 		}
 	}
 	preferred := gatewayHostPort(runtime)
-	selected, selectErr := selectGatewayHostPort(preferred, 0, false, gatewayPortAvailable)
+	selected, selectErr := selectGatewayHostPort(preferred, 0, false, available)
 	if selectErr != nil {
 		selected = preferred
 	}
