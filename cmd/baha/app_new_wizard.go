@@ -21,10 +21,10 @@ type greenfieldCapabilityChoice struct {
 }
 
 type guidedStackSelection struct {
-	RawProfile      *development.StackProfile
-	Effective       development.StackProfile
-	SaveScope       development.ProfileScope
-	Created         bool
+	RawProfile *development.StackProfile
+	Effective  development.StackProfile
+	SaveScope  development.ProfileScope
+	Created    bool
 }
 
 func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
@@ -510,7 +510,6 @@ func defaultCapabilitySelection(available []greenfieldCapabilityChoice) string {
 	}
 	return ""
 }
-
 
 func profileContainsPreference(profile development.StackProfile, candidate development.CapabilityPreference) bool {
 	for _, preference := range profile.Capabilities {
