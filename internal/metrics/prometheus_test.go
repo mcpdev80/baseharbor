@@ -48,6 +48,14 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	webConfigInfo, err := os.Stat(files.WebConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := webConfigInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("Prometheus web config mode = %o, want 644", got)
+	}
+
 	text := string(compose)
 	for _, want := range []string{
 		"image: " + ProviderImage,
