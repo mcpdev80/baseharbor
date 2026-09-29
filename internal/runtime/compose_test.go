@@ -90,7 +90,6 @@ func TestFirstRuntimeLabelPrefersDockerAndFallsBackToPodman(t *testing.T) {
 	}
 }
 
-
 func TestListRuntimeContainersCapturesTerminalStartEvidence(t *testing.T) {
 	dir := t.TempDir()
 	runtimePath := filepath.Join(dir, "runtime")
