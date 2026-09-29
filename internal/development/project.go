@@ -52,6 +52,8 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 	}
 
 	generated := map[string]GeneratedFile{}
+	multiComponent := len(profile.Components) > 1
+	componentComposes := map[string][]byte{}
 	for _, extra := range extras {
 		path, err := cleanProjectPath(extra.Path)
 		if err != nil {
@@ -81,12 +83,26 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 			if err != nil {
 				return ProjectResult{}, fmt.Errorf("component %q: %w", component.ID, err)
 			}
+			if multiComponent {
+				if path == "compose.yaml" {
+					componentComposes[component.ID] = append([]byte(nil), file.Content...)
+					continue
+				}
+				path = filepath.ToSlash(filepath.Join(component.ID, path))
+			}
 			if _, exists := generated[path]; exists {
 				return ProjectResult{}, fmt.Errorf("generated file collision at %q", path)
 			}
 			file.Path = path
 			generated[path] = file
 		}
+	}
+	if multiComponent {
+		compose, err := renderMultiComponentCompose(profile, componentComposes)
+		if err != nil {
+			return ProjectResult{}, err
+		}
+		generated["compose.yaml"] = GeneratedFile{Path: "compose.yaml", Content: compose, Mode: 0o644}
 	}
 
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -238,4 +254,60 @@ func allDeclaredCapabilitiesSatisfied(result repositoryinspect.Result) bool {
 		}
 	}
 	return true
+}
+
+
+func renderMultiComponentCompose(profile StackProfile, sources map[string][]byte) ([]byte, error) {
+	services := map[string]any{}
+	for index, component := range profile.Components {
+		data, ok := sources[component.ID]
+		if !ok {
+			return nil, fmt.Errorf("component %q adapter did not generate compose.yaml", component.ID)
+		}
+		var document map[string]any
+		if err := yaml.Unmarshal(data, &document); err != nil {
+			return nil, fmt.Errorf("parse component %q compose.yaml: %w", component.ID, err)
+		}
+		rawServices, ok := document["services"].(map[string]any)
+		if !ok || len(rawServices) == 0 {
+			return nil, fmt.Errorf("component %q compose.yaml has no services", component.ID)
+		}
+		var service map[string]any
+		if candidate, ok := rawServices["app"].(map[string]any); ok {
+			service = candidate
+		} else if len(rawServices) == 1 {
+			for _, candidate := range rawServices {
+				service, _ = candidate.(map[string]any)
+			}
+		}
+		if service == nil {
+			return nil, fmt.Errorf("component %q compose.yaml must expose one application service", component.ID)
+		}
+		service = cloneAnyMap(service)
+		switch build := service["build"].(type) {
+		case string:
+			if strings.TrimSpace(build) == "." {
+				service["build"] = "./" + component.ID
+			}
+		case map[string]any:
+			build = cloneAnyMap(build)
+			if context, ok := build["context"].(string); ok && strings.TrimSpace(context) == "." {
+				build["context"] = "./" + component.ID
+			}
+			service["build"] = build
+		}
+		if index > 0 {
+			delete(service, "ports")
+		}
+		services[component.ID] = service
+	}
+	return yaml.Marshal(map[string]any{"services": services})
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
