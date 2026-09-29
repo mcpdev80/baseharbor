@@ -49,13 +49,15 @@ func Init(root, id string) (InitResult, error) {
 	files := map[string][]byte{
 		"provider.yaml":      data,
 		"config.schema.json": []byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"additionalProperties\": false\n}\n"),
-		"README.md":          []byte("# BaseHarbor Capability Provider\n\nImplement the baseharbor.provider/v1 lifecycle behind this descriptor. Run baha provider test . before publishing.\n"),
+		"go.mod":              []byte(renderStarterGoMod(descriptor)),
+		"provider.go":         []byte(renderStarterProvider(descriptor)),
+		"README.md":           []byte(renderStarterREADME(descriptor)),
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		return InitResult{}, err
 	}
 	var written []string
-	for _, name := range []string{"provider.yaml", "config.schema.json", "README.md"} {
+	for _, name := range []string{"provider.yaml", "config.schema.json", "go.mod", "provider.go", "README.md"} {
 		if err := os.WriteFile(filepath.Join(abs, name), files[name], 0o644); err != nil {
 			_ = os.RemoveAll(abs)
 			return InitResult{}, err
@@ -78,4 +80,112 @@ func Load(root string) (Descriptor, error) {
 		return Descriptor{}, fmt.Errorf("decode provider.yaml: %w", err)
 	}
 	return descriptor, descriptor.Validate()
+}
+
+
+func renderStarterGoMod(descriptor Descriptor) string {
+	name := strings.ReplaceAll(strings.TrimSpace(descriptor.ID), "/", "-")
+	return fmt.Sprintf("module example.com/%s\n\ngo 1.25.0\n\nrequire github.com/mcpdev80/baseharbor v0.4.18\n", name)
+}
+
+func renderStarterProvider(descriptor Descriptor) string {
+	kind := "provider.Kind(" + fmt.Sprintf("%q", descriptor.ID) + ")"
+	capabilityKind := "provider.SQL"
+	if len(descriptor.ServiceContracts) > 0 {
+		switch strings.SplitN(descriptor.ServiceContracts[0], "/", 2)[0] {
+		case "cache.key-value":
+			capabilityKind = "provider.KeyValue"
+		case "object-storage.s3":
+			capabilityKind = "provider.ObjectStorageS3"
+		case "secrets":
+			capabilityKind = "provider.Secrets"
+		case "telemetry.otlp":
+			capabilityKind = "provider.TelemetryOTLP"
+		case "metrics":
+			capabilityKind = "provider.Metrics"
+		case "logs":
+			capabilityKind = "provider.Logs"
+		case "traces":
+			capabilityKind = "provider.Traces"
+		case "identity.oidc":
+			capabilityKind = "provider.Identity"
+		}
+	}
+	return fmt.Sprintf(`package providerimpl
+
+import (
+	"context"
+	"errors"
+
+	"github.com/mcpdev80/baseharbor/sdk/provider"
+)
+
+// Driver is the provider implementation boundary. Keep product-specific APIs,
+// SDKs and credentials behind this type.
+type Driver struct{}
+
+var _ provider.Driver = (*Driver)(nil)
+
+func (*Driver) Descriptor() provider.Provider {
+	return provider.Provider{
+		Kind: %s,
+		Capabilities: []provider.Kind{%s},
+	}
+}
+
+func (*Driver) Preflight(context.Context, provider.Resource, provider.Binding) error {
+	// Validate configuration, reachability and required semantics here.
+	// Preflight MUST NOT mutate provider state.
+	return nil
+}
+
+func (*Driver) Provision(context.Context, provider.Resource, provider.Binding) error {
+	return errors.New("TODO: implement convergent provider provisioning")
+}
+
+func (*Driver) Bind(context.Context, provider.Resource, provider.Binding) error {
+	return errors.New("TODO: implement application-facing binding")
+}
+
+func (*Driver) Verify(context.Context, provider.Resource, provider.Binding) error {
+	return errors.New("TODO: verify application-facing capability semantics")
+}
+`, kind, capabilityKind)
+}
+
+func renderStarterREADME(descriptor Descriptor) string {
+	return fmt.Sprintf(`# BaseHarbor Capability Provider
+
+Provider: %s
+
+This scaffold implements the public BaseHarbor provider boundary from:
+
+~~~text
+github.com/mcpdev80/baseharbor/sdk/provider
+~~~
+
+Implement the lifecycle in provider.go:
+
+~~~text
+Preflight -> Provision -> Bind -> Verify
+~~~
+
+Rules:
+
+- Preflight is side-effect free.
+- Provision converges and is idempotent.
+- Bind exposes only application-facing contract data.
+- Verify tests capability semantics, not only process health.
+- Keep credentials out of diagnostics and portable intent.
+- Enforce ownership before destructive operations.
+- Use reconciliation hooks for drift/retry when the provider manages state.
+
+Validate the descriptor with:
+
+~~~bash
+baha provider test .
+~~~
+
+Then exercise the SDK conformance harness from provider tests before publishing.
+`, descriptor.ID)
 }
