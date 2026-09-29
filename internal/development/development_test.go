@@ -13,7 +13,7 @@ type testAdapter struct{ id string }
 func (a testAdapter) Descriptor() extension.Metadata {
 	return extension.Metadata{SchemaVersion: extension.DescriptorVersion, ID: a.id, Family: extension.FamilyDevelopment, Version: "0.1.0"}
 }
-func (testAdapter) Detect(string) (Detection, error) { return Detection{}, nil }
+func (testAdapter) Detect(string) (Detection, error)     { return Detection{}, nil }
 func (testAdapter) Supports(capability.Requirement) bool { return true }
 func (testAdapter) Plan(contract application.PortableContract, profile StackProfile, component Component) ([]Action, error) {
 	return []Action{{Kind: ActionSource, Capability: capability.ExposureHTTP, Name: "bootstrap", Value: component.Role}}, nil
