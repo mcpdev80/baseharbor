@@ -138,7 +138,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 		return fmt.Errorf("start application runtime broker: %w", err)
 	}
 	cli.ReportActivityDetail(progress, "waiting for runtime broker readiness")
-	verifyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	verifyCtx, cancel := context.WithTimeout(ctx, runtimeReadinessTimeout(compose, 60*time.Second))
 	defer cancel()
 	var verifyErr error
 	for verifyCtx.Err() == nil {
@@ -262,10 +262,17 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 	}); err != nil {
 		return fmt.Errorf("start runtime provider executor: %w", err)
 	}
-	if err := waitRuntimeProviderExecutorReady(ctx, compose, executorFiles, 75*time.Second); err != nil {
+	if err := waitRuntimeProviderExecutorReady(ctx, compose, executorFiles, runtimeReadinessTimeout(compose, 75*time.Second)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func runtimeReadinessTimeout(compose bhruntime.RuntimeProvider, base time.Duration) time.Duration {
+	if compose != nil && compose.Kind() == bhruntime.ProviderPodman {
+		return base * 49 / 20
+	}
+	return base
 }
 
 func waitRuntimeProviderExecutorReady(ctx context.Context, compose bhruntime.RuntimeProvider, files runtimeexecutor.Files, timeout time.Duration) error {
