@@ -97,3 +97,26 @@ func TestProviderRegistryAcceptsThirdPartyDescriptorWithoutCoreEnumeration(t *te
 		t.Fatalf("provider kind = %q, want %q", provider.Kind(), descriptor.Kind)
 	}
 }
+
+
+func TestServiceStateTerminalFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		state ServiceState
+		want bool
+	}{
+		{name: "running", state: ServiceState{State: "running"}, want: false},
+		{name: "created without error", state: ServiceState{State: "created"}, want: false},
+		{name: "created with runtime error", state: ServiceState{State: "created", Error: "failed to start container"}, want: true},
+		{name: "created with nonzero exit", state: ServiceState{State: "created", ExitCode: 128}, want: true},
+		{name: "exited", state: ServiceState{State: "exited"}, want: true},
+		{name: "dead", state: ServiceState{State: "dead"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.state.TerminalFailure(); got != tc.want {
+				t.Fatalf("TerminalFailure() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
