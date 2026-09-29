@@ -150,7 +150,7 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 	envName := quadletRenderServiceEnvironment(result, unitBase, service)
 
 	var unit strings.Builder
-	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, service, selected)
+	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, model, service, selected)
 	quadletRenderServiceSecurity(&unit, service)
 	if err := quadletRenderServiceNetworks(&unit, project, serviceName, model, service); err != nil {
 		return err
@@ -224,7 +224,7 @@ func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, se
 	return envName
 }
 
-func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, service quadletComposeService, selected map[string]struct{}) {
+func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, model quadletComposeProject, service quadletComposeService, selected map[string]struct{}) {
 	unit.WriteString("[Unit]\n")
 	fmt.Fprintf(unit, "Description=BaseHarbor Quadlet service %s/%s\n", project, serviceName)
 	deps := append([]string(nil), service.DependsOn...)
@@ -237,6 +237,24 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 		}
 		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
 		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
+	}
+
+	serviceNetworks := append([]string(nil), service.Networks.Names...)
+	if len(serviceNetworks) == 0 {
+		serviceNetworks = []string{"default"}
+	}
+	sort.Strings(serviceNetworks)
+	for _, networkName := range serviceNetworks {
+		network, declared := model.Networks[networkName]
+		if !declared || network.External {
+			continue
+		}
+		actual := strings.TrimSpace(network.Name)
+		if actual == "" {
+			actual = project + "_" + networkName
+		}
+		networkUnit := quadletResourceUnitBase(project, networkName, actual) + "-network.service"
+		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", networkUnit, networkUnit)
 	}
 
 	unit.WriteString("\n[Container]\n")
@@ -305,26 +323,37 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 	sort.Strings(serviceNetworks)
 	for _, networkName := range serviceNetworks {
 		network, declared := model.Networks[networkName]
-		switch {
-		case declared && network.External:
-			actual := strings.TrimSpace(network.Name)
-			if actual == "" {
-				actual = networkName
-			}
-			fmt.Fprintf(unit, "Network=%s\n", actual)
-		case declared:
-			actual := strings.TrimSpace(network.Name)
-			if actual == "" {
-				actual = project + "_" + networkName
-			}
-			fmt.Fprintf(unit, "Network=%s.network\n", quadletResourceUnitBase(project, networkName, actual))
-		default:
+		if !declared {
 			return fmt.Errorf("Compose service %q references undeclared network %q", serviceName, networkName)
 		}
-		fmt.Fprintf(unit, "NetworkAlias=%s\n", serviceName)
-		for _, alias := range service.Networks.Aliases[networkName] {
-			fmt.Fprintf(unit, "NetworkAlias=%s\n", alias)
+		actual := strings.TrimSpace(network.Name)
+		if actual == "" {
+			if network.External {
+				actual = networkName
+			} else {
+				actual = project + "_" + networkName
+			}
 		}
+
+		aliases := []string{serviceName}
+		seen := map[string]struct{}{serviceName: {}}
+		for _, alias := range service.Networks.Aliases[networkName] {
+			alias = strings.TrimSpace(alias)
+			if alias == "" {
+				continue
+			}
+			if _, ok := seen[alias]; ok {
+				continue
+			}
+			seen[alias] = struct{}{}
+			aliases = append(aliases, alias)
+		}
+
+		spec := actual
+		for _, alias := range aliases {
+			spec += ":alias=" + alias
+		}
+		fmt.Fprintf(unit, "Network=%s\n", spec)
 	}
 	return nil
 }
