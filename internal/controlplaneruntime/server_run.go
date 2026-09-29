@@ -65,7 +65,7 @@ func prepareServerDependencies(ctx context.Context, cfg Config, store applicatio
 		deps.runtimeSecrets = nil
 
 		if cfg.RuntimeSecretsEnabled {
-			client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
+			client, err := openbao.NewApplicationRuntimeClientWithCA(cfg.RuntimeOpenBaoURL, cfg.RuntimeOpenBaoCAFile)
 			if err != nil {
 				deps.close()
 				return serverDependencies{}, err
