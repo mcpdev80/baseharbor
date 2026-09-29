@@ -29,10 +29,9 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 			ServerName: "localhost",
 		},
 	})
-	got := renderCaddyfile(routes)
+	got := renderCaddyfile(routes, 18443)
 	for _, want := range []string{
-		":443 {",
-		":8443 {",
+		":18443 {",
 		"host demo-api.baseharbor.localhost",
 		"path /swagger /swagger/*",
 		"uri strip_prefix /swagger",
@@ -44,6 +43,9 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 		if !strings.Contains(got, want) {
 			t.Fatalf("Caddyfile missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, ":443 {") || strings.Contains(got, ":8443 {") {
+		t.Fatalf("Caddyfile contains hard-coded gateway listeners:\n%s", got)
 	}
 	if strings.Contains(got, "tls_insecure_skip_verify") {
 		t.Fatalf("Caddyfile disabled upstream TLS verification:\n%s", got)
@@ -142,12 +144,12 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 		Upstream: "https://identity:9443",
 		Network:  "identity-consumer",
 	}}
-	got := renderCompose(files, routes, nil, 8443)
+	got := renderCompose(files, routes, nil, 18443)
 	for _, want := range []string{
 		"cap_drop: [\"ALL\"]",
 		"cap_add: [\"NET_BIND_SERVICE\"]",
 		"security_opt: [\"no-new-privileges:true\"]",
-		"127.0.0.1:8443:8443",
+		"127.0.0.1:18443:18443",
 		"auth.baha.localhost",
 	} {
 		if !strings.Contains(got, want) {
