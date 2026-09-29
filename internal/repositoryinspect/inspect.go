@@ -22,6 +22,8 @@ func DefaultEngine() Engine {
 	return Engine{Detectors: []Detector{
 		sqlDetector{},
 		keyValueDetector{},
+		secretsDetector{},
+		httpExposureDetector{},
 		objectStorageDetector{},
 		httpExposureDetector{},
 		secretsDetector{},
