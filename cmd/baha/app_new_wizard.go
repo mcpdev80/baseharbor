@@ -255,7 +255,7 @@ func guidedCreateStackProfile(reader *bufio.Reader, out io.Writer, catalog devel
 		return guidedStackSelection{}, err
 	}
 	var counts = map[string]int{}
-	for _, token := range splitNonEmpty(value) {
+	for _, token := range splitWizardItems(value) {
 		adapterID, err := developmentAdapterID(token)
 		if err != nil {
 			return guidedStackSelection{}, err
@@ -266,7 +266,7 @@ func guidedCreateStackProfile(reader *bufio.Reader, out io.Writer, catalog devel
 			suffix = strconv.Itoa(counts[adapterID])
 		}
 		defaultID := strings.TrimPrefix(adapterID, "development/") + suffix
-		if len(raw.Extends) == 0 && len(splitNonEmpty(value)) == 1 {
+		if len(raw.Extends) == 0 && len(splitWizardItems(value)) == 1 {
 			defaultID = "app"
 		}
 		componentID, err := promptLine(reader, out, "Component name", defaultID)
@@ -359,7 +359,7 @@ func guidedGreenfieldCapabilities(reader *bufio.Reader, out io.Writer, profile d
 			if err != nil {
 				return nil, nil, profile, err
 			}
-			secrets = splitNonEmpty(value)
+			secrets = splitWizardItems(value)
 		}
 	}
 
@@ -467,7 +467,7 @@ func promptNumber(reader *bufio.Reader, out io.Writer, label string, min, max, d
 	return n, nil
 }
 
-func splitNonEmpty(value string) []string {
+func splitWizardItems(value string) []string {
 	var result []string
 	for _, raw := range strings.Split(value, ",") {
 		item := strings.TrimSpace(raw)
@@ -480,7 +480,7 @@ func splitNonEmpty(value string) []string {
 
 func parseNumberSet(value string, max int) (map[int]bool, error) {
 	result := map[int]bool{}
-	for _, raw := range splitNonEmpty(value) {
+	for _, raw := range splitWizardItems(value) {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > max {
 			return nil, fmt.Errorf("invalid selection %q", raw)
