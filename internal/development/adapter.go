@@ -21,9 +21,9 @@ type GeneratedFile struct {
 }
 
 type Validation struct {
-	Satisfied   bool              `json:"satisfied"`
+	Satisfied    bool                     `json:"satisfied"`
 	Capabilities map[capability.Kind]bool `json:"capabilities,omitempty"`
-	Diagnostics []string          `json:"diagnostics,omitempty"`
+	Diagnostics  []string                 `json:"diagnostics,omitempty"`
 }
 
 type Adapter interface {
