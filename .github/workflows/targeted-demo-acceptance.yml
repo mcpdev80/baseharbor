@@ -238,6 +238,9 @@ jobs:
 
           if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             runtime="${{ steps.target.outputs.runtime }}"
+            export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+            export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+            export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
             diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
             mkdir -p "$diagnostics"
 
