@@ -100,8 +100,8 @@ networks:
 			t.Fatalf("db Quadlet missing %q:\n%s", want, db)
 		}
 	}
-	if strings.Contains(db, "Notify=healthy") {
-		t.Fatalf("Quadlet service start must not duplicate BaseHarbor readiness waits:\n%s", db)
+	if !strings.Contains(db, "Notify=healthy") {
+		t.Fatalf("healthchecked provider dependency must delay systemd readiness until healthy:\n%s", db)
 	}
 	if !strings.Contains(got.Files["baseharbor-demo-internal.network"], "Internal=true") {
 		t.Fatalf("internal network lost semantics:\n%s", got.Files["baseharbor-demo-internal.network"])
@@ -129,6 +129,31 @@ networks:
 		if !strings.Contains(worker, want) {
 			t.Fatalf("worker Quadlet missing %q:\n%s", want, worker)
 		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsBrokerDoesNotGateSystemdOnCompositeHealth(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  broker:
+    image: ghcr.io/example/runtime:test
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "baseharbor-broker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["baseharbor-broker-broker.container"]
+	if strings.Contains(unit, "Notify=healthy") {
+		t.Fatalf("runtime broker must leave composite readiness to BaseHarbor:\n%s", unit)
+	}
+	if !strings.Contains(unit, "HealthCmd=true") {
+		t.Fatalf("runtime broker must retain its container healthcheck:\n%s", unit)
 	}
 }
 
