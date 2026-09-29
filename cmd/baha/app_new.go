@@ -12,6 +12,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/nextjsadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
+	"github.com/mcpdev80/baseharbor/internal/development/quarkusadapter"
 )
 
 type appNewOptions struct {
@@ -27,7 +30,7 @@ func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--stack go] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			options, err := parseAppNewOptions(args)
@@ -45,7 +48,7 @@ func appNewCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			registry, err := development.NewRegistry(goadapter.Adapter{})
+			registry, err := development.NewRegistry(goadapter.Adapter{}, nextjsadapter.Adapter{}, pythonadapter.Adapter{}, quarkusadapter.Adapter{})
 			if err != nil {
 				return err
 			}
@@ -192,7 +195,13 @@ func developmentAdapterID(stack string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(stack)) {
 	case "", "go", goadapter.AdapterID:
 		return goadapter.AdapterID, nil
+	case "nextjs", "next.js", nextjsadapter.AdapterID:
+		return nextjsadapter.AdapterID, nil
+	case "python", pythonadapter.AdapterID:
+		return pythonadapter.AdapterID, nil
+	case "quarkus", quarkusadapter.AdapterID:
+		return quarkusadapter.AdapterID, nil
 	default:
-		return "", usageError("development stack "+stack+" is not available yet", "Use --stack go.")
+		return "", usageError("development stack "+stack+" is not available", "Use --stack go, nextjs, python or quarkus.")
 	}
 }
