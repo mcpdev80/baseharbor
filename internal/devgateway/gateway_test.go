@@ -117,12 +117,14 @@ func TestPruneUnavailableTrustRoutesDropsOnlyStaleHTTPSRoutes(t *testing.T) {
 }
 
 func TestURLForRuntimeUsesRuntimePortBeforeGatewayStateExists(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := "missing-target-" + strings.ReplaceAll(t.Name(), "/", "-")
+	available := func(int) bool { return true }
 
-	if got := URLForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}); got != "https://auth.baha.localhost" {
+	if got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}, available); got != "https://auth.baha.localhost" {
 		t.Fatalf("docker canonical URL = %q", got)
 	}
-	if got := URLForRuntime(target, "auth.baha.localhost", testRuntime{engine: "podman"}); got != "https://auth.baha.localhost:8443" {
+	if got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "podman"}, available); got != "https://auth.baha.localhost:8443" {
 		t.Fatalf("podman canonical URL = %q", got)
 	}
 }
