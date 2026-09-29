@@ -295,6 +295,32 @@ func verifyRuntimeBrokerRunning(ctx context.Context, compose bhruntime.RuntimePr
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
 	}
+	if compose.Kind() == bhruntime.ProviderPodman {
+		project := runtimebroker.ProjectNameForRuntime(m, files)
+		containers, err := compose.ListRuntimeContainers(ctx)
+		if err != nil {
+			return fmt.Errorf("inspect Podman runtime broker container state: %w", err)
+		}
+		for _, container := range containers {
+			if container.Project != project || container.Service != runtimebroker.ServiceName {
+				continue
+			}
+			if !container.Running {
+				return errors.New("application runtime broker container is not running")
+			}
+			switch strings.ToLower(strings.TrimSpace(container.Health)) {
+			case "healthy":
+				return nil
+			case "unhealthy":
+				return errors.New("application runtime broker healthcheck is unhealthy")
+			case "", "starting":
+				return errors.New("application runtime broker healthcheck is not ready")
+			default:
+				return fmt.Errorf("application runtime broker healthcheck state %q is not ready", container.Health)
+			}
+		}
+		return errors.New("application runtime broker container is missing")
+	}
 	brokerFiles, err := runtimebroker.Existing(files)
 	if err != nil {
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
