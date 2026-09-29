@@ -165,6 +165,37 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		})
 	}
 
+	t.Run("app new uses semantic greenfield flow", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "greenfield")
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name: "baseharbor.app.new",
+			Arguments: map[string]any{
+				"path":         root,
+				"name":         "agent-app",
+				"stack":        "go",
+				"capabilities": []string{"exposure.http"},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError {
+			t.Fatalf("app new returned error: %#v", result.Content)
+		}
+		for _, name := range []string{"baseharbor.yaml", "go.mod", "main.go", "compose.yaml"} {
+			if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+				t.Fatalf("generated file %s: %v", name, err)
+			}
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"contract_version":"v1"`)) {
+			t.Fatalf("machine contract version missing from app new: %s", encoded)
+		}
+	})
+
 	t.Run("destroy requires explicit approval", func(t *testing.T) {
 		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.destroy",
