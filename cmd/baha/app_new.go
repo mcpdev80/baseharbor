@@ -56,11 +56,11 @@ func appNewCommand() *cli.Command {
 				return err
 			}
 			result, err := development.CreateApplication(".", development.NewApplicationRequest{
-				Name:         options.Name,
-				Environment:  options.Environment,
-				Adapter:      adapterID,
-				Capabilities: options.Capabilities,
-				Secrets:      options.Secrets,
+				Name:               options.Name,
+				Environment:        options.Environment,
+				Adapter:            adapterID,
+				Capabilities:       options.Capabilities,
+				Secrets:            options.Secrets,
 				EmitBackstage:      options.EmitBackstage,
 				BackstageOwner:     options.BackstageOwner,
 				BackstageLifecycle: options.BackstageLifecycle,
