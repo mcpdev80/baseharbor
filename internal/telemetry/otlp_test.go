@@ -148,6 +148,40 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 	}
 }
 
+func TestManagedCollectorTraceBackendWithoutClientAuthRendersValidSections(t *testing.T) {
+	config := collectorConfigWithTraceBackendAccess("http://tempo:4318", false)
+	if strings.Contains(config, "client_ca_file:") {
+		t.Fatalf("development collector unexpectedly requires a client certificate:\n%s", config)
+	}
+	for _, want := range []string{
+		"otlp_http/tempo:",
+		"endpoint: http://tempo:4318",
+		"exporters: [debug, otlp_http/tempo]",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("collector config missing %q:\n%s", want, config)
+		}
+	}
+	tlsStart := strings.Index(config, "        tls:\n")
+	exportersStart := strings.Index(config, "exporters:\n")
+	traceExporter := strings.Index(config, "  otlp_http/tempo:\n")
+	if tlsStart < 0 || exportersStart < 0 || traceExporter < exportersStart {
+		t.Fatalf("trace exporter rendered inside TLS section:\n%s", config)
+	}
+}
+
+func TestManagedCollectorClientCertificateRequirementFollowsPolicy(t *testing.T) {
+	dev := collectorConfigWithTraceBackendAccess("", false)
+	if strings.Contains(dev, "client_ca_file:") {
+		t.Fatalf("development collector unexpectedly requires a client certificate:\n%s", dev)
+	}
+
+	managed := collectorConfigWithTraceBackendAccess("", true)
+	if !strings.Contains(managed, "client_ca_file: /run/baseharbor/tls/ca.pem") {
+		t.Fatalf("managed collector is missing required mTLS client CA:\n%s", managed)
+	}
+}
+
 func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {
 	config := collectorConfigWithTraceBackend("")
 	for _, want := range []string{

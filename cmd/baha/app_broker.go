@@ -85,7 +85,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			TrustFile:         otlpBinding.CAFile,
 			ClientCertificate: otlpBinding.ClientCertFile,
 			ClientKey:         otlpBinding.ClientKeyFile,
-			ServerName:        "otel-collector-access",
+			ServerName:        "otel-collector",
 		}
 		if otlpBinding.ClientCertFile != "" && otlpBinding.ClientKeyFile != "" {
 			traceSecurity.Authentication = "mtls"
@@ -210,7 +210,7 @@ func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writ
 			TrustFile:         observabilityBinding[0].CA,
 			ClientCertificate: observabilityBinding[0].ClientCert,
 			ClientKey:         observabilityBinding[0].ClientKey,
-			ServerName:        "otel-collector-access",
+			ServerName:        "otel-collector",
 		}
 	}
 	executorFiles, err := runtimeexecutor.EnsureFilesAt(dataDir, files.Namespace, identity, adminCredentialsPath, s3Endpoint, s3Trust, observabilityBinding...)

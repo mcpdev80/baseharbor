@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 func quadletGeneratorPath() (string, error) {
@@ -391,15 +392,19 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	}
 	if len(restartUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
-			return quadletServiceStartError(ctx, restartUnits, err)
+			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 30*time.Second); waitErr != nil {
+				return quadletServiceStartError(ctx, restartUnits, err)
+			}
 		}
 	}
 	if len(startUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
-			return quadletServiceStartError(ctx, startUnits, err)
+			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 30*time.Second); waitErr != nil {
+				return quadletServiceStartError(ctx, startUnits, err)
+			}
 		}
 	}
-	if err := quadletEnsureServiceUnitsActive(ctx, units); err != nil {
+	if err := quadletWaitServiceUnitsActive(ctx, units, 30*time.Second); err != nil {
 		return err
 	}
 	return quadletEnsureServiceContainersExist(ctx, project, selected)
@@ -419,14 +424,38 @@ func quadletServiceStartError(ctx context.Context, units []string, startErr erro
 }
 
 func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error {
-	for _, unit := range units {
-		if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
-			continue
+	return quadletWaitServiceUnitsActive(ctx, units, 0)
+}
+
+func quadletWaitServiceUnitsActive(ctx context.Context, units []string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		allActive := true
+		for _, unit := range units {
+			if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err != nil {
+				allActive = false
+				break
+			}
 		}
-		diagnostic := quadletServiceDiagnostic(ctx, unit)
-		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
+		if allActive {
+			return nil
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			for _, unit := range units {
+				if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
+					continue
+				}
+				diagnostic := quadletServiceDiagnostic(ctx, unit)
+				return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
+			}
+			return errors.New("Quadlet service units did not become active")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
-	return nil
 }
 
 func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletProject, selected []string) error {

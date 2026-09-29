@@ -179,11 +179,13 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 
 	var b strings.Builder
 	b.WriteString("services:\n")
-	hasPostgres := false
-	for _, app := range state.Applications {
-		if len(app.SQL) > 0 {
-			hasPostgres = true
-			break
+	hasPostgres := state.PostgresAdminCredential != ""
+	if !hasPostgres {
+		for _, app := range state.Applications {
+			if len(app.SQL) > 0 {
+				hasPostgres = true
+				break
+			}
 		}
 	}
 	if hasPostgres {

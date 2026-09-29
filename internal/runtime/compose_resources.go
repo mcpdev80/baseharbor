@@ -220,6 +220,42 @@ func (c Compose) InspectProjectResources(ctx context.Context, project string, re
 	return existing, nil
 }
 
+// RemoveProjectServices removes only containers whose runtime ownership labels
+// match the exact project and one of the requested legacy service names.
+// It is intentionally narrower than compose --remove-orphans so consolidated
+// bh-* projects cannot prune sibling modules.
+func (c Compose) RemoveProjectServices(ctx context.Context, project string, services ...string) error {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return errors.New("project is required")
+	}
+	wanted := map[string]struct{}{}
+	for _, service := range services {
+		if service = strings.TrimSpace(service); service != "" {
+			wanted[service] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	containers, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if container.Project != project {
+			continue
+		}
+		if _, ok := wanted[container.Service]; !ok {
+			continue
+		}
+		if _, err := c.directOutput(ctx, "container", "rm", "-f", container.Name); err != nil {
+			return fmt.Errorf("remove legacy service %s/%s: %w", project, container.Service, err)
+		}
+	}
+	return nil
+}
+
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
 	if c.command == "" {
 		return ErrRuntimeNotFound

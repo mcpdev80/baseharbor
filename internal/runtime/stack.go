@@ -99,6 +99,15 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
+	if err := prepareOpenBaoStorage(stateDir, envPath); err != nil {
+		return Files{}, err
+	}
+	if err := normalizeProjectedFiles(
+		filepath.Join(stateDir, "providers", "postgresql", "runtime"),
+		filepath.Join(stateDir, "providers", "openbao", "runtime"),
+	); err != nil {
+		return Files{}, err
+	}
 	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject}, nil
 }
 
@@ -112,18 +121,19 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return err
 	}
-	openBaoAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, openBaoPolicy, filepath.Join(stateDir, "providers", "openbao"), serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "openbao-access",
-		Upstream:         "http://openbao:8200",
-		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT",
-		ContainerPort:    8443,
-		Networks:         []string{"default"},
-		RequireClient:    false,
-	})
+	openBaoPolicy.ServerName = "openbao"
+	openBaoRoot := filepath.Join(stateDir, "providers", "openbao")
+	openBaoMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		openBaoPolicy,
+		filepath.Join(openBaoRoot, "service-access", "pki"),
+		"openbao",
+		"127.0.0.1",
+	)
 	if err != nil {
-		return fmt.Errorf("prepare OpenBao HTTPS access: %w", err)
+		return fmt.Errorf("prepare OpenBao native TLS: %w", err)
 	}
-
 	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return err
@@ -140,6 +150,14 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return fmt.Errorf("prepare control-plane PostgreSQL native TLS: %w", err)
 	}
+	// Issue every replacement certificate while the currently running control
+	// plane still sees one coherent trust set. Only after all issuer calls have
+	// succeeded do we replace the runtime projections. This avoids a split
+	// state where BAO_CACERT trusts the new CA while OpenBao still presents the
+	// bootstrap certificate.
+	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
+		return fmt.Errorf("project OpenBao native TLS: %w", err)
+	}
 	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
 		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
 	}
@@ -153,15 +171,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err != nil {
 		return err
 	}
-	accessService := serviceaccess.HTTPGatewayComposeService(openBaoAccess, serviceaccess.HTTPGatewaySpec{
-		ServiceName: "openbao-access", Upstream: "http://openbao:8200",
-		PublishedPortEnv: "BASEHARBOR_OPENBAO_PORT", ContainerPort: 8443,
-		Networks: []string{"default"}, RequireClient: false,
-	})
-	if marker := strings.Index(rendered, "\nvolumes:\n"); marker >= 0 {
-		rendered = rendered[:marker] + "\n" + accessService + rendered[marker:]
-	} else {
-		return errors.New("embedded runtime compose is missing volumes section")
+	rendered, err = renderSecureControlPlaneOpenBao(rendered)
+	if err != nil {
+		return err
 	}
 	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return fmt.Errorf("write control-plane service access compose: %w", err)
@@ -220,49 +232,68 @@ hostnossl all all ::/0 reject
 	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
 }
 
-func renderSecureControlPlanePostgres(rendered string) (string, error) {
-	start := strings.Index(rendered, "  postgres:\n")
-	end := strings.Index(rendered, "\n  openbao:\n")
-	if start < 0 || end <= start {
-		return "", errors.New("embedded runtime compose is missing the PostgreSQL service")
+func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
 	}
-	const service = `  postgres:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    user: "postgres"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint:
-      - /bin/sh
-      - -ec
-    command:
-      - |
-        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
-        chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /var/run/postgresql:rw,noexec,nosuid,nodev
-    environment:
-      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
-      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-`
-	return rendered[:start] + service + rendered[end:], nil
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{
+		material.CA:                "ca.pem",
+		material.ServerCertificate: "server-cert.pem",
+		material.ServerKey:         "server-key.pem",
+	} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("OpenBao TLS material %s is empty", name)
+		}
+		// The provider directory remains owner-only (0700), while the bind-mounted
+		// leaf material must be readable by OpenBao's non-root runtime UID.
+		if err := os.WriteFile(filepath.Join(runtimeDir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
+	for _, required := range []string{
+		"  openbao:\n",
+		"docker.io/openbao/openbao:2.7.0",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
+		"./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro",
+		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
+	} {
+		if !strings.Contains(rendered, required) {
+			return "", fmt.Errorf("embedded runtime compose is missing secure OpenBao runtime %q", required)
+		}
+	}
+	for _, forbidden := range []string{`"storage":{"file"`, `"storage":{"raft"`, "/openbao/file", "/openbao/raft", "openbao-data:"} {
+		if strings.Contains(rendered, forbidden) {
+			return "", fmt.Errorf("embedded runtime compose contains obsolete OpenBao storage %q", forbidden)
+		}
+	}
+	return rendered, nil
+}
+
+func renderSecureControlPlanePostgres(rendered string) (string, error) {
+	for _, required := range []string{
+		"  postgres:\n",
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"BASEHARBOR_OPENBAO_DB_PASSWORD",
+		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+	} {
+		if !strings.Contains(rendered, required) {
+			return "", fmt.Errorf("embedded runtime compose is missing secure PostgreSQL runtime %q", required)
+		}
+	}
+	return rendered, nil
 }
 
 func ExistingFiles(stateDir string) (Files, error) {

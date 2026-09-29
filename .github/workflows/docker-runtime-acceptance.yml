@@ -77,6 +77,16 @@ jobs:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
         run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
+      - name: Capture Docker control-plane diagnostics
+        if: failure() && steps.runtime_integration.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::group::Docker control-plane diagnostics"
+          docker ps -a || true
+          docker logs bh-local-shared-postgres-1 2>&1 || true
+          docker logs bh-local-shared-openbao-1 2>&1 || true
+          echo "::endgroup::"
+
       - name: Reset runtime state before recovery test
         shell: bash
         timeout-minutes: 3

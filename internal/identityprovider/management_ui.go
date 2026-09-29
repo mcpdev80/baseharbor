@@ -34,10 +34,6 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	adminPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"])
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
 	consumer, err := application.IdentityProviderNetworkName(app, namespace)
 	if err != nil {
 		return KeycloakFiles{}, err
@@ -48,16 +44,11 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 		return KeycloakFiles{}, err
 	}
 	publicPolicy.ServerName = keycloakPublicHost
-	publicMaterial, err := serviceaccess.ExistingTLSMaterial(publicPolicy, filepath.Join(dir, "public", "service-access", "pki"))
+	nativeMaterial, err := serviceaccess.ExistingTLSMaterial(publicPolicy, filepath.Join(dir, "native-tls", "pki"))
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	adminPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-admin", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
-	adminPolicy.ServerName = "localhost"
-	adminMaterial, err := serviceaccess.ExistingTLSMaterial(adminPolicy, filepath.Join(dir, "admin", "service-access", "pki"))
+	nativeMaterial, err = projectKeycloakTLSMaterial(filepath.Join(dir, "native-tls", "runtime"), nativeMaterial)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
@@ -84,19 +75,17 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 		ConsumerNetwork:    consumer,
 		InternalNetwork:    consumer + "-internal",
 		PublicPort:         publicPort,
-		AdminPort:          adminPort,
+		AdminPort:          publicPort,
 		PublicURL:          publicURL,
 		CanonicalPublicURL: canonicalPublicURL,
-		AdminURL:           "https://127.0.0.1:" + strconv.Itoa(adminPort),
+		AdminURL:           "https://127.0.0.1:" + strconv.Itoa(publicPort),
 		PublicAccess: serviceaccess.HTTPGatewayFiles{
-			Dir:       filepath.Join(dir, "public", "service-access"),
-			Caddyfile: filepath.Join(dir, "public", "service-access", "Caddyfile"),
-			Material:  publicMaterial,
+			Dir:      filepath.Join(dir, "native-tls"),
+			Material: nativeMaterial,
 		},
 		AdminAccess: serviceaccess.HTTPGatewayFiles{
-			Dir:       filepath.Join(dir, "admin", "service-access"),
-			Caddyfile: filepath.Join(dir, "admin", "service-access", "Caddyfile"),
-			Material:  adminMaterial,
+			Dir:      filepath.Join(dir, "native-tls"),
+			Material: nativeMaterial,
 		},
 	}, nil
 }

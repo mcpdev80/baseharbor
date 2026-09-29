@@ -68,7 +68,16 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 		return
 	}
 
-	term.Result(map[bool]string{true: "READY", false: "DEGRADED"}[result.Ready], "application", map[bool]string{true: "BaseHarbor-managed capabilities, bindings and workload readiness verified", false: "one or more managed capabilities, bindings or workload checks need attention"}[result.Ready])
+	applicationState := "DEGRADED"
+	applicationDetail := "one or more managed capabilities, bindings or workload checks need attention"
+	if result.Ready {
+		applicationState = "READY"
+		applicationDetail = "BaseHarbor-managed capabilities, bindings and workload readiness verified"
+	} else if !result.HasFailures() && result.HasUnverified() {
+		applicationState = "RUNNING"
+		applicationDetail = "workload is running; readiness remains unverified"
+	}
+	term.Result(applicationState, "application", applicationDetail)
 
 	sections := map[string][]application.StatusCheck{}
 	order := []string{"Services", "Workload", "Observability", "Exposure", "Other"}
@@ -97,7 +106,9 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 			if section == "Observability" {
 				state = "VERIFIED"
 			}
-			if !check.OK {
+			if check.State == "unverified" {
+				state = "UNVERIFIED"
+			} else if !check.OK {
 				state = "FAILED"
 			}
 			term.Result(state, check.Name, statusHumanDetail(term, check))
@@ -109,6 +120,9 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 
 	if result.Ready {
 		fmt.Fprintln(out, "\nREADY")
+	} else if !result.HasFailures() && result.HasUnverified() {
+		fmt.Fprintln(out, "\nRUNNING")
+		fmt.Fprintln(out, "Readiness: UNVERIFIED")
 	} else {
 		fmt.Fprintln(out, "\nDEGRADED")
 		fmt.Fprintln(out, "\nNext:")
@@ -147,6 +161,8 @@ func statusHumanDetailValue(check application.StatusCheck, verbose bool) string 
 		return "runtime broker is not ready"
 	case check.Name == "workload" && strings.Contains(strings.ToLower(check.Detail), "openbao"):
 		return "required secrets unavailable because OpenBao is not running"
+	case strings.HasPrefix(check.Name, "workload/") && check.State == "unverified":
+		return "workload is running; readiness has no positive verification signal"
 	case strings.HasPrefix(check.Name, "workload/"):
 		return "workload service is not ready"
 	case check.Name == "logs":
@@ -199,15 +215,19 @@ func appStatusCommand(store application.Store) *cli.Command {
 					}
 				})
 			}
-			if result.State == "stopped" || result.State == "not_applied" {
-				return nil
-			}
-			if !result.Ready {
-				return cli.Presented(errors.New("application is not ready"))
-			}
-			return nil
+			return applicationStatusCommandError(result.StatusResult)
 		},
 	}
+}
+
+func applicationStatusCommandError(result application.StatusResult) error {
+	if result.State == "stopped" || result.State == "not_applied" {
+		return nil
+	}
+	if !result.Ready && result.HasFailures() {
+		return cli.Presented(errors.New("application is not ready"))
+	}
+	return nil
 }
 
 func appDoctorCommand(store application.Store) *cli.Command {
@@ -319,7 +339,9 @@ func renderApplicationDoctor(
 		term.Section("Workload services")
 		for _, service := range workload.Services {
 			state := "READY"
-			if !service.Ready {
+			if service.Readiness == "unverified" {
+				state = "UNVERIFIED"
+			} else if !service.Ready {
 				state = "FAILED"
 			}
 			term.Result(state, service.Service, formatWorkloadServiceStatus(service))
@@ -360,6 +382,11 @@ func renderApplicationDoctor(
 	}
 
 	if healthy && serviceTLSErr == nil && tlsErr == nil {
+		if workload.RunningUnverified() {
+			fmt.Fprintln(out, "\nRUNNING")
+			fmt.Fprintln(out, "Readiness: UNVERIFIED")
+			return
+		}
 		fmt.Fprintln(out, "\nREADY")
 		return
 	}

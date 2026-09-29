@@ -63,6 +63,62 @@ func TestEnsureFilesPreservesExistingSecret(t *testing.T) {
 	}
 }
 
+func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "runtime")
+	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenBaoDBPassword == "" || cfg.OpenBaoDBPassword == cfg.PostgresPassword {
+		t.Fatal("OpenBao storage must use a dedicated PostgreSQL credential")
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(config)
+	for _, want := range []string{
+		`storage "postgresql"`,
+		"sslmode=verify-full",
+		"tls_auto_reload          = true",
+		"X25519MLKEM768",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("OpenBao 2.7 runtime config missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{`storage "file"`, `storage "raft"`} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("OpenBao runtime contains obsolete storage backend %q", forbidden)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
+		filepath.Join(dir, "providers", "postgresql", "runtime", "ca.pem"),
+		filepath.Join(dir, "providers", "openbao", "runtime", "ca.pem"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("OpenBao bootstrap prerequisite %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
+		filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"),
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o044 == 0 {
+			t.Fatalf("bind-mounted runtime file %s is not readable by the non-root container", path)
+		}
+	}
+}
+
 func TestEnsureFilesWithPortsWritesSelectedPorts(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
 	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
@@ -100,7 +156,7 @@ func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testin
 	}
 }
 
-func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t *testing.T) {
+func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
 	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
 	if err != nil {
@@ -115,8 +171,10 @@ func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t 
 	}
 	text := string(compose)
 	for _, wanted := range []string{
-		"openbao-access:",
-		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8443",
+		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+		"BAO_ADDR: https://127.0.0.1:8200",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
+		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
 		"-c ssl=on",
 		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
@@ -126,8 +184,10 @@ func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t 
 			t.Fatalf("reconciled runtime is missing %q", wanted)
 		}
 	}
-	if strings.Contains(text, "postgres-access:") {
-		t.Fatal("control-plane PostgreSQL must use native TLS instead of a raw TLS proxy")
+	for _, forbidden := range []string{"postgres-access:", "openbao-access:"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("control-plane service must use native TLS instead of proxy %s", forbidden)
+		}
 	}
 	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
 	if err != nil {
@@ -136,6 +196,21 @@ func TestEnsureServiceAccessMaterializesSecureNativePostgresAndOpenBaoGateway(t 
 	for _, wanted := range []string{"hostssl all all 0.0.0.0/0 scram-sha-256", "hostnossl all all 0.0.0.0/0 reject"} {
 		if !strings.Contains(string(hba), wanted) {
 			t.Fatalf("pg_hba.conf missing %q", wanted)
+		}
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := string(config)
+	for _, wanted := range []string{
+		`storage "postgresql"`,
+		"sslmode=verify-full",
+		"tls_auto_reload          = true",
+		"X25519MLKEM768",
+	} {
+		if !strings.Contains(configText, wanted) {
+			t.Fatalf("OpenBao 2.7 runtime config missing %q", wanted)
 		}
 	}
 }
@@ -233,14 +308,16 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
+func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	text := string(composeYAML)
-	for _, forbidden := range []string{
-		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
-		"127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200",
+	for _, want := range []string{
+		"-c ssl=on",
+		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"BAO_ADDR: https://127.0.0.1:8200",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 	} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("embedded runtime directly publishes plaintext backend %q", forbidden)
+		if !strings.Contains(text, want) {
+			t.Fatalf("embedded runtime missing native-TLS bootstrap %q", want)
 		}
 	}
 	if strings.Contains(text, "-dev") {
@@ -248,16 +325,23 @@ func TestEmbeddedComposeDoesNotPublishPlaintextBackends(t *testing.T) {
 	}
 }
 
-func TestEmbeddedComposeUsesWritableOpenBaoFileStoragePath(t *testing.T) {
+func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
-	if !strings.Contains(text, `"path":"/openbao/file"`) {
-		t.Fatal("openbao file storage must use the image-managed /openbao/file path")
+	for _, wanted := range []string{
+		"docker.io/openbao/openbao:2.7.0",
+		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
+		"BASEHARBOR_OPENBAO_DB_PASSWORD",
+		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
+	} {
+		if !strings.Contains(text, wanted) {
+			t.Fatalf("managed OpenBao/PostgreSQL runtime missing %q", wanted)
+		}
 	}
-	if !strings.Contains(text, "openbao-data:/openbao/file") {
-		t.Fatal("openbao persistent volume must mount at /openbao/file")
-	}
-	if strings.Contains(text, "/openbao/data") {
-		t.Fatal("openbao runtime must not use the non-image-managed /openbao/data path")
+	for _, forbidden := range []string{"openbao-data:", "/openbao/raft", "/openbao/file"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("obsolete OpenBao storage remains in current runtime: %q", forbidden)
+		}
 	}
 }
 

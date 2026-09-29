@@ -120,6 +120,14 @@
       ],
       "groupName": null,
       "automerge": false
+    },
+    {
+      "description": "Review Go-embedded provider image updates explicitly",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "automerge": false,
+      "groupName": null
     }
   ],
   "lockFileMaintenance": {
@@ -141,5 +149,18 @@
   },
   "baseBranchPatterns": [
     "develop"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track OCI image constants embedded in Go provider/runtime code",
+      "managerFilePatterns": [
+        "/\\.go$/"
+      ],
+      "matchStrings": [
+        "(?m)(?:Image|image)\\s*=\\s*\"(?<depName>(?:docker\\.io|quay\\.io|ghcr\\.io)/[^\":\\s]+):(?<currentValue>[^\"\\s@]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
   ]
 }

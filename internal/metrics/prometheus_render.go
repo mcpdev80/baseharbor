@@ -68,7 +68,7 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, false, access)
 }
 
-func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, access serviceaccess.HTTPGatewayFiles, providerSources ...[]observability.MetricsSource) string {
+func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, _ serviceaccess.HTTPGatewayFiles, providerSources ...[]observability.MetricsSource) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -78,10 +78,8 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	})
 
 	serviceName := ProviderService
-	accessSpec := prometheusAccessSpec()
 	if placement.Scope == capability.ScopeApplication {
 		serviceName = "baseharbor-internal-prometheus"
-		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
@@ -94,9 +92,12 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
 	b.WriteString("      - --storage.tsdb.path=/prometheus\n")
 	b.WriteString("      - --web.enable-lifecycle\n")
+	b.WriteString("      - --web.config.file=/etc/prometheus/web-config.yml\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
 	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
+	b.WriteString("      - ./web-config.yml:/etc/prometheus/web-config.yml:ro\n")
+	b.WriteString("      - ./service-access/runtime:/run/baseharbor/tls:ro\n")
 	if hasRuntimeCA {
 		b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
 	}
@@ -137,12 +138,18 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	b.WriteString("    tmpfs:\n      - /tmp\n")
 	b.WriteString("    cap_drop:\n      - ALL\n")
 	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
+	b.WriteString("    ports:\n")
+	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090\"\n")
 	b.WriteString("    networks:\n")
+	publishAlias := "prometheus-access"
 	if placement.Scope == capability.ScopeApplication {
 		b.WriteString("      access:\n        aliases:\n          - prometheus\n")
+		publishAlias = "baseharbor-internal-prometheus-access"
 	} else {
 		b.WriteString("      - access\n")
 	}
+	b.WriteString("      publish:\n        aliases:\n")
+	fmt.Fprintf(&b, "          - %s\n", publishAlias)
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i := range registrations {
 			fmt.Fprintf(&b, "      - metrics-%d\n", i)
@@ -151,11 +158,9 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 			fmt.Fprintf(&b, "      - provider-%d\n", i)
 		}
 	}
-	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	b.WriteString("\nnetworks:\n")
-	// Keep the clear-text Prometheus backend isolated. The TLS gateway joins a
-	// separate publish network so Docker/Podman can expose only its loopback
-	// HTTPS port without making the backend network host-reachable.
+	// Prometheus terminates TLS natively. The publish network carries only the
+	// native HTTPS endpoint and preserves the historical prometheus-access alias.
 	b.WriteString("  access:\n    internal: true\n")
 	fmt.Fprintf(&b, "  publish:\n    name: %s\n", strconv.Quote(PublishNetworkName(placement.Project)))
 	if len(registrations) > 0 || len(providerNetworks) > 0 {

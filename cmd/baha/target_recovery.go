@@ -26,6 +26,28 @@ func defaultTargetRecoveryFile(target string) (string, error) {
 	return filepath.Join(root, "baseharbor-recovery", target, "openbao-recovery.json"), nil
 }
 
+func preflightNewTargetRecoveryFile(ctx context.Context, explicit string) (string, string, error) {
+	path, source, err := resolveTargetRecoveryFile(ctx, explicit)
+	if err != nil {
+		return "", "", err
+	}
+	info, statErr := os.Stat(path)
+	if statErr == nil {
+		kind := "file"
+		if info.IsDir() {
+			kind = "directory"
+		}
+		return "", "", usageError(
+			fmt.Sprintf("OpenBao recovery output %s already exists at %s", kind, path),
+			fmt.Sprintf("Use a fresh path with 'baha up --recovery-file PATH'. BaseHarbor never overwrites recovery material. No control-plane resources were changed. Existing recovery material at %s was preserved.", path),
+		)
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		return "", "", fmt.Errorf("inspect OpenBao recovery output path %s: %w", path, statErr)
+	}
+	return path, source, nil
+}
+
 func resolveTargetRecoveryFile(ctx context.Context, explicit string) (string, string, error) {
 	if path := strings.TrimSpace(explicit); path != "" {
 		abs, err := filepath.Abs(path)

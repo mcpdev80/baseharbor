@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.4.17] - 2026-09-28
+## [0.4.17] - 2026-09-29
 
 ### Added
 
@@ -31,6 +31,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
 - Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
 - Runtime selection now uses explicit `docker` / `podman` provider identity. Compose remains repository workload-source compatibility rather than Runtime Provider identity; new local state defaults to Docker. Podman realization is native Quadlet + `systemd --user` and fails closed without that environment instead of falling back to `podman compose`.
+- Target-owned shared PostgreSQL/Valkey provider state now survives destruction of the final application consumer; application destroy removes only application-owned resources and credentials, while provider/Target destroy owns provider teardown.
+- Development gateway HTTPS ports are preflighted and persisted per Target; occupied preferred ports fall back deterministically from 18443 and all canonical URLs reuse that persisted port.
+- Managed service access follows a native-TLS-first topology: OpenBao, PostgreSQL, Keycloak, SeaweedFS S3, Prometheus and OTLP terminate TLS natively; the Target developer gateway owns canonical browser routing, while dedicated adapters remain only where they add protocol/security semantics.
+- Managed OIDC now uses `github.com/coreos/go-oidc/v3` 3.21.0; Renovate also tracks registry-qualified provider image constants embedded in Go source.
 
 ### Fixed
 
@@ -39,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Podman CI/runtime validation isolates Quadlet generator preflight state and removes stale BaseHarbor user units from the effective user configuration, preventing unrelated worker state from poisoning validation.
 - Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
 - Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
+- Fresh repository `baha up` now rejects an existing/stale OpenBao recovery output path before creating or mutating control-plane resources and gives an explicit `--recovery-file` remediation.
+- Workload readiness no longer equates a running container with READY: health checks, HTTP/TLS probes or TCP listener probes provide positive readiness evidence, while workers without a readiness signal are reported RUNNING/UNVERIFIED.
 
 ### Security
 
@@ -51,6 +57,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
 - Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
 - The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
+- Native certificate rollout is provider-aware: Keycloak polls replacement certificates, Prometheus re-reads web TLS material per request, SeaweedFS uses its reloading certificate provider, OTLP reloads TLS material on a bounded interval, and OpenBao 2.7 uses native `tls_auto_reload`.
+- The v0.4.17 dependency audit adopts OpenBao 2.7 with dedicated PostgreSQL storage, `verify-full`, native TLS reload and hybrid-PQC-first TLS; it keeps the Go 1.25 support floor by deferring x/crypto/x/sys updates that require Go 1.26 and tracks the yaml.v3 replacement separately in #533.
 
 ## [0.4.16] - 2026-09-26
 
@@ -823,7 +831,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.11...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...HEAD
+[0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
+[0.4.16]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15.1...v0.4.16
+[0.4.15.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15...v0.4.15.1
+[0.4.15]: https://github.com/mcpdev80/baseharbor/compare/v0.4.14...v0.4.15
+[0.4.14]: https://github.com/mcpdev80/baseharbor/compare/v0.4.13...v0.4.14
+[0.4.13]: https://github.com/mcpdev80/baseharbor/compare/v0.4.12...v0.4.13
+[0.4.12]: https://github.com/mcpdev80/baseharbor/compare/v0.4.11...v0.4.12
 [0.4.11]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...v0.4.11
 [0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
 [0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9

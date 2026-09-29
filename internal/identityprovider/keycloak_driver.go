@@ -118,6 +118,10 @@ func (d *KeycloakDriver) Preflight(_ context.Context, resource capability.Resour
 	return nil
 }
 
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
 func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
 	if d.provisioned {
 		return nil
@@ -133,6 +137,11 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	}
 	if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
 		return err
+	}
+	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(ctx, files.Project, "keycloak-public", "keycloak-admin"); err != nil {
+			return fmt.Errorf("remove legacy Keycloak access gateways: %w", err)
+		}
 	}
 	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("validate Keycloak provider: %w", err)
@@ -271,7 +280,7 @@ func (d *KeycloakDriver) ensureDevelopmentPublicRoute(ctx context.Context) error
 	route := devgateway.Route{
 		Key:        key,
 		Host:       host,
-		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), d.files.PublicPort),
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), keycloakHTTPSPort),
 		Network:    d.files.ConsumerNetwork,
 		TrustFile:  d.files.PublicAccess.Material.CA,
 		ServerName: d.files.PublicAccess.Material.ServerName,

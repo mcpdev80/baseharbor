@@ -654,12 +654,6 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 		}
 	}
 	delete(state.Applications, key)
-	if len(state.Applications) == 0 {
-		if err := compose.DestroyProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
-			return err
-		}
-		return os.RemoveAll(shared.Dir)
-	}
 	if sharedBackendPostgresUIRequested(state) {
 		if err := refreshSharedPostgresManagementUIConfig(shared, state); err != nil {
 			return err
@@ -675,6 +669,9 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 	}
 	if err := renderSharedBackendRuntime(shared, state); err != nil {
 		return err
+	}
+	if len(state.Applications) == 0 && state.PostgresAdminCredential == "" {
+		return nil
 	}
 	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)
 }

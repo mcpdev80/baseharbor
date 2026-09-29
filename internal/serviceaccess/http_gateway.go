@@ -27,17 +27,43 @@ type HTTPGatewayFiles struct {
 	AuthToken string
 }
 
+type NativeTLSFiles struct {
+	Dir      string
+	Material TLSMaterial
+}
+
+func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, providerDir string, serverNames ...string) (NativeTLSFiles, error) {
+	if issuer == nil {
+		return NativeTLSFiles{}, errors.New("native TLS issuer is required")
+	}
+	dir := filepath.Join(providerDir, "service-access")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return NativeTLSFiles{}, fmt.Errorf("create native service access state: %w", err)
+	}
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), serverNames...)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	projected, err := projectGatewayMaterial(dir, material)
+	if err != nil {
+		return NativeTLSFiles{}, err
+	}
+	return NativeTLSFiles{Dir: dir, Material: projected}, nil
+}
+
 type HTTPGatewaySpec struct {
-	ServiceName       string
-	Upstream          string
-	PublishedPortEnv  string
-	ContainerPort     int
-	Networks          []string
-	NetworkAliases    []string
-	RequireClient     bool
-	DenyPaths         []string
-	BasicAuthUsername string
-	BasicAuthPassword string
+	ServiceName        string
+	Upstream           string
+	UpstreamTrustFile  string
+	UpstreamServerName string
+	PublishedPortEnv   string
+	ContainerPort      int
+	Networks           []string
+	NetworkAliases     []string
+	RequireClient      bool
+	DenyPaths          []string
+	BasicAuthUsername  string
+	BasicAuthPassword  string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
@@ -103,7 +129,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfile(spec.Upstream, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
+	config := caddyfileWithUpstreamTLS(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -193,8 +219,11 @@ func readAuthToken(path string) (string, error) {
 
 func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
 	runtimeDir := filepath.Join(dir, "runtime")
-	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 		return TLSMaterial{}, fmt.Errorf("create service access runtime projection: %w", err)
+	}
+	if err := os.Chmod(runtimeDir, 0o755); err != nil {
+		return TLSMaterial{}, fmt.Errorf("set service access runtime projection permissions: %w", err)
 	}
 	project := func(source, name string) (string, error) {
 		data, err := os.ReadFile(source)
@@ -265,6 +294,9 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.CA+":/certs/ca.pem:ro"))
 	if files.AuthToken != "" {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
+	}
+	if strings.TrimSpace(spec.UpstreamTrustFile) != "" {
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(spec.UpstreamTrustFile+":/upstream/ca.pem:ro"))
 	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
@@ -452,6 +484,10 @@ func WaitHTTPS(ctx context.Context, client *http.Client, endpoint, path string) 
 }
 
 func caddyfile(upstream string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamTLS(upstream, "", "", port, authentication, basicAuthUsername, basicAuthHash, denyPaths...)
+}
+
+func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -480,13 +516,21 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode, bas
 	if basicAuthUsername != "" {
 		authBlock += fmt.Sprintf("  basic_auth {\n    %s %s\n  }\n", basicAuthUsername, basicAuthHash)
 	}
+	proxy := "  reverse_proxy " + upstream + "\n"
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") && strings.TrimSpace(upstreamTrustFile) != "" {
+		serverName := strings.TrimSpace(upstreamServerName)
+		proxy = "  reverse_proxy " + upstream + " {\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		if serverName != "" {
+			proxy += "      tls_server_name " + serverName + "\n"
+		}
+		proxy += "    }\n  }\n"
+	}
 	return fmt.Sprintf(`{
   auto_https disable_redirects
 }
 
 :%d {
   tls /certs/server.pem /certs/server-key.pem%s
-%s%s  reverse_proxy %s
-}
-`, port, tlsBlock, denyBlock.String(), authBlock, upstream)
+%s%s%s}
+`, port, tlsBlock, denyBlock.String(), authBlock, proxy)
 }
