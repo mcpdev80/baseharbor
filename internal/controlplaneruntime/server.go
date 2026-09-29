@@ -200,12 +200,18 @@ func loadClientCAPool(path string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func writeNotReady(w http.ResponseWriter, dependency ...string) {
+func writeNotReady(w http.ResponseWriter, dependency, version, commit string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	response := map[string]string{"status": "not_ready"}
-	if len(dependency) > 0 && strings.TrimSpace(dependency[0]) != "" {
-		response["dependency"] = strings.TrimSpace(dependency[0])
+	if strings.TrimSpace(dependency) != "" {
+		response["dependency"] = strings.TrimSpace(dependency)
+	}
+	if strings.TrimSpace(version) != "" {
+		response["version"] = strings.TrimSpace(version)
+	}
+	if strings.TrimSpace(commit) != "" {
+		response["commit"] = strings.TrimSpace(commit)
 	}
 	_ = json.NewEncoder(w).Encode(response)
 }
