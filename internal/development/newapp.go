@@ -119,7 +119,10 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	if err != nil {
 		return BootstrapResult{}, err
 	}
-	var files []GeneratedFile
+	files, err := bootstrapProfileFiles(plan, profile, registry)
+	if err != nil {
+		return BootstrapResult{}, err
+	}
 	files = append(files, GeneratedFile{
 		Path:    application.RepositoryManifestName,
 		Content: []byte(manifest.YAML()),
@@ -289,4 +292,49 @@ func profileCapabilityTarget(profile StackProfile, kind capability.Kind) string 
 		return profile.Components[0].ID
 	}
 	return "app"
+}
+
+
+func bootstrapProfileFiles(plan DevelopmentPlan, profile StackProfile, registry Registry) ([]GeneratedFile, error) {
+	multiComponent := len(profile.Components) > 1
+	componentComposes := map[string][]byte{}
+	var files []GeneratedFile
+	seen := map[string]struct{}{}
+	for _, component := range profile.Components {
+		adapter, err := registry.Resolve(component.Adapter)
+		if err != nil {
+			return nil, err
+		}
+		generated, err := adapter.Bootstrap(plan, component)
+		if err != nil {
+			return nil, fmt.Errorf("bootstrap component %q: %w", component.ID, err)
+		}
+		for _, file := range generated {
+			path, err := cleanProjectPath(file.Path)
+			if err != nil {
+				return nil, fmt.Errorf("component %q: %w", component.ID, err)
+			}
+			if multiComponent {
+				if path == "compose.yaml" {
+					componentComposes[component.ID] = append([]byte(nil), file.Content...)
+					continue
+				}
+				path = filepath.ToSlash(filepath.Join(component.ID, path))
+			}
+			if _, exists := seen[path]; exists {
+				return nil, fmt.Errorf("generated file collision at %q", path)
+			}
+			seen[path] = struct{}{}
+			file.Path = path
+			files = append(files, file)
+		}
+	}
+	if multiComponent {
+		compose, err := renderMultiComponentCompose(profile, componentComposes)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, GeneratedFile{Path: "compose.yaml", Content: compose, Mode: 0o644})
+	}
+	return files, nil
 }
