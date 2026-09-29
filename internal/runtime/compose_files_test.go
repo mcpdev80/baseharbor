@@ -60,7 +60,7 @@ func TestComposeBuildArgsForcePlainProgress(t *testing.T) {
 func TestComposeUpProjectFilesUsesResolvedWorkloadPortEnvironment(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
-	if err := os.WriteFile(compose, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"\${HTTP_PORT:-8080}:8080\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(compose, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := filepath.Join(root, "docker")
