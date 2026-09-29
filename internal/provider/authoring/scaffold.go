@@ -49,9 +49,9 @@ func Init(root, id string) (InitResult, error) {
 	files := map[string][]byte{
 		"provider.yaml":      data,
 		"config.schema.json": []byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"additionalProperties\": false\n}\n"),
-		"go.mod":              []byte(renderStarterGoMod(descriptor)),
-		"provider.go":         []byte(renderStarterProvider(descriptor)),
-		"README.md":           []byte(renderStarterREADME(descriptor)),
+		"go.mod":             []byte(renderStarterGoMod(descriptor)),
+		"provider.go":        []byte(renderStarterProvider(descriptor)),
+		"README.md":          []byte(renderStarterREADME(descriptor)),
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		return InitResult{}, err
@@ -81,7 +81,6 @@ func Load(root string) (Descriptor, error) {
 	}
 	return descriptor, descriptor.Validate()
 }
-
 
 func renderStarterGoMod(descriptor Descriptor) string {
 	name := strings.ReplaceAll(strings.TrimSpace(descriptor.ID), "/", "-")
