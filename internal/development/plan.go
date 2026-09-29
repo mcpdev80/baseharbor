@@ -90,7 +90,7 @@ func BuildPlan(contract application.PortableContract, profile StackProfile, adap
 
 func contractForComponent(contract application.PortableContract, profile StackProfile, componentID string) application.PortableContract {
 	filtered := contract
-	filtered.Capabilities = filtered.Capabilities[:0]
+	filtered.Capabilities = make([]application.CapabilityRequirement, 0, len(contract.Capabilities))
 	for _, requirement := range contract.Capabilities {
 		if profileCapabilityAppliesToComponent(profile, requirement.Kind, componentID) {
 			filtered.Capabilities = append(filtered.Capabilities, requirement)
