@@ -177,9 +177,9 @@ func stackCreateCommand() *cli.Command {
 			}
 			if options.Output == outputJSON {
 				return writeJSON(out, map[string]any{
-					"name": options.Profile.Metadata.Name,
+					"name":  options.Profile.Metadata.Name,
 					"scope": options.Scope,
-					"path": path,
+					"path":  path,
 				})
 			}
 			fmt.Fprintf(out, "Created stack %s (%s)\n", options.Profile.Metadata.Name, options.Scope)
@@ -295,7 +295,6 @@ func parseStackOutput(args []string) (cliOutputFormat, []string, error) {
 	}
 	return format, rest, nil
 }
-
 
 func parseStackCapabilityPreference(value string) (development.CapabilityPreference, error) {
 	parts := strings.SplitN(value, "=", 2)
