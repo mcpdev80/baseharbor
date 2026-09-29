@@ -98,12 +98,11 @@ func TestProviderRegistryAcceptsThirdPartyDescriptorWithoutCoreEnumeration(t *te
 	}
 }
 
-
 func TestServiceStateTerminalFailure(t *testing.T) {
 	cases := []struct {
-		name string
+		name  string
 		state ServiceState
-		want bool
+		want  bool
 	}{
 		{name: "running", state: ServiceState{State: "running"}, want: false},
 		{name: "created without error", state: ServiceState{State: "created"}, want: false},
