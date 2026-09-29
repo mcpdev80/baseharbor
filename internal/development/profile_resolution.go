@@ -9,8 +9,8 @@ import (
 type ProfileCatalog map[string]StackProfile
 
 type ProfileConflict struct {
-	Field   string `json:"field"`
-	Current string `json:"current"`
+	Field    string `json:"field"`
+	Current  string `json:"current"`
 	Incoming string `json:"incoming"`
 }
 
