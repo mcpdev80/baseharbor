@@ -24,13 +24,14 @@ type appNewOptions struct {
 	Capabilities []capability.Kind
 	Secrets      []string
 	Output       cliOutputFormat
+	EmitBackstage bool
 }
 
 func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--stack go|nextjs|python|quarkus] [--emit-backstage] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			options, err := parseAppNewOptions(args)
@@ -58,6 +59,7 @@ func appNewCommand() *cli.Command {
 				Adapter:      adapterID,
 				Capabilities: options.Capabilities,
 				Secrets:      options.Secrets,
+				EmitBackstage: options.EmitBackstage,
 			}, registry)
 			if err != nil {
 				return err
@@ -115,6 +117,8 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			addCapability(capability.Secrets)
 		case "--telemetry":
 			addCapability(capability.TelemetryOTLP)
+		case "--emit-backstage":
+			options.EmitBackstage = true
 		case "--all":
 			for _, kind := range []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP} {
 				addCapability(kind)
