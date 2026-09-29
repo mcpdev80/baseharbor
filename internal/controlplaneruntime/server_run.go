@@ -159,19 +159,19 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		defer cancel()
 		if deps.pool != nil {
 			if err := database.Ping(checkCtx, deps.pool); err != nil {
-				writeNotReady(w, "database")
+				writeNotReady(w, "database", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}
 		if deps.boundRuntimeClient != nil {
 			if err := deps.boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
-				writeNotReady(w, "openbao")
+				writeNotReady(w, "openbao", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
-				writeNotReady(w, "runtime-executor")
+				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}
