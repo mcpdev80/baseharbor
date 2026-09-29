@@ -146,16 +146,16 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		b.WriteString("      access:\n        aliases:\n          - prometheus\n")
 		publishAlias = "baseharbor-internal-prometheus-access"
 	} else {
-		b.WriteString("      - access\n")
+		b.WriteString("      access: {}\n")
 	}
 	b.WriteString("      publish:\n        aliases:\n")
 	fmt.Fprintf(&b, "          - %s\n", publishAlias)
 	if len(registrations) > 0 || len(providerNetworks) > 0 {
 		for i := range registrations {
-			fmt.Fprintf(&b, "      - metrics-%d\n", i)
+			fmt.Fprintf(&b, "      metrics-%d: {}\n", i)
 		}
 		for i := range providerNetworks {
-			fmt.Fprintf(&b, "      - provider-%d\n", i)
+			fmt.Fprintf(&b, "      provider-%d: {}\n", i)
 		}
 	}
 	b.WriteString("\nnetworks:\n")
