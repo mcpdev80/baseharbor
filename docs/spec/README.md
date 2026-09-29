@@ -18,7 +18,6 @@ Current specs:
 
 - [Application contract v1](application-contract-v1.md)
 - [Provider contract v1](provider-contract-v1.md)
-- [Development Extension contract v1](development-extension-v1.md)
 - [Reconciliation v1](reconciliation-v1.md)
 - [Machine interface v1](machine-interface-v1.md)
 - [Security invariants](security-invariants.md)
