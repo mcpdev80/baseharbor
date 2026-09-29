@@ -1,10 +1,11 @@
-package development
+package development_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
 )
 
@@ -13,45 +14,45 @@ func TestProfileCatalogScopesAndComposition(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", config)
 
 	repoRoot := t.TempDir()
-	builtins := map[string]StackProfile{
-		"go": BuiltinProfile(goadapter.AdapterID, "go"),
+	builtins := map[string]development.StackProfile{
+		"go": development.BuiltinProfile(goadapter.AdapterID, "go"),
 	}
 
-	user := StackProfile{
-		APIVersion: StackProfileAPIVersion,
-		Kind:       StackProfileKind,
-		Metadata:   ProfileMetadata{Name: "team-api"},
+	user := development.StackProfile{
+		APIVersion: development.StackProfileAPIVersion,
+		Kind:       development.StackProfileKind,
+		Metadata:   development.ProfileMetadata{Name: "team-api"},
 		Extends:    []string{"go"},
 	}
-	if _, err := SaveProfile(user, ProfileScopeUser, repoRoot); err != nil {
+	if _, err := development.SaveProfile(user, development.ProfileScopeUser, repoRoot); err != nil {
 		t.Fatal(err)
 	}
 
-	repository := StackProfile{
-		APIVersion: StackProfileAPIVersion,
-		Kind:       StackProfileKind,
-		Metadata:   ProfileMetadata{Name: "repo-api"},
+	repository := development.StackProfile{
+		APIVersion: development.StackProfileAPIVersion,
+		Kind:       development.StackProfileKind,
+		Metadata:   development.ProfileMetadata{Name: "repo-api"},
 		Extends:    []string{"team-api"},
 	}
-	if _, err := SaveProfile(repository, ProfileScopeRepository, repoRoot); err != nil {
+	if _, err := development.SaveProfile(repository, development.ProfileScopeRepository, repoRoot); err != nil {
 		t.Fatal(err)
 	}
 
-	catalog, err := LoadProfileCatalog(repoRoot, builtins)
+	catalog, err := development.LoadProfileCatalog(repoRoot, builtins)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog["go"].Scope != ProfileScopeBuiltin {
+	if catalog["go"].Scope != development.ProfileScopeBuiltin {
 		t.Fatalf("go scope = %q", catalog["go"].Scope)
 	}
-	if catalog["team-api"].Scope != ProfileScopeUser {
+	if catalog["team-api"].Scope != development.ProfileScopeUser {
 		t.Fatalf("team-api scope = %q", catalog["team-api"].Scope)
 	}
-	if catalog["repo-api"].Scope != ProfileScopeRepository {
+	if catalog["repo-api"].Scope != development.ProfileScopeRepository {
 		t.Fatalf("repo-api scope = %q", catalog["repo-api"].Scope)
 	}
 
-	resolved, err := ResolveStackProfile("repo-api", ProfileMap(catalog))
+	resolved, err := development.ResolveStackProfile("repo-api", development.ProfileMap(catalog))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,12 +63,12 @@ func TestProfileCatalogScopesAndComposition(t *testing.T) {
 
 func TestSaveProfileNeverOverwritesExistingProfile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
-	profile := BuiltinProfile(goadapter.AdapterID, "custom-go")
-	if _, err := SaveProfile(profile, ProfileScopeUser, t.TempDir()); err != nil {
+	profile := development.BuiltinProfile(goadapter.AdapterID, "custom-go")
+	if _, err := development.SaveProfile(profile, development.ProfileScopeUser, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SaveProfile(profile, ProfileScopeUser, t.TempDir()); err == nil {
-		t.Fatal("second SaveProfile unexpectedly overwrote existing profile")
+	if _, err := development.SaveProfile(profile, development.ProfileScopeUser, t.TempDir()); err == nil {
+		t.Fatal("second development.SaveProfile unexpectedly overwrote existing profile")
 	}
 }
 
@@ -76,15 +77,15 @@ func TestRepositoryProfileDoesNotLeakIntoUserScope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", config)
 	repoRoot := t.TempDir()
 
-	profile := BuiltinProfile(goadapter.AdapterID, "repo-only")
-	path, err := SaveProfile(profile, ProfileScopeRepository, repoRoot)
+	profile := development.BuiltinProfile(goadapter.AdapterID, "repo-only")
+	path, err := development.SaveProfile(profile, development.ProfileScopeRepository, repoRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(path) != RepositoryProfileRoot(repoRoot) {
+	if filepath.Dir(path) != development.RepositoryProfileRoot(repoRoot) {
 		t.Fatalf("repository profile path = %s", path)
 	}
-	userRoot, err := UserProfileRoot()
+	userRoot, err := development.UserProfileRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
