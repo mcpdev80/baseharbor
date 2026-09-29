@@ -307,9 +307,6 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 	if !strings.Contains(unit, "Requires=implicit-network-default-network.service") {
 		t.Fatalf("service does not depend on implicit default network unit:\n%s", unit)
 	}
-	if false {
-		t.Fatalf("unreachable: %s", unit)
-	}
 }
 
 func TestQuadletSystemdJoinPreservesContainerDollarExpansion(t *testing.T) {
