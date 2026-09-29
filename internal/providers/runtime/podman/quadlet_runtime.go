@@ -70,8 +70,14 @@ func quadletSystemctl(ctx context.Context, input []byte, args ...string) (string
 	if err != nil {
 		return "", err
 	}
+	commandCtx := ctx
+	cancel := func() {}
+	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
+		commandCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
+	}
+	defer cancel()
 	full := append([]string{"--user"}, args...)
-	cmd := exec.CommandContext(ctx, path, full...)
+	cmd := exec.CommandContext(commandCtx, path, full...)
 	cmd.Env = quadletUserRuntimeEnv()
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
