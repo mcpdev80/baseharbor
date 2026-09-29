@@ -215,7 +215,12 @@ jobs:
           git -C "$WORKDIR" checkout --detach FETCH_HEAD
           test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
           cd "$WORKDIR"
-          if [ "$DEMO_GATE" = "release-focused" ]; then
+          if [ "$DEMO_GATE" = "full" ]; then
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash scripts/acceptance.sh
+          elif [ "$DEMO_GATE" = "release-focused" ]; then
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
               BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
               ARTIFACT_DIR="$ARTIFACT_DIR" \
