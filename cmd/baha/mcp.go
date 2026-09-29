@@ -38,6 +38,8 @@ type machineAppNewInput struct {
 	Capabilities []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
 	Secrets      []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
 	EmitBackstage bool `json:"emit_backstage,omitempty" jsonschema:"emit a static Backstage catalog-info.yaml projection; default false"`
+	BackstageOwner string `json:"backstage_owner,omitempty" jsonschema:"explicit Backstage owner when catalog emission is enabled; BaseHarbor never infers ownership"`
+	BackstageLifecycle string `json:"backstage_lifecycle,omitempty" jsonschema:"optional Backstage lifecycle; defaults to experimental"`
 }
 
 type machineUpdateInput struct {
