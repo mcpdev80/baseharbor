@@ -155,6 +155,39 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 	return options, nil
 }
 
+func developmentCapabilityKinds(values []string) ([]capability.Kind, error) {
+	if len(values) == 0 {
+		return []capability.Kind{capability.ExposureHTTP}, nil
+	}
+	seen := map[capability.Kind]struct{}{}
+	result := make([]capability.Kind, 0, len(values))
+	for _, value := range values {
+		var kind capability.Kind
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "http", "exposure.http":
+			kind = capability.ExposureHTTP
+		case "sql", "database.sql":
+			kind = capability.SQL
+		case "cache", "cache.key-value":
+			kind = capability.KeyValue
+		case "s3", "object-storage.s3":
+			kind = capability.ObjectStorageS3
+		case "secrets":
+			kind = capability.Secrets
+		case "telemetry", "otlp", "telemetry.otlp":
+			kind = capability.TelemetryOTLP
+		default:
+			return nil, usageError("unsupported greenfield capability "+value, "Use exposure.http, database.sql, cache.key-value, object-storage.s3, secrets or telemetry.otlp.")
+		}
+		if _, exists := seen[kind]; exists {
+			continue
+		}
+		seen[kind] = struct{}{}
+		result = append(result, kind)
+	}
+	return result, nil
+}
+
 func developmentAdapterID(stack string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(stack)) {
 	case "", "go", goadapter.AdapterID:
