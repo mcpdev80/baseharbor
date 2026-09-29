@@ -76,7 +76,7 @@ func (p StackProfile) Validate() error {
 		}
 		seenCapabilities[key] = struct{}{}
 		for _, component := range preference.Components {
-			if _, exists := components[component]; !exists {
+			if _, exists := components[component]; !exists && len(p.Extends) == 0 {
 				return fmt.Errorf("stack profile %q capability %q references unknown component %q", p.Metadata.Name, preference.Capability, component)
 			}
 		}
