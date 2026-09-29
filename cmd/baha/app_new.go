@@ -71,6 +71,7 @@ func appNewCommand() *cli.Command {
 
 			if options.Output == outputJSON {
 				return writeJSON(out, struct {
+					ContractVersion string                      `json:"contract_version"`
 					Application     string                      `json:"application"`
 					Environment     string                      `json:"environment"`
 					Profile         development.StackProfile    `json:"profile"`
@@ -78,6 +79,7 @@ func appNewCommand() *cli.Command {
 					Files           []string                    `json:"files"`
 					Satisfied       bool                        `json:"satisfied"`
 				}{
+					ContractVersion: development.NewApplicationResultVersion,
 					Application:     result.Manifest.Name,
 					Environment:     result.Manifest.Environment,
 					Profile:         result.Profile,
