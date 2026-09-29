@@ -138,6 +138,12 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 				options.Environment = value
 			case "--stack":
 				options.Stack = value
+			case "--backstage-owner":
+				options.BackstageOwner = value
+				options.EmitBackstage = true
+			case "--backstage-lifecycle":
+				options.BackstageLifecycle = value
+				options.EmitBackstage = true
 			case "--require-secret":
 				if value == "" {
 					return appNewOptions{}, usageError("--require-secret requires a non-empty name", "Pass the environment variable name expected by the application.")
