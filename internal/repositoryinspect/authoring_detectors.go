@@ -25,10 +25,13 @@ func (httpExposureDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Fi
 			"http.listenandserve",
 			"http.newservemux",
 			"http.handlefunc",
+			"http.server",
 			"fastapi(",
 			"express(",
 			"next/server",
 			"quarkus.http",
+			"jakarta.ws.rs",
+			"@path(",
 		}) {
 			evidence = append(evidence, Evidence{
 				Kind:   EvidenceImport,

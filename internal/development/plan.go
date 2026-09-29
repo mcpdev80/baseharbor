@@ -54,7 +54,8 @@ func BuildPlan(contract application.PortableContract, profile StackProfile, adap
 		if err != nil {
 			return DevelopmentPlan{}, fmt.Errorf("component %q: %w", component.ID, err)
 		}
-		actions, err := adapter.Plan(contract, profile, component)
+		componentContract := contractForComponent(contract, profile, component.ID)
+		actions, err := adapter.Plan(componentContract, profile, component)
 		if err != nil {
 			return DevelopmentPlan{}, fmt.Errorf("component %q adapter %q: %w", component.ID, component.Adapter, err)
 		}
@@ -84,4 +85,35 @@ func BuildPlan(contract application.PortableContract, profile StackProfile, adap
 		return plan.Actions[i].Value < plan.Actions[j].Value
 	})
 	return plan, nil
+}
+
+func contractForComponent(contract application.PortableContract, profile StackProfile, componentID string) application.PortableContract {
+	filtered := contract
+	filtered.Capabilities = make([]application.CapabilityRequirement, 0, len(contract.Capabilities))
+	for _, requirement := range contract.Capabilities {
+		if profileCapabilityAppliesToComponent(profile, requirement.Kind, componentID) {
+			filtered.Capabilities = append(filtered.Capabilities, requirement)
+		}
+	}
+	if !profileCapabilityAppliesToComponent(profile, capability.Secrets, componentID) {
+		filtered.Secrets.Managed = false
+		filtered.Secrets.Required = nil
+	}
+	return filtered
+}
+
+func profileCapabilityAppliesToComponent(profile StackProfile, kind capability.Kind, componentID string) bool {
+	var matched bool
+	for _, preference := range profile.Capabilities {
+		if preference.Capability != kind {
+			continue
+		}
+		matched = true
+		for _, candidate := range preference.Components {
+			if candidate == componentID {
+				return true
+			}
+		}
+	}
+	return !matched
 }

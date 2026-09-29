@@ -27,7 +27,10 @@
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "role": {"type": "string", "minLength": 1},
-          "adapter": {"type": "string", "minLength": 1}
+          "adapter": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
+          }
         },
         "required": ["id", "role", "adapter"]
       }
@@ -38,7 +41,20 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "capability": {"type": "string", "minLength": 1},
+          "capability": {
+            "enum": [
+              "database.sql",
+              "cache.key-value",
+              "secrets",
+              "exposure.http",
+              "object-storage.s3",
+              "telemetry.otlp",
+              "metrics",
+              "logs",
+              "traces",
+              "identity.oidc"
+            ]
+          },
           "components": {
             "type": "array",
             "items": {"type": "string", "minLength": 1},

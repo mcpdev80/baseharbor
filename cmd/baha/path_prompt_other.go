@@ -8,8 +8,12 @@ import (
 )
 
 func promptDirectoryPath(reader *bufio.Reader, out io.Writer, label string) (string, error) {
-	if readerIsTerminal(appInitInput) {
-		if err := writePathPromptContext(out); err != nil {
+	return promptDirectoryPathFrom(reader, out, label, "", appInitInput)
+}
+
+func promptDirectoryPathFrom(reader *bufio.Reader, out io.Writer, label, base string, input io.Reader) (string, error) {
+	if readerIsTerminal(input) {
+		if err := writePathPromptContextFrom(out, base); err != nil {
 			return "", err
 		}
 	}

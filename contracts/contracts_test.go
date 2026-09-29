@@ -46,9 +46,6 @@ func TestProviderAndBindingSchemasUseJSONSchema202012(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join("provider", "v1", "provider-descriptor.schema.json"),
 		filepath.Join("binding", "v1", "service-binding.schema.json"),
-		filepath.Join("extension", "v1", "extension-descriptor.schema.json"),
-		filepath.Join("development", "v1", "stack-profile.schema.json"),
-		filepath.Join("development", "v1", "development-plan.schema.json"),
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {

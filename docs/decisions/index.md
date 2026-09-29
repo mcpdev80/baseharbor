@@ -17,3 +17,5 @@ ADRs preserve decisions and rationale. They do not replace current-state documen
 - [0013 — Standards-first service and provider contracts](0013-standards-first-service-provider-contracts.md)
 - [0014 — Application-owned configuration and managed secrets](0014-application-owned-configuration-and-managed-secrets.md)
 - [0015 — Managed Runtime API lifecycle](0015-managed-runtime-api-lifecycle.md)
+
+- [0016 — External Developer Portals integrate through emitted contracts](0016-external-developer-portals-integration-by-contract.md)

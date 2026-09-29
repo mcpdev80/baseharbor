@@ -48,6 +48,14 @@
       },
       "uniqueItems": true
     },
+    "supportedScopes": {
+      "type": "array",
+      "items": {
+        "enum": ["shared", "application", "external"]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "productSupport": {
       "type": "array",
       "items": {
@@ -155,6 +163,7 @@
     "version",
     "providerProtocol",
     "serviceKinds",
-    "serviceContracts"
+    "serviceContracts",
+    "supportedScopes"
   ]
 }

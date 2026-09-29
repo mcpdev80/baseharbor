@@ -49,8 +49,8 @@ func (p StackProfile) Validate() error {
 	if strings.TrimSpace(p.Metadata.Name) == "" {
 		return fmt.Errorf("stack profile metadata.name is required")
 	}
-	if len(p.Components) == 0 {
-		return fmt.Errorf("stack profile %q requires at least one development component", p.Metadata.Name)
+	if len(p.Components) == 0 && len(p.Extends) == 0 {
+		return fmt.Errorf("stack profile %q requires at least one development component or parent profile", p.Metadata.Name)
 	}
 	components := map[string]struct{}{}
 	for _, component := range p.Components {
@@ -76,7 +76,7 @@ func (p StackProfile) Validate() error {
 		}
 		seenCapabilities[key] = struct{}{}
 		for _, component := range preference.Components {
-			if _, exists := components[component]; !exists {
+			if _, exists := components[component]; !exists && len(p.Extends) == 0 {
 				return fmt.Errorf("stack profile %q capability %q references unknown component %q", p.Metadata.Name, preference.Capability, component)
 			}
 		}

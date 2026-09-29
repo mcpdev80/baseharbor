@@ -14,7 +14,9 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "kind": {"enum": ["dependency", "binding", "source", "build", "health", "telemetry"]},
+          "kind": {
+            "enum": ["dependency", "binding", "source", "build", "health", "telemetry"]
+          },
           "component": {"type": "string", "minLength": 1},
           "capability": {"type": "string"},
           "name": {"type": "string", "minLength": 1},
