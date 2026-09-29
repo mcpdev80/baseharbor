@@ -61,7 +61,7 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 			add(development.ActionDependency,r.Kind,"io.quarkus:quarkus-redis-client","")
 			add(development.ActionBinding,r.Kind,"REDIS_URL","")
 		case capability.ObjectStorageS3:
-			add(development.ActionDependency,r.Kind,"software.amazon.awssdk:s3","")
+			add(development.ActionDependency,r.Kind,"software.amazon.awssdk:s3","2.55.6")
 			add(development.ActionBinding,r.Kind,"S3_ENDPOINT","")
 			add(development.ActionBinding,r.Kind,"S3_BUCKET","")
 		case capability.Secrets:
@@ -75,10 +75,10 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 }
 
 func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development.Component) ([]development.GeneratedFile,error) {
-	deps:=map[string]struct{}{}; bindings:=map[string]struct{}{}
+	deps:=map[string]string{}; bindings:=map[string]struct{}{}
 	for _,a:=range plan.Actions {
 		if a.Component!=component.ID { continue }
-		if a.Kind==development.ActionDependency { deps[a.Name]=struct{}{} }
+		if a.Kind==development.ActionDependency { deps[a.Name]=a.Value }
 		if a.Kind==development.ActionBinding { bindings[a.Name]=struct{}{} }
 	}
 	return []development.GeneratedFile{
@@ -95,15 +95,22 @@ func (a Adapter) Validate(root string, contract application.PortableContract, co
 	return development.ValidateRepositoryCapabilities(root,contract,a.Supports)
 }
 
-func renderPom(app string,deps map[string]struct{}) string {
+func renderPom(app string,deps map[string]string) string {
 	names:=make([]string,0,len(deps)); for n:=range deps { names=append(names,n) }; sort.Strings(names)
 	var b strings.Builder
 	b.WriteString("<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>")
 	fmt.Fprintf(&b,"<groupId>dev.baseharbor</groupId><artifactId>%s</artifactId><version>0.1.0</version>",strings.ReplaceAll(strings.ToLower(app),"_","-"))
-	b.WriteString("<properties><maven.compiler.release>21</maven.compiler.release><quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id><quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id><quarkus.platform.version>3.28.0</quarkus.platform.version></properties>")
-	b.WriteString("<dependencyManagement><dependencies><dependency><groupId>io.quarkus.platform</groupId><artifactId>quarkus-bom</artifactId><version>3.28.0</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement><dependencies>")
-	for _,n:=range names { parts:=strings.SplitN(n,":",2); if len(parts)==2 { fmt.Fprintf(&b,"<dependency><groupId>%s</groupId><artifactId>%s</artifactId></dependency>",parts[0],parts[1]) } }
-	b.WriteString("</dependencies><build><plugins><plugin><groupId>io.quarkus</groupId><artifactId>quarkus-maven-plugin</artifactId><version>3.28.0</version><extensions>true</extensions></plugin></plugins></build></project>\n")
+	b.WriteString("<properties><maven.compiler.release>21</maven.compiler.release><quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id><quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id><quarkus.platform.version>3.39.5</quarkus.platform.version></properties>")
+	b.WriteString("<dependencyManagement><dependencies><dependency><groupId>io.quarkus.platform</groupId><artifactId>quarkus-bom</artifactId><version>3.39.5</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement><dependencies>")
+	for _,n:=range names {
+		parts:=strings.SplitN(n,":",2)
+		if len(parts)==2 {
+			fmt.Fprintf(&b,"<dependency><groupId>%s</groupId><artifactId>%s</artifactId>",parts[0],parts[1])
+			if deps[n]!="" { fmt.Fprintf(&b,"<version>%s</version>",deps[n]) }
+			b.WriteString("</dependency>")
+		}
+	}
+	b.WriteString("</dependencies><build><plugins><plugin><groupId>io.quarkus</groupId><artifactId>quarkus-maven-plugin</artifactId><version>3.39.5</version><extensions>true</extensions></plugin></plugins></build></project>\n")
 	return b.String()
 }
 
