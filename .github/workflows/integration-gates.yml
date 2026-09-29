@@ -155,7 +155,9 @@ jobs:
       - name: Verify OpenBao application scope and dynamic secret lifecycle
         env:
           BASEHARBOR_OPENBAO_APPLICATION_ACCEPTANCE: "true"
-        run: go test ./internal/openbao -run '^(TestDynamicApplicationSecretLifecycleRealOpenBao|TestApplicationScopesRealOpenBaoIsolation)          workdir=$(mktemp -d)
+        run: >-
+          go test ./internal/openbao
+          -run '^(TestDynamicApplicationSecretLifecycleRealOpenBao|TestApplicationScopesRealOpenBaoIsolation)          workdir=$(mktemp -d)
           cd "$workdir"
           export XDG_CONFIG_HOME="$workdir/xdg-config"
           export XDG_DATA_HOME="$workdir/xdg-data"
@@ -300,7 +302,8 @@ jobs:
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           docker compose --project-name baseharbor-ci --file "$runtime_dir/compose.yaml" --env-file "$runtime_dir/runtime.env" down -v
- -count=1 -v
+
+          -count=1 -v
       - name: Verify OpenBao bootstrap, required secrets, generated secrets and manual unseal lifecycle
         run: |
           workdir=$(mktemp -d)
