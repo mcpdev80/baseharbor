@@ -283,7 +283,6 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
       KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-%s      KC_HTTP_MANAGEMENT_SCHEME: https
     ports:
       - "127.0.0.1:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}:%d"
     volumes:
