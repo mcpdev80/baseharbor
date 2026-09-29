@@ -144,6 +144,7 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 			Adapter:      adapterID,
 			Capabilities: capabilities,
 			Secrets:      append([]string(nil), input.Secrets...),
+			EmitBackstage: input.EmitBackstage,
 		}, registry)
 		if err != nil {
 			return machineMCPFailure(err)
