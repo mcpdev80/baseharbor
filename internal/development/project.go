@@ -28,7 +28,7 @@ type ProjectResult struct {
 	Validations   map[string]Validation    `json:"validations,omitempty"`
 }
 
-func BootstrapProject(root string, manifest application.Manifest, profile StackProfile, registry Registry) (ProjectResult, error) {
+func BootstrapProject(root string, manifest application.Manifest, profile StackProfile, registry Registry, extras ...GeneratedFile) (ProjectResult, error) {
 	if err := manifest.Validate(); err != nil {
 		return ProjectResult{}, fmt.Errorf("application contract: %w", err)
 	}
@@ -52,6 +52,21 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 	}
 
 	generated := map[string]GeneratedFile{}
+	for _, extra := range extras {
+		path, err := cleanProjectPath(extra.Path)
+		if err != nil {
+			return ProjectResult{}, fmt.Errorf("extra generated artifact: %w", err)
+		}
+		if path == application.RepositoryManifestName || path == ".baseharbor/stack-profile.yaml" || path == ".baseharbor/development-plan.json" {
+			return ProjectResult{}, fmt.Errorf("extra generated artifact %q collides with BaseHarbor-owned bootstrap metadata", path)
+		}
+		if _, exists := generated[path]; exists {
+			return ProjectResult{}, fmt.Errorf("generated file collision at %q", path)
+		}
+		extra.Path = path
+		generated[path] = extra
+	}
+
 	for _, component := range profile.Components {
 		adapter, err := registry.Resolve(component.Adapter)
 		if err != nil {
