@@ -501,7 +501,7 @@ func writePrometheusWebConfig(path string, policy serviceaccess.Policy, values m
 		b.WriteString("basic_auth_users:\n")
 		fmt.Fprintf(&b, "  %s: %s\n", strconv.Quote(username), strconv.Quote(string(hash)))
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("write Prometheus native web config: %w", err)
 	}
 	return nil
