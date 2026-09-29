@@ -64,6 +64,15 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if stack.Created && stack.RawProfile != nil {
+		raw := *stack.RawProfile
+		for _, preference := range profile.Capabilities {
+			if !profileContainsPreference(stack.Effective, preference) && !profileContainsPreference(raw, preference) {
+				raw.Capabilities = append(raw.Capabilities, preference)
+			}
+		}
+		stack.RawProfile = &raw
+	}
 
 	request := development.NewApplicationRequest{
 		Name:         name,
@@ -500,4 +509,23 @@ func defaultCapabilitySelection(available []greenfieldCapabilityChoice) string {
 		return "1"
 	}
 	return ""
+}
+
+
+func profileContainsPreference(profile development.StackProfile, candidate development.CapabilityPreference) bool {
+	for _, preference := range profile.Capabilities {
+		if preference.Capability != candidate.Capability ||
+			preference.ImplementationPreference != candidate.ImplementationPreference ||
+			preference.DevelopmentIntegration != candidate.DevelopmentIntegration {
+			continue
+		}
+		left := append([]string(nil), preference.Components...)
+		right := append([]string(nil), candidate.Components...)
+		sort.Strings(left)
+		sort.Strings(right)
+		if strings.Join(left, ",") == strings.Join(right, ",") {
+			return true
+		}
+	}
+	return false
 }
