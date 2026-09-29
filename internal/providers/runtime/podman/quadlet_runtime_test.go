@@ -170,7 +170,6 @@ func TestQuadletChangedServiceUnitsDetectsDefinitionAndEnvironmentChanges(t *tes
 	}
 }
 
-
 func TestQuadletRemoveRuntimeResourceArgsDoesNotForceNetworks(t *testing.T) {
 	got := quadletRemoveRuntimeResourceArgs("network", "shared-net")
 	want := []string{"network", "rm", "shared-net"}
