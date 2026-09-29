@@ -21,6 +21,7 @@ type workloadServiceStatus struct {
 	Health       string
 	Readiness    string
 	Ready        bool
+	Terminal     bool
 	ExitCode     int
 	RuntimeError string
 	Exposures    []workloadExposureStatus
@@ -152,7 +153,7 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 		}
 		result = append(result, workloadServiceStatus{
 			Service: service, State: normalizedState, Health: health, Readiness: readiness, Ready: ready,
-			ExitCode: state.ExitCode, RuntimeError: strings.TrimSpace(state.Error),
+			Terminal: state.TerminalFailure(), ExitCode: state.ExitCode, RuntimeError: strings.TrimSpace(state.Error),
 		})
 	}
 	return result
@@ -161,7 +162,7 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 func terminalWorkloadServiceError(services []workloadServiceStatus) error {
 	var failures []string
 	for _, service := range services {
-		if service.RuntimeError != "" || service.ExitCode != 0 || service.State == "exited" || service.State == "dead" {
+		if service.Terminal {
 			failures = append(failures, service.Service+" "+formatWorkloadServiceStatus(service))
 		}
 	}
