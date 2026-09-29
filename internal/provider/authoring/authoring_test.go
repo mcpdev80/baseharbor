@@ -27,7 +27,7 @@ func TestInitAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Files) != 3 {
+	if len(result.Files) != 5 {
 		t.Fatalf("files = %#v", result.Files)
 	}
 	descriptor, err := Load(root)
