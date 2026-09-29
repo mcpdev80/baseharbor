@@ -81,6 +81,9 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		Capabilities: kinds,
 		Secrets:      secrets,
 	}
+	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeRepository {
+		request.RepositoryStackProfile = stack.RawProfile
+	}
 	preview, err := development.BootstrapApplication(request, registry)
 	if err != nil {
 		return err
@@ -96,15 +99,19 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		return nil
 	}
 
+	var savedUserProfile string
+	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeUser {
+		savedUserProfile, err = development.SaveProfile(*stack.RawProfile, development.ProfileScopeUser, root)
+		if err != nil {
+			return err
+		}
+	}
 	result, err := development.CreateApplication(root, request, registry)
 	if err != nil {
-		return err
-	}
-	if stack.Created && stack.RawProfile != nil {
-		saveRoot := root
-		if _, err := development.SaveProfile(*stack.RawProfile, stack.SaveScope, saveRoot); err != nil {
-			return fmt.Errorf("application was created but reusable stack profile could not be saved: %w", err)
+		if savedUserProfile != "" {
+			_ = os.Remove(savedUserProfile)
 		}
+		return err
 	}
 
 	fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)

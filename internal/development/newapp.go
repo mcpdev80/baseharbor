@@ -8,18 +8,20 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"go.yaml.in/yaml/v3"
 )
 
 type NewApplicationRequest struct {
-	Name               string            `json:"name"`
-	Environment        string            `json:"environment,omitempty"`
-	Adapter            string            `json:"adapter,omitempty"`
-	Profile            *StackProfile     `json:"profile,omitempty"`
-	Capabilities       []capability.Kind `json:"capabilities"`
-	Secrets            []string          `json:"secrets,omitempty"`
-	EmitBackstage      bool              `json:"emit_backstage,omitempty"`
-	BackstageOwner     string            `json:"backstage_owner,omitempty"`
-	BackstageLifecycle string            `json:"backstage_lifecycle,omitempty"`
+	Name                   string            `json:"name"`
+	Environment            string            `json:"environment,omitempty"`
+	Adapter                string            `json:"adapter,omitempty"`
+	Profile                *StackProfile     `json:"profile,omitempty"`
+	Capabilities           []capability.Kind `json:"capabilities"`
+	Secrets                []string          `json:"secrets,omitempty"`
+	EmitBackstage          bool              `json:"emit_backstage,omitempty"`
+	BackstageOwner         string            `json:"backstage_owner,omitempty"`
+	BackstageLifecycle     string            `json:"backstage_lifecycle,omitempty"`
+	RepositoryStackProfile *StackProfile     `json:"repository_stack_profile,omitempty"`
 }
 
 type BootstrapResult struct {
@@ -128,6 +130,21 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		Content: []byte(manifest.YAML()),
 		Mode:    0o644,
 	})
+	if request.RepositoryStackProfile != nil {
+		reusable := *request.RepositoryStackProfile
+		if err := reusable.Validate(); err != nil {
+			return BootstrapResult{}, fmt.Errorf("repository stack profile: %w", err)
+		}
+		data, err := yaml.Marshal(reusable)
+		if err != nil {
+			return BootstrapResult{}, fmt.Errorf("encode repository stack profile: %w", err)
+		}
+		files = append(files, GeneratedFile{
+			Path:    filepath.ToSlash(filepath.Join(".baseharbor", "stacks", safeProfileFilename(reusable.Metadata.Name)+".yaml")),
+			Content: data,
+			Mode:    0o644,
+		})
+	}
 	if request.EmitBackstage {
 		catalog, err := RenderBackstageCatalog(manifest, BackstageCatalogOptions{
 			Owner:     request.BackstageOwner,
@@ -171,7 +188,7 @@ func CreateApplication(root string, request NewApplicationRequest, registry Regi
 	}
 	var extras []GeneratedFile
 	for _, file := range bootstrap.Files {
-		if file.Path == "catalog-info.yaml" {
+		if file.Path == "catalog-info.yaml" || strings.HasPrefix(file.Path, ".baseharbor/stacks/") {
 			extras = append(extras, file)
 		}
 	}

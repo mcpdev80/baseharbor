@@ -21,7 +21,11 @@ func (bootstrapAdapter) Plan(_ application.PortableContract, _ StackProfile, com
 	return []Action{{Kind: ActionSource, Component: component.ID, Name: "app"}}, nil
 }
 func (bootstrapAdapter) Bootstrap(_ DevelopmentPlan, _ Component) ([]GeneratedFile, error) {
-	return []GeneratedFile{{Path: "main.txt", Content: []byte("ok\n"), Mode: 0o644}}, nil
+	return []GeneratedFile{{
+		Path:    "main.go",
+		Content: []byte("package main\n\nimport \"net/http\"\n\nfunc main() { _ = http.ListenAndServe(\":8080\", http.NewServeMux()) }\n"),
+		Mode:    0o644,
+	}}, nil
 }
 func (bootstrapAdapter) Validate(string, application.PortableContract, Component) (Validation, error) {
 	return Validation{Satisfied: true}, nil
@@ -63,5 +67,37 @@ func TestWriteGeneratedFilesIsFailClosed(t *testing.T) {
 	}
 	if err := WriteGeneratedFiles(root, []GeneratedFile{{Path: "existing", Content: []byte("replace")}}); err == nil {
 		t.Fatal("expected overwrite rejection")
+	}
+}
+
+func TestCreateApplicationWritesRepositoryStackProfileAtomically(t *testing.T) {
+	registry, err := NewRegistry(bootstrapAdapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := StackProfile{
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:   ProfileMetadata{Name: "team-stack"},
+		Components: []Component{{ID: "app", Role: "application", Adapter: "development/test"}},
+	}
+	raw := StackProfile{
+		APIVersion: StackProfileAPIVersion,
+		Kind:       StackProfileKind,
+		Metadata:   ProfileMetadata{Name: "team-stack"},
+		Components: []Component{{ID: "app", Role: "application", Adapter: "development/test"}},
+	}
+	root := filepath.Join(t.TempDir(), "demo")
+	_, err = CreateApplication(root, NewApplicationRequest{
+		Name:                   "demo",
+		Profile:                &effective,
+		Capabilities:           []capability.Kind{capability.ExposureHTTP},
+		RepositoryStackProfile: &raw,
+	}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".baseharbor", "stacks", "team-stack.yaml")); err != nil {
+		t.Fatalf("repository stack profile missing: %v", err)
 	}
 }
