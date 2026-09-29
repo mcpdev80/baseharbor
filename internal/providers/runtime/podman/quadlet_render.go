@@ -510,8 +510,6 @@ func quadletRenderPodmanProcessEnvironment(unit *strings.Builder) {
 
 func quadletRenderPodmanProcessEnvironmentEntries(unit *strings.Builder) {
 	for _, key := range []string{
-		"XDG_CONFIG_HOME",
-		"XDG_DATA_HOME",
 		"CONTAINERS_STORAGE_CONF",
 		"CONTAINERS_REGISTRIES_CONF",
 		"STORAGE_DRIVER",
