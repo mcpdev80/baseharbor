@@ -337,7 +337,9 @@ networks:
 	api := got.Files["baseharbor-workload-demo-api.container"]
 	for _, want := range []string{
 		"PublishPort=8080:8080",
-		"Network=baseharbor-demo-backend:alias=api,alias=api-metrics",
+		"Network=baseharbor-demo-backend",
+		"NetworkAlias=api",
+		"NetworkAlias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
 		if !strings.Contains(api, want) {
