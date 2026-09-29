@@ -179,6 +179,55 @@ func TestRenderComposeProjectQuadletsLeavesRegistryImagePullable(t *testing.T) {
 	}
 }
 
+func TestRenderComposeProjectQuadletsPreservesPodmanStorageEnvironment(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/baseharbor-xdg-config")
+	t.Setenv("XDG_DATA_HOME", "/tmp/baseharbor-xdg-data")
+	t.Setenv("CONTAINERS_STORAGE_CONF", "/tmp/baseharbor-storage.conf")
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte("FROM scratch\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    build:
+      context: .
+    volumes:
+      - data:/data
+    networks:
+      - internal
+volumes:
+  data: {}
+networks:
+  internal: {}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectQuadlets(compose, "", "storage-env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{
+		"storage-env-api.container",
+		"storage-env-api.build",
+		"storage-env-data.volume",
+		"storage-env-internal.network",
+	} {
+		content := got.Files[file]
+		for _, want := range []string{
+			`Environment="XDG_CONFIG_HOME=/tmp/baseharbor-xdg-config"`,
+			`Environment="XDG_DATA_HOME=/tmp/baseharbor-xdg-data"`,
+			`Environment="CONTAINERS_STORAGE_CONF=/tmp/baseharbor-storage.conf"`,
+		} {
+			if !strings.Contains(content, want) {
+				t.Fatalf("%s missing Podman process environment %q:\n%s", file, want, content)
+			}
+		}
+	}
+}
+
 func TestRenderComposeProjectQuadletsBrokerDoesNotGateSystemdOnCompositeHealth(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
