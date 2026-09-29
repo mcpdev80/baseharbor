@@ -31,15 +31,15 @@ type machineApplicationInput struct {
 }
 
 type machineAppNewInput struct {
-	Path         string   `json:"path,omitempty" jsonschema:"local directory to create the application in; defaults to the current directory"`
-	Name         string   `json:"name" jsonschema:"application name"`
-	Environment  string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
-	Stack        string   `json:"stack,omitempty" jsonschema:"development stack: go, nextjs, python or quarkus; defaults to go"`
-	Capabilities []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
-	Secrets      []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
-	EmitBackstage bool `json:"emit_backstage,omitempty" jsonschema:"emit a static Backstage catalog-info.yaml projection; default false"`
-	BackstageOwner string `json:"backstage_owner,omitempty" jsonschema:"explicit Backstage owner when catalog emission is enabled; BaseHarbor never infers ownership"`
-	BackstageLifecycle string `json:"backstage_lifecycle,omitempty" jsonschema:"optional Backstage lifecycle; defaults to experimental"`
+	Path               string   `json:"path,omitempty" jsonschema:"local directory to create the application in; defaults to the current directory"`
+	Name               string   `json:"name" jsonschema:"application name"`
+	Environment        string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
+	Stack              string   `json:"stack,omitempty" jsonschema:"development stack: go, nextjs, python or quarkus; defaults to go"`
+	Capabilities       []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
+	Secrets            []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
+	EmitBackstage      bool     `json:"emit_backstage,omitempty" jsonschema:"emit a static Backstage catalog-info.yaml projection; default false"`
+	BackstageOwner     string   `json:"backstage_owner,omitempty" jsonschema:"explicit Backstage owner when catalog emission is enabled; BaseHarbor never infers ownership"`
+	BackstageLifecycle string   `json:"backstage_lifecycle,omitempty" jsonschema:"optional Backstage lifecycle; defaults to experimental"`
 }
 
 type machineUpdateInput struct {
