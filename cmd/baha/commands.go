@@ -137,6 +137,7 @@ func rootCommand() *cli.Command {
 				return doctorCommand(ctx, args, out, errOut)
 			},
 		},
+		providerCommand(),
 		targetCommand(),
 		devCommand(),
 		configCommand(),
