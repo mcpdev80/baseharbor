@@ -12,15 +12,21 @@ import (
 )
 
 type guidedInitSelection struct {
-	name                 string
-	environment          string
-	compose              string
-	workloadServices     []string
-	selected             []bool
-	sqlInstances         []string
-	cacheInstances       []string
-	objectStorageBuckets []string
-	secretPolicies       []guidedSecretPolicy
+	name                      string
+	environment               string
+	compose                   string
+	workloadServices          []string
+	selected                  []bool
+	sqlInstances              []string
+	cacheInstances            []string
+	objectStorageBuckets      []string
+	secretPolicies            []guidedSecretPolicy
+	sqlManagementUI           bool
+	cacheManagementUI         bool
+	objectStorageManagementUI bool
+	secretsManagementUI       bool
+	identityManagementUI      bool
+	observabilityManagementUI bool
 }
 
 func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (guidedInitSelection, error) {
@@ -54,6 +60,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		d.Cache,
 		d.ObjectStorage,
 		len(d.SecretCandidates) > 0,
+		false,
 		d.Metrics,
 		d.OTLP && len(d.OTLPSignals) > 0,
 		false,
@@ -102,6 +109,45 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		}
 	}
 
+	if appInitReaderIsRealTerminal(appInitInput) {
+		if selection.selected[0] {
+			selection.sqlManagementUI, err = promptOptionalYesNo(reader, out, "PostgreSQL management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[1] {
+			selection.cacheManagementUI, err = promptOptionalYesNo(reader, out, "Cache management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[2] {
+			selection.objectStorageManagementUI, err = promptOptionalYesNo(reader, out, "Object storage management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[3] {
+			selection.secretsManagementUI, err = promptOptionalYesNo(reader, out, "Secrets management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[4] {
+			selection.identityManagementUI, err = promptOptionalYesNo(reader, out, "Identity management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[5] {
+			selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI (Prometheus)?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+
+	}
 	return selection, nil
 }
 
@@ -152,6 +198,15 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	if len(selection.objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, selection.objectStorageBuckets...)
 	}
+	if selection.selected[4] {
+		m = application.WithIdentity(m)
+	}
+	m.Services.SQLManagementUI = selection.sqlManagementUI
+	m.Services.CacheManagementUI = selection.cacheManagementUI
+	m.Services.ObjectStorageManagementUI = selection.objectStorageManagementUI
+	m.Services.SecretsManagementUI = selection.secretsManagementUI
+	m.Services.IdentityManagementUI = selection.identityManagementUI
+	m.Services.ObservabilityManagementUI = selection.observabilityManagementUI
 	m = applyGuidedSecretPolicies(m, selection.secretPolicies)
 	if selection.compose != "" && len(selection.workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(selection.compose), selection.workloadServices...)
@@ -175,7 +230,7 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 }
 
 func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection, m application.Manifest) (application.Manifest, error) {
-	if selection.selected[4] {
+	if selection.selected[5] {
 		service, port, ok := detectedMetricsTarget(d, selection.workloadServices)
 		if !ok {
 			var err error
@@ -186,7 +241,7 @@ func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDet
 		}
 		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
 	}
-	if selection.selected[5] {
+	if selection.selected[6] {
 		defaultSignals := strings.Join(d.OTLPSignals, ",")
 		if defaultSignals == "" {
 			defaultSignals = "traces"
@@ -201,7 +256,7 @@ func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDet
 		}
 		m = application.WithOTLPTelemetry(m, signals...)
 	}
-	if selection.selected[6] {
+	if selection.selected[7] {
 		m = application.WithLogsCollection(m, "application")
 	}
 	return m, nil

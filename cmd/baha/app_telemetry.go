@@ -19,7 +19,7 @@ type managedTelemetryExecution struct {
 	manifest  application.Manifest
 }
 
-func prepareManagedTelemetry(ctx context.Context, compose bhruntime.Compose, resolved resolvedApplication, traces *managedTracesExecution, issuer serviceaccess.Issuer) (*managedTelemetryExecution, error) {
+func prepareManagedTelemetry(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, traces *managedTracesExecution, issuer serviceaccess.Issuer) (*managedTelemetryExecution, error) {
 	m := resolved.Manifest
 	if !application.HasOTLPTelemetry(m) {
 		return nil, nil

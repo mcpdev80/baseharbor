@@ -44,6 +44,32 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			Durable:         true,
 		})
 	}
+	if application.HasIdentity(m) {
+		identityProvider, providerErr := application.IdentityProviderForDeployment()
+		if providerErr != nil {
+			return RecoverySelection{}, providerErr
+		}
+		placement, placementErr := application.ResolveProviderPlacement(m, identityProvider.Kind)
+		if placementErr != nil {
+			return RecoverySelection{}, placementErr
+		}
+		contributor := RecoveryContributor{
+			StateClass:      StateIdentity,
+			LogicalResource: "application-identity",
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "portable OIDC client and authentication policy are reconstructed from application.metadata, but provider-held users, credentials, MFA and passkey state do not yet have a scoped recovery export",
+		}
+		if placement.Scope == capability.ScopeExternal {
+			contributor.Ownership = "external"
+			contributor.Support = RecoveryExternal
+			contributor.Durable = false
+			contributor.ExplicitlyExcluded = true
+			contributor.Reason = "external identity-directory state remains outside BaseHarbor recovery ownership; portable OIDC binding intent is reconstructed and re-verified"
+		}
+		contributors = append(contributors, contributor)
+	}
 	if application.HasLogsCollection(m) {
 		placement, placementErr := application.ResolveProviderPlacement(m, capability.ProviderLoki)
 		if placementErr != nil {

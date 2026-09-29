@@ -13,8 +13,8 @@ func TestRuntimeProviderStateFromValuesDefaultsLegacyStateToCompose(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Provider != bhruntime.ProviderCompose {
-		t.Fatalf("provider = %q, want %q", state.Provider, bhruntime.ProviderCompose)
+	if state.Provider != bhruntime.ProviderDocker {
+		t.Fatalf("provider = %q, want %q", state.Provider, bhruntime.ProviderDocker)
 	}
 }
 
@@ -23,7 +23,7 @@ func TestRuntimeProviderStateRoundTripPreservesOtherDeploymentState(t *testing.T
 		"BASEHARBOR_HOSTNAME": "mail.example.test",
 		"BASEHARBOR_TLS_MODE": "existing",
 	}
-	want := RuntimeProviderState{Provider: bhruntime.ProviderCompose}
+	want := RuntimeProviderState{Provider: bhruntime.ProviderDocker}
 	if err := ApplyRuntimeProviderState(values, want); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestRuntimeProviderStateRoundTripPreservesOtherDeploymentState(t *testing.T
 
 func TestApplyRuntimeProviderStatePreservesExplicitProfile(t *testing.T) {
 	values := map[string]string{RuntimeProfileEnvKey: "future-profile"}
-	if err := ApplyRuntimeProviderState(values, RuntimeProviderState{Provider: bhruntime.ProviderCompose}); err != nil {
+	if err := ApplyRuntimeProviderState(values, RuntimeProviderState{Provider: bhruntime.ProviderDocker}); err != nil {
 		t.Fatal(err)
 	}
 	if values[RuntimeProfileEnvKey] != "future-profile" {
@@ -68,7 +68,7 @@ func TestRuntimeProviderStateAcceptsKnownFutureProvider(t *testing.T) {
 }
 
 func TestApplyRuntimeProviderStateRejectsNilTarget(t *testing.T) {
-	if err := ApplyRuntimeProviderState(nil, RuntimeProviderState{Provider: bhruntime.ProviderCompose}); err == nil {
+	if err := ApplyRuntimeProviderState(nil, RuntimeProviderState{Provider: bhruntime.ProviderDocker}); err == nil {
 		t.Fatal("expected nil target to fail")
 	}
 }

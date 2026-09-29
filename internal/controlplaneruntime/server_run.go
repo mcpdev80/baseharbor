@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func prepareServerDependencies(ctx context.Context, cfg Config, store applicatio
 		deps.runtimeSecrets = nil
 
 		if cfg.RuntimeSecretsEnabled {
-			client, err := openbao.NewApplicationRuntimeClient(cfg.RuntimeOpenBaoURL)
+			client, err := openbao.NewApplicationRuntimeClientWithCA(cfg.RuntimeOpenBaoURL, cfg.RuntimeOpenBaoCAFile)
 			if err != nil {
 				deps.close()
 				return serverDependencies{}, err
@@ -159,19 +160,20 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		defer cancel()
 		if deps.pool != nil {
 			if err := database.Ping(checkCtx, deps.pool); err != nil {
-				writeNotReady(w)
+				writeNotReady(w, "database", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}
 		if deps.boundRuntimeClient != nil {
 			if err := deps.boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
-				writeNotReady(w)
+				writeNotReady(w, "openbao", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
-				writeNotReady(w)
+				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=%v", err)
+				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
 		}

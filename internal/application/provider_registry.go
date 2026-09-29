@@ -3,6 +3,7 @@ package application
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
@@ -49,7 +50,7 @@ func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedApplication(m.Name)
+	registry.ReleaseManagedDeployment(m.Name, m.Environment)
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseManagedApplication(m.Name)
+		registry.ReleaseManagedDeployment(m.Name, m.Environment)
 		if err := registerReferenceProviders(registry, m); err != nil {
 			return err
 		}
@@ -95,7 +96,7 @@ func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional [
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedApplication(m.Name)
+	registry.ReleaseManagedDeployment(m.Name, m.Environment)
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		return err
 	}
@@ -117,7 +118,7 @@ func registerAdditionalProviderResources(registry *capability.Registry, m Manife
 		if err := registry.Register(instance); err != nil {
 			return err
 		}
-		if err := registry.Bind(resource, instance.ID); err != nil {
+		if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
 			return err
 		}
 	}
@@ -175,6 +176,10 @@ func RegisteredProviderPlacementAt(dataDir string, m Manifest, provider capabili
 		if binding.Resource.Application != m.Name || binding.Resource.Provider != provider {
 			continue
 		}
+		bindingEnvironment := strings.TrimSpace(binding.Environment)
+		if bindingEnvironment != "" && bindingEnvironment != strings.TrimSpace(m.Environment) {
+			continue
+		}
 		var instance *capability.ProviderInstance
 		for i := range registry.Instances {
 			if registry.Instances[i].ID == binding.ProviderInstanceID {
@@ -221,7 +226,7 @@ func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseApplication(m.Name)
+		registry.ReleaseApplicationDeployment(m.Name, m.Environment)
 		return nil
 	})
 }
@@ -268,7 +273,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 		if err := registry.Register(instance); err != nil {
 			return err
 		}
-		if err := registry.Bind(resource, instance.ID); err != nil {
+		if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
 			return err
 		}
 	}
@@ -292,7 +297,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			if err := registry.Register(instance); err != nil {
 				return err
 			}
-			if err := registry.Bind(resource, instance.ID); err != nil {
+			if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
 				return err
 			}
 		}
@@ -330,6 +335,7 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 	case capability.ScopeApplication:
 		instance.ID = applicationProviderInstanceID(resource.Provider, m, resource.Name)
 		instance.OwnerApplication = m.Name
+		instance.OwnerEnvironment = m.Environment
 	case capability.ScopeExternal:
 		instance.ID = externalProviderInstanceID(resource.Provider, m, resource.Name, placement.ExternalReference)
 	default:

@@ -40,6 +40,13 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		_ = os.Unsetenv("BASEHARBOR_TARGET")
 
 		var out bytes.Buffer
+		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
+			if err := runWithIO(ctx, []string{"target", "create", "podman-ci", "--provider", "podman", "--access", "podman-ci", "--reference", "local", "--default"}, &out, &out); err != nil {
+				runtimeIntegrationTrustPlaneErr = err
+				return
+			}
+			out.Reset()
+		}
 		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return

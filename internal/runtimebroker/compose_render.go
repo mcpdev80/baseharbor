@@ -18,6 +18,7 @@ type runtimeBrokerComposeConfig struct {
 	mtls                  openbao.RuntimeMTLSFiles
 	tokenPath             string
 	credPath              string
+	openbaoCAPath         string
 	permissionsPath       string
 	serviceTokensPath     string
 	image                 string
@@ -30,7 +31,7 @@ type runtimeBrokerComposeConfig struct {
 	metricsEnabled        bool
 }
 
-func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (runtimeBrokerComposeConfig, error) {
+func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles application.RuntimeFiles, mtls openbao.RuntimeMTLSFiles, tokenPath, credPath, openbaoCAPath, permissionsPath, serviceTokensPath, image, docsPort string, otlp *application.RuntimeOTLPBinding) (runtimeBrokerComposeConfig, error) {
 	backendNetwork := application.ApplicationBackendNetworkName(m)
 	resourceProject := strings.TrimSpace(appFiles.ResourceProject)
 	if resourceProject == "" {
@@ -68,6 +69,7 @@ func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles applicat
 	}
 	if m.Services.Secrets {
 		paths["OpenBao credentials"] = credPath
+		paths["OpenBao CA"] = openbaoCAPath
 	}
 	if otlp != nil {
 		if otlp.CAFile != "" {
@@ -98,6 +100,7 @@ func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles applicat
 	serviceTokensPath = paths["runtime service identities"]
 	if m.Services.Secrets {
 		credPath = paths["OpenBao credentials"]
+		openbaoCAPath = paths["OpenBao CA"]
 	}
 	mtls.CA = paths["runtime CA"]
 	mtls.BrokerCert = paths["broker certificate"]
@@ -120,6 +123,7 @@ func prepareRuntimeBrokerComposeConfig(m application.Manifest, appFiles applicat
 		mtls:                  mtls,
 		tokenPath:             tokenPath,
 		credPath:              credPath,
+		openbaoCAPath:         openbaoCAPath,
 		permissionsPath:       permissionsPath,
 		serviceTokensPath:     serviceTokensPath,
 		image:                 image,
@@ -182,7 +186,8 @@ func (c runtimeBrokerComposeConfig) writeEnvironment(b *strings.Builder) {
 	}
 	if m.Services.Secrets {
 		b.WriteString("      BASEHARBOR_RUNTIME_SECRETS_ENABLED: \"true\"\n")
-		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"http://openbao:8200\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_URL: \"https://openbao:8200\"\n")
+		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CA_FILE: \"/run/baseharbor/openbao/ca.pem\"\n")
 		b.WriteString("      BASEHARBOR_RUNTIME_OPENBAO_CREDENTIALS_FILE: \"/run/secrets/openbao-credentials\"\n")
 	}
 	b.WriteString("      BASEHARBOR_RUNTIME_TOKEN_FILE: \"/run/secrets/runtime-token\"\n")
@@ -220,6 +225,9 @@ func (c runtimeBrokerComposeConfig) writeServiceVolumes(b *strings.Builder) {
 	fmt.Fprintf(b, "      - %s\n", strconv.Quote(c.mtls.BrokerCert+":/run/baseharbor/identity/broker-cert.pem:ro"))
 	fmt.Fprintf(b, "      - %s\n", strconv.Quote(c.permissionsPath+":/run/baseharbor/runtime/permissions.json:ro"))
 	fmt.Fprintf(b, "      - %s\n", strconv.Quote(c.serviceTokensPath+":/run/baseharbor/runtime/service-tokens.json:ro"))
+	if c.manifest.Services.Secrets {
+		fmt.Fprintf(b, "      - %s\n", strconv.Quote(c.openbaoCAPath+":/run/baseharbor/openbao/ca.pem:ro"))
+	}
 	if c.otlp != nil {
 		if c.otlp.CAFile != "" {
 			fmt.Fprintf(b, "      - %s\n", strconv.Quote(c.otlp.CAFile+":/run/baseharbor/telemetry/ca.pem:ro"))
@@ -250,7 +258,7 @@ func (c runtimeBrokerComposeConfig) writeServiceSecrets(b *strings.Builder) {
 
 func (c runtimeBrokerComposeConfig) writeHealthcheck(b *strings.Builder) {
 	b.WriteString("    healthcheck:\n")
-	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail\", \"--silent\", \"--show-error\", \"--resolve\", \"baseharbor-runtime:8443:127.0.0.1\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
+	b.WriteString("      test: [\"CMD\", \"curl\", \"--fail-with-body\", \"--silent\", \"--show-error\", \"--resolve\", \"baseharbor-runtime:8443:127.0.0.1\", \"--cacert\", \"/run/baseharbor/identity/ca.pem\", \"--cert\", \"/run/secrets/probe-client-cert\", \"--key\", \"/run/secrets/probe-client-key\", \"https://baseharbor-runtime:8443/readyz\"]\n")
 	b.WriteString("      interval: 5s\n")
 	b.WriteString("      timeout: 5s\n")
 	b.WriteString("      retries: 12\n")
@@ -311,7 +319,7 @@ func (c runtimeBrokerComposeConfig) writeNetworks(b *strings.Builder) {
 	m := c.manifest
 	b.WriteString("\nnetworks:\n")
 	b.WriteString("  backend:\n")
-	if application.HasManagedRuntimeServices(m) {
+	if application.HasApplicationScopedRuntimeServices(m) {
 		b.WriteString("    external: true\n")
 	}
 	fmt.Fprintf(b, "    name: %s\n", strconv.Quote(c.backendNetwork))

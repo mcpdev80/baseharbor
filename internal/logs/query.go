@@ -83,6 +83,11 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, source
 	if len(sources) == 0 {
 		return nil
 	}
+	for _, source := range sources {
+		if err := validateProviderLogSource(m, source); err != nil {
+			return err
+		}
+	}
 	var files ProviderFiles
 	var err error
 	if strings.TrimSpace(dataDir) == "" {
@@ -102,10 +107,7 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, source
 		return err
 	}
 	for _, source := range sources {
-		_, service, ok := observability.ParseRuntimeTarget(source.Target)
-		if !ok {
-			return fmt.Errorf("provider log source %q has invalid runtime target %q", source.ID, source.Target)
-		}
+		_, service, _ := observability.ParseRuntimeTarget(source.Target)
 		var query string
 		switch source.Class {
 		case observability.SourceApplicationProvider:
@@ -128,6 +130,25 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, source
 		if err := waitForSeries(ctx, client, endpoint, query, "provider "+string(source.Provider)+"/"+service); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateProviderLogSource(m application.Manifest, source observability.SignalSource) error {
+	if err := source.Validate(); err != nil {
+		return fmt.Errorf("provider log source %q: %w", source.ID, err)
+	}
+	if source.Kind != observability.SignalLogs {
+		return fmt.Errorf("provider log source %q has signal kind %q, want logs", source.ID, source.Kind)
+	}
+	if source.Class != observability.SourceApplicationProvider && source.Class != observability.SourcePlatformProvider {
+		return fmt.Errorf("provider log source %q has unsupported source class %q", source.ID, source.Class)
+	}
+	if source.Class == observability.SourceApplicationProvider && strings.TrimSpace(source.OwnerApplication) != strings.TrimSpace(m.Name) {
+		return fmt.Errorf("provider log source %q belongs to application %q, want %q", source.ID, source.OwnerApplication, m.Name)
+	}
+	if _, _, ok := observability.ParseRuntimeTarget(source.Target); !ok {
+		return fmt.Errorf("provider log source %q has invalid runtime target %q", source.ID, source.Target)
 	}
 	return nil
 }

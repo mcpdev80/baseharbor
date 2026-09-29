@@ -5,11 +5,10 @@ import (
 	"fmt"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 // runtimeProviderKindForApplication resolves deployment-owned runtime selection.
-// Named/legacy applications keep the Compose default until deployment metadata
-// exists for those invocation paths as well.
 func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.ProviderKind, error) {
 	provider := bhruntime.ProviderKind(resolved.Target.RuntimeProvider)
 	if provider == "" {
@@ -18,25 +17,19 @@ func runtimeProviderKindForApplication(resolved resolvedApplication) (bhruntime.
 	return bhruntime.ParseProviderKind(string(provider))
 }
 
-// detectComposeForApplication is the transitional adapter used while v0.4
-// moves existing Compose orchestration behind the provider seam incrementally.
-// Future providers must not be coerced into Compose behavior: selection and
-// capability checks happen before the current Compose-only operation proceeds.
-func detectComposeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.Compose, error) {
+// detectRuntimeForApplication resolves the target-selected runtime through the
+// provider-neutral execution contract and validates required runtime capabilities.
+func detectRuntimeForApplication(ctx context.Context, resolved resolvedApplication, required ...bhruntime.RuntimeCapability) (bhruntime.RuntimeProvider, error) {
 	kind, err := runtimeProviderKindForApplication(resolved)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
-	provider, err := bhruntime.DetectProviderForKind(ctx, kind)
+	provider, err := runtimeresolver.RuntimeProvider(ctx, kind)
 	if err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
 	if err := bhruntime.RequireCapabilities(provider, required...); err != nil {
-		return bhruntime.Compose{}, err
+		return nil, err
 	}
-	compose, ok := provider.(bhruntime.Compose)
-	if !ok {
-		return bhruntime.Compose{}, fmt.Errorf("runtime provider %s is not implemented for Compose-backed orchestration", provider.Kind())
-	}
-	return compose, nil
+	return provider, nil
 }

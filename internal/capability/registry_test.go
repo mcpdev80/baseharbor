@@ -295,11 +295,17 @@ func TestRegistryRejectsDuplicateSharedProviderWithinSameSharingBoundary(t *test
 
 func TestProviderPlacementRejectsUnsupportedScopeBeforeMutation(t *testing.T) {
 	placement := ProviderPlacement{Scope: ScopeShared, Ownership: OwnershipBaseHarbor}
-	if err := ValidateProviderPlacement(PostgreSQLIntegration, placement); err == nil {
-		t.Fatal("unsupported PostgreSQL shared placement accepted")
+	if err := ValidateProviderPlacement(PostgreSQLIntegration, placement); err != nil {
+		t.Fatalf("PostgreSQL shared placement rejected: %v", err)
+	}
+	if err := ValidateProviderPlacement(ValkeyIntegration, placement); err != nil {
+		t.Fatalf("Valkey shared placement rejected: %v", err)
 	}
 	if err := ValidateProviderPlacement(PrometheusIntegration, placement); err != nil {
 		t.Fatalf("Prometheus shared placement rejected: %v", err)
+	}
+	if err := ValidateProviderPlacement(CaddyIntegration, placement); err == nil {
+		t.Fatal("unsupported Caddy shared placement accepted")
 	}
 }
 

@@ -523,7 +523,7 @@ func acceptWorkloadPortFallback(ctx context.Context, in io.Reader, out io.Writer
 	return false, nil
 }
 
-func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, out io.Writer, compose bhruntime.Compose, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string, startServices, composeFiles []string) error {
+func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, out io.Writer, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles, files application.RuntimeFiles, environment map[string]string, startServices, composeFiles []string) error {
 	variables, err := workloadPublishedPortVariables(workload)
 	if err != nil {
 		return fmt.Errorf("inspect application workload published ports: %w", err)

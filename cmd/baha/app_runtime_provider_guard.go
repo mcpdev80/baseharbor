@@ -94,7 +94,7 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 			// cannot confidently identify an application target.
 			return baseRun(ctx, args, out, errOut)
 		}
-		if _, err := detectComposeForApplication(ctx, resolved, required...); err != nil {
+		if _, err := detectRuntimeForApplication(ctx, resolved, required...); err != nil {
 			return fmt.Errorf("%s runtime provider preflight: %w", label, err)
 		}
 		return baseRun(ctx, args, out, errOut)

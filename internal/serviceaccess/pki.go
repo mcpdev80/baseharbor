@@ -56,6 +56,15 @@ func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir st
 	if !policy.TLSRequired {
 		return TLSMaterial{}, errors.New("BaseHarbor managed service access cannot disable TLS")
 	}
+	serverName, err := canonicalCertificateDNSName(policy.ServerName)
+	if err != nil {
+		return TLSMaterial{}, err
+	}
+	policy.ServerName = serverName
+	dnsNames, err = canonicalCertificateDNSNames(dnsNames)
+	if err != nil {
+		return TLSMaterial{}, err
+	}
 	switch policy.PKISource {
 	case PKIBYOC:
 		return ensureStaticExternalMaterial(policy, dir)
@@ -210,6 +219,10 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
 		return TLSMaterial{}, err
 	} else if valid && trustMatches && previousState.IssuerReference == currentIssuerReference {
+		if !requireClient {
+			material.ClientCertificate = ""
+			material.ClientKey = ""
+		}
 		return material, nil
 	}
 
@@ -507,6 +520,38 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+func canonicalCertificateDNSNames(values []string) ([]string, error) {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		name, err := canonicalCertificateDNSName(value)
+		if err != nil {
+			return nil, err
+		}
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+func canonicalCertificateDNSName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if net.ParseIP(value) != nil {
+		return value, nil
+	}
+	value = strings.TrimSuffix(value, ".")
+	if value == "" || strings.HasSuffix(value, ".") {
+		return "", fmt.Errorf("certificate DNS name %q is not canonical", value)
+	}
+	if strings.ContainsAny(value, "\r\n,") {
+		return "", fmt.Errorf("certificate DNS name %q contains invalid characters", value)
+	}
+	return strings.ToLower(value), nil
 }
 
 func uniqueNames(values []string) []string {

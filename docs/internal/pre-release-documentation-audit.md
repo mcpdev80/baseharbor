@@ -111,6 +111,8 @@ The external demo is part of release evidence and must be reviewed before pinnin
 - [ ] Guided pristine-repository flow remains covered: `baha app init -> baha up -> READY`.
 - [ ] Lifecycle/capability/security/reconciliation/recovery gates remain coherent with the release.
 - [ ] Demo `main` contains the exact test implementation intended for release validation before the BaseHarbor pre-release run begins.
+- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent); the file contains exactly one immutable 40-character SHA.
+- [ ] Targeted demo validation uses that same exact demo SHA rather than moving `main`.
 
 ## 7. GitHub Pages and published documentation
 
@@ -124,7 +126,9 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 8. Final release candidate
 
-- [ ] Finish all release-preparation docs/demo changes before selecting the candidate.
+- [ ] Finish all release-preparation implementation, README, canonical docs, CHANGELOG, human-readable release notes and demo changes before selecting the candidate.
+- [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
+- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` points at the exact final demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
@@ -133,9 +137,20 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 9. Mandatory pre-release gate
 
-Run `.github/workflows/pre-release.yml` for the exact target tag and exact candidate SHA.
+Do not start the complete pre-release matrix until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and the versioned exact demo-ref file are complete for the candidate.
 
-The gate must prove:
+Run `.github/workflows/pre-release.yml` once for the exact target tag and exact candidate SHA as the release-wide baseline.
+
+If that baseline finds failures:
+- [ ] Do not repeatedly rerun the complete pre-release matrix.
+- [ ] Fix one failed area at a time.
+- [ ] Prefer local or isolated validation first where practical.
+- [ ] Rerun only the failed job, gate or smallest relevant acceptance workflow until that area is green.
+- [ ] Do not start another complete pre-release run while any known failing area is still unproven.
+- [ ] After every previously failing area is individually green, run the complete pre-release matrix once more.
+- [ ] Treat only that final complete green run as the immutable release approval/evidence.
+
+The final gate must prove:
 
 - [ ] Release tag format.
 - [ ] Changelog release section exists.
@@ -155,7 +170,7 @@ The gate must prove:
 - [ ] Runtime image builds without publishing.
 - [ ] Docker runtime acceptance.
 - [ ] Podman/Quadlet runtime acceptance.
-- [ ] Exact external `baseharbor-demo` SHA is pinned.
+- [ ] Exact external `baseharbor-demo` SHA is pinned from the candidate's versioned `docs/releases/vX.Y.Z.demo-ref` file.
 - [ ] Full Docker demo acceptance passes.
 - [ ] Full Podman/Quadlet demo acceptance passes.
 - [ ] Combined release-gate evidence succeeds.

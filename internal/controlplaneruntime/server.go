@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -33,6 +34,7 @@ type Config struct {
 	RuntimeEnvironment       string
 	RuntimeSecretsEnabled    bool
 	RuntimeOpenBaoURL        string
+	RuntimeOpenBaoCAFile     string
 	RuntimeCredentialsFile   string
 	RuntimeTokenFile         string
 	RuntimePermissionsFile   string
@@ -90,13 +92,13 @@ func (c Config) Validate() error {
 			return err
 		}
 		if c.RuntimeSecretsEnabled {
-			if strings.TrimSpace(c.RuntimeOpenBaoURL) == "" || strings.TrimSpace(c.RuntimeCredentialsFile) == "" {
-				return errors.New("runtime OpenBao URL and AppRole credentials are required when runtime secrets are enabled")
+			if strings.TrimSpace(c.RuntimeOpenBaoURL) == "" || strings.TrimSpace(c.RuntimeOpenBaoCAFile) == "" || strings.TrimSpace(c.RuntimeCredentialsFile) == "" {
+				return errors.New("runtime OpenBao URL, CA certificate and AppRole credentials are required when runtime secrets are enabled")
 			}
 			if _, err := os.Stat(c.RuntimeCredentialsFile); err != nil {
 				return fmt.Errorf("inspect runtime AppRole credentials: %w", err)
 			}
-			if _, err := openbao.NewApplicationRuntimeClient(c.RuntimeOpenBaoURL); err != nil {
+			if _, err := openbao.NewApplicationRuntimeClientWithCA(c.RuntimeOpenBaoURL, c.RuntimeOpenBaoCAFile); err != nil {
 				return err
 			}
 		} else if strings.TrimSpace(c.RuntimeOpenBaoURL) != "" || strings.TrimSpace(c.RuntimeCredentialsFile) != "" {
@@ -198,8 +200,18 @@ func loadClientCAPool(path string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func writeNotReady(w http.ResponseWriter) {
+func writeNotReady(w http.ResponseWriter, dependency, version, commit string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	_, _ = w.Write([]byte("{\"status\":\"not_ready\"}\n"))
+	response := map[string]string{"status": "not_ready"}
+	if strings.TrimSpace(dependency) != "" {
+		response["dependency"] = strings.TrimSpace(dependency)
+	}
+	if strings.TrimSpace(version) != "" {
+		response["version"] = strings.TrimSpace(version)
+	}
+	if strings.TrimSpace(commit) != "" {
+		response["commit"] = strings.TrimSpace(commit)
+	}
+	_ = json.NewEncoder(w).Encode(response)
 }

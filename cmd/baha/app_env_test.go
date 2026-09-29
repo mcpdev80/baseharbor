@@ -9,11 +9,14 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 	target := configureTestTarget(t)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {

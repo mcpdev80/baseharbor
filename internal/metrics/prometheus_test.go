@@ -9,10 +9,34 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
+
+func TestProviderComposeYAMLIsValidYAML(t *testing.T) {
+	placement := Placement{
+		Scope:   capability.ScopeShared,
+		Project: "bh-local-shared",
+		Volume:  "baseharbor-prometheus-data",
+	}
+	registrations := []sourceRegistration{
+		{Application: "demo", Environment: "dev", Network: "baseharbor-demo-dev-metrics"},
+	}
+	text := providerComposeYAMLWithProviderNetworks(
+		placement,
+		registrations,
+		[]string{"baseharbor-local-telemetry"},
+		false,
+	)
+
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &document); err != nil {
+		t.Fatalf("Prometheus compose is invalid YAML: %v\n%s", err, text)
+	}
+}
 
 func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
@@ -24,12 +48,21 @@ func TestProviderFilesUsePinnedPrometheusAndHardenedSharedNetwork(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	webConfigInfo, err := os.Stat(files.WebConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := webConfigInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("Prometheus web config mode = %o, want 644", got)
+	}
+
 	text := string(compose)
 	for _, want := range []string{
 		"image: " + ProviderImage,
-		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:8443",
+		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
 		"access:\n    internal: true",
-		"publish: {}",
+		"publish:\n    name: ",
+		"prometheus-access",
 		"read_only: true",
 		"cap_drop:",
 		"- ALL",
@@ -368,7 +401,7 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 	}
 }
 
-func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) {
+func TestProviderComposeUsesNativeTLSMaterial(t *testing.T) {
 	rendered := providerComposeYAMLWithProviderNetworks(
 		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
 		nil,
@@ -376,21 +409,18 @@ func TestProviderComposeKeepsGatewayOnRuntimeProjectedTLSMaterial(t *testing.T) 
 		false,
 	)
 	for _, want := range []string{
-		"./service-access/runtime/ca.pem:/certs/ca.pem:ro",
-		"./service-access/runtime/server.pem:/certs/server.pem:ro",
-		"./service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+		"--web.config.file=/etc/prometheus/web-config.yml",
+		"./web-config.yml:/etc/prometheus/web-config.yml:ro",
+		"./service-access/runtime:/run/baseharbor/tls:ro",
+		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("Prometheus gateway compose missing runtime-projected TLS material %q:\n%s", want, rendered)
+			t.Fatalf("Prometheus native-TLS compose missing %q:\n%s", want, rendered)
 		}
 	}
-	for _, forbidden := range []string{
-		"./service-access/pki/ca.pem:/certs/ca.pem:ro",
-		"./service-access/pki/server-cert.pem:/certs/server.pem:ro",
-		"./service-access/pki/server-key.pem:/certs/server-key.pem:ro",
-	} {
+	for _, forbidden := range []string{"prometheus-access:", "/certs/server.pem", "/service-access/pki/"} {
 		if strings.Contains(rendered, forbidden) {
-			t.Fatalf("Prometheus gateway compose mounted protected PKI source material %q:\n%s", forbidden, rendered)
+			t.Fatalf("Prometheus native-TLS compose contains obsolete gateway material %q:\n%s", forbidden, rendered)
 		}
 	}
 }
@@ -453,15 +483,16 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	}
 	text := string(compose)
 	for _, want := range []string{
-		"/service-access/runtime/ca.pem:/certs/ca.pem:ro",
-		"/service-access/runtime/server.pem:/certs/server.pem:ro",
-		"/service-access/runtime/server-key.pem:/certs/server-key.pem:ro",
+		"/service-access/runtime:/run/baseharbor/tls:ro",
+		"--web.config.file=/etc/prometheus/web-config.yml",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("reconciled shared Prometheus compose missing runtime-projected TLS mount %q:\n%s", want, text)
+			t.Fatalf("reconciled shared Prometheus compose missing native-TLS material %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "/service-access/pki/") {
-		t.Fatalf("reconciled shared Prometheus compose must not mount protected PKI source material:\n%s", text)
+	for _, forbidden := range []string{"prometheus-access:", "/service-access/pki/"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("reconciled shared Prometheus compose contains obsolete access material %q:\n%s", forbidden, text)
+		}
 	}
 }

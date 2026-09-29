@@ -17,9 +17,17 @@ func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, 
 		"Cache (Redis/Valkey-compatible evidence)",
 		"Object Storage (S3-compatible)",
 		"Managed Secrets",
+		"Identity / OIDC",
 		"Metrics (/metrics)",
 		"OTLP telemetry",
 		"Application logs",
+	}
+	if len(defaults) < len(labels) {
+		padded := make([]bool, len(labels))
+		copy(padded, defaults)
+		defaults = padded
+	} else if len(defaults) > len(labels) {
+		defaults = append([]bool(nil), defaults[:len(labels)]...)
 	}
 	if input, ok := appInitInput.(interface{ Fd() uintptr }); ok && term.IsTerminal(input.Fd()) {
 		return promptCapabilityTTY(reader, out, input.Fd(), labels, defaults, allowNone)
@@ -330,6 +338,14 @@ func promptLine(reader *bufio.Reader, out io.Writer, label, defaultValue string)
 	return line, nil
 }
 
+func promptOptionalYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {
+	value, err := promptYesNo(reader, out, label, defaultYes)
+	if errors.Is(err, io.EOF) {
+		return defaultYes, nil
+	}
+	return value, err
+}
+
 func promptYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {
 	suffix := "[Y/n]"
 	if !defaultYes {
@@ -363,6 +379,18 @@ func readPrompt(reader *bufio.Reader, out io.Writer, prompt string) (string, err
 		return "", io.EOF
 	}
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+func appInitReaderIsRealTerminal(r io.Reader) bool {
+	file, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 func appInitReaderIsTerminal(r io.Reader) bool {

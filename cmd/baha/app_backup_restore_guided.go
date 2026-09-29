@@ -68,7 +68,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		compose, err := detectComposeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
+		compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 		if err != nil {
 			return err
 		}

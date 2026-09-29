@@ -21,7 +21,7 @@ func TestTargetListShowsImplicitLocalTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"local", "compose", "implicit", "effective"} {
+	for _, want := range []string{"local", "docker", "implicit", "effective"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("target list missing %q: %s", want, text)
 		}

@@ -9,8 +9,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -25,7 +25,7 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect Compose runtime: %v", err)
 	}

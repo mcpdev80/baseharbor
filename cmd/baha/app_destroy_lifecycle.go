@@ -7,12 +7,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -36,7 +40,7 @@ type applicationDestroyExecution struct {
 	files               application.RuntimeFiles
 	runtimeErr          error
 	partialRuntime      bool
-	compose             bhruntime.Compose
+	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	replacedVolumes     []bhruntime.ProjectResource
 	platformFiles       bhruntime.Files
@@ -95,7 +99,7 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 
 func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	m := e.manifest
-	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m)
+	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
@@ -109,7 +113,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
-			e.compose, err = detectComposeForApplication(ctx, e.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}})
 	}
@@ -241,6 +245,12 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 	if len(m.Exposures) > 0 {
 		fmt.Fprintf(e.out, "  exposure:   %d BaseHarbor-managed HTTP route(s) via application-scoped Caddy provider\n", len(m.Exposures))
 	}
+	if application.HasSharedBackends(m) {
+		fmt.Fprintln(e.out, "  data:       application-owned logical SQL/cache resources removed; shared Target provider infrastructure preserved while still in use")
+	}
+	if application.HasIdentity(m) {
+		fmt.Fprintln(e.out, "  identity:   BaseHarbor-owned application/environment identity scope removed; shared provider infrastructure preserved")
+	}
 	if e.resolved.FromRepository {
 		if policy, policyErr := application.LogsPolicy(m); policyErr == nil && policy.Enabled && policy.Collect[application.LogsSourceApplication] {
 			fmt.Fprintln(e.out, "  logs:       application log registration and BaseHarbor-owned collector state removed according to placement")
@@ -303,6 +313,27 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return err
 		}
 	}
+	sharedBackendsRegistered := false
+	for _, provider := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		placement, found, err := application.RegisteredProviderPlacementAt(e.resolved.TargetStateRoot, m, provider)
+		if err != nil {
+			return fmt.Errorf("inspect registered %s placement before destroy: %w", provider, err)
+		}
+		if found && placement.Scope == capability.ScopeShared {
+			sharedBackendsRegistered = true
+		}
+	}
+	if sharedBackendsRegistered {
+		if err := application.ReleaseSharedBackendApplication(
+			ctx,
+			e.compose,
+			e.resolved.TargetStateRoot,
+			e.resolved.Target.Name,
+			m,
+		); err != nil {
+			return fmt.Errorf("release application resources from shared data providers: %w", err)
+		}
+	}
 	if e.runtimeErr == nil {
 		if err := e.compose.DestroyProject(ctx, e.runtimeProject, e.files.Compose, e.files.Env); err != nil {
 			return err
@@ -322,11 +353,14 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 	}
 	if application.HasObjectStorage(m) {
-		driver := objectstorage.NewDriver(e.compose, m, e.files, nil)
+		driver := objectstorage.NewDriverAt(e.compose, m, e.files, nil, e.resolved.TargetStateRoot, e.resolved.Target.Name)
 		for _, bucket := range application.ObjectStorageBucketNames(m) {
 			if err := driver.DestroyBucket(ctx, bucket); err != nil {
 				return fmt.Errorf("destroy managed S3 bucket %s: %w", bucket, err)
 			}
+		}
+		if err := objectstorage.UnregisterManagementUIConsumerAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, m); err != nil {
+			return fmt.Errorf("remove object-storage management UI registration: %w", err)
 		}
 	}
 	if m.Services.Secrets && e.destroyOpenBaoScope {
@@ -339,6 +373,9 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 }
 
 func (e *applicationDestroyExecution) cleanupProviderState(ctx context.Context) error {
+	if err := e.cleanupIdentity(ctx); err != nil {
+		return err
+	}
 	if err := e.cleanupLogs(ctx); err != nil {
 		return err
 	}
@@ -346,6 +383,61 @@ func (e *applicationDestroyExecution) cleanupProviderState(ctx context.Context) 
 		return err
 	}
 	return e.cleanupMetrics(ctx)
+}
+
+func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error {
+	if !application.HasIdentity(e.manifest) {
+		return nil
+	}
+
+	_, keycloakFound, err := application.RegisteredProviderPlacementAt(
+		e.resolved.TargetStateRoot, e.manifest, capability.ProviderKeycloak,
+	)
+	if err != nil {
+		return err
+	}
+	if keycloakFound {
+		driver := identityprovider.NewKeycloakDriver(
+			e.compose, e.manifest, e.files, nil,
+			e.resolved.TargetStateRoot, e.resolved.Target.Name,
+		)
+		if err := driver.DestroyApplication(ctx); err != nil {
+			return fmt.Errorf("destroy managed identity scope: %w", err)
+		}
+		return nil
+	}
+
+	if _, found, err := application.RegisteredProviderPlacementAt(
+		e.resolved.TargetStateRoot, e.manifest, capability.ProviderExternalOIDC,
+	); err != nil {
+		return err
+	} else if found {
+		return nil
+	}
+
+	providerPath := filepath.Join(e.files.Bindings, application.IdentityBindingName, "provider")
+	data, err := os.ReadFile(providerPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("identity provider ownership cannot be determined safely; refusing destroy")
+	}
+	if err != nil {
+		return fmt.Errorf("inspect identity provider ownership before destroy: %w", err)
+	}
+	switch capability.ProviderKind(strings.TrimSpace(string(data))) {
+	case capability.ProviderKeycloak:
+		driver := identityprovider.NewKeycloakDriver(
+			e.compose, e.manifest, e.files, nil,
+			e.resolved.TargetStateRoot, e.resolved.Target.Name,
+		)
+		if err := driver.DestroyApplication(ctx); err != nil {
+			return fmt.Errorf("destroy managed identity scope: %w", err)
+		}
+		return nil
+	case capability.ProviderExternalOIDC:
+		return nil
+	default:
+		return fmt.Errorf("identity provider ownership is unsupported or ambiguous")
+	}
 }
 
 func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {
@@ -411,6 +503,28 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			return fmt.Errorf("destroy application-scoped metrics provider: %w", err)
 		}
 	case capability.ScopeExternal:
+	}
+	return nil
+}
+
+func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx context.Context) error {
+	if !devaccess.Enabled(e.manifest.Environment) {
+		return nil
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
+	}
+	issuer := openbao.NewServiceIssuer(e.compose, files)
+	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
+	if err := devgateway.RemoveOwners(
+		ctx,
+		e.compose,
+		issuer,
+		e.resolved.Target.Name,
+		appOwner,
+	); err != nil {
+		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
 	return nil
 }

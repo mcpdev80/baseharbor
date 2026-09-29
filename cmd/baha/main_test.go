@@ -70,10 +70,10 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "test", "--sql", "--cache"}, &out, &out); err != nil {
+	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "dev", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
-	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "test"}
+	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "dev"}
 	record, err := deployment.LoadDeploymentRecord(id)
 	if err != nil {
 		t.Fatalf("deployment record missing: %v", err)
@@ -87,7 +87,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "list"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "test") {
+	if !strings.Contains(out.String(), "demo") || !strings.Contains(out.String(), "dev") {
 		t.Fatalf("unexpected list: %s", out.String())
 	}
 
@@ -96,7 +96,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	show := out.String()
-	for _, wanted := range []string{"Application: demo", "Environment: test", "Status: NOT READY", "PostgreSQL default", "Valkey     default", "not applied"} {
+	for _, wanted := range []string{"Application: demo", "Environment: dev", "Status: NOT READY", "PostgreSQL default", "Valkey     default", "not applied"} {
 		if !strings.Contains(show, wanted) {
 			t.Fatalf("unexpected show, missing %q: %s", wanted, show)
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -26,7 +27,7 @@ func TestManagedHTTPExposureLifecycleInCI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestManagedHTTPExposureFailedVerificationCleansProviderResourcesInCI(t *tes
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -206,7 +207,7 @@ networks:
 		t.Fatal(err)
 	}
 	if err := writeRepositoryInitState(root, repositoryInitState{
-		Hostname: "localhost", TLSMode: "local", RuntimeProvider: bhruntime.ProviderCompose,
+		Hostname: "localhost", TLSMode: "local", RuntimeProvider: bhruntime.ProviderDocker,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +231,7 @@ networks:
 	}, files, workload
 }
 
-func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles) error {
+func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles) error {
 	files := []string{workload.Compose, workload.Override}
 	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, files...); err != nil {
 		return err
@@ -255,7 +256,7 @@ func startManagedExposureFixtureWorkload(ctx context.Context, compose bhruntime.
 	return fmt.Errorf("fixture workload did not become ready: running=%v last_error=%v deadline=%w", lastRunning, lastErr, deadline.Err())
 }
 
-func cleanupManagedExposureFixture(compose bhruntime.Compose, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
+func cleanupManagedExposureFixture(compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, workload application.WorkloadFiles) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = destroyManagedExposure(ctx, compose, resolved.Manifest, files)

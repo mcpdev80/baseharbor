@@ -13,9 +13,11 @@ const principalContextKey contextKey = "baseharbor:identity:principal"
 // Principal is the provider-neutral authenticated identity used by BaseHarbor.
 // Issuer + Subject form the stable external identity key.
 type Principal struct {
-	Issuer   string   `json:"issuer"`
-	Subject  string   `json:"subject"`
-	Audience []string `json:"audience,omitempty"`
+	Issuer    string   `json:"issuer"`
+	Subject   string   `json:"subject"`
+	Audience  []string `json:"audience,omitempty"`
+	Assurance string   `json:"assurance,omitempty"`
+	Methods   []string `json:"authentication_methods,omitempty"`
 }
 
 // WithPrincipal stores an authenticated principal in a context.

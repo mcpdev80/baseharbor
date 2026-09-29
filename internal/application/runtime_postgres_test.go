@@ -11,6 +11,7 @@ import (
 )
 
 func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, false)
 	if _, err := store.Create(m); err != nil {
@@ -80,6 +81,7 @@ func TestEnsureRuntimePostgresIsolatedAndIdempotent(t *testing.T) {
 }
 
 func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -121,7 +123,55 @@ func TestEnsureRuntimePostgresAndValkey(t *testing.T) {
 	}
 }
 
+func TestRuntimeComposeIncludesRequestedManagementUIs(t *testing.T) {
+	useApplicationScopedDataProviders(t)
+	m := New("demo", "dev", true, true, false)
+	m.Services.SQLManagementUI = true
+	m.Services.CacheManagementUI = true
+
+	got, err := RuntimeComposeYAML(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"  postgres-ui:\n",
+		PostgresUIImage,
+		"PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py",
+		`127.0.0.1:${BASEHARBOR_POSTGRES_UI_HOST_PORT}:8443`,
+		"  cache-ui:\n",
+		"  cache-ui-access:\n",
+		CacheUIImage,
+		`127.0.0.1:${BASEHARBOR_CACHE_UI_HOST_PORT}:8443`,
+		"/run/baseharbor/caddy",
+		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime compose missing requested management UI %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestEnsureRuntimeUsesValidPgAdminBootstrapEmail(t *testing.T) {
+	useApplicationScopedDataProviders(t)
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	m := New("demo", "dev", true, false, false)
+	m.Services.SQLManagementUI = true
+
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := values[PostgresUIEmailEnv]; got != "baseharbor@example.com" {
+		t.Fatalf("unexpected pgAdmin bootstrap email %q", got)
+	}
+}
+
 func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("legacy", "dev", true, true, false)
 	dir := filepath.Join(store.Root, m.Name, "runtime")
@@ -149,6 +199,7 @@ func TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials(t *testing.T) {
 }
 
 func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, true)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -215,6 +266,7 @@ func TestEnsureRuntimeCreatesNativeApplicationContract(t *testing.T) {
 }
 
 func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, false)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -264,6 +316,7 @@ func TestEnsureRuntimeCreatesWorkloadServiceBindingProjection(t *testing.T) {
 }
 
 func TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, true, false)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -287,6 +340,7 @@ func TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust(t *testing.T
 }
 
 func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary", "analytics")
@@ -379,6 +433,7 @@ func TestEnsureRuntimeCreatesMultipleNamedServiceInstances(t *testing.T) {
 }
 
 func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", false, false, false)
 	m = WithSQLInstances(m, "primary")
@@ -410,6 +465,7 @@ func TestAddingNamedInstanceDoesNotRotateExistingInstance(t *testing.T) {
 }
 
 func TestEnsureRuntimeValkeyOnly(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("cache", "dev", false, true, false)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -429,6 +485,7 @@ func TestEnsureRuntimeValkeyOnly(t *testing.T) {
 }
 
 func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("demo", "dev", true, false, true)
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
@@ -445,6 +502,7 @@ func TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService(t *testing.T) {
 }
 
 func TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	m := New("secret-only", "dev", false, false, true)
 	if _, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m); err == nil {
@@ -453,6 +511,7 @@ func TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists(t *testin
 }
 
 func TestRuntimeProjectNameIncludesApplicationAndEnvironment(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("mailflow", "prod", true, false, false)
 	if got := RuntimeProjectName(m); got != "baseharbor-mailflow-prod" {
 		t.Fatalf("unexpected project name %q", got)
@@ -460,6 +519,7 @@ func TestRuntimeProjectNameIncludesApplicationAndEnvironment(t *testing.T) {
 }
 
 func TestManagedDatabaseAndCacheComposeAreUnprivileged(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("demo", "dev", true, true, false)
 	got, err := RuntimeComposeYAML(m)
 	if err != nil {

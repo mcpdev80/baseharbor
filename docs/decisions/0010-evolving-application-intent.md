@@ -91,6 +91,14 @@ The inspection model may retain evidence paths, confidence, capability direction
 
 This allows the system to understand code evolution without turning every detected implementation detail into YAML.
 
+### 8. Development working tree is valid deployable source
+
+For a development environment, uncommitted repository source is valid input to normal convergence. Developers must not need to commit or push a small application-code change merely to run it through the local BaseHarbor runtime.
+
+`baha up` distinguishes the complete repository desired-state fingerprint from a narrower control-state fingerprint covering the portable application contract and protected deployment settings. When only repository workload source/configuration changed and the existing deployment is READY, BaseHarbor may use a workload-only reconciliation path. Contract or deployment-control changes continue through full capability/provider reconciliation.
+
+This does not weaken Git safety semantics. `baha app update` is the separate operation that mutates Git source from an upstream and therefore remains clean-tree, fast-forward-only and non-destructive.
+
 ## Consequences
 
 - BaseHarbor can accompany an application from first bootstrap through later capability additions.

@@ -4,9 +4,8 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: Exact baseharbor-demo ref or commit SHA to validate
-        required: false
-        default: main
+        description: Exact baseharbor-demo commit SHA to validate
+        required: true
         type: string
     outputs:
       demo_sha:
@@ -28,7 +27,11 @@ jobs:
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
-          demo_ref="${{ inputs.ref || 'main' }}"
+          demo_ref="${{ inputs.ref }}"
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Demo ref must be an exact 40-character commit SHA." >&2
+            exit 2
+          }
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$tmp/demo"
           git -C "$tmp/demo" fetch --depth 1 origin "$demo_ref"
           git -C "$tmp/demo" checkout --detach FETCH_HEAD

@@ -89,6 +89,16 @@ type LogsBinding struct {
 	Service   string `json:"service"`
 }
 
+type IdentityBinding struct {
+	CallbackPaths []string `json:"callback_paths,omitempty"`
+	LogoutPaths   []string `json:"logout_paths,omitempty"`
+	Scopes        []string `json:"scopes,omitempty"`
+	Claims        []string `json:"claims,omitempty"`
+	MFA           string   `json:"mfa,omitempty"`
+	Methods       []string `json:"methods,omitempty"`
+	Passwordless  bool     `json:"passwordless,omitempty"`
+}
+
 type Binding struct {
 	Resource        Resource                `json:"resource"`
 	Workload        string                  `json:"workload"`
@@ -97,6 +107,7 @@ type Binding struct {
 	TelemetryOTLP   *OTLPTelemetryBinding   `json:"telemetry_otlp,omitempty"`
 	Metrics         *MetricsBinding         `json:"metrics,omitempty"`
 	Logs            *LogsBinding            `json:"logs,omitempty"`
+	Identity        *IdentityBinding        `json:"identity,omitempty"`
 	Security        *SecureBinding          `json:"security,omitempty"`
 }
 
@@ -152,6 +163,7 @@ type Request struct {
 	TelemetryOTLP   *OTLPTelemetryBinding
 	Metrics         *MetricsBinding
 	Logs            *LogsBinding
+	Identity        *IdentityBinding
 	Security        *SecureBinding
 	Driver          Driver
 	Observer        ProviderOperationObserver
@@ -265,6 +277,18 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: service is required", application, request.Requirement.Name)
 			}
 			binding.Logs = &value
+		}
+		if request.Requirement.Kind == Identity && request.Identity == nil {
+			return Plan{}, fmt.Errorf("capability identity binding for %s/%s is required", application, request.Requirement.Name)
+		}
+		if request.Identity != nil {
+			value := *request.Identity
+			value.CallbackPaths = append([]string(nil), value.CallbackPaths...)
+			value.LogoutPaths = append([]string(nil), value.LogoutPaths...)
+			value.Scopes = append([]string(nil), value.Scopes...)
+			value.Claims = append([]string(nil), value.Claims...)
+			value.Methods = append([]string(nil), value.Methods...)
+			binding.Identity = &value
 		}
 		if request.Security != nil {
 			value := *request.Security

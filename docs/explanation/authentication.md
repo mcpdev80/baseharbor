@@ -1,4 +1,4 @@
-# Authentication and tenant resolution
+# Authentication, managed identity and operator access
 
 BaseHarbor authenticates control-plane HTTP requests through OpenID Connect and resolves each verified external identity to exactly one tenant scope before authorization or application ownership checks run.
 
@@ -35,6 +35,50 @@ Successful verification produces only the provider-neutral identity fields requi
 - audience
 
 Raw bearer tokens are not included in BaseHarbor errors, API responses, logs or persisted identity state.
+
+
+## Managed application identity
+
+Application-facing identity is separate from the control-plane tenant-resolution path above. When an application declares managed identity, BaseHarbor realizes standard OIDC/OAuth2 behavior through the selected provider and projects a standard application binding rather than a BaseHarbor authentication SDK.
+
+The managed Keycloak reference provider creates an isolated application/environment identity scope and client, derives redirect/logout URIs from realized application exposure, configures portable authentication requirements and verifies the resulting provider state. External OIDC is supported as an authentication-only provider when provisioning is not available.
+
+Applications consume standard issuer/discovery/JWKS/client metadata. When the issuer uses BaseHarbor-managed or explicitly configured private PKI, the identity binding also projects the trust bundle as a file. Compatibility environment variables include `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_SCOPES`, optional `OIDC_CLIENT_SECRET_FILE` and optional `OIDC_CA_FILE`. The same trust bundle is available in the Service Binding identity directory as `ca.crt`.
+
+Applications are expected to use their normal OIDC/OAuth2 library and configure its HTTPS client with the supplied trust file when one is present. BaseHarbor does not replace the application's OIDC client library.
+
+Provider administration credentials are never projected into the workload.
+
+## Development management identity
+
+Local development has a separate convenience boundary for browser-facing provider administration.
+
+Each development Target owns one management account, default username `developer`, with a strong generated password. When managed application Identity is present, BaseHarbor reconciles that developer identity through managed OIDC as the central development identity. Provider UIs that cannot consume OIDC directly may receive the same Target-scoped credentials through a provider-native adapter.
+
+This does not merge application-user identity, BaseHarbor operator identity and provider implementation credentials into one security domain. It is a local-development UX layer only:
+
+- the credential is Target-scoped, not application-manifest state;
+- normal status, doctor, plan, logs, audit and evidence never reveal the password;
+- provider/runtime service credentials remain separate least-privilege credentials;
+- test and prod never reuse the shared development credential.
+
+Use `baha dev credentials` only when the local development secret must be explicitly revealed or rotated.
+
+The same Target owns one development domain, default `baha.localhost`. With the default shared Keycloak placement, browser-facing OIDC uses the canonical `https://auth.<domain>` issuer and `https://auth-admin.<domain>` administration surface through the local development gateway. An explicitly application-scoped Keycloak provider uses an application-qualified host. Workloads keep the appropriate internal provider endpoint and trust projection, so a `.localhost` browser name is never incorrectly used as a container-local network address. Public/browser discovery and workload discovery describe the same realm/client contract while using the correct network endpoint for each side.
+
+## Operator authentication
+
+BaseHarbor operator identity is a third boundary and is not interchangeable with application-user identity.
+
+- `dev` uses trusted-local operator mode and requires no login.
+- `test` and `prod` require a valid OIDC operator session scoped to the effective Target and Environment.
+- The CLI uses Authorization Code + PKCE and stores only short-lived owner-only local session state.
+- Managed Keycloak and external OIDC can provide the operator boundary.
+- A physical IdP may serve both application and operator authentication, but their clients, scopes and logical identity domains remain separate.
+
+Use `baha login -e ENV`, `baha whoami -e ENV` and `baha logout -e ENV` for explicit session management.
+
+Advanced BaseHarbor RBAC/JIT/approval/break-glass governance is separate from this minimum authenticated operator boundary.
 
 ## Pre-tenant membership resolution
 

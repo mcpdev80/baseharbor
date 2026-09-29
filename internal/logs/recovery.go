@@ -18,10 +18,13 @@ import (
 )
 
 const (
-	recoveryQueryBatch = 5000
-	recoveryMaxEntries = 200000
-	recoveryMaxBytes   = 256 << 20
+	recoveryQueryBatch  = 5000
+	recoveryMaxEntries  = 200000
+	recoveryMaxBytes    = 256 << 20
+	recoveryQueryWindow = 30 * 24 * time.Hour
 )
+
+var recoveryHistoryStart = time.Date(2020, time.May, 15, 0, 0, 0, 0, time.UTC)
 
 type HistoryEntry struct {
 	Timestamp string `json:"timestamp"`
@@ -51,99 +54,110 @@ func ExportApplicationHistoryAt(ctx context.Context, m application.Manifest, dat
 		return HistoryBackup{}, err
 	}
 	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q}`, m.Name, m.Environment)
-	start := int64(0)
-	end := time.Now().Add(time.Minute).UnixNano()
+	historyEnd := time.Now().Add(time.Minute).UTC()
 	streams := map[string]*HistoryStream{}
 	totalEntries := 0
 	totalBytes := 0
-	for {
-		values := url.Values{
-			"query":     {query},
-			"start":     {strconv.FormatInt(start, 10)},
-			"end":       {strconv.FormatInt(end, 10)},
-			"limit":     {strconv.Itoa(recoveryQueryBatch)},
-			"direction": {"forward"},
+	for windowStart := recoveryHistoryStart; windowStart.Before(historyEnd); windowStart = windowStart.Add(recoveryQueryWindow) {
+		windowEnd := windowStart.Add(recoveryQueryWindow)
+		if windowEnd.After(historyEnd) {
+			windowEnd = historyEnd
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)
-		if err != nil {
-			return HistoryBackup{}, err
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return HistoryBackup{}, err
-		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, recoveryMaxBytes+1))
-		_ = resp.Body.Close()
-		if readErr != nil {
-			return HistoryBackup{}, readErr
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return HistoryBackup{}, fmt.Errorf("Loki recovery query returned HTTP %d", resp.StatusCode)
-		}
-		if len(body) > recoveryMaxBytes {
-			return HistoryBackup{}, errors.New("Loki recovery response exceeds size limit")
-		}
-		var payload struct {
-			Status string `json:"status"`
-			Data   struct {
-				Result []struct {
-					Stream map[string]string `json:"stream"`
-					Values [][]string        `json:"values"`
-				} `json:"result"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return HistoryBackup{}, fmt.Errorf("decode Loki recovery query: %w", err)
-		}
-		if payload.Status != "success" {
-			return HistoryBackup{}, errors.New("Loki recovery query was not successful")
-		}
-		batchEntries := 0
-		lastTimestamp := int64(-1)
-		for _, result := range payload.Data.Result {
-			if result.Stream["baseharbor_application"] != m.Name || result.Stream["baseharbor_environment"] != m.Environment {
-				return HistoryBackup{}, errors.New("Loki recovery query returned data outside the application scope")
+		start := windowStart.UnixNano()
+		end := windowEnd.UnixNano()
+		for start <= end {
+			values := url.Values{
+				"query":     {query},
+				"start":     {strconv.FormatInt(start, 10)},
+				"end":       {strconv.FormatInt(end, 10)},
+				"limit":     {strconv.Itoa(recoveryQueryBatch)},
+				"direction": {"forward"},
 			}
-			keyData, _ := json.Marshal(result.Stream)
-			key := string(keyData)
-			stream := streams[key]
-			if stream == nil {
-				labels := make(map[string]string, len(result.Stream))
-				for k, v := range result.Stream {
-					labels[k] = v
-				}
-				stream = &HistoryStream{Labels: labels}
-				streams[key] = stream
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)
+			if err != nil {
+				return HistoryBackup{}, err
 			}
-			for _, value := range result.Values {
-				if len(value) != 2 {
-					return HistoryBackup{}, errors.New("Loki recovery value is malformed")
+			resp, err := client.Do(req)
+			if err != nil {
+				return HistoryBackup{}, err
+			}
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, recoveryMaxBytes+1))
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return HistoryBackup{}, readErr
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				detail := strings.TrimSpace(string(body))
+				if len(detail) > 512 {
+					detail = detail[:512]
 				}
-				ts, err := strconv.ParseInt(value[0], 10, 64)
-				if err != nil {
-					return HistoryBackup{}, errors.New("Loki recovery timestamp is malformed")
+				if detail != "" {
+					return HistoryBackup{}, fmt.Errorf("Loki recovery query returned HTTP %d: %s", resp.StatusCode, detail)
 				}
-				if ts > lastTimestamp {
-					lastTimestamp = ts
+				return HistoryBackup{}, fmt.Errorf("Loki recovery query returned HTTP %d", resp.StatusCode)
+			}
+			if len(body) > recoveryMaxBytes {
+				return HistoryBackup{}, errors.New("Loki recovery response exceeds size limit")
+			}
+			var payload struct {
+				Status string `json:"status"`
+				Data   struct {
+					Result []struct {
+						Stream map[string]string `json:"stream"`
+						Values [][]string        `json:"values"`
+					} `json:"result"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				return HistoryBackup{}, fmt.Errorf("decode Loki recovery query: %w", err)
+			}
+			if payload.Status != "success" {
+				return HistoryBackup{}, errors.New("Loki recovery query was not successful")
+			}
+			batchEntries := 0
+			lastTimestamp := int64(-1)
+			for _, result := range payload.Data.Result {
+				if result.Stream["baseharbor_application"] != m.Name || result.Stream["baseharbor_environment"] != m.Environment {
+					return HistoryBackup{}, errors.New("Loki recovery query returned data outside the application scope")
 				}
-				stream.Entries = append(stream.Entries, HistoryEntry{Timestamp: value[0], Line: value[1]})
-				totalEntries++
-				batchEntries++
-				totalBytes += len(value[0]) + len(value[1])
-				if totalEntries > recoveryMaxEntries || totalBytes > recoveryMaxBytes {
-					return HistoryBackup{}, errors.New("Loki application history exceeds recovery limits")
+				keyData, _ := json.Marshal(result.Stream)
+				key := string(keyData)
+				stream := streams[key]
+				if stream == nil {
+					labels := make(map[string]string, len(result.Stream))
+					for k, v := range result.Stream {
+						labels[k] = v
+					}
+					stream = &HistoryStream{Labels: labels}
+					streams[key] = stream
+				}
+				for _, value := range result.Values {
+					if len(value) != 2 {
+						return HistoryBackup{}, errors.New("Loki recovery value is malformed")
+					}
+					ts, err := strconv.ParseInt(value[0], 10, 64)
+					if err != nil {
+						return HistoryBackup{}, errors.New("Loki recovery timestamp is malformed")
+					}
+					if ts > lastTimestamp {
+						lastTimestamp = ts
+					}
+					stream.Entries = append(stream.Entries, HistoryEntry{Timestamp: value[0], Line: value[1]})
+					totalEntries++
+					batchEntries++
+					totalBytes += len(value[0]) + len(value[1])
+					if totalEntries > recoveryMaxEntries || totalBytes > recoveryMaxBytes {
+						return HistoryBackup{}, errors.New("Loki application history exceeds recovery limits")
+					}
 				}
 			}
-		}
-		if batchEntries < recoveryQueryBatch {
-			break
-		}
-		if lastTimestamp < start {
-			return HistoryBackup{}, errors.New("Loki recovery pagination did not advance")
-		}
-		start = lastTimestamp + 1
-		if start > end {
-			break
+			if batchEntries < recoveryQueryBatch {
+				break
+			}
+			if lastTimestamp < start {
+				return HistoryBackup{}, errors.New("Loki recovery pagination did not advance")
+			}
+			start = lastTimestamp + 1
 		}
 	}
 	keys := make([]string, 0, len(streams))

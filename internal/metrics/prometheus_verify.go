@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -224,9 +225,27 @@ func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Clie
 	if err != nil {
 		return nil, err
 	}
+	policy.ServerName = "prometheus"
 	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
 	if err != nil {
 		return nil, fmt.Errorf("load Prometheus service access identity: %w", err)
+	}
+	if isDevelopmentEnvironment(m.Environment) {
+		values := map[string]string{}
+		if data, readErr := os.ReadFile(files.Env); readErr == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if key, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+					values[strings.TrimSpace(key)] = value
+				}
+			}
+		}
+		if values["BASEHARBOR_PROMETHEUS_UI_USER"] != "" && values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] != "" {
+			return serviceaccess.NewHTTPClientWithBasicAuth(
+				material,
+				values["BASEHARBOR_PROMETHEUS_UI_USER"],
+				values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"],
+			)
+		}
 	}
 	return serviceaccess.NewHTTPClientForPolicy(material, policy)
 }

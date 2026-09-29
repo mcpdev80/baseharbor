@@ -1,4 +1,4 @@
-package runtime
+package podman
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 func quadletGeneratorPath() (string, error) {
@@ -69,8 +70,14 @@ func quadletSystemctl(ctx context.Context, input []byte, args ...string) (string
 	if err != nil {
 		return "", err
 	}
+	commandCtx := ctx
+	cancel := func() {}
+	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
+		commandCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
+	}
+	defer cancel()
 	full := append([]string{"--user"}, args...)
-	cmd := exec.CommandContext(ctx, path, full...)
+	cmd := exec.CommandContext(commandCtx, path, full...)
 	cmd.Env = quadletUserRuntimeEnv()
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
@@ -391,15 +398,19 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	}
 	if len(restartUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
-			return quadletServiceStartError(ctx, restartUnits, err)
+			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 30*time.Second); waitErr != nil {
+				return quadletServiceStartError(ctx, restartUnits, err)
+			}
 		}
 	}
 	if len(startUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
-			return quadletServiceStartError(ctx, startUnits, err)
+			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 30*time.Second); waitErr != nil {
+				return quadletServiceStartError(ctx, startUnits, err)
+			}
 		}
 	}
-	if err := quadletEnsureServiceUnitsActive(ctx, units); err != nil {
+	if err := quadletWaitServiceUnitsActive(ctx, units, 30*time.Second); err != nil {
 		return err
 	}
 	return quadletEnsureServiceContainersExist(ctx, project, selected)
@@ -419,14 +430,38 @@ func quadletServiceStartError(ctx context.Context, units []string, startErr erro
 }
 
 func quadletEnsureServiceUnitsActive(ctx context.Context, units []string) error {
-	for _, unit := range units {
-		if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
-			continue
+	return quadletWaitServiceUnitsActive(ctx, units, 0)
+}
+
+func quadletWaitServiceUnitsActive(ctx context.Context, units []string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		allActive := true
+		for _, unit := range units {
+			if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err != nil {
+				allActive = false
+				break
+			}
 		}
-		diagnostic := quadletServiceDiagnostic(ctx, unit)
-		return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
+		if allActive {
+			return nil
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			for _, unit := range units {
+				if _, err := quadletSystemctl(ctx, nil, "is-active", "--quiet", unit); err == nil {
+					continue
+				}
+				diagnostic := quadletServiceDiagnostic(ctx, unit)
+				return fmt.Errorf("Quadlet service unit %s did not remain active: %s", unit, diagnostic)
+			}
+			return errors.New("Quadlet service units did not become active")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
-	return nil
 }
 
 func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletProject, selected []string) error {
@@ -697,32 +732,6 @@ func quadletDirectiveValue(content, key string) string {
 	return ""
 }
 
-func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []string) error {
-	if len(names) == 0 {
-		return nil
-	}
-	path, err := exec.LookPath("podman")
-	if err != nil {
-		return err
-	}
-	sort.Strings(names)
-	args := []string{kind, "rm", "-f"}
-	args = append(args, names...)
-	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Env = runtimeCommandEnv(path)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("remove Podman %s resources: %s", kind, message)
-	}
-	return nil
-}
-
 func quadletExec(ctx context.Context, runtimeCommand, container string, input []byte, args ...string) (string, error) {
 	full := []string{"exec"}
 	if input != nil {
@@ -746,35 +755,6 @@ func quadletExec(ctx context.Context, runtimeCommand, container string, input []
 		return stdout.String(), fmt.Errorf("podman exec %s: %s", container, message)
 	}
 	return stdout.String(), nil
-}
-
-func quadletLogs(ctx context.Context, runtimeCommand string, project QuadletProject, services []string) (string, error) {
-	if len(services) == 0 {
-		for service := range project.Containers {
-			services = append(services, service)
-		}
-	}
-	sort.Strings(services)
-	var result strings.Builder
-	for _, service := range services {
-		container, ok := project.Containers[service]
-		if !ok {
-			return "", fmt.Errorf("Quadlet service %q is not part of project %s", service, project.Project)
-		}
-		cmd := exec.CommandContext(ctx, runtimeCommand, "logs", "--tail", "120", container)
-		cmd.Env = runtimeCommandEnv(runtimeCommand)
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return result.String(), fmt.Errorf("podman logs %s: %s", container, strings.TrimSpace(stderr.String()))
-		}
-		if result.Len() > 0 {
-			result.WriteByte('\n')
-		}
-		fmt.Fprintf(&result, "==> %s <==\n%s", service, stdout.String())
-	}
-	return result.String(), nil
 }
 
 func quadletResolveComposeFiles(workdir string, composeFiles []string) ([]string, error) {

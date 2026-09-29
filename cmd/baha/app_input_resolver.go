@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationinput"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 )
 
 const (
@@ -175,7 +176,26 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 		inputTLSMode:  firstNonEmpty(strings.TrimSpace(opts.TLSMode), current.TLSMode),
 		inputCertDir:  firstNonEmpty(strings.TrimSpace(opts.CertDir), current.CertDir),
 	}
-	if !interactive {
+	development := devaccess.Enabled(resolved.Manifest.Environment)
+	if development {
+		if strings.TrimSpace(opts.Hostname) != "" {
+			return usageError("development hostnames are derived from the target development domain", "Use 'baha dev domain [DOMAIN]' to change the target-wide development domain.")
+		}
+		if mode := strings.TrimSpace(opts.TLSMode); mode != "" && mode != "local" {
+			return usageError("development TLS is managed locally by BaseHarbor", "Remove --tls or use --tls local.")
+		}
+		if strings.TrimSpace(opts.CertDir) != "" {
+			return usageError("development TLS does not use an external certificate directory", "Remove --cert-dir; BaseHarbor manages local development TLS automatically.")
+		}
+		host, err := devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "api")
+		if err != nil {
+			return err
+		}
+		supplied[inputHostname] = host
+		supplied[inputTLSMode] = "local"
+		supplied[inputCertDir] = ""
+	}
+	if !interactive && !development {
 		if supplied[inputHostname] == "" {
 			supplied[inputHostname] = "localhost"
 		}
@@ -237,6 +257,10 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 		}
 		return usageError("required application deployment inputs are unresolved: "+strings.Join(names, ", "), "Provide them with app init flags or --input NAME=VALUE in non-interactive automation.")
 	}
+	if development {
+		return runRepositoryRuntimeInit(ctx, resolved, repositoryInitOptions{Yes: true}, out)
+	}
+
 	values := applicationinput.PersistableValues(result)
 	resolvedOpts := repositoryInitOptions{
 		Hostname: values[inputHostname],

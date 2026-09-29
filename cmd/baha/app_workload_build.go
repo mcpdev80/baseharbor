@@ -65,7 +65,7 @@ func repositoryWorkloadBuildStatePath(files application.RuntimeFiles) string {
 
 func resolveRepositoryWorkloadBuildFingerprints(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	workload application.WorkloadFiles,
 	environment map[string]string,
 	services []string,
@@ -118,7 +118,7 @@ func repositoryWorkloadConfigStatePath(files application.RuntimeFiles) string {
 
 func resolveRepositoryWorkloadConfigFingerprints(
 	ctx context.Context,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	workload application.WorkloadFiles,
 	environment map[string]string,
 	services []string,

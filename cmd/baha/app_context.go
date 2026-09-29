@@ -101,7 +101,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		}
 		selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
 		if err == nil {
-			return resolvedRepositoryApplication(target, targetRoot, selection)
+			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection)
+			if resolveErr != nil {
+				return resolvedApplication{}, resolveErr
+			}
+			if authErr := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); authErr != nil {
+				return resolvedApplication{}, authErr
+			}
+			return resolved, nil
 		}
 		if !errors.Is(err, application.ErrRepositoryManifestNotFound) {
 			return resolvedApplication{}, err
@@ -112,7 +119,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		)
 	}
 
-	return resolveRegisteredApplication(target, targetRoot, args[0], environment, command)
+	resolved, err := resolveRegisteredApplication(target, targetRoot, args[0], environment, command)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	if err := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); err != nil {
+		return resolvedApplication{}, err
+	}
+	return resolved, nil
 }
 
 func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {

@@ -2,6 +2,8 @@ package application
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
@@ -81,6 +83,21 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 				}
 			}
 		}
+		if resource.Kind == capability.Identity {
+			policy, err := ResolveIdentityPolicy(m)
+			if err != nil {
+				return nil, err
+			}
+			binding.Identity = &capability.IdentityBinding{
+				CallbackPaths: append([]string(nil), m.Identity.CallbackPaths...),
+				LogoutPaths:   append([]string(nil), m.Identity.LogoutPaths...),
+				Scopes:        append([]string(nil), m.Identity.Scopes...),
+				Claims:        append([]string(nil), m.Identity.Claims...),
+				MFA:           policy.MFA,
+				Methods:       append([]string(nil), policy.Methods...),
+				Passwordless:  policy.Passwordless,
+			}
+		}
 		if resource.Kind == capability.Logs {
 			binding.Workload = "service/" + resource.Name
 			binding.Logs = &capability.LogsBinding{
@@ -113,6 +130,10 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 	return bindings, nil
 }
 
+func IdentityProviderForDeployment() (capability.Provider, error) {
+	return referenceCapabilityProvider(capability.Identity)
+}
+
 func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, error) {
 	switch kind {
 	case capability.SQL:
@@ -129,6 +150,16 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.Prometheus, nil
 	case capability.Logs:
 		return capability.Loki, nil
+	case capability.Identity:
+		selection := strings.ToLower(strings.TrimSpace(os.Getenv("BASEHARBOR_IDENTITY_PROVIDER")))
+		switch selection {
+		case "", "keycloak":
+			return capability.Keycloak, nil
+		case "external", "external-oidc":
+			return capability.ExternalOIDC, nil
+		default:
+			return capability.Provider{}, fmt.Errorf("BASEHARBOR_IDENTITY_PROVIDER must be keycloak or external-oidc")
+		}
 	default:
 		return capability.Provider{}, fmt.Errorf("unsupported application capability %q", kind)
 	}

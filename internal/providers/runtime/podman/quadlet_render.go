@@ -1,4 +1,4 @@
-package runtime
+package podman
 
 import (
 	"encoding/json"
@@ -104,7 +104,10 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 			actual = project + "_" + name
 		}
 		unit := quadletResourceUnitBase(project, name, actual)
-		result.Files[unit+".volume"] = "[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n"
+		var b strings.Builder
+		b.WriteString("[Volume]\nVolumeName=" + actual + "\nLabel=com.docker.compose.project=" + project + "\nLabel=io.podman.compose.project=" + project + "\n")
+		quadletRenderPodmanProcessEnvironment(&b)
+		result.Files[unit+".volume"] = b.String()
 	}
 
 	for name, network := range model.Networks {
@@ -123,6 +126,7 @@ func quadletRenderProjectResources(result *QuadletProject, model quadletComposeP
 		if network.Internal {
 			b.WriteString("Internal=true\n")
 		}
+		quadletRenderPodmanProcessEnvironment(&b)
 		result.Files[unit+".network"] = b.String()
 	}
 }
@@ -150,7 +154,7 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 	envName := quadletRenderServiceEnvironment(result, unitBase, service)
 
 	var unit strings.Builder
-	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, service, selected)
+	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, model, service, selected)
 	quadletRenderServiceSecurity(&unit, service)
 	if err := quadletRenderServiceNetworks(&unit, project, serviceName, model, service); err != nil {
 		return err
@@ -184,6 +188,9 @@ func quadletRenderServiceImage(result *QuadletProject, composePath, project, ser
 		if image == "" {
 			return "", fmt.Errorf("Compose service %q has neither image nor build", serviceName)
 		}
+		if quadletLocalBaseHarborImage(image) {
+			image = "localhost/" + image
+		}
 		return image, nil
 	}
 
@@ -199,11 +206,30 @@ func quadletRenderServiceImage(result *QuadletProject, composePath, project, ser
 	if dockerfile == "" {
 		dockerfile = "Dockerfile"
 	}
-	result.Files[unitBase+".build"] = fmt.Sprintf(
-		"[Unit]\nDescription=BaseHarbor Quadlet build for %s/%s\n\n[Build]\nImageTag=localhost/%s:quadlet\nSetWorkingDirectory=%s\nFile=%s\n\n[Service]\nTimeoutStartSec=900\n",
+	var build strings.Builder
+	fmt.Fprintf(&build,
+		"[Unit]\nDescription=BaseHarbor Quadlet build for %s/%s\n\n[Build]\nImageTag=localhost/%s:quadlet\nSetWorkingDirectory=%s\nFile=%s\n",
 		project, serviceName, unitBase, systemdEscapeValue(contextDir), systemdEscapeValue(dockerfile),
 	)
+	build.WriteString("\n[Service]\nTimeoutStartSec=900\n")
+	quadletRenderPodmanProcessEnvironmentEntries(&build)
+	result.Files[unitBase+".build"] = build.String()
 	return unitBase + ".build", nil
+}
+
+func quadletLocalBaseHarborImage(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" || strings.Contains(image, "/") {
+		return false
+	}
+	name := image
+	if at := strings.IndexByte(name, '@'); at >= 0 {
+		name = name[:at]
+	}
+	if colon := strings.LastIndexByte(name, ':'); colon >= 0 {
+		name = name[:colon]
+	}
+	return strings.HasPrefix(name, "baseharbor-")
 }
 
 func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, service quadletComposeService) string {
@@ -224,7 +250,7 @@ func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, se
 	return envName
 }
 
-func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, service quadletComposeService, selected map[string]struct{}) {
+func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, model quadletComposeProject, service quadletComposeService, selected map[string]struct{}) {
 	unit.WriteString("[Unit]\n")
 	fmt.Fprintf(unit, "Description=BaseHarbor Quadlet service %s/%s\n", project, serviceName)
 	deps := append([]string(nil), service.DependsOn...)
@@ -239,8 +265,29 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
 	}
 
+	serviceNetworks := append([]string(nil), service.Networks.Names...)
+	if len(serviceNetworks) == 0 {
+		serviceNetworks = []string{"default"}
+	}
+	sort.Strings(serviceNetworks)
+	for _, networkName := range serviceNetworks {
+		network, declared := model.Networks[networkName]
+		if !declared || network.External {
+			continue
+		}
+		actual := strings.TrimSpace(network.Name)
+		if actual == "" {
+			actual = project + "_" + networkName
+		}
+		networkUnit := quadletResourceUnitBase(project, networkName, actual) + "-network.service"
+		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", networkUnit, networkUnit)
+	}
+
 	unit.WriteString("\n[Container]\n")
 	fmt.Fprintf(unit, "Image=%s\nContainerName=%s\n", image, containerName)
+	if strings.HasPrefix(image, "localhost/baseharbor-") {
+		unit.WriteString("Pull=never\n")
+	}
 	fmt.Fprintf(unit, "Label=com.docker.compose.project=%s\n", project)
 	fmt.Fprintf(unit, "Label=com.docker.compose.service=%s\n", serviceName)
 	fmt.Fprintf(unit, "Label=io.podman.compose.project=%s\n", project)
@@ -305,24 +352,40 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 	sort.Strings(serviceNetworks)
 	for _, networkName := range serviceNetworks {
 		network, declared := model.Networks[networkName]
-		switch {
-		case declared && network.External:
-			actual := strings.TrimSpace(network.Name)
-			if actual == "" {
-				actual = networkName
-			}
-			fmt.Fprintf(unit, "Network=%s\n", actual)
-		case declared:
-			actual := strings.TrimSpace(network.Name)
-			if actual == "" {
-				actual = project + "_" + networkName
-			}
-			fmt.Fprintf(unit, "Network=%s.network\n", quadletResourceUnitBase(project, networkName, actual))
-		default:
+		if !declared {
 			return fmt.Errorf("Compose service %q references undeclared network %q", serviceName, networkName)
 		}
-		fmt.Fprintf(unit, "NetworkAlias=%s\n", serviceName)
+		actual := strings.TrimSpace(network.Name)
+		if actual == "" {
+			if network.External {
+				actual = networkName
+			} else {
+				actual = project + "_" + networkName
+			}
+		}
+
+		aliases := []string{serviceName}
+		seen := map[string]struct{}{serviceName: {}}
 		for _, alias := range service.Networks.Aliases[networkName] {
+			alias = strings.TrimSpace(alias)
+			if alias == "" {
+				continue
+			}
+			if _, ok := seen[alias]; ok {
+				continue
+			}
+			seen[alias] = struct{}{}
+			aliases = append(aliases, alias)
+		}
+
+		spec := actual
+		if !network.External {
+			// Keep managed Quadlet network references ending in .network so the
+			// generator can resolve the matching network unit and its dependency.
+			spec = quadletResourceUnitBase(project, networkName, actual) + ".network"
+		}
+		fmt.Fprintf(unit, "Network=%s\n", spec)
+		for _, alias := range aliases {
 			fmt.Fprintf(unit, "NetworkAlias=%s\n", alias)
 		}
 	}
@@ -395,6 +458,12 @@ func quadletRenderServiceHealth(unit *strings.Builder, serviceName string, servi
 	if len(service.Healthcheck.Test) == 0 {
 		return nil
 	}
+	// Most Compose health checks participate in dependency ordering. The
+	// application runtime broker is the exception: BaseHarbor performs its
+	// composite OpenBao/executor readiness explicitly after the container starts.
+	if serviceName != "broker" {
+		unit.WriteString("Notify=healthy\n")
+	}
 	health, err := renderQuadletHealthCommand(service.Healthcheck.Test)
 	if err != nil {
 		return fmt.Errorf("Compose service %q healthcheck: %w", serviceName, err)
@@ -431,8 +500,34 @@ func quadletRenderServiceLogging(unit *strings.Builder, service quadletComposeSe
 	}
 }
 
+func quadletRenderPodmanProcessEnvironment(unit *strings.Builder) {
+	var entries strings.Builder
+	quadletRenderPodmanProcessEnvironmentEntries(&entries)
+	if entries.Len() == 0 {
+		return
+	}
+	unit.WriteString("\n[Service]\n")
+	unit.WriteString(entries.String())
+}
+
+func quadletRenderPodmanProcessEnvironmentEntries(unit *strings.Builder) {
+	for _, key := range []string{
+		"CONTAINERS_STORAGE_CONF",
+		"CONTAINERS_REGISTRIES_CONF",
+		"STORAGE_DRIVER",
+		"STORAGE_OPTS",
+	} {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		fmt.Fprintf(unit, "Environment=%q\n", systemdEscapeValue(key+"="+value))
+	}
+}
+
 func quadletRenderServiceRestart(unit *strings.Builder, service quadletComposeService) error {
 	unit.WriteString("\n[Service]\nTimeoutStartSec=900\n")
+	quadletRenderPodmanProcessEnvironmentEntries(unit)
 	switch strings.ToLower(strings.TrimSpace(service.Restart)) {
 	case "always", "unless-stopped":
 		unit.WriteString("Restart=always\n")

@@ -19,6 +19,7 @@ const (
 	Metrics         Kind = "metrics"
 	Logs            Kind = "logs"
 	Traces          Kind = "traces"
+	Identity        Kind = "identity.oidc"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -44,6 +45,8 @@ const (
 	ProviderTempo           ProviderKind = "tempo"
 	ProviderRuntimeBroker   ProviderKind = "runtime-broker"
 	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
+	ProviderKeycloak        ProviderKind = "keycloak"
+	ProviderExternalOIDC    ProviderKind = "external-oidc"
 )
 
 // Provider describes the capability surface of one provider implementation.

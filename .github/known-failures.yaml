@@ -1,0 +1,83 @@
+known_failures:
+  - id: podman-quadlet-rootless-storage-context
+    status: investigating
+    runtime: [podman]
+    signatures:
+      - "Quadlet network resource .* is missing after restarting .*network.service"
+      - "Quadlet volume resource .* is missing after restarting .*volume.service"
+    symptoms:
+      - "A generated Quadlet resource unit starts, but a subsequent Podman CLI exists-check cannot see the resource."
+      - "The failure appears only on Podman; Docker Compose uses the local daemon context directly."
+    root_cause:
+      - "Rootless Podman CLI and systemd-generated Quadlet units may observe different XDG/container storage environments."
+    fixes:
+      - commit: "5568542fc5657c08a845e78cccdf086d402f3fe3"
+        description: "Propagate Podman storage environment into generated Quadlet units."
+      - commit: "81d3627d3931184ddf000a8613203cc22cc4268e"
+        description: "Regression coverage for propagated storage environment."
+    related:
+      issues: [531]
+    verification:
+      - "go test ./internal/providers/runtime/podman"
+      - "targeted Podman guided gate"
+      - "targeted Podman identity gate"
+
+  - id: podman-local-candidate-image-resolution
+    status: resolved
+    runtime: [podman]
+    signatures:
+      - "image pull .* baseharbor-runtime:demo-candidate"
+      - "\\{\"status\":\"not_ready\"\\}"
+    symptoms:
+      - "Podman Quadlet may resolve an unqualified local candidate image differently from Docker."
+      - "Runtime broker can answer with behavior from a stale image even when the source checkout is current."
+    root_cause:
+      - "Unqualified local BaseHarbor image names were not pinned to local Podman storage."
+    fixes:
+      - commit: "c2c6fbd75d0c98a28d05fafe25208ac5f1989100"
+        description: "Qualify local BaseHarbor images with localhost/."
+      - commit: "7589bef43c18b385eaf003d6a5054f0b8bca73d4"
+        description: "Require Pull=never for local BaseHarbor candidate images."
+    related:
+      issues: [531]
+    verification:
+      - "go test ./internal/providers/runtime/podman"
+
+  - id: podman-compose-network-alias-scope
+    status: resolved
+    runtime: [podman]
+    signatures:
+      - "runtime broker dependency cannot resolve network alias"
+      - "Compose network aliases rendered as global NetworkAlias entries"
+    symptoms:
+      - "Docker Compose networking works while Podman Quadlet dependency DNS can fail."
+    root_cause:
+      - "Compose aliases are scoped per network, but Quadlet NetworkAlias applies globally across attached networks."
+    fixes:
+      - commit: "11c4b0652a6c0931e79f578f0d5e15a9e166f718"
+        description: "Render aliases as per-network alias= options."
+      - commit: "3c17c8564f7eb7d0f950c807bf8e5a1ee70a068d"
+        description: "Retain managed .network references while preserving scoped aliases."
+    related:
+      issues: [531]
+    verification:
+      - "go test ./internal/providers/runtime/podman"
+
+  - id: dev-gateway-effective-port
+    status: resolved
+    runtime: [docker, podman]
+    signatures:
+      - "curl: (7) Failed to connect to .* port 443"
+      - "OIDC discovery unavailable"
+    symptoms:
+      - "Canonical development URLs used a dynamic host port, while internal listeners/tests still assumed 443 or 8443."
+    root_cause:
+      - "The effective gateway host port was not used consistently end-to-end."
+    fixes:
+      - commit: "18649cfdcec537bc5b9974e1133fc56acdad233f"
+        description: "Demo requires the persisted effective gateway port instead of guessing."
+    related:
+      issues: [531]
+    verification:
+      - "targeted Docker guided gate"
+      - "targeted Docker identity gate"

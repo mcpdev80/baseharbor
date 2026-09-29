@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
@@ -70,6 +72,16 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result, v
 	fmt.Fprintf(out, "Application: %s\n", result.Application)
 	if result.ExistingManifest != "" {
 		fmt.Fprintf(out, "Existing BaseHarbor manifest: %s\n", result.ExistingManifest)
+		if selection, err := application.ResolveRepositoryEnvironment(result.Root, ""); err == nil {
+			if target, targetErr := effectiveTarget(context.Background()); targetErr == nil {
+				auth := collectOperatorAuthObservation(context.Background(), target.Name, selection.Manifest.Environment)
+				fmt.Fprintf(out, "Operator access: %s · %s · %s", auth.Mode, auth.Status, auth.Session)
+				if auth.Provider != "" {
+					fmt.Fprintf(out, " · %s", auth.Provider)
+				}
+				fmt.Fprintln(out)
+			}
+		}
 	}
 
 	if len(result.ComposeCandidates) == 1 {

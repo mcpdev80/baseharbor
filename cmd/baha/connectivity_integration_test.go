@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -27,7 +28,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
@@ -108,13 +109,13 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	}
 	rule := rules[0]
 	defer func() {
-		containers, _ := compose.ListComposeContainers(context.Background())
+		containers, _ := compose.ListRuntimeContainers(context.Background())
 		_ = suspendConnectivityRule(context.Background(), compose, rule, containers)
 		_ = application.RemoveConnectivityRule(rule)
 		_ = connectivityrelay.RemoveFiles(application.ConnectivityRuleID(rule))
 	}()
 
-	sourceContainers, err := compose.ListComposeContainers(ctx)
+	sourceContainers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 	}
 }
 
-func waitForSourceDatabase(t *testing.T, ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles, composeFiles []string) {
+func waitForSourceDatabase(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles, composeFiles []string) {
 	t.Helper()
 	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -217,7 +218,7 @@ func waitForSourceDatabase(t *testing.T, ctx context.Context, compose bhruntime.
 	t.Fatalf("source PostgreSQL did not become ready: %v", last)
 }
 
-func assertNoReverseConnectivity(t *testing.T, ctx context.Context, compose bhruntime.Compose, target application.Manifest, files application.RuntimeFiles) {
+func assertNoReverseConnectivity(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, target application.Manifest, files application.RuntimeFiles) {
 	t.Helper()
 	_, err := compose.ExecProject(ctx, application.RuntimeProjectName(target), files.Compose, files.Env, "postgres", "pg_isready", "-h", "api", "-p", "5432", "-t", "2")
 	if err == nil {
@@ -225,7 +226,7 @@ func assertNoReverseConnectivity(t *testing.T, ctx context.Context, compose bhru
 	}
 }
 
-func waitForConnectivityTarget(t *testing.T, ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) {
+func waitForConnectivityTarget(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) {
 	t.Helper()
 	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
@@ -243,7 +244,7 @@ func waitForConnectivityTarget(t *testing.T, ctx context.Context, compose bhrunt
 	t.Fatalf("target PostgreSQL did not become ready: %v", last)
 }
 
-func waitForSourceProbe(t *testing.T, ctx context.Context, compose bhruntime.Compose, workload application.WorkloadFiles, composeFiles []string, host string, port int) {
+func waitForSourceProbe(t *testing.T, ctx context.Context, compose bhruntime.RuntimeProvider, workload application.WorkloadFiles, composeFiles []string, host string, port int) {
 	t.Helper()
 	deadline, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

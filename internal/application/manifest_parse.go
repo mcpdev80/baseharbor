@@ -25,6 +25,7 @@ type manifestYAMLParser struct {
 	runtimeField           string
 	runtimePermissionIndex int
 	runtimePermissionList  string
+	identityField          string
 	serviceSeen            map[string]string
 }
 
@@ -98,6 +99,7 @@ func (p *manifestYAMLParser) resetNestedState() {
 	p.runtimeField = ""
 	p.runtimePermissionIndex = -1
 	p.runtimePermissionList = ""
+	p.identityField = ""
 }
 
 func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
@@ -129,6 +131,8 @@ func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
 		p.section = "logs"
 	case trim == "runtime:":
 		p.section = "runtime"
+	case trim == "identity:":
+		p.section = "identity"
 	default:
 		return fmt.Errorf("line %d: unsupported top-level field %q", lineNo, trim)
 	}
@@ -164,6 +168,14 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 	case p.section == "runtime" && trim == "permissions:":
 		p.runtimeField = "permissions"
 		return nil
+	case p.section == "identity":
+		switch trim {
+		case "callback_paths:", "logout_paths:", "scopes:", "claims:", "authentication:":
+			p.identityField = strings.TrimSuffix(trim, ":")
+			return nil
+		default:
+			return fmt.Errorf("line %d: unsupported identity field %q", lineNo, trim)
+		}
 	case p.section == "workload":
 		return p.parseWorkloadField(lineNo, trim)
 	default:
@@ -190,7 +202,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "object_storage", "secrets":
+	case "sql", "cache", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -242,6 +254,49 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 		return p.parseRuntimePermission(lineNo, trim)
 	case p.section == "exposure" && p.exposureField == "http" && strings.HasPrefix(trim, "- "):
 		return p.parseHTTPExposure(lineNo, trim)
+	case p.section == "identity":
+		if p.identityField == "authentication" {
+			key, value, ok := strings.Cut(trim, ":")
+			if !ok {
+				return fmt.Errorf("line %d: expected identity authentication key: value", lineNo)
+			}
+			value = strings.TrimSpace(value)
+			switch key {
+			case "mfa":
+				p.manifest.Identity.Authentication.MFA = value
+			case "passwordless":
+				enabled, err := strconv.ParseBool(value)
+				if err != nil {
+					return fmt.Errorf("line %d: invalid identity passwordless value", lineNo)
+				}
+				p.manifest.Identity.Authentication.Passwordless = enabled
+			case "methods":
+				p.identityField = "authentication-methods"
+			default:
+				return fmt.Errorf("line %d: unsupported identity authentication field %q", lineNo, key)
+			}
+			return nil
+		}
+		if strings.HasPrefix(trim, "- ") {
+			value := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+			if value == "" {
+				return fmt.Errorf("line %d: identity list value is empty", lineNo)
+			}
+			switch p.identityField {
+			case "callback_paths":
+				p.manifest.Identity.CallbackPaths = append(p.manifest.Identity.CallbackPaths, value)
+			case "logout_paths":
+				p.manifest.Identity.LogoutPaths = append(p.manifest.Identity.LogoutPaths, value)
+			case "scopes":
+				p.manifest.Identity.Scopes = append(p.manifest.Identity.Scopes, value)
+			case "claims":
+				p.manifest.Identity.Claims = append(p.manifest.Identity.Claims, value)
+			default:
+				return fmt.Errorf("line %d: invalid identity list", lineNo)
+			}
+			return nil
+		}
+		return fmt.Errorf("line %d: invalid identity structure", lineNo)
 	default:
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
@@ -258,12 +313,29 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 	}
 
 	key, value, ok := strings.Cut(trim, ":")
-	if !ok || key != "enabled" {
-		return fmt.Errorf("line %d: expected enabled: true|false or instances:", lineNo)
+	if !ok || (key != "enabled" && key != "management_ui") {
+		return fmt.Errorf("line %d: expected enabled: true|false, management_ui: true|false or instances:", lineNo)
 	}
 	enabled, err := strconv.ParseBool(strings.TrimSpace(value))
 	if err != nil {
 		return fmt.Errorf("line %d: invalid enabled value", lineNo)
+	}
+	if key == "management_ui" {
+		switch p.service {
+		case "sql":
+			p.manifest.Services.SQLManagementUI = enabled
+		case "cache":
+			p.manifest.Services.CacheManagementUI = enabled
+		case "object_storage":
+			p.manifest.Services.ObjectStorageManagementUI = enabled
+		case "secrets":
+			p.manifest.Services.SecretsManagementUI = enabled
+		case "identity":
+			p.manifest.Services.IdentityManagementUI = enabled
+		case "observability":
+			p.manifest.Services.ObservabilityManagementUI = enabled
+		}
+		return nil
 	}
 	switch p.service {
 	case "sql":
@@ -274,6 +346,12 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.ObjectStorage = enabled
 	case "secrets":
 		p.manifest.Services.Secrets = enabled
+	case "identity":
+		p.manifest.Services.Identity = enabled
+	case "observability":
+		if enabled {
+			return fmt.Errorf("line %d: observability is selected by telemetry/metrics/logs/traces; only management_ui is valid here", lineNo)
+		}
 	}
 	return nil
 }
@@ -341,6 +419,14 @@ func (p *manifestYAMLParser) parseIndent6(lineNo int, trim string) error {
 			p.runtimePermissionList = "operations"
 			return nil
 		}
+	}
+	if p.section == "identity" && p.identityField == "authentication-methods" && strings.HasPrefix(trim, "- ") {
+		value := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+		if value == "" {
+			return fmt.Errorf("line %d: identity authentication method is empty", lineNo)
+		}
+		p.manifest.Identity.Authentication.Methods = append(p.manifest.Identity.Authentication.Methods, value)
+		return nil
 	}
 	if p.section == "telemetry" && p.telemetryField == "otlp-signals" && strings.HasPrefix(trim, "- ") {
 		if p.manifest.Telemetry.OTLP == nil {

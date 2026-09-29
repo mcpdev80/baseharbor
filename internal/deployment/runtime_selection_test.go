@@ -13,8 +13,8 @@ func TestRuntimeSelectionDefaultsLegacyState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if selection.Provider != bhruntime.ProviderCompose {
-		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderCompose)
+	if selection.Provider != bhruntime.ProviderDocker {
+		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderDocker)
 	}
 	if selection.Profile != RuntimeProfileStandard {
 		t.Fatalf("profile = %q, want %q", selection.Profile, RuntimeProfileStandard)
@@ -29,7 +29,7 @@ func TestRuntimeSelectionDoesNotInferFromEnvironmentName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if selection.Provider != bhruntime.ProviderCompose || selection.Profile != RuntimeProfileStandard {
+		if selection.Provider != bhruntime.ProviderDocker || selection.Profile != RuntimeProfileStandard {
 			t.Fatalf("environment %q changed runtime selection: %#v", environment, selection)
 		}
 	}
@@ -41,7 +41,7 @@ func TestRuntimeSelectionRoundTripPreservesOtherState(t *testing.T) {
 		"BASEHARBOR_TLS_MODE": "existing",
 	}
 	want := RuntimeSelection{
-		Provider: bhruntime.ProviderCompose,
+		Provider: bhruntime.ProviderDocker,
 		Profile:  RuntimeProfileStandard,
 	}
 	if err := ApplyRuntimeSelection(values, want); err != nil {

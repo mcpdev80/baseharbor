@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.Writer, opts runtimeUpOptions) error {
@@ -57,6 +58,14 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 		}
 		fmt.Fprintln(out, "Application runtime exists but is stopped; starting existing runtime...")
 		return appUpCommand(store).Run(ctx, nil, out, errOut)
+	case repositoryUpWorkloadApply:
+		handled, err := reconcileDevelopmentWorkloadChanges(ctx, in, out, errOut, opts, resolved)
+		if err != nil {
+			return err
+		}
+		if handled {
+			return nil
+		}
 	}
 
 	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
@@ -70,6 +79,66 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 
 	fmt.Fprintln(out, "Converging application backend and workload...")
 	return appApplyCommand(store).Run(ctx, nil, out, errOut)
+}
+
+func reconcileDevelopmentWorkloadChanges(
+	ctx context.Context,
+	in io.Reader,
+	out, errOut io.Writer,
+	opts runtimeUpOptions,
+	resolved resolvedApplication,
+) (bool, error) {
+	_, found, err := application.ResolveWorkloadCompose(resolved.repositoryRoot(), resolved.Manifest)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	reportRepositoryContractEvolution(ctx, out, errOut, resolved)
+	if err := ensureRepositoryOpenBaoReady(ctx, in, out, errOut, opts); err != nil {
+		return true, err
+	}
+	if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
+		return true, err
+	}
+
+	fmt.Fprintln(out, "Development source/configuration changes detected; reconciling workload only...")
+	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+	if err != nil {
+		return true, err
+	}
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		return true, err
+	}
+	applied, err := applyRepositoryWorkload(ctx, out, compose, resolved, files)
+	if err != nil {
+		return true, err
+	}
+	if !applied {
+		return false, nil
+	}
+
+	status, err := collectApplicationStatus(ctx, resolved.Store, nil)
+	if err != nil {
+		return true, fmt.Errorf("verify application after development workload reconcile: %w", err)
+	}
+	if !status.Ready {
+		return true, errors.New("development workload reconcile completed but application did not return to READY")
+	}
+	if err := recordRepositoryAppliedFingerprint(ctx, resolved, files); err != nil {
+		return true, fmt.Errorf("record development workload source state: %w", err)
+	}
+	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
+		return true, fmt.Errorf("record development workload deployment: %w", err)
+	}
+	fmt.Fprintln(out, "Application is READY after targeted development workload reconcile.")
+	if err := recordApplicationAudit(ctx, resolved, "up", "success", "verified", "development working tree reconciled through workload-only fast path"); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func initializeRepositoryManifestForUp(ctx context.Context, in io.Reader, out, errOut io.Writer, opts runtimeUpOptions) (bool, error) {

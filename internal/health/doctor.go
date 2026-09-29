@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	podmanprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/podman"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -85,7 +86,7 @@ func checkRuntimeOrchestration(runtimeName string) Check {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if runtimeName == "podman" {
-		if !bhruntime.QuadletAvailable(ctx) {
+		if !podmanprovider.QuadletAvailable(ctx) {
 			return Check{Name: "quadlet", OK: false, Message: "Podman Quadlet unavailable"}
 		}
 		return Check{Name: "quadlet", OK: true, Message: "Podman Quadlet available"}

@@ -75,15 +75,32 @@ BaseHarbor-specific binding metadata uses an explicit versioned extension namesp
 
 ## Placement and ownership
 
-Where applicable, providers use:
+Capability providers use the common placement vocabulary where the underlying product and provider implementation can satisfy the required semantics:
 
 ```text
-application
 shared
+application
 external
 ```
 
-BaseHarbor MUST NOT destructively mutate foreign/external resources it does not own.
+A provider descriptor MUST declare every placement scope it actually implements. BaseHarbor MUST reject an unsupported requested scope before mutation and MUST NOT silently downgrade isolation or ownership.
+
+For `shared` placement:
+
+- provider infrastructure lifecycle MUST belong to the Target/provider boundary rather than to one application;
+- application data/logical resources, credentials, identities and Service Bindings MUST remain application-scoped;
+- one application MUST NOT be able to read, mutate or destroy another application's logical resources through the standard application binding;
+- application destroy MUST remove only application-owned resources and MUST preserve the shared provider and sibling applications;
+- provider/Target destroy MAY remove the shared provider after application ownership has been released;
+- a provider MUST NOT claim `shared` support if these isolation and lifecycle guarantees cannot be met.
+
+Sharing provider infrastructure is explicitly a resource-efficiency mechanism. It MUST NOT be implemented by merely reusing one global application credential or one unpartitioned application data namespace.
+
+`application` placement provides a dedicated provider lifecycle for one application/environment and remains valid when stronger physical isolation or product limitations require it.
+
+`external` placement keeps provider lifecycle ownership outside BaseHarbor. BaseHarbor MUST NOT destructively mutate foreign/external resources it does not own.
+
+A named sharing boundary MAY subdivide `shared` placement without introducing a fourth scope.
 
 ## Verification
 

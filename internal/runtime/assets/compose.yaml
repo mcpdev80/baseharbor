@@ -6,6 +6,14 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /var/run/postgresql:rw,noexec,nosuid,nodev
@@ -13,8 +21,15 @@ services:
       POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
       POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
       POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+      BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
+      - ./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
       interval: 5s
@@ -23,23 +38,31 @@ services:
       start_period: 5s
 
   openbao:
-    image: docker.io/openbao/openbao:2.6.3
+    image: docker.io/openbao/openbao:2.7.0
     restart: unless-stopped
-    user: "openbao"
+    user: "100"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
-    command: server
+    command: ["server", "-config=/run/baseharbor/openbao/openbao.hcl"]
     environment:
       SKIP_CHOWN: "1"
-      BAO_ADDR: http://127.0.0.1:8200
-      BAO_LOCAL_CONFIG: >-
-        {"ui":true,"disable_mlock":true,"storage":{"file":{"path":"/openbao/file"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"api_addr":"http://127.0.0.1:8200"}
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
-      - openbao-data:/openbao/file
+      - ./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro
+      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+      - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro
+      - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/openbao/server-key.pem:ro
+      - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
     networks:
       - default
       - secrets
@@ -52,7 +75,6 @@ services:
 
 volumes:
   postgres-data:
-  openbao-data:
 
 networks:
   default: {}

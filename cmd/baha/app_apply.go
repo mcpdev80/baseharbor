@@ -54,6 +54,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
+	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
 	if err := execution.recordVerifiedDeployment(ctx); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
@@ -77,7 +80,7 @@ type applicationSecretSetter interface {
 func resolveMissingRequiredSecretsInteractive(
 	ctx context.Context,
 	service applicationSecretSetter,
-	compose bhruntime.Compose,
+	compose bhruntime.RuntimeProvider,
 	platformFiles bhruntime.Files,
 	m application.Manifest,
 	files application.RuntimeFiles,
@@ -157,8 +160,8 @@ func promptAndStoreMissingRequiredSecrets(
 	return nil
 }
 
-func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
-	if !application.HasManagedRuntimeServices(m) {
+func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
+	if !application.HasApplicationScopedRuntimeServices(m) {
 		return nil
 	}
 	const maxAttempts = 3
@@ -206,7 +209,7 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.C
 	return errors.New("application runtime start exhausted host-port retries")
 }
 
-func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Compose, m application.Manifest, files application.RuntimeFiles) error {
+func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
 	if m.Services.SQL {
 		if err := application.VerifyPostgresRuntime(ctx, compose, m, files); err != nil {
 			return err

@@ -9,26 +9,23 @@ import (
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestApplicationScopesRealOpenBaoIsolation(t *testing.T) {
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
-		t.Skip("real OpenBao integration test runs in GitHub Actions")
+	if os.Getenv("BASEHARBOR_OPENBAO_APPLICATION_ACCEPTANCE") != "true" {
+		t.Skip("real OpenBao application acceptance is opt-in")
 	}
 
 	root := t.TempDir()
 	runtimeDir := filepath.Join(root, ".baseharbor", "runtime")
-	files, err := bhruntime.EnsureFilesForProject(runtimeDir, "baseharbor-openbao-scope-ci", bhruntime.Ports{Postgres: bhruntime.DefaultPostgresPort, OpenBao: bhruntime.DefaultOpenBaoPort})
+	files, err := bhruntime.EnsureFilesForProject(runtimeDir, "baseharbor-openbao-scope-ci", bhruntime.Ports{Postgres: 25432, OpenBao: 28200})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=integration-only\nBASEHARBOR_POSTGRES_PORT=25432\nBASEHARBOR_OPENBAO_PORT=28200\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	compose, err := bhruntime.DetectCompose(ctx)
+	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
