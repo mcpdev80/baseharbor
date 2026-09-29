@@ -56,7 +56,6 @@ func TestComposeBuildArgsForcePlainProgress(t *testing.T) {
 	}
 }
 
-
 func TestComposeUpProjectFilesUsesResolvedWorkloadPortEnvironment(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
