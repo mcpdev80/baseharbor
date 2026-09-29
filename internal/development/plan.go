@@ -47,7 +47,7 @@ func BuildPlan(contract application.PortableContract, profile StackProfile, adap
 	plan := DevelopmentPlan{
 		SchemaVersion: DevelopmentPlanVersion,
 		Application:   contract.Application,
-		Profile:       profile.Name,
+		Profile:       profile.Metadata.Name,
 	}
 	for _, component := range profile.Components {
 		adapter, err := adapters.Resolve(component.Adapter)
