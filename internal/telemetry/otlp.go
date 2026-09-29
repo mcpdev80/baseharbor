@@ -224,7 +224,7 @@ func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capabil
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		containerHost = strings.TrimSpace(policy.ServerName)
 	}
-	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://"+containerHost+":8443")
+	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://"+containerHost+":4318")
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
