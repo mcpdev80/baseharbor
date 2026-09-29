@@ -38,8 +38,8 @@ func sortedProfileNames(entries development.ProfileCatalogEntries) []string {
 		left, right := entries[names[i]], entries[names[j]]
 		if left.Scope != right.Scope {
 			order := map[development.ProfileScope]int{
-				development.ProfileScopeBuiltin: 0,
-				development.ProfileScopeUser: 1,
+				development.ProfileScopeBuiltin:    0,
+				development.ProfileScopeUser:       1,
 				development.ProfileScopeRepository: 2,
 			}
 			return order[left.Scope] < order[right.Scope]
