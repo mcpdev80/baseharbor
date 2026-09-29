@@ -49,7 +49,7 @@ func appNewCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			result, err := development.BootstrapApplication(development.NewApplicationRequest{
+			result, err := development.CreateApplication(".", development.NewApplicationRequest{
 				Name:         options.Name,
 				Environment:  options.Environment,
 				Adapter:      adapterID,
@@ -59,31 +59,6 @@ func appNewCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := development.WriteGeneratedFiles(".", result.Files); err != nil {
-				return err
-			}
-			cleanup := true
-			defer func() {
-				if !cleanup {
-					return
-				}
-				for _, file := range result.Files {
-					_ = os.Remove(file.Path)
-				}
-			}()
-
-			adapter, err := registry.Resolve(adapterID)
-			if err != nil {
-				return err
-			}
-			validation, err := adapter.Validate(".", result.Contract, result.Profile.Components[0])
-			if err != nil {
-				return fmt.Errorf("validate generated application: %w", err)
-			}
-			if !validation.Satisfied {
-				return fmt.Errorf("generated application does not satisfy its contract: %s", strings.Join(validation.Diagnostics, "; "))
-			}
-			cleanup = false
 
 			if options.Output == outputJSON {
 				return writeJSON(out, struct {
@@ -99,7 +74,7 @@ func appNewCommand() *cli.Command {
 					Profile:         result.Profile,
 					DevelopmentPlan: result.Plan,
 					Files:           result.FilePaths,
-					Satisfied:       validation.Satisfied,
+					Satisfied:       result.Validation.Satisfied,
 				})
 			}
 			fmt.Fprintf(out, "created %s (%s) with %s\n", result.Manifest.Name, result.Manifest.Environment, adapterID)
