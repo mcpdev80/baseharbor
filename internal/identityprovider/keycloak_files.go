@@ -222,26 +222,38 @@ func keycloakStateIdentity(app application.Manifest, placement capability.Provid
 	}
 }
 
-func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
-	canonicalURL = strings.TrimRight(strings.TrimSpace(canonicalURL), "/")
-	if canonicalURL == "" {
-		return errors.New("Keycloak canonical URL is required")
+func SetKeycloakCanonicalURLs(files KeycloakFiles, publicURL, adminURL string) error {
+	normalize := func(label, raw string) (string, error) {
+		value := strings.TrimRight(strings.TrimSpace(raw), "/")
+		if value == "" {
+			return "", fmt.Errorf("Keycloak canonical %s URL is required", label)
+		}
+		u, err := url.Parse(value)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+			return "", fmt.Errorf("Keycloak canonical %s URL %q must be an HTTPS URL without query or fragment", label, value)
+		}
+		return value, nil
 	}
-	u, err := url.Parse(canonicalURL)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("Keycloak canonical URL %q must be an HTTPS URL without query or fragment", canonicalURL)
+	publicURL, err := normalize("public", publicURL)
+	if err != nil {
+		return err
+	}
+	adminURL, err = normalize("admin", adminURL)
+	if err != nil {
+		return err
 	}
 	values, err := readProtectedEnv(files.Env)
 	if err != nil {
 		return err
 	}
-	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = canonicalURL
+	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = publicURL
+	values["BASEHARBOR_KEYCLOAK_CANONICAL_ADMIN_URL"] = adminURL
 	return writeProtectedEnv(files.Env, values)
 }
 
 func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	hostnameCommand := ""
-	hostnameEnvironment := "      KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}\n"
+	hostnameEnvironment := "      KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}\n      KC_HOSTNAME_ADMIN: ${BASEHARBOR_KEYCLOAK_CANONICAL_ADMIN_URL}\n"
 	if devaccess.Enabled(app.Environment) {
 		hostnameCommand = "      - --hostname-strict=false\n"
 	}
