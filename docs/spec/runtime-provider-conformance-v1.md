@@ -84,11 +84,13 @@ Docker and Podman must later pass equivalent semantic conformance before the run
 OpenShift must pass the same portable semantics while remaining free to use OpenShift-native realization behind the provider boundary.
 
 
-## Merge gate
+## Validation policy
 
-The Kubernetes foundation is not a merge candidate until both checks pass on the same branch state:
+Kubernetes-specific validation is intentionally manual-only during the pre-freeze architecture proof.
+
+When validation is explicitly requested, evidence should include both checks on the same branch state:
 
 - Runtime Foundation compatibility and real k3s lifecycle.
 - Pinned reference-demo OCI end-to-end lifecycle including cleanup.
 
-A green provider unit/renderer test alone is insufficient evidence.
+A provider unit/renderer check alone is insufficient evidence for the architecture proof.
