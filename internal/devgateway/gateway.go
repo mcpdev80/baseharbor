@@ -337,7 +337,7 @@ func URLForRuntime(target, host string, runtime Runtime) string {
 func urlForRuntime(target, host string, runtime Runtime, available func(int) bool) string {
 	files, err := FilesFor(target)
 	if err == nil {
-		if current, loadErr := loadState(files.State); loadErr == nil {
+		if current, loadErr := loadState(files.State); loadErr == nil && current.HostPort > 0 {
 			return canonicalURL(host, current.HostPort)
 		}
 	}
