@@ -30,11 +30,22 @@ type Action struct {
 	Value      string          `json:"value,omitempty"`
 }
 
+type PlannedSource struct {
+	Component string     `json:"component"`
+	Source    string     `json:"source"`
+	Type      SourceKind `json:"type"`
+	Identity  string     `json:"identity"`
+	Ref       string     `json:"ref,omitempty"`
+	SubPath   string     `json:"sub_path,omitempty"`
+	Image     string     `json:"image,omitempty"`
+}
+
 type DevelopmentPlan struct {
-	SchemaVersion string   `json:"schema_version"`
-	Application   string   `json:"application"`
-	Profile       string   `json:"profile"`
-	Actions       []Action `json:"actions"`
+	SchemaVersion string          `json:"schema_version"`
+	Application   string          `json:"application"`
+	Profile       string          `json:"profile"`
+	Sources       []PlannedSource `json:"sources,omitempty"`
+	Actions       []Action        `json:"actions"`
 }
 
 func BuildPlan(contract application.PortableContract, profile StackProfile, adapters Registry) (DevelopmentPlan, error) {
@@ -116,4 +127,63 @@ func profileCapabilityAppliesToComponent(profile StackProfile, kind capability.K
 		}
 	}
 	return !matched
+}
+
+
+func BuildPlanForWorkspace(contract application.PortableContract, profile StackProfile, adapters Registry, workspace WorkspaceResolution) (DevelopmentPlan, error) {
+	plan, err := BuildPlan(contract, profile, adapters)
+	if err != nil {
+		return DevelopmentPlan{}, err
+	}
+	if workspace.Application != contract.Application {
+		return DevelopmentPlan{}, fmt.Errorf("workspace application %q does not match application contract %q", workspace.Application, contract.Application)
+	}
+	resolved := make(map[string]ResolvedComponentSource, len(workspace.Components))
+	for _, source := range workspace.Components {
+		resolved[source.Component] = source
+	}
+	for _, component := range profile.Components {
+		source, ok := resolved[component.ID]
+		if !ok {
+			return DevelopmentPlan{}, fmt.Errorf("development component %q has no resolved source identity", component.ID)
+		}
+		plan.Sources = append(plan.Sources, PlannedSource{
+			Component: component.ID,
+			Source:    source.Source,
+			Type:      source.Type,
+			Identity:  source.Identity,
+			Ref:       source.Ref,
+			SubPath:   source.SubPath,
+			Image:     source.Image,
+		})
+	}
+	sort.Slice(plan.Sources, func(i, j int) bool { return plan.Sources[i].Component < plan.Sources[j].Component })
+	return plan, nil
+}
+
+func ValidateWorkspace(contract application.PortableContract, profile StackProfile, adapters Registry, workspace WorkspaceResolution) (map[string]Validation, error) {
+	resolved := make(map[string]ResolvedComponentSource, len(workspace.Components))
+	for _, source := range workspace.Components {
+		resolved[source.Component] = source
+	}
+	results := make(map[string]Validation, len(profile.Components))
+	for _, component := range profile.Components {
+		source, ok := resolved[component.ID]
+		if !ok {
+			return nil, fmt.Errorf("development component %q has no resolved source identity", component.ID)
+		}
+		if source.Type != SourceRepository {
+			return nil, fmt.Errorf("development component %q uses %s source %q; source-backed adapter validation requires a local repository worktree", component.ID, source.Type, source.Identity)
+		}
+		adapter, err := adapters.Resolve(component.Adapter)
+		if err != nil {
+			return nil, err
+		}
+		validation, err := adapter.Validate(source.Root, contractForComponent(contract, profile, component.ID), component)
+		if err != nil {
+			return nil, fmt.Errorf("validate component %q at resolved source %s: %w", component.ID, source.Root, err)
+		}
+		results[component.ID] = validation
+	}
+	return results, nil
 }

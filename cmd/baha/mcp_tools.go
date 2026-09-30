@@ -36,6 +36,26 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("workspace.resolve", "Resolve canonical multi-repository component/source identity to the local XDG workspace mapping without changing source or runtime state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceResolveInput) (*mcp.CallToolResult, any, error) {
+		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		model, _, err := development.LoadSourceModel(manifestPath)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		mapping, _, err := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		resolved, err := development.ResolveWorkspace(manifestPath, model, mapping)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, resolved, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
