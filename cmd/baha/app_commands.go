@@ -181,7 +181,7 @@ func appPreflightCommand(store application.Store) *cli.Command {
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 				{Name: "host memory", Run: func(ctx context.Context) error {
-					return runHostMemoryPreflight(ctx, runtimeInput, out, hostresource.EstimateApplication(m), false)
+					return runHostMemoryPreflight(ctx, runtimeInput, out, bhruntime.ProviderKind(resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), false)
 				}},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "manifest permissions", Run: func(context.Context) error {
