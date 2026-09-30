@@ -132,7 +132,7 @@ jobs:
 
       - name: Reset runtime state
         id: reset
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         timeout-minutes: 3
         run: |
@@ -204,7 +204,7 @@ jobs:
 
       - name: Run selected demo gate
         id: demo
-        if: steps.target.outputs.gate != 'workload-routing'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
