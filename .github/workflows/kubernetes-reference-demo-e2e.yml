@@ -2,6 +2,11 @@ name: "Test · Kubernetes Reference Demo OCI E2E"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes-demo*'
+    paths:
+      - '.ci/kubernetes-demo-trigger'
 
 permissions:
   contents: read
