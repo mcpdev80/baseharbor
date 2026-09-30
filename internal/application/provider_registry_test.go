@@ -24,7 +24,7 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 	if len(registry.Instances) != 3 {
 		t.Fatalf("instances=%#v", registry.Instances)
 	}
-	shared, err := registry.Resolve(capability.ProviderOpenBao, capability.ScopeShared, "beta", "")
+	shared, err := registry.Resolve(capability.ProviderOpenBao, capability.ScopeShared, beta.ApplicationID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestRegisterReferenceProvidersMapsCurrentOwnership(t *testing.T) {
 			SharingBoundary: pgBoundary,
 			Ownership:       capability.OwnershipBaseHarbor,
 		},
-		"alpha",
+		alpha.ApplicationID,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestCheckControlPlaneDestroySafeRejectsApplicationBindings(t *testing.T) {
 		t.Fatalf("expected application binding guard, got %v", err)
 	}
 
-	registry.ReleaseApplication("demo")
+	registry.ReleaseApplication(m.ApplicationID)
 	if err := store.Save(registry); err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +105,9 @@ func TestCheckControlPlaneDestroySafeRejectsApplicationBindings(t *testing.T) {
 func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 	registry := capability.NewRegistry()
 	m := Manifest{
-		Version:     CurrentVersion,
-		Name:        "frontend",
+		Version:       CurrentVersion,
+		ApplicationID: MustNewApplicationID(),
+		Name:          "frontend",
 		Environment: "production",
 		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
 		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
@@ -114,11 +115,13 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		t.Fatal(err)
 	}
-	instance, err := registry.Resolve(capability.ProviderCaddy, capability.ScopeApplication, "frontend", "")
+	instance, err := registry.Resolve(capability.ProviderCaddy, capability.ScopeApplication, m.ApplicationID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if instance.ID != "caddy/frontend/production" || instance.OwnerApplication != "frontend" {
+	if instance.ID != applicationProviderInstanceID(capability.ProviderCaddy, m, "public") ||
+		instance.OwnerApplicationID != m.ApplicationID ||
+		instance.OwnerApplication != "frontend" {
 		t.Fatalf("unexpected Caddy instance %#v", instance)
 	}
 	found := false
@@ -239,7 +242,7 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 			SharingBoundary: "environment:production",
 			Ownership:       capability.OwnershipBaseHarbor,
 		},
-		m.Name,
+		m.ApplicationID,
 	); err != nil {
 		t.Fatalf("shared PostgreSQL provider not registered: %v", err)
 	}
@@ -248,7 +251,7 @@ func TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent(t *t
 func TestReferenceProviderInstancePreservesExternalReference(t *testing.T) {
 	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "otel-prod")
 
-	m := Manifest{Name: "demo", Environment: "production"}
+	m := Manifest{ApplicationID: MustNewApplicationID(), Name: "demo", Environment: "production"}
 	resource := capability.Resource{
 		Application: m.Name,
 		Kind:        capability.TelemetryOTLP,
@@ -282,7 +285,9 @@ func TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance(t *testing.
 		t.Fatalf("application-scoped Loki should be one provider instance, got %#v", registry.Instances)
 	}
 	instance := registry.Instances[0]
-	if instance.ID != "loki/logs-demo/dev" || instance.OwnerApplication != m.Name {
+	if instance.ID != applicationProviderInstanceID(capability.ProviderLoki, m, "api") ||
+		instance.OwnerApplicationID != m.ApplicationID ||
+		instance.OwnerApplication != m.Name {
 		t.Fatalf("unexpected Loki provider instance %#v", instance)
 	}
 	if len(registry.Bindings) != 2 {
@@ -299,6 +304,7 @@ func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) 
 	stateDir := t.TempDir()
 	dev := New("demo", "dev", true, false, false)
 	prod := New("demo", "prod", true, false, false)
+	prod.ApplicationID = dev.ApplicationID
 
 	if err := ReconcileReferenceProviderRegistryAt(stateDir, dev); err != nil {
 		t.Fatal(err)
@@ -383,7 +389,7 @@ func TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile(t *test
 	if err := registry.Register(instance); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Bind(resource, instance.ID); err != nil {
+	if err := registry.Bind(resource, m.ApplicationID, instance.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Save(registry); err != nil {
