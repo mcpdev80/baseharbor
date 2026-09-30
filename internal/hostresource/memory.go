@@ -56,7 +56,7 @@ type MemoryEstimate struct {
 }
 
 type Policy struct {
-	SafetyMarginBytes    uint64
+	SafetyMarginBytes  uint64
 	PressureSomeAvg300 float64
 	PressureFullAvg300 float64
 	SwapFreeRatioTight float64
@@ -64,10 +64,10 @@ type Policy struct {
 
 func DefaultPolicy() Policy {
 	return Policy{
-		SafetyMarginBytes:   512 << 20,
-		PressureSomeAvg300:  1.0,
-		PressureFullAvg300:  0.5,
-		SwapFreeRatioTight:  0.10,
+		SafetyMarginBytes:  512 << 20,
+		PressureSomeAvg300: 1.0,
+		PressureFullAvg300: 0.5,
+		SwapFreeRatioTight: 0.10,
 	}
 }
 
