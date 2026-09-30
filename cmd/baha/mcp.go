@@ -24,6 +24,10 @@ type machineInspectInput struct {
 	Path string `json:"path,omitempty" jsonschema:"local repository path or Git URL; defaults to the current directory"`
 }
 
+type machineWorkspaceResolveInput struct {
+	Manifest string `json:"manifest,omitempty" jsonschema:"canonical baseharbor.yaml path or directory containing it; defaults to the current repository"`
+}
+
 type machineApplicationInput struct {
 	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
