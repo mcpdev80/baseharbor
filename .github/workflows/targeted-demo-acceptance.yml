@@ -351,4 +351,4 @@ jobs:
           name: targeted-${{ steps.target.outputs.runtime }}-${{ steps.target.outputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/targeted-demo-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
