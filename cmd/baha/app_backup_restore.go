@@ -461,10 +461,19 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: backupManifest.Name,
-		Environment: backupManifest.Environment,
+	existing, found, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	var id deployment.DeploymentIdentity
+	if found {
+		id = existing.Identity
+		id.Application = backupManifest.Name
+	} else {
+		id, err = deployment.NewDeploymentIdentity(target.Name, backupManifest.ApplicationID, backupManifest.Name, backupManifest.Environment)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
@@ -488,7 +497,13 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 		return resolved, err
 	}
 	if !found {
-		record, recordErr := deployment.LoadDeploymentRecord(id)
+		var record deployment.DeploymentRecord
+		var recordErr error
+		if found {
+			record, recordErr = deployment.LoadDeploymentRecord(id)
+		} else {
+			recordErr = os.ErrNotExist
+		}
 		if recordErr == nil && deployment.SourceAvailable(record.Source) {
 			selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, backupManifest.Environment)
 			if sourceErr != nil {
