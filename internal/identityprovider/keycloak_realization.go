@@ -19,15 +19,15 @@ import (
 // identity Core. Runtime-native deployment identity remains inside the
 // realization that produced this instance.
 type KeycloakInstance struct {
-	StateDir          string
-	EndpointBaseURL   string
-	PublicBaseURL     string
-	WorkloadBaseURL   string
-	TrustBundle       []byte
-	PublicHTTPClient  *http.Client
-	AdminHTTPClient   *http.Client
-	AdminUsername     string
-	AdminPassword     string
+	StateDir         string
+	EndpointBaseURL  string
+	PublicBaseURL    string
+	WorkloadBaseURL  string
+	TrustBundle      []byte
+	PublicHTTPClient *http.Client
+	AdminHTTPClient  *http.Client
+	AdminUsername    string
+	AdminPassword    string
 }
 
 // KeycloakRealization is the deployment/runtime boundary for the managed
