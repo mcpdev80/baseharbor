@@ -2,18 +2,15 @@ package metrics
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -150,13 +147,14 @@ type sourceRegistration struct {
 }
 
 type Driver struct {
-	runtime   Runtime
-	app       application.Manifest
-	issuer    serviceaccess.Issuer
-	runtimeCA string
-	client    *http.Client
-	dataDir   string
-	namespace string
+	runtime      Runtime
+	realization PrometheusRealization
+	app          application.Manifest
+	issuer       serviceaccess.Issuer
+	runtimeCA    string
+	client       *http.Client
+	dataDir      string
+	namespace    string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, runtimeCA ...string) *Driver {
@@ -165,11 +163,12 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 		caPath = strings.TrimSpace(runtimeCA[0])
 	}
 	return &Driver{
-		runtime:   runtime,
-		app:       app,
-		issuer:    issuer,
-		runtimeCA: caPath,
-		client:    nil,
+		runtime:      runtime,
+		realization: newRuntimePrometheusRealization(runtime, app, issuer, caPath, "", ""),
+		app:          app,
+		issuer:       issuer,
+		runtimeCA:    caPath,
+		client:       nil,
 	}
 }
 
@@ -177,7 +176,12 @@ func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess
 	driver := NewDriver(runtime, app, issuer, runtimeCA...)
 	driver.dataDir = filepath.Clean(dataDir)
 	driver.namespace = strings.TrimSpace(namespace)
+	driver.realization = newRuntimePrometheusRealization(runtime, app, issuer, driver.runtimeCA, driver.dataDir, driver.namespace)
 	return driver
+}
+
+func NewDriverWithRealization(realization PrometheusRealization, app application.Manifest) *Driver {
+	return &Driver{realization: realization, app: app}
 }
 
 func (d *Driver) placement() (Placement, error) {
@@ -242,110 +246,52 @@ type legacyServiceCleaner interface {
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	reconcileCtx, cancel := context.WithTimeout(ctx, providerReconcileTimeout)
-	defer cancel()
-
-	placement, err := d.placement()
+	if d.realization == nil {
+		return errors.New("managed Prometheus realization is required")
+	}
+	instance, err := d.realization.Apply(ctx)
 	if err != nil {
 		return err
 	}
-	files, err := d.ensureProviderFiles(reconcileCtx)
-	if err != nil {
-		return err
-	}
-	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
-		if err := cleaner.RemoveProjectServices(reconcileCtx, placement.Project, "prometheus-access", "baseharbor-internal-prometheus-access"); err != nil {
-			return fmt.Errorf("remove legacy Prometheus access gateway: %w", err)
-		}
-	}
-	if err := d.runtime.ConfigProject(reconcileCtx, placement.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("validate Prometheus provider configuration: %w", err)
-	}
-	if err := d.runtime.UpProject(reconcileCtx, placement.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("start Prometheus provider: %w", err)
-	}
-	endpoint, err := ProviderEndpoint(files)
-	if err != nil {
-		return err
-	}
-	client, err := providerHTTPClient(d.app, files)
-	if err != nil {
-		return err
-	}
-	d.client = client
-	if err := waitReady(reconcileCtx, d.client, endpoint); err != nil {
-		if diagnostics, ok := d.runtime.(runtimeDiagnostics); ok {
-			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			detail := diagnostics.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
-			diagnosticCancel()
-			if strings.TrimSpace(detail) != "" {
-				return fmt.Errorf("wait for Prometheus readiness: %w\n%s", err, detail)
-			}
-		}
-		return fmt.Errorf("wait for Prometheus readiness: %w", err)
-	}
-	if err := reloadConfig(reconcileCtx, d.client, endpoint); err != nil {
-		return fmt.Errorf("reload Prometheus configuration: %w", err)
-	}
+	d.client = instance.HTTPClient
 	return nil
 }
 
-func (d *Driver) Bind(_ context.Context, resource capability.Resource, binding capability.Binding) error {
+func (d *Driver) Bind(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
 	if binding.Metrics == nil {
 		return errors.New("metrics binding is required")
 	}
-	files, err := d.existingProviderFiles()
-	if err != nil {
-		return err
+	if d.realization == nil {
+		return errors.New("managed Prometheus realization is required")
 	}
-	labels := map[string]string{}
-	labels["job"] = "baseharbor-applications"
-	labels["baseharbor_application"] = d.app.Name
-	labels["baseharbor_environment"] = d.app.Environment
-	labels["baseharbor_service"] = binding.Metrics.Service
-	labels["baseharbor_source"] = resource.Name
-	labels["baseharbor_source_class"] = string(application.MetricsSourceApplication)
-	labels["baseharbor_metrics_path"] = binding.Metrics.Path
-	labels["baseharbor_metrics_scheme"] = binding.Metrics.Scheme
-	target := targetGroup{
-		Targets: []string{net.JoinHostPort(application.MetricsTargetAlias(d.app, binding.Metrics.Service), strconv.Itoa(binding.Metrics.Port))},
-		Labels:  labels,
-	}
-	data, err := json.MarshalIndent([]targetGroup{target}, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	path := filepath.Join(files.TargetsDir, targetFileName(d.app, resource.Name))
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write Prometheus target: %w", err)
-	}
-	if err := os.Chmod(tmp, 0o644); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace Prometheus target: %w", err)
-	}
-	return nil
+	return d.realization.RegisterTarget(ctx, PrometheusTarget{
+		Application: d.app.Name,
+		Environment: d.app.Environment,
+		Source:      resource.Name,
+		Service:     binding.Metrics.Service,
+		Scheme:      binding.Metrics.Scheme,
+		Port:        binding.Metrics.Port,
+		Path:        binding.Metrics.Path,
+	})
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	files, err := d.existingProviderFiles()
+	if d.realization == nil {
+		return errors.New("managed Prometheus realization is required")
+	}
+	instance, err := d.realization.Existing(ctx)
 	if err != nil {
 		return err
 	}
 	if d.client == nil {
-		d.client, err = providerHTTPClient(d.app, files)
-		if err != nil {
-			return err
-		}
+		d.client = instance.HTTPClient
 	}
-	endpoint, err := ProviderEndpoint(files)
-	if err != nil {
-		return err
+	if d.client == nil {
+		return errors.New("managed Prometheus realization did not provide an HTTP client")
+	}
+	endpoint := instance.Endpoint
+	if strings.TrimSpace(endpoint) == "" {
+		return errors.New("managed Prometheus realization did not provide an endpoint")
 	}
 	query := fmt.Sprintf(
 		`up{job="baseharbor-applications",baseharbor_application=%q,baseharbor_environment=%q,baseharbor_source=%q}`,
