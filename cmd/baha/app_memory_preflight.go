@@ -8,6 +8,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type memoryPreflightOverrideKey struct{}
@@ -37,7 +38,30 @@ func stripMemoryPreflightOverride(args []string) ([]string, bool) {
 	return filtered, skip
 }
 
-func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, estimate hostresource.MemoryEstimate, mutating bool) error {
+func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, provider bhruntime.ProviderKind, estimate hostresource.MemoryEstimate, mutating bool) error {
+	switch provider {
+	case bhruntime.ProviderDocker, bhruntime.ProviderPodman:
+		// Local container runtimes consume resources on the runtime host, so
+		// Linux MemAvailable/swap/PSI are valid evidence.
+	case bhruntime.ProviderKubernetes, bhruntime.ProviderOpenShift:
+		return &machine.Error{
+			Code:        machine.ErrorUnsupported,
+			CauseCode:   "cluster_resource_preflight_required",
+			Message:     "Cluster runtimes require provider-specific capacity, quota and scheduling preflight; local host memory is not valid evidence.",
+			Resource:    "cluster resources",
+			Remediation: "runtime provider implementation required",
+			Next:        "Use a supported Docker/Podman target until cluster resource-evidence preflight is implemented.",
+		}
+	default:
+		return &machine.Error{
+			Code:        machine.ErrorUnsupported,
+			CauseCode:   "runtime_resource_preflight_unsupported",
+			Message:     fmt.Sprintf("Runtime provider %q has no resource-evidence preflight implementation.", provider),
+			Resource:    "runtime resources",
+			Remediation: "runtime provider implementation required",
+			Next:        "Select a runtime provider with resource preflight support.",
+		}
+	}
 	evidence, err := hostresource.ReadLinux()
 	if err != nil {
 		// Linux host evidence is required for local Docker/Podman. If this host
