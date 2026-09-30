@@ -301,7 +301,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
-	if m.Services.Cache {
+	if (m.Services.Cache || m.Services.KeyValue) {
 		if application.UsesSharedValkey(m) {
 			checks = append(checks, preflight.Check{Name: "valkey shared isolation", Run: func(ctx context.Context) error {
 				return application.VerifySharedValkey(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)

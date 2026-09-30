@@ -447,6 +447,19 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 		if strings.TrimSpace(out) != "PONG" {
 			return fmt.Errorf("verify shared Valkey %s: unexpected PING result %q", instance, strings.TrimSpace(out))
 		}
+		for _, durableInstance := range KeyValueInstanceNames(m) {
+			if durableInstance != instance {
+				continue
+			}
+			writeRead := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 del __baseharbor_verify__ >/dev/null", shellQuote(password), shellQuote(password), shellQuote(password))
+			value, verifyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", writeRead)
+			if verifyErr != nil {
+				return fmt.Errorf("verify durable shared Valkey %s: %w", instance, verifyErr)
+			}
+			if strings.TrimSpace(value) != "durable" {
+				return fmt.Errorf("verify durable shared Valkey %s: unexpected write/read result %q", instance, strings.TrimSpace(value))
+			}
+		}
 		for otherKey, otherApp := range state.Applications {
 			if otherKey == appKey {
 				continue
