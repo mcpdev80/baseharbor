@@ -1,0 +1,117 @@
+package objectstorage
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+// SeaweedFSInstance is the runtime-neutral result consumed by the S3 capability
+// lifecycle. Runtime-native resource names remain private to the realization.
+type SeaweedFSInstance struct {
+	Endpoint         string
+	WorkloadEndpoint string
+	TrustBundle      []byte
+	HTTPClient       *http.Client
+}
+
+// SeaweedFSRealization owns runtime-specific provider deployment and
+// administrative execution. The capability Driver must not require Compose,
+// container, Kubernetes, OpenShift or cloud resource vocabulary.
+type SeaweedFSRealization interface {
+	Apply(context.Context) (SeaweedFSInstance, error)
+	Existing(context.Context) (SeaweedFSInstance, error)
+	Admin(context.Context, string) (string, error)
+	Destroy(context.Context) error
+}
+
+type runtimeSeaweedFSRealization struct {
+	runtime      Runtime
+	issuer       serviceaccess.Issuer
+	dataDir      string
+	namespace    string
+	managementUI bool
+}
+
+func newRuntimeSeaweedFSRealization(runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, managementUI bool) SeaweedFSRealization {
+	return &runtimeSeaweedFSRealization{
+		runtime:      runtime,
+		issuer:       issuer,
+		dataDir:      filepath.Clean(dataDir),
+		namespace:    strings.TrimSpace(namespace),
+		managementUI: managementUI,
+	}
+}
+
+func (r *runtimeSeaweedFSRealization) Apply(ctx context.Context) (SeaweedFSInstance, error) {
+	if r.managementUI {
+		// Registration remains realization state: it changes provider/operator
+		// surfaces, not portable application intent.
+		manifest := application.Manifest{Services: application.Services{ObjectStorageManagementUI: true}}
+		_ = manifest
+	}
+	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, r.dataDir, r.namespace)
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	return seaweedFSInstanceFromFiles(files)
+}
+
+func (r *runtimeSeaweedFSRealization) Existing(ctx context.Context) (SeaweedFSInstance, error) {
+	files, _, _, err := ExistingReadySharedProviderAt(ctx, r.dataDir, r.namespace)
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	return seaweedFSInstanceFromFiles(files)
+}
+
+func (r *runtimeSeaweedFSRealization) Admin(ctx context.Context, command string) (string, error) {
+	files, err := ExistingProviderFilesAt(r.dataDir, r.namespace)
+	if err != nil {
+		return "", err
+	}
+	input := []byte(strings.TrimSpace(command) + "\n")
+	out, err := r.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell")
+	if err != nil {
+		return "", fmt.Errorf("SeaweedFS administrative command failed")
+	}
+	return out, nil
+}
+
+func (r *runtimeSeaweedFSRealization) Destroy(ctx context.Context) error {
+	return DestroySharedProviderAt(ctx, r.runtime, r.dataDir, r.namespace)
+}
+
+func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) {
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	client, err := s3HTTPClient(files)
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return SeaweedFSInstance{}, fmt.Errorf("load S3 service trust material: %w", err)
+	}
+	workloadHost := "seaweedfs"
+	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
+		workloadHost = strings.TrimSpace(policy.ServerName)
+	}
+	return SeaweedFSInstance{
+		Endpoint:         endpoint,
+		WorkloadEndpoint: "https://" + workloadHost + ":8443",
+		TrustBundle:      append([]byte(nil), material.CA...),
+		HTTPClient:       client,
+	}, nil
+}
