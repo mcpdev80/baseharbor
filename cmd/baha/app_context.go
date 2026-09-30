@@ -185,25 +185,32 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 		matches = append(matches, record)
 	}
 	if len(matches) == 0 {
-		var incomplete []deployment.DeploymentIdentity
+		var incomplete []resolvedApplication
 		for _, warning := range warnings {
 			stateErr, ok := deployment.DeploymentRecordState(warning)
-			if !ok || stateErr.Identity.Application != name {
+			if !ok || stateErr.Kind != "incomplete" {
 				continue
 			}
-			if environment != "" && stateErr.Identity.Environment != environment {
-				continue
+			candidate, matched, resolveErr := resolveIncompleteRegisteredApplication(target, targetRoot, stateErr.Identity, name, environment, command)
+			if resolveErr != nil {
+				return resolvedApplication{}, resolveErr
 			}
-			incomplete = append(incomplete, stateErr.Identity)
+			if matched {
+				incomplete = append(incomplete, candidate)
+			}
 		}
 		if len(incomplete) == 1 {
-			return resolveIncompleteRegisteredApplication(target, targetRoot, incomplete[0], command)
+			return incomplete[0], nil
 		}
-		if len(incomplete) > 1 && environment == "" {
-			return resolvedApplication{}, usageError(
-				"environment selection required for incomplete application "+name,
-				"Select one environment with -e/--environment before attempting recovery or cleanup.",
-			)
+		if len(incomplete) > 1 {
+			return resolvedApplication{}, &machine.Error{
+				Code:        machine.ErrorOwnershipAmbiguous,
+				CauseCode:   "AMBIGUOUS_INCOMPLETE_DEPLOYMENT",
+				Message:     fmt.Sprintf("multiple incomplete deployments match application %q on target %q", name, target.Name),
+				Resource:    target.Name + "/" + name,
+				Next:        "Select an environment with -e/--environment, or inspect protected deployment state before cleanup.",
+				Remediation: "operator_review",
+			}
 		}
 		if environment == "" {
 			return resolvedApplication{}, fmt.Errorf("application %q has no registered deployment on target %q", name, target.Name)
@@ -275,40 +282,86 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 	return resolved, nil
 }
 
-func resolveIncompleteRegisteredApplication(target deployment.ResolvedTarget, targetRoot string, id deployment.DeploymentIdentity, command string) (resolvedApplication, error) {
+func resolveIncompleteRegisteredApplication(
+	target deployment.ResolvedTarget,
+	targetRoot string,
+	id deployment.DeploymentIdentity,
+	name, environment, command string,
+) (resolvedApplication, bool, error) {
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
-		return resolvedApplication{}, err
+		return resolvedApplication{}, false, err
 	}
 	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
-	m, manifestPath, err := store.Load(id.Application)
+	manifests, err := store.List()
 	if err != nil {
-		return resolvedApplication{}, &machine.Error{
+		return resolvedApplication{}, false, &machine.Error{
 			Code:        machine.ErrorOwnershipAmbiguous,
 			CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
-			Message:     fmt.Sprintf("incomplete deployment state for %s/%s/%s cannot be reconstructed safely", id.Target, id.Application, id.Environment),
-			Resource:    id.Target + "/" + id.Application + "/" + id.Environment,
-			Next:        "Run the operation from the repository source, or use 'baha destroy --all' for ownership-safe installation cleanup.",
+			Message:     fmt.Sprintf("incomplete deployment %s/%s cannot be reconstructed safely", id.Target, id.DeploymentID),
+			Resource:    id.Target + "/" + id.DeploymentID,
+			Next:        "Inspect the protected deployment state before cleanup.",
 			Remediation: "operator_review",
 			Cause:       err,
 		}
 	}
-	if m.Name != id.Application || m.Environment != id.Environment {
-		return resolvedApplication{}, &machine.Error{
+
+	var matches []application.Manifest
+	for _, manifest := range manifests {
+		if manifest.Name != name {
+			continue
+		}
+		if environment != "" && manifest.Environment != environment {
+			continue
+		}
+		matches = append(matches, manifest)
+	}
+	if len(matches) == 0 {
+		if len(manifests) == 0 {
+			return resolvedApplication{}, false, &machine.Error{
+				Code:        machine.ErrorOwnershipAmbiguous,
+				CauseCode:   "INCOMPLETE_DEPLOYMENT_STATE",
+				Message:     fmt.Sprintf("incomplete deployment %s/%s has no protected application identity", id.Target, id.DeploymentID),
+				Resource:    id.Target + "/" + id.DeploymentID,
+				Next:        "Inspect the protected deployment state before cleanup.",
+				Remediation: "operator_review",
+			}
+		}
+		return resolvedApplication{}, false, nil
+	}
+	if len(matches) > 1 {
+		return resolvedApplication{}, false, &machine.Error{
 			Code:        machine.ErrorOwnershipAmbiguous,
-			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH",
-			Message:     fmt.Sprintf("protected application state does not match incomplete deployment identity %s/%s/%s", id.Target, id.Application, id.Environment),
-			Resource:    id.Target + "/" + id.Application + "/" + id.Environment,
+			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_AMBIGUOUS",
+			Message:     fmt.Sprintf("protected state for deployment %s/%s contains multiple matching application identities", id.Target, id.DeploymentID),
+			Resource:    id.Target + "/" + id.DeploymentID,
 			Next:        "Inspect the protected deployment state before cleanup.",
 			Remediation: "operator_review",
 		}
 	}
+
+	m := matches[0]
+	id.ApplicationID = m.ApplicationID
+	id.Application = m.Name
+	id.Environment = m.Environment
+	if err := id.Validate(); err != nil {
+		return resolvedApplication{}, false, &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "INCOMPLETE_DEPLOYMENT_IDENTITY_MISMATCH",
+			Message:     fmt.Sprintf("protected application state does not provide a valid stable identity for deployment %s/%s", id.Target, id.DeploymentID),
+			Resource:    id.Target + "/" + id.DeploymentID,
+			Next:        "Inspect the protected deployment state before cleanup.",
+			Remediation: "operator_review",
+			Cause:       err,
+		}
+	}
+	manifestPath := filepath.Join(store.Root, m.Name, "baseharbor.yaml")
 	if commandRequiresLiveSource(command) {
-		return resolvedApplication{}, &machine.Error{
+		return resolvedApplication{}, false, &machine.Error{
 			Code:      machine.ErrorSourceMissing,
 			CauseCode: "INCOMPLETE_DEPLOYMENT_SOURCE",
-			Message:   fmt.Sprintf("incomplete deployment %s/%s/%s has no durable source record", id.Target, id.Application, id.Environment),
-			Resource:  id.Target + "/" + id.Application + "/" + id.Environment,
+			Message:   fmt.Sprintf("incomplete deployment %s/%s has no durable source record", id.Target, id.DeploymentID),
+			Resource:  id.Target + "/" + id.DeploymentID,
 			Next:      "Run the operation from the repository source so BaseHarbor can re-establish the deployment record.",
 		}
 	}
@@ -323,7 +376,7 @@ func resolveIncompleteRegisteredApplication(target deployment.ResolvedTarget, ta
 		SourceAvailable:      false,
 		FromRepository:       false,
 		IncompleteDeployment: true,
-	}, nil
+	}, true, nil
 }
 
 func commandRequiresLiveSource(command string) bool {
