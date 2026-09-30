@@ -32,7 +32,6 @@ type kubernetesKeycloakRealization struct {
 	namespace   string
 	stateDir    string
 	instance    identityprovider.KeycloakInstance
-	portForward *exec.Cmd
 }
 
 func (r *kubernetesKeycloakRealization) Apply(ctx context.Context) (identityprovider.KeycloakInstance, error) {
@@ -260,34 +259,20 @@ spec:
 		}
 	}
 
-	port, err := allocateLoopbackPort()
-	if err != nil {
-		return identityprovider.KeycloakInstance{}, err
-	}
-	var portForwardOutput bytes.Buffer
-	cmd := exec.CommandContext(
-		context.Background(),
+	clusterIPCmd := exec.CommandContext(
+		ctx,
 		r.provider.KubectlPath(),
-		"port-forward",
+		"get", "service", base+"-keycloak",
 		"-n", r.namespace,
-		"deployment/"+base+"-keycloak",
-		fmt.Sprintf("%d:8443", port),
+		"-o", "jsonpath={.spec.clusterIP}",
 	)
-	cmd.Stdout = &portForwardOutput
-	cmd.Stderr = &portForwardOutput
-	if err := cmd.Start(); err != nil {
-		return identityprovider.KeycloakInstance{}, fmt.Errorf("start Keycloak port-forward: %w", err)
+	clusterIPOutput, err := clusterIPCmd.CombinedOutput()
+	if err != nil {
+		return identityprovider.KeycloakInstance{}, fmt.Errorf("resolve Keycloak service ClusterIP: %w: %s", err, strings.TrimSpace(string(clusterIPOutput)))
 	}
-	r.portForward = cmd
-
-	if err := waitTCP("127.0.0.1", port, 20*time.Second); err != nil {
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			return identityprovider.KeycloakInstance{}, fmt.Errorf("Keycloak port-forward exited before becoming ready: %s", strings.TrimSpace(portForwardOutput.String()))
-		}
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		r.portForward = nil
-		return identityprovider.KeycloakInstance{}, fmt.Errorf("wait for Keycloak port-forward: %w: %s", err, strings.TrimSpace(portForwardOutput.String()))
+	clusterIP := strings.TrimSpace(string(clusterIPOutput))
+	if net.ParseIP(clusterIP) == nil {
+		return identityprovider.KeycloakInstance{}, fmt.Errorf("invalid Keycloak service ClusterIP %q", clusterIP)
 	}
 
 	pool := x509.NewCertPool()
@@ -303,7 +288,7 @@ spec:
 				ServerName: host,
 			},
 			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
+				return dialer.DialContext(ctx, network, net.JoinHostPort(clusterIP, "8443"))
 			},
 		},
 		Timeout: 10 * time.Second,
@@ -332,11 +317,6 @@ func (r *kubernetesKeycloakRealization) Existing(context.Context) (identityprovi
 }
 
 func (r *kubernetesKeycloakRealization) Destroy(ctx context.Context) error {
-	if r.portForward != nil && r.portForward.Process != nil {
-		_ = r.portForward.Process.Kill()
-		_, _ = r.portForward.Process.Wait()
-		r.portForward = nil
-	}
 	return r.provider.Destroy(ctx, r.application, r.environment, r.namespace)
 }
 
@@ -478,25 +458,3 @@ func selfSignedServerCertificate(host string) ([]byte, []byte, error) {
 	return certPEM, keyPEM, nil
 }
 
-func allocateLoopbackPort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port, nil
-}
-
-func waitTCP(host string, port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	address := net.JoinHostPort(host, fmt.Sprint(port))
-	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
-			return nil
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	return fmt.Errorf("wait for %s timed out", address)
-}
