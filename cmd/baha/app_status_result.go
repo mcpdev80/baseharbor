@@ -24,8 +24,8 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	ApplicationID   string `json:"application_id"`
-	DeploymentID    string `json:"deployment_id"`
+	ApplicationID   string                                       `json:"application_id"`
+	DeploymentID    string                                       `json:"deployment_id"`
 	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
