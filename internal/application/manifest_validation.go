@@ -12,11 +12,10 @@ func (m Manifest) Validate() error {
 	if m.Version != CurrentVersion {
 		return fmt.Errorf("unsupported manifest version %d (expected %d)", m.Version, CurrentVersion)
 	}
-	if m.ApplicationID == "" {
-		return fmt.Errorf("application id is required")
-	}
-	if err := ValidateApplicationID(m.ApplicationID); err != nil {
-		return err
+	if m.ApplicationID != "" {
+		if err := ValidateApplicationID(m.ApplicationID); err != nil {
+			return err
+		}
 	}
 	if err := validateSlug("application name", m.Name); err != nil {
 		return err
