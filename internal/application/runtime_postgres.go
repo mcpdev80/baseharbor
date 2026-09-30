@@ -220,7 +220,7 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: "postgres"
+    user: "70:70"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
