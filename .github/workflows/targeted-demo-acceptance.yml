@@ -1,6 +1,6 @@
 name: "Targeted Runtime Gate"
 
-run-name: "${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || 'Targeted Gate' }}"
+run-name: "${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}"
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   selected-gate:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || 'Targeted Gate' }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}
     runs-on:
       - self-hosted
       - Linux
