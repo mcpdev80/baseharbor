@@ -43,7 +43,7 @@ const (
 	ErrorConflict              ErrorCode = "conflict"
 	ErrorOwnershipAmbiguous    ErrorCode = "ownership_ambiguous"
 	ErrorProviderUnavailable   ErrorCode = "provider_unavailable"
-	ErrorRuntimeUnavailable    ErrorCode = "runtime_unavailable"
+	ErrorRuntimeUnavailable    ErrorCode = "runtime_unavailable"\n\tErrorHostResourceInsufficient ErrorCode = "host_resource_insufficient"
 	ErrorTimeout               ErrorCode = "timeout"
 	ErrorVerificationFailed    ErrorCode = "verification_failed"
 	ErrorUnsupported           ErrorCode = "unsupported_operation"
