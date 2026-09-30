@@ -2,7 +2,6 @@ package telemetry
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
