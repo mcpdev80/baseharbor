@@ -30,6 +30,9 @@ func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []str
 			if message == "" {
 				message = err.Error()
 			}
+			if quadletRuntimeResourceMissing(kind, message) {
+				continue
+			}
 			if kind == "network" && quadletNetworkResourceInUse(message) {
 				continue
 			}
@@ -52,4 +55,16 @@ func quadletNetworkResourceInUse(message string) bool {
 	return strings.Contains(lower, "network is being used") ||
 		strings.Contains(lower, "has associated containers") ||
 		strings.Contains(lower, "active endpoints")
+}
+
+
+func quadletRuntimeResourceMissing(kind, message string) bool {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if kind == "" || lower == "" {
+		return false
+	}
+	return strings.Contains(lower, kind+" not found") ||
+		strings.Contains(lower, "unable to find "+kind) ||
+		strings.Contains(lower, "no such "+kind)
 }
