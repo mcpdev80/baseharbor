@@ -87,6 +87,7 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:
