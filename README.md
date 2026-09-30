@@ -74,6 +74,8 @@ exist?"* but *"does the application actually work?"*
 
 ## What you get
 
+- **Create new applications** — `baha app new` turns capability intent into a normal Go, Next.js, Python or Quarkus project, validates it, and keeps ecosystem-native libraries instead of introducing a BaseHarbor app framework.
+- **Multi-repo workspaces** — one logical application can span monorepos, multiple existing worktrees and OCI components; guided workspace mapping keeps local checkout paths out of portable intent.
 - **Adopt existing repositories** — `baha` inspects your code, dependencies,
   Compose files and ports deterministically (parsers, rules, repository
   evidence — no LLM or external AI service), and turns them into a portable
@@ -81,6 +83,7 @@ exist?"* but *"does the application actually work?"*
 - **Declare needs, not products** — `sql`, `cache`, `secrets`, `object storage`,
   `identity`, HTTPS exposure: logical capabilities; PostgreSQL, Valkey,
   S3-compatible and Keycloak products are replaceable realizations underneath.
+- **Resource-aware local mutation** — Docker/Podman preflight checks host memory headroom before starting providers/workloads; future Kubernetes/OpenShift providers use cluster-native capacity/quota/scheduling evidence instead of CLI-host memory.
 - **Everything wired and verified** — provisioning, credentials, TLS, bindings,
   backups, updates, drift detection. READY means the real protocol/data flow
   was verified, not just that a container is up.
