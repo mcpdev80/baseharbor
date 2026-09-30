@@ -57,7 +57,7 @@ jobs:
                   return json.load(response)
 
           page = 1
-          deleted = 0
+          candidates = []
           while True:
               payload = request(
                   f"https://api.github.com/repos/{repo}/actions/artifacts"
@@ -73,15 +73,30 @@ jobs:
                   created = datetime.fromisoformat(
                       artifact["created_at"].replace("Z", "+00:00")
                   )
-                  if created > cutoff:
-                      continue
-                  request(
-                      f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}",
-                      method="DELETE",
-                  )
-                  deleted += 1
-                  print(f"deleted {artifact['id']} {name} created={artifact['created_at']}")
+                  if created <= cutoff:
+                      candidates.append(artifact)
               page += 1
+
+          deleted = 0
+          for artifact in candidates:
+              run = artifact.get("workflow_run") or {}
+              run_id = run.get("id")
+              if run_id:
+                  run_state = request(
+                      f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
+                  )
+                  if run_state.get("status") != "completed":
+                      print(f"keep active-run artifact {artifact['id']} {artifact['name']}")
+                      continue
+              request(
+                  f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}",
+                  method="DELETE",
+              )
+              deleted += 1
+              print(
+                  f"deleted {artifact['id']} {artifact['name']} "
+                  f"created={artifact['created_at']}"
+              )
 
           print(f"deleted={deleted} cutoff={cutoff.isoformat()}")
           PY
