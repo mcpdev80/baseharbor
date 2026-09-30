@@ -32,7 +32,6 @@ func TestRepositoryWorkloadStopEnvironmentUsesSecretPlaceholders(t *testing.T) {
 	}
 }
 
-
 func TestWorkloadRuntimeCleanupResourcesPreservesVolumes(t *testing.T) {
 	resources := []bhruntime.ProjectResource{
 		{Kind: "container", Name: "demo-api"},
