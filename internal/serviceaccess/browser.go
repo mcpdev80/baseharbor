@@ -118,7 +118,6 @@ func httpsAuthorityPort(value *url.URL) (int, error) {
 	return port, nil
 }
 
-
 func normalizedHTTPSAuthority(value *url.URL) (string, error) {
 	port, err := httpsAuthorityPort(value)
 	if err != nil {
