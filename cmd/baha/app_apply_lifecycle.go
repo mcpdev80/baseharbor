@@ -383,13 +383,6 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
 	}
-	if requiresDevelopmentGateway(e.manifest) {
-		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
-			return e.reconcileDevelopmentCanonicalRoutes(ctx)
-		}); err != nil {
-			return err
-		}
-	}
 	if err := reconcileConnectivityForManifest(ctx, e.out, e.compose, e.resolved); err != nil {
 		return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 	}
@@ -407,6 +400,13 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
 	}); err != nil {
 		return err
+	}
+	if requiresDevelopmentGateway(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
+			return e.reconcileDevelopmentCanonicalRoutes(ctx)
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
