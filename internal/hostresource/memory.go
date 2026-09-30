@@ -215,29 +215,23 @@ func readPressure(path string) (Pressure, error) {
 }
 
 func Sum(components []ComponentEstimate) MemoryEstimate {
-	result := MemoryEstimate{Components: append([]ComponentEstimate(nil), components...), Confidence: ConfidenceUnknown}
+	result := MemoryEstimate{Components: append([]ComponentEstimate(nil), components...)}
+	rank := map[Confidence]int{
+		ConfidenceExplicit:      3,
+		ConfidenceKnownBaseline: 2,
+		ConfidenceEstimated:     1,
+		ConfidenceUnknown:       0,
+	}
+	result.Confidence = ConfidenceExplicit
+	if len(components) == 0 {
+		result.Confidence = ConfidenceUnknown
+	}
 	for _, component := range components {
 		result.MinimumBytes += component.MinimumBytes
 		result.EstimatedBytes += component.EstimatedBytes
-		switch component.Confidence {
-		case ConfidenceUnknown:
-			result.Confidence = ConfidenceUnknown
-		case ConfidenceEstimated:
-			if result.Confidence != ConfidenceUnknown {
-				result.Confidence = ConfidenceEstimated
-			}
-		case ConfidenceKnownBaseline:
-			if result.Confidence == ConfidenceExplicit {
-				result.Confidence = ConfidenceKnownBaseline
-			}
-		case ConfidenceExplicit:
-			if result.Confidence == "" {
-				result.Confidence = ConfidenceExplicit
-			}
+		if rank[component.Confidence] < rank[result.Confidence] {
+			result.Confidence = component.Confidence
 		}
-	}
-	if len(components) > 0 && result.Confidence == "" {
-		result.Confidence = ConfidenceKnownBaseline
 	}
 	if result.EstimatedBytes < result.MinimumBytes {
 		result.EstimatedBytes = result.MinimumBytes
