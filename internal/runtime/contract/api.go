@@ -194,6 +194,7 @@ type RuntimeProvider interface {
 	InspectProjectResources(context.Context, string, []ProjectResource) ([]ProjectResource, error)
 	DestroyOwnedProjectResources(context.Context, string, []ProjectResource) error
 	ListOwnedProjectResources(context.Context, string) ([]ProjectResource, error)
+	StopOwnedProjectContainers(context.Context, string) error
 	ListRuntimeContainers(context.Context) ([]RuntimeContainer, error)
 	ProjectServiceImageIdentity(context.Context, string, string) (ImageIdentity, error)
 	ContainerLogConfigProjectService(context.Context, string, string) (string, string, error)

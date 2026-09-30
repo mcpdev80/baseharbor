@@ -244,3 +244,72 @@ exit 2
 		}
 	}
 }
+
+
+func TestStopOwnedProjectContainersUsesObservedOwnershipOnly(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	stateDir := filepath.Join(dir, "state")
+	logPath := filepath.Join(dir, "calls.log")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$CALL_LOG"
+
+if [ "$1 $2" = "container ls" ]; then
+	printf '%s\n' app1 app2 other1
+	exit 0
+fi
+
+if [ "$1 $2" = "container inspect" ]; then
+	if [ -f "$STATE_DIR/stopped" ]; then
+		printf '%s\n' \
+		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|false||exited|0|' \
+		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+	else
+		printf '%s\n' \
+		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+	fi
+	exit 0
+fi
+
+if [ "$1 $2" = "container stop" ]; then
+	[ "$3" = "app1" ] || exit 3
+	touch "$STATE_DIR/stopped"
+	exit 0
+fi
+
+printf 'unexpected arguments: %s\n' "$*" >&2
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATE_DIR", stateDir)
+	t.Setenv("CALL_LOG", logPath)
+
+	compose := Compose{command: runtimePath}
+	if err := compose.StopOwnedProjectContainers(context.Background(), "bh-local-demo-dev"); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := string(raw)
+	if !strings.Contains(calls, "container stop app1") {
+		t.Fatalf("owned running container was not stopped:\n%s", calls)
+	}
+	if strings.Contains(calls, "container stop app2") {
+		t.Fatalf("already stopped owned container was touched:\n%s", calls)
+	}
+	if strings.Contains(calls, "container stop other1") {
+		t.Fatalf("unrelated project container was touched:\n%s", calls)
+	}
+}
