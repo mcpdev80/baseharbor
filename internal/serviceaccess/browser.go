@@ -26,7 +26,11 @@ func VerifyBrowserSurface(ctx context.Context, client *http.Client, rawURL strin
 // route-level reachability semantics for surfaces that intentionally answer
 // with authentication challenges.
 func VerifyBrowserRoute(ctx context.Context, client *http.Client, rawURL string) error {
-	return verifyBrowserSurface(ctx, client, rawURL, nil, func(status int) bool {
+	return VerifyBrowserRouteWithAllowedAuthorities(ctx, client, rawURL)
+}
+
+func VerifyBrowserRouteWithAllowedAuthorities(ctx context.Context, client *http.Client, rawURL string, allowedURLs ...string) error {
+	return verifyBrowserSurface(ctx, client, rawURL, allowedURLs, func(status int) bool {
 		return status < 500
 	})
 }

@@ -23,6 +23,9 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 	if !strings.Contains(got, "KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}") {
 		t.Fatalf("Keycloak compose lost canonical hostname configuration:\n%s", got)
 	}
+	if strings.Contains(got, "KC_HOSTNAME_ADMIN:") {
+		t.Fatalf("Keycloak compose must not force a separate admin hostname; the admin surface may redirect to the canonical public identity authority:\n%s", got)
+	}
 	if !strings.Contains(got, "--https-port=8443") {
 		t.Fatalf("Keycloak compose missing native HTTPS port:\n%s", got)
 	}

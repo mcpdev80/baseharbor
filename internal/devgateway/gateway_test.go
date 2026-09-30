@@ -314,3 +314,19 @@ func TestSaveRouteStateKeepsMaterializedGatewayWhenNetworkSetIsStable(t *testing
 		t.Fatalf("gateway destroy calls = %d, want 0 for stable network set", runtime.destroyCalls)
 	}
 }
+
+
+func TestRelatedRedirectURLsAllowsPairedIdentityLoginOnly(t *testing.T) {
+	routes := []Route{
+		{Owner: "shared/keycloak", Key: "shared/keycloak/login", Host: "auth.baha.localhost"},
+		{Owner: "shared/keycloak", Key: "shared/keycloak/admin", Host: "auth-admin.baha.localhost"},
+		{Owner: "shared/postgresql", Key: "shared/postgresql", Host: "pgadmin.baha.localhost"},
+	}
+	got := relatedRedirectURLs(routes, routes[1], 18443)
+	if len(got) != 1 || got[0] != "https://auth.baha.localhost:18443" {
+		t.Fatalf("admin redirect authorities = %#v", got)
+	}
+	if got := relatedRedirectURLs(routes, routes[2], 18443); len(got) != 0 {
+		t.Fatalf("non-identity route unexpectedly allows redirects: %#v", got)
+	}
+}

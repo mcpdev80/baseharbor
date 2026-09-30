@@ -236,6 +236,7 @@ func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
 		return err
 	}
 	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = canonicalURL
+	delete(values, "BASEHARBOR_KEYCLOAK_CANONICAL_ADMIN_URL")
 	return writeProtectedEnv(files.Env, values)
 }
 
