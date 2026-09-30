@@ -528,12 +528,19 @@ func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.Run
 	if err != nil {
 		return false, fmt.Errorf("verify application workload runtime cleanup: %w", err)
 	}
-	for _, resource := range remaining {
-		if resource.Kind != "network" {
-			return false, fmt.Errorf("verify application workload runtime cleanup: owned %s %s remains", resource.Kind, resource.Name)
-		}
+	if err := verifyRepositoryWorkloadCleanup(remaining); err != nil {
+		return false, err
 	}
 	return true, nil
+}
+
+func verifyRepositoryWorkloadCleanup(remaining []bhruntime.ProjectResource) error {
+	for _, resource := range remaining {
+		if resource.Kind != "network" {
+			return fmt.Errorf("verify application workload runtime cleanup: owned %s %s remains", resource.Kind, resource.Name)
+		}
+	}
+	return nil
 }
 
 func workloadRuntimeCleanupResources(resources []bhruntime.ProjectResource) []bhruntime.ProjectResource {
