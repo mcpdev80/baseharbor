@@ -452,4 +452,3 @@ func selfSignedServerCertificate(host string) ([]byte, []byte, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 	return certPEM, keyPEM, nil
 }
-
