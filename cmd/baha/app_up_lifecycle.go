@@ -207,11 +207,15 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 	}
 }
 
+func shouldStartApplicationManagedRuntime(m application.Manifest) bool {
+	return application.HasApplicationScopedRuntimeServices(m)
+}
+
 func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error {
 	if err := application.EnsureBackendServiceAccess(ctx, e.issuer, e.files, e.manifest); err != nil {
 		return fmt.Errorf("reconcile managed backend service access: %w", err)
 	}
-	if application.HasApplicationScopedRuntimeServices(e.manifest) {
+	if shouldStartApplicationManagedRuntime(e.manifest) {
 		if err := activity(ctx, e.term, "Starting managed application services", func(progress io.Writer) error {
 			return e.compose.UpProjectProgress(ctx, e.files.Project, e.files.Compose, e.files.Env, func(detail string) {
 				cli.ReportActivityDetail(progress, detail)
