@@ -27,7 +27,7 @@ const (
 )
 
 type Pressure struct {
-	Available bool    `json:"available"`
+	Available  bool    `json:"available"`
 	SomeAvg300 float64 `json:"some_avg300,omitempty"`
 	FullAvg300 float64 `json:"full_avg300,omitempty"`
 }
@@ -56,7 +56,7 @@ type MemoryEstimate struct {
 }
 
 type Policy struct {
-	SafetyMarginBytes uint64
+	SafetyMarginBytes    uint64
 	PressureSomeAvg300 float64
 	PressureFullAvg300 float64
 	SwapFreeRatioTight float64
