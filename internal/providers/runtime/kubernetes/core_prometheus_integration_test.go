@@ -29,11 +29,19 @@ func (r *kubernetesPrometheusRealization) Apply(ctx context.Context) (metrics.Pr
 	if r.instance.HTTPClient != nil {
 		return r.instance, nil
 	}
-	if err := r.provider.Destroy(ctx, r.application, r.environment, r.namespace); err != nil {
-		return metrics.PrometheusInstance{}, fmt.Errorf("clean stale Prometheus proof resources: %w", err)
+	base := dnsLabel(r.application)
+	cleanup := exec.CommandContext(
+		ctx,
+		r.provider.KubectlPath(),
+		"delete", "deployment/"+base+"-prometheus", "service/"+base+"-prometheus", "configmap/"+base+"-prometheus-config",
+		"-n", r.namespace,
+		"--ignore-not-found=true",
+		"--wait=true",
+	)
+	if output, err := cleanup.CombinedOutput(); err != nil {
+		return metrics.PrometheusInstance{}, fmt.Errorf("clean stale Prometheus proof resources: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 
-	base := dnsLabel(r.application)
 	config := prometheusProofConfig(nil)
 	manifest := fmt.Sprintf(`apiVersion: v1
 kind: ConfigMap
