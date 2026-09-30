@@ -136,7 +136,7 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 }
 
-func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
+func registerMCPDevelopmentTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
 		_ = ctx
 		name := strings.TrimSpace(input.Name)
@@ -228,6 +228,11 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 			Validation:      result.Validation,
 		}, nil
 	})
+
+}
+
+func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
+	registerMCPDevelopmentTools(server)
 
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
