@@ -130,19 +130,28 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 }
 
 func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: selection.Manifest.Name,
-		Environment: selection.Manifest.Environment,
-	}
-	deploymentRoot, err := deployment.DeploymentRoot(id)
+	m := selection.Manifest
+	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
+
+	var id deployment.DeploymentIdentity
 	var record *deployment.DeploymentRecord
-	if existing, err := deployment.LoadDeploymentRecord(id); err == nil {
+	if found {
+		id = existing.Identity
+		id.Application = m.Name
+		existing.Identity = id
 		record = &existing
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else {
+		id, err = deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, m.Name, m.Environment)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+	}
+
+	deploymentRoot, err := deployment.DeploymentRoot(id)
+	if err != nil {
 		return resolvedApplication{}, err
 	}
 	return resolvedApplication{
@@ -228,9 +237,14 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 	if resolved.SourceAvailable {
 		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
 		if sourceErr == nil {
-			if selection.Manifest.Name != record.Identity.Application {
-				return resolvedApplication{}, fmt.Errorf("registered source resolves application %q, expected %q", selection.Manifest.Name, record.Identity.Application)
+			if selection.Manifest.ApplicationID != record.Identity.ApplicationID {
+				return resolvedApplication{}, fmt.Errorf(
+					"registered source resolves application_id %q, expected %q",
+					selection.Manifest.ApplicationID,
+					record.Identity.ApplicationID,
+				)
 			}
+			resolved.DeploymentIdentity.Application = selection.Manifest.Name
 			resolved.Manifest = selection.Manifest
 			resolved.ManifestPath = selection.ManifestPath
 			resolved.RepositoryRoot = selection.RepositoryRoot
