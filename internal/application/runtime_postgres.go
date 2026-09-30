@@ -150,7 +150,10 @@ func NewRuntimeBackendProbeExecutor(runtime bhruntime.RuntimeProvider, files Run
 }
 
 func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe BackendProbe) (string, error) {
-	instance := normalizeServiceInstanceName(probe.Instance)
+	instance := strings.TrimSpace(probe.Instance)
+	if instance == "" {
+		instance = defaultServiceInstance
+	}
 	switch probe.Kind {
 	case BackendProbeSQLSelectOne:
 		service := runtimeServiceName("postgres", instance)
