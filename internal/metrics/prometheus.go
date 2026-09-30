@@ -147,14 +147,14 @@ type sourceRegistration struct {
 }
 
 type Driver struct {
-	runtime      Runtime
+	runtime     Runtime
 	realization PrometheusRealization
-	app          application.Manifest
-	issuer       serviceaccess.Issuer
-	runtimeCA    string
-	client       *http.Client
-	dataDir      string
-	namespace    string
+	app         application.Manifest
+	issuer      serviceaccess.Issuer
+	runtimeCA   string
+	client      *http.Client
+	dataDir     string
+	namespace   string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, runtimeCA ...string) *Driver {
@@ -163,12 +163,12 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 		caPath = strings.TrimSpace(runtimeCA[0])
 	}
 	return &Driver{
-		runtime:      runtime,
+		runtime:     runtime,
 		realization: newRuntimePrometheusRealization(runtime, app, issuer, caPath, "", ""),
-		app:          app,
-		issuer:       issuer,
-		runtimeCA:    caPath,
-		client:       nil,
+		app:         app,
+		issuer:      issuer,
+		runtimeCA:   caPath,
+		client:      nil,
 	}
 }
 
