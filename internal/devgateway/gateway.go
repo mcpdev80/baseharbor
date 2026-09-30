@@ -106,6 +106,7 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 	} else if err != nil {
 		return err
 	}
+	previous := cloneState(current)
 	owners := map[string]struct{}{}
 	for _, group := range groups {
 		owner := strings.TrimSpace(group.Owner)
@@ -137,7 +138,7 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 			return err
 		}
 	}
-	if err := saveState(files.State, current); err != nil {
+	if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 		return err
 	}
 	return Reconcile(ctx, runtime, issuer, target)
@@ -158,6 +159,7 @@ func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacces
 	} else if err != nil {
 		return err
 	}
+	previous := cloneState(current)
 	byKey := map[string]Route{}
 	for _, route := range current.Routes {
 		byKey[route.Key] = route
@@ -180,10 +182,53 @@ func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacces
 			return err
 		}
 	}
-	if err := saveState(files.State, current); err != nil {
+	if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 		return err
 	}
 	return Reconcile(ctx, runtime, issuer, target)
+}
+
+func cloneState(input state) state {
+	cloned := input
+	cloned.Routes = append([]Route(nil), input.Routes...)
+	return cloned
+}
+
+func saveRouteStateForReconcile(ctx context.Context, runtime Runtime, files Files, previous, next state) error {
+	if len(next.Routes) > 0 && routeNetworkSetChanged(previous.Routes, next.Routes) {
+		if _, err := os.Stat(files.Compose); err == nil {
+			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+				return fmt.Errorf("restart development gateway after route network change: %w", err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return saveState(files.State, next)
+}
+
+func routeNetworkSetChanged(before, after []Route) bool {
+	left := routeNetworkSet(before)
+	right := routeNetworkSet(after)
+	if len(left) != len(right) {
+		return true
+	}
+	for network := range left {
+		if _, ok := right[network]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+func routeNetworkSet(routes []Route) map[string]struct{} {
+	result := make(map[string]struct{}, len(routes))
+	for _, route := range routes {
+		if network := strings.TrimSpace(route.Network); network != "" {
+			result[network] = struct{}{}
+		}
+	}
+	return result
 }
 
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
@@ -240,8 +285,9 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		return err
 	}
 	if changed {
+		previous := cloneState(current)
 		current.Routes = pruned
-		if err := saveState(files.State, current); err != nil {
+		if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 			return err
 		}
 	}
