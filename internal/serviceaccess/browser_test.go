@@ -84,3 +84,36 @@ func TestVerifyBrowserSurfaceRejectsNonSuccessfulFinalResponse(t *testing.T) {
 		t.Fatalf("expected semantic final-response failure, got %v", err)
 	}
 }
+
+
+func TestVerifyBrowserSurfaceAllowsExplicitCanonicalAuthority(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == strings.TrimPrefix(server.URL, "https://") {
+			target := strings.Replace(server.URL, "127.0.0.1", "localhost", 1) + "/admin/"
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	allowed := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+	if err := VerifyBrowserSurfaceWithAllowedAuthorities(context.Background(), server.Client(), server.URL+"/", allowed); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyBrowserRoutePreservesAuthenticationChallengeSemantics(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	if err := VerifyBrowserRoute(context.Background(), server.Client(), server.URL+"/"); err != nil {
+		t.Fatalf("route-level 401 must remain reachable: %v", err)
+	}
+	if err := VerifyBrowserSurface(context.Background(), server.Client(), server.URL+"/"); err == nil {
+		t.Fatal("browser-success verifier unexpectedly accepted HTTP 401")
+	}
+}
