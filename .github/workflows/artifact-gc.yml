@@ -1,0 +1,87 @@
+name: Artifact GC
+run-name: Artifact GC
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  prune:
+    name: Delete evidence older than 2h
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete expired ephemeral evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          repo = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+          prefixes = (
+              "targeted-",
+              "demo-",
+              "ci-evidence-",
+              "docker-runtime-evidence-",
+              "podman-evidence-",
+              "pre-release-",
+              "pre-release-runtime-",
+          )
+
+          def request(url, method="GET"):
+              req = urllib.request.Request(
+                  url,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(req) as response:
+                  if response.status == 204:
+                      return None
+                  return json.load(response)
+
+          page = 1
+          deleted = 0
+          while True:
+              payload = request(
+                  f"https://api.github.com/repos/{repo}/actions/artifacts"
+                  f"?per_page=100&page={page}"
+              )
+              artifacts = payload.get("artifacts", [])
+              if not artifacts:
+                  break
+              for artifact in artifacts:
+                  name = artifact.get("name", "")
+                  if not name.startswith(prefixes):
+                      continue
+                  created = datetime.fromisoformat(
+                      artifact["created_at"].replace("Z", "+00:00")
+                  )
+                  if created > cutoff:
+                      continue
+                  request(
+                      f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}",
+                      method="DELETE",
+                  )
+                  deleted += 1
+                  print(f"deleted {artifact['id']} {name} created={artifact['created_at']}")
+              page += 1
+
+          print(f"deleted={deleted} cutoff={cutoff.isoformat()}")
+          PY
