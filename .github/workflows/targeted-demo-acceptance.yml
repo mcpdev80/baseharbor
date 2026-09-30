@@ -119,6 +119,7 @@ jobs:
 
       - name: Set up Go
         id: setup_go
+        if: steps.target.outputs.gate != 'debug-podman-container-lookup'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -131,7 +132,7 @@ jobs:
 
       - name: Reset runtime state
         id: reset
-        if: steps.target.outputs.gate != 'workload-routing'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup'
         shell: bash
         timeout-minutes: 3
         run: |
@@ -162,7 +163,7 @@ jobs:
 
       - name: Verify Podman Quadlet runtime
         id: quadlet
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.runtime == 'podman'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.runtime == 'podman'
         shell: bash
         run: |
           set -euo pipefail
@@ -215,7 +216,9 @@ jobs:
           git -C "$WORKDIR" checkout --detach FETCH_HEAD
           test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
           cd "$WORKDIR"
-          if [ "$DEMO_GATE" = "full" ]; then
+          if [ "$DEMO_GATE" = "debug-podman-container-lookup" ]; then
+            bash tests/debug-podman-container-lookup/run.sh
+          elif [ "$DEMO_GATE" = "full" ]; then
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
               BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
               ARTIFACT_DIR="$ARTIFACT_DIR" \
@@ -241,7 +244,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
-          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
+          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
             export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
@@ -252,7 +255,7 @@ jobs:
 
       - name: Cleanup runtime state
         id: cleanup
-        if: always() && steps.target.outputs.gate != 'workload-routing'
+        if: always() && steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup'
         shell: bash
         timeout-minutes: 3
         run: |
