@@ -32,9 +32,9 @@ type RecoveryContributorMetadata struct {
 }
 
 type BackupMetadata struct {
-	Version           int
+	Version           int                           `json:"version"`
 	ApplicationID     string                        `json:"application_id"`
-	DeploymentID      string                        `json:"deployment_id"`                           `json:"version"`
+	DeploymentID      string                        `json:"deployment_id"`
 	Application       string                        `json:"application"`
 	Environment       string                        `json:"environment"`
 	CreatedAt         time.Time                     `json:"created_at"`
