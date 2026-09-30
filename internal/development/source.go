@@ -2,6 +2,7 @@ package development
 
 import (
 	"crypto/sha256"
+	"errors"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,31 @@ import (
 
 	"go.yaml.in/yaml/v3"
 )
+
+var ErrWorkspaceSourceMissing = errors.New("workspace source is missing")
+
+type WorkspaceSourceError struct {
+	Source    string
+	Component string
+	Path      string
+	Problem   string
+}
+
+func (e *WorkspaceSourceError) Error() string {
+	if e == nil {
+		return ErrWorkspaceSourceMissing.Error()
+	}
+	detail := strings.TrimSpace(e.Problem)
+	if detail == "" {
+		detail = "local worktree mapping is unavailable"
+	}
+	if strings.TrimSpace(e.Path) != "" {
+		return fmt.Sprintf("workspace source %q for component %q: %s at %s", e.Source, e.Component, detail, e.Path)
+	}
+	return fmt.Sprintf("workspace source %q for component %q: %s", e.Source, e.Component, detail)
+}
+
+func (e *WorkspaceSourceError) Unwrap() error { return ErrWorkspaceSourceMissing }
 
 const (
 	SourceModelVersion         = "baseharbor.sources/v1"
@@ -331,7 +357,7 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			resolved.Identity = source.Repository
 			root := strings.TrimSpace(mapping.Sources[source.ID])
 			if root == "" {
-				return WorkspaceResolution{}, fmt.Errorf("workspace source %q for component %q is not mapped; map an existing local worktree before mutation", source.ID, component.Component)
+				return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Problem: "is not mapped; map an existing local worktree before mutation"}
 			}
 			root, err = filepath.Abs(root)
 			if err != nil {
@@ -340,7 +366,7 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			info, err := os.Stat(root)
 			if err != nil {
 				if os.IsNotExist(err) {
-					return WorkspaceResolution{}, fmt.Errorf("workspace source %q for component %q is missing at %s; update the local workspace mapping", source.ID, component.Component, root)
+					return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Path: root, Problem: "mapped worktree is missing; update the local workspace mapping"}
 				}
 				return WorkspaceResolution{}, err
 			}
@@ -362,7 +388,7 @@ func ResolveWorkspace(manifestPath string, model SourceModel, mapping WorkspaceM
 			info, err = os.Stat(componentRoot)
 			if err != nil {
 				if os.IsNotExist(err) {
-					return WorkspaceResolution{}, fmt.Errorf("component %q path %s is missing inside source %q", component.Component, componentRoot, source.ID)
+					return WorkspaceResolution{}, &WorkspaceSourceError{Source: source.ID, Component: component.Component, Path: componentRoot, Problem: "component subpath is missing inside mapped worktree"}
 				}
 				return WorkspaceResolution{}, err
 			}
