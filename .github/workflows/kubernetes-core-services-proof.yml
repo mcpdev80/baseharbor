@@ -1,0 +1,63 @@
+name: "Kubernetes Core Services Proof"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes-core-services*'
+    paths:
+      - '.ci/kubernetes-core-services-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: Kubernetes · PostgreSQL Core Seam
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l internal/providers/runtime/kubernetes internal/application)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
+            exit 1
+          }
+
+      - name: Run PostgreSQL Core seam proof on k3s
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCorePostgresSemanticProbe$'             -count=1 -v
+
+      - name: Assert proof cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+          namespace="${namespace:-default}"
+          remaining="$(kubectl get deployment,service -n "$namespace"             -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-postgres-proof'             --no-headers 2>/dev/null || true)"
+          test -z "$remaining" || {
+            echo "PostgreSQL proof left BaseHarbor-owned resources:" >&2
+            echo "$remaining" >&2
+            exit 1
+          }
