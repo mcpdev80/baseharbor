@@ -233,8 +233,7 @@ exit 2
 		"volume rm -f shared-vol",
 	} {
 		if !strings.Contains(calls, want) {
-			t.Fatalf("full owned-project destroy missing %q:
-%s", want, calls)
+			t.Fatalf("full owned-project destroy missing %q:\\n%s", want, calls)
 		}
 	}
 	for _, forbidden := range []string{
@@ -242,8 +241,7 @@ exit 2
 		"network rm unrelated-net",
 	} {
 		if strings.Contains(calls, forbidden) {
-			t.Fatalf("full owned-project destroy touched unrelated resource %q:
-%s", forbidden, calls)
+			t.Fatalf("full owned-project destroy touched unrelated resource %q:\\n%s", forbidden, calls)
 		}
 	}
 }
