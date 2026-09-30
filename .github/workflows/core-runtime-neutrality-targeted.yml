@@ -15,7 +15,7 @@ permissions:
 jobs:
   core-runtime-neutrality:
     name: Core · Runtime Neutrality
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
     timeout-minutes: 20
 
     steps:
