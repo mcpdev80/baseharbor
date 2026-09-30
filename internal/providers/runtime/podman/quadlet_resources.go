@@ -57,7 +57,6 @@ func quadletNetworkResourceInUse(message string) bool {
 		strings.Contains(lower, "active endpoints")
 }
 
-
 func quadletRuntimeResourceMissing(kind, message string) bool {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	lower := strings.ToLower(strings.TrimSpace(message))
