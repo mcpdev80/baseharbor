@@ -89,7 +89,6 @@ func TestFullDestroyRemovesOwnedLocalStateButPreservesSourceRepository(t *testin
 	}
 }
 
-
 func TestCountFullDestroyBlockersDistinguishesInformationalSkip(t *testing.T) {
 	results := []fullDestroyResult{
 		{Status: "REMOVED", Resource: "ok"},
@@ -107,7 +106,6 @@ func TestCountFullDestroyBlockersDistinguishesInformationalSkip(t *testing.T) {
 		t.Fatalf("cleanup blockers = %d, want 2", got)
 	}
 }
-
 
 func TestTargetOwnedRuntimeContainersFiltersOnlyTargetProjects(t *testing.T) {
 	containers := []bhruntime.RuntimeContainer{
