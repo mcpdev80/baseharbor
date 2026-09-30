@@ -187,6 +187,10 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
 	}
 
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
 	if err := runHostMemoryPreflight(parent, in, out, bhruntime.ProviderKind(target.RuntimeProvider), hostresource.EstimateControlPlane(), true); err != nil {
 		return err
 	}
