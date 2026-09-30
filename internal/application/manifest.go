@@ -14,16 +14,16 @@ type Manifest struct {
 	Version       int
 	ApplicationID string
 	Name          string
-	Environment string
-	Services    Services
-	Secrets     SecretRequirements
-	Workload    WorkloadConfig
-	Exposures   []HTTPExposureRequirement
-	Telemetry   TelemetryRequirements
-	Metrics     MetricsRequirements
-	Logs        LogsRequirements
-	Runtime     RuntimeRequirements
-	Identity    IdentityRequirements
+	Environment   string
+	Services      Services
+	Secrets       SecretRequirements
+	Workload      WorkloadConfig
+	Exposures     []HTTPExposureRequirement
+	Telemetry     TelemetryRequirements
+	Metrics       MetricsRequirements
+	Logs          LogsRequirements
+	Runtime       RuntimeRequirements
+	Identity      IdentityRequirements
 }
 
 type RuntimeRequirements struct {
