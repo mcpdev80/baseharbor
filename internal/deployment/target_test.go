@@ -187,7 +187,6 @@ func TestMultipleEnvironmentsWithinOneTarget(t *testing.T) {
 	}
 }
 
-
 func TestDeploymentRootUsesStableDeploymentIDNotReadableNames(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
