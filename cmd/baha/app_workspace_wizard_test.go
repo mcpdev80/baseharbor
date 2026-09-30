@@ -25,6 +25,9 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(appRoot, "baseharbor.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(appRoot, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 
 	oldInput := appWorkspaceInput
@@ -65,7 +68,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 
 	var out bytes.Buffer
 	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
-		t.Fatal(err)
+		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 
 	model, _, err := development.LoadSourceModel(filepath.Join(appRoot, "baseharbor.yaml"))
@@ -107,7 +110,11 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "baseharbor.yaml"), []byte("version: 1\napp:\n  name: demo\n  environment: dev\n"), 0o644); err != nil {
+	manifest := "version: 1\napp:\n  name: demo\n  environment: dev\nworkload:\n  compose: compose.yaml\n  services:\n    - app\n"
+	if err := os.WriteFile(filepath.Join(root, "baseharbor.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
@@ -121,15 +128,23 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 		"n",
 		"n",
 	}, "\n"))
-	oldWD, _ := os.Getwd()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.Chdir(oldWD)
-	_ = os.Chdir(root)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
 
 	var out bytes.Buffer
 	if err := runAppWorkspaceWizard(context.Background(), &out); err != nil {
-		t.Fatal(err)
+		t.Fatalf("wizard failed: %v\n%s", err, out.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, development.SourceModelRelativePath)); !os.IsNotExist(err) {
 		t.Fatalf("cancelled wizard wrote portable state: %v", err)
+	}
+	if !strings.Contains(out.String(), "No changes were made.") {
+		t.Fatalf("cancel output missing confirmation:\n%s", out.String())
 	}
 }
