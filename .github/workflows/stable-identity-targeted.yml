@@ -29,15 +29,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gofmt -w internal/application/identity.go internal/application/manifest.go internal/application/manifest_parse.go internal/application/manifest_render.go internal/application/manifest_validation.go internal/application/manifest_test.go
-          git diff --exit-code -- internal/application
-      - name: Compile application package
+          gofmt -w internal/stableid/id.go internal/application/identity.go internal/application/manifest.go internal/application/manifest_parse.go internal/application/manifest_render.go internal/application/manifest_validation.go internal/application/manifest_test.go internal/deployment/deployment_store.go internal/deployment/target_test.go
+          git diff --exit-code -- internal/stableid internal/application internal/deployment
+      - name: Compile identity packages
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/application -run TestDoesNotExist -count=1
-      - name: Run application tests
+          go test ./internal/stableid ./internal/application ./internal/deployment -run TestDoesNotExist -count=1
+      - name: Run identity tests
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/application -count=1
+          go test ./internal/application ./internal/deployment -count=1
