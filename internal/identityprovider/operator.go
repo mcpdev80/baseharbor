@@ -145,12 +145,7 @@ func managedOperatorCanonicalBaseURL(runtime KeycloakRuntime, namespace string) 
 	if err != nil {
 		return "", err
 	}
-	if capable, ok := runtime.(keycloakRuntimeLocalHTTPS); ok {
-		if port := capable.PreferredLocalHTTPSPort(); port > 0 && port != 443 {
-			return "https://" + host + ":" + strconv.Itoa(port), nil
-		}
-	}
-	return devaccess.CanonicalURL(host), nil
+	return devgateway.URLForRuntime(namespace, host, runtime), nil
 }
 
 func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, username, password string) (ManagedOperatorOIDC, error) {
