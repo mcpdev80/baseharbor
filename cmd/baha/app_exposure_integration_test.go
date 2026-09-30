@@ -262,4 +262,3 @@ func cleanupManagedExposureFixture(compose bhruntime.RuntimeProvider, resolved r
 	_ = destroyManagedExposure(ctx, compose, resolved.Manifest, files)
 	_ = compose.DownProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Compose, workload.Override)
 }
-
