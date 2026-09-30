@@ -1,6 +1,6 @@
-name: "Demo · Targeted Gate"
+name: "Targeted Runtime Gate"
 
-run-name: "Targeted Demo Gate · ${{ github.ref_name }}"
+run-name: "${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || 'Targeted Gate' }}"
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   selected-gate:
-    name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'Podman' || 'Docker') }} · ${{ github.event_name == 'workflow_dispatch' && inputs.gate || 'Targeted Gate' }}
     runs-on:
       - self-hosted
       - Linux
