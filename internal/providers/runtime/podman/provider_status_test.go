@@ -25,3 +25,20 @@ func TestParsePodmanPublishedPortsRejectsInvalidInspect(t *testing.T) {
 		}
 	}
 }
+
+
+func TestPodmanSystemdUnitLabel(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{"", ""},
+		{"   ", ""},
+		{"<no value>", ""},
+		{"  bh-demo-app.service  ", "bh-demo-app.service"},
+	} {
+		if got := podmanSystemdUnitLabel(tc.input); got != tc.want {
+			t.Fatalf("podmanSystemdUnitLabel(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
