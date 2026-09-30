@@ -136,6 +136,15 @@ jobs:
           cd "${{ steps.demo.outputs.workdir }}"
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_PREBUILT_BINARY="$BASEHARBOR_PREBUILT_BINARY"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME"             DEMO_SUITE="$DEMO_SUITE"             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh
 
+      - name: Collect runtime failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          bash scripts/ci-failure-diagnostics.sh             "$BASEHARBOR_TEST_RUNTIME"             "$ARTIFACT_DIR/runtime-diagnostics"             "${{ steps.demo.outputs.workdir }}"             "$RUNNER_TEMP/pre-release-candidate/baha"
+
       - name: Cleanup runtime state
         id: cleanup
         if: always()
