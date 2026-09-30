@@ -8,12 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 const (
-	LastBackupMetadataVersion = 2
+	LastBackupMetadataVersion = 1
 	lastBackupMetadataName    = "last-backup.json"
 )
 
@@ -33,8 +31,6 @@ type RecoveryContributorMetadata struct {
 
 type BackupMetadata struct {
 	Version           int                           `json:"version"`
-	ApplicationID     string                        `json:"application_id"`
-	DeploymentID      string                        `json:"deployment_id"`
 	Application       string                        `json:"application"`
 	Environment       string                        `json:"environment"`
 	CreatedAt         time.Time                     `json:"created_at"`
@@ -47,12 +43,6 @@ type BackupMetadata struct {
 func (m BackupMetadata) Validate() error {
 	if m.Version != LastBackupMetadataVersion {
 		return fmt.Errorf("unsupported backup metadata version %d", m.Version)
-	}
-	if err := stableid.ValidateUUIDv4("application", m.ApplicationID); err != nil {
-		return err
-	}
-	if err := stableid.ValidateUUIDv4("deployment", m.DeploymentID); err != nil {
-		return err
 	}
 	if err := validateSlug("application name", m.Application); err != nil {
 		return err

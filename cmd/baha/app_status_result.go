@@ -24,8 +24,6 @@ type runtimeArtifactObservation struct {
 
 type applicationStatusResult struct {
 	application.StatusResult
-	ApplicationID   string                                       `json:"application_id"`
-	DeploymentID    string                                       `json:"deployment_id"`
 	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 	RuntimeArtifact *runtimeArtifactObservation                  `json:"runtime_artifact,omitempty"`
@@ -202,8 +200,6 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	}
 	return applicationStatusResult{
 		StatusResult:    result,
-		ApplicationID:   resolved.Manifest.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
 		TLS:             tlsObservation,
 		ServiceTLS:      serviceTLS,

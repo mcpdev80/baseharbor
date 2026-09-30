@@ -38,7 +38,7 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 	}
 
 	if UsesSharedValkey(m) {
-		for _, instance := range ValkeyInstanceNames(m) {
+		for _, instance := range CacheInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
 			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {

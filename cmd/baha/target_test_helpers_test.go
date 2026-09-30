@@ -9,8 +9,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
-const testDeploymentID = "22222222-2222-4222-8222-222222222222"
-
 func configureTestTarget(t *testing.T) deployment.ResolvedTarget {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -48,11 +46,9 @@ func registerTestDeployment(t *testing.T, target deployment.ResolvedTarget, m ap
 	record := deployment.DeploymentRecord{
 		Version: deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{
-			DeploymentID: testDeploymentID,
-			ApplicationID: m.ApplicationID,
-			Target:        target.Name,
-			Application:   m.Name,
-			Environment:   m.Environment,
+			Target:      target.Name,
+			Application: m.Name,
+			Environment: m.Environment,
 		},
 		Source: deployment.DeploymentSource{
 			Kind:       "repository",
@@ -72,22 +68,12 @@ func registerTestDeployment(t *testing.T, target deployment.ResolvedTarget, m ap
 
 func testDeploymentStore(t *testing.T, target deployment.ResolvedTarget, m application.Manifest) application.Store {
 	t.Helper()
-	identity := deployment.DeploymentIdentity{
-		DeploymentID: testDeploymentID,
-		ApplicationID: m.ApplicationID,
-		Target:        target.Name,
-		Application:   m.Name,
-		Environment:   m.Environment,
-	}
-	root, err := deployment.DeploymentRoot(identity)
+	root, err := deployment.DeploymentRoot(deployment.DeploymentIdentity{
+		Target:      target.Name,
+		Application: m.Name,
+		Environment: m.Environment,
+	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
-		Version:  deployment.DeploymentRecordVersion,
-		Identity: identity,
-		Applied:  deployment.AppliedDeployment{RuntimeProvider: target.RuntimeProvider},
-	}); err != nil {
 		t.Fatal(err)
 	}
 	return application.Store{Root: filepath.Join(root, "state"), Namespace: target.Name}

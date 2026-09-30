@@ -8,11 +8,7 @@ import (
 
 func (m Manifest) YAML() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "version: %d\napp:\n", m.Version)
-	if m.ApplicationID != "" {
-		fmt.Fprintf(&b, "  id: %s\n", m.ApplicationID)
-	}
-	fmt.Fprintf(&b, "  name: %s\n  environment: %s\n", m.Name, m.Environment)
+	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\n", m.Version, m.Name, m.Environment)
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
@@ -22,10 +18,6 @@ func (m Manifest) YAML() string {
 		if m.Services.Cache || len(m.Services.CacheInstances) > 0 {
 			writeServiceYAML(&b, "cache", m.Services.Cache, m.Services.CacheInstances)
 			writeManagementUIYAML(&b, m.Services.CacheManagementUI)
-		}
-		if m.Services.KeyValue || len(m.Services.KeyValueInstances) > 0 {
-			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
-			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
 		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
@@ -162,8 +154,8 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.KeyValue || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
-		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
+		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
 func writeManagementUIYAML(b *strings.Builder, enabled bool) {

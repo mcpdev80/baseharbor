@@ -73,16 +73,10 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "dev", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
-	records, err := deployment.ListDeployments(target.Name)
+	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "dev"}
+	record, err := deployment.LoadDeploymentRecord(id)
 	if err != nil {
-		t.Fatalf("list deployments: %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("deployments = %#v, want one managed deployment", records)
-	}
-	record := records[0]
-	if record.Identity.Application != "demo" || record.Identity.Environment != "dev" {
-		t.Fatalf("unexpected deployment identity: %#v", record.Identity)
+		t.Fatalf("deployment record missing: %v", err)
 	}
 	m, err := application.LoadManifestFile(record.Source.Manifest)
 	if err != nil {
@@ -115,7 +109,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "ensure database.sql:default") || !strings.Contains(out.String(), "No changes were made") {
+	if !strings.Contains(out.String(), "ensure postgres") || !strings.Contains(out.String(), "No changes were made") {
 		t.Fatalf("unexpected plan: %s", out.String())
 	}
 }

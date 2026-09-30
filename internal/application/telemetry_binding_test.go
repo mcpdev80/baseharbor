@@ -11,7 +11,7 @@ import (
 
 func telemetryManifest() Manifest {
 	return WithOTLPTelemetry(Manifest{
-		Version: 1, ApplicationID: MustNewApplicationID(), Name: "demo", Environment: "dev",
+		Version: 1, Name: "demo", Environment: "dev",
 		Workload: WorkloadConfig{Services: []string{"api"}},
 	}, "traces", "metrics")
 }

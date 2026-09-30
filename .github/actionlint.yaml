@@ -3,4 +3,3 @@ self-hosted-runner:
     - baseharbor
     - docker
     - podman
-    - k3s

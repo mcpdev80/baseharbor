@@ -12,7 +12,6 @@ import (
 )
 
 type NewApplicationRequest struct {
-	ApplicationID          string            `json:"-"`
 	Name                   string            `json:"name"`
 	Environment            string            `json:"environment,omitempty"`
 	Adapter                string            `json:"adapter,omitempty"`
@@ -69,17 +68,10 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		}
 	}
 
-	applicationID := strings.TrimSpace(request.ApplicationID)
-	if applicationID == "" {
-		applicationID = application.MustNewApplicationID()
-	} else if err := application.ValidateApplicationID(applicationID); err != nil {
-		return BootstrapResult{}, err
-	}
 	manifest := application.Manifest{
-		Version:       application.CurrentVersion,
-		ApplicationID: applicationID,
-		Name:          name,
-		Environment:   environment,
+		Version:     application.CurrentVersion,
+		Name:        name,
+		Environment: environment,
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
 			Services: profileComponentIDs(profile),

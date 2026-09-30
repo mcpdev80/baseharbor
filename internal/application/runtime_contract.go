@@ -99,7 +99,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("postgres", instance, len(postgresInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
-	redisInstances := ValkeyInstanceNames(m)
+	redisInstances := CacheInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redisInstances)
 	for _, instance := range redisInstances {
 		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "valkey", instance, len(redisInstances))
@@ -244,7 +244,7 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 		}
 	}
 
-	cache := ValkeyInstanceNames(m)
+	cache := CacheInstanceNames(m)
 	for _, instance := range cache {
 		name := workloadServiceBindingName("valkey", instance, len(cache))
 		password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
@@ -317,7 +317,7 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		}
 	}
 
-	cache := ValkeyInstanceNames(m)
+	cache := CacheInstanceNames(m)
 	for _, instance := range cache {
 		name := workloadServiceBindingName("valkey", instance, len(cache))
 		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))

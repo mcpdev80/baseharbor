@@ -123,71 +123,14 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 	return EnsureRuntime(ctx, issuer, store, m)
 }
 
-type BackendProbeKind string
-
-const (
-	BackendProbeSQLSelectOne      BackendProbeKind = "sql.select-one"
-	BackendProbeCachePing         BackendProbeKind = "cache.ping"
-	BackendProbeDurableKeyValueRW BackendProbeKind = "database.key-value.write-read"
-)
-
-type BackendProbe struct {
-	Kind     BackendProbeKind
-	Instance string
-	Database string
-}
-
-type BackendProbeExecutor interface {
-	ProbeBackend(context.Context, BackendProbe) (string, error)
-}
-
-type RuntimeBackendProbeExecutor struct {
-	runtime bhruntime.RuntimeProvider
-	files   RuntimeFiles
-}
-
-func NewRuntimeBackendProbeExecutor(runtime bhruntime.RuntimeProvider, files RuntimeFiles) RuntimeBackendProbeExecutor {
-	return RuntimeBackendProbeExecutor{runtime: runtime, files: files}
-}
-
-func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe BackendProbe) (string, error) {
-	instance := strings.TrimSpace(probe.Instance)
-	if instance == "" {
-		instance = defaultServiceInstance
-	}
-	switch probe.Kind {
-	case BackendProbeSQLSelectOne:
-		service := runtimeServiceName("postgres", instance)
-		database := strings.TrimSpace(probe.Database)
-		if database == "" {
-			return "", errors.New("postgres verification database is required")
-		}
-		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), database)
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	case BackendProbeCachePing:
-		service := runtimeServiceName("valkey", instance)
-		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	case BackendProbeDurableKeyValueRW:
-		service := runtimeServiceName("valkey", instance)
-		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 del __baseharbor_verify__ >/dev/null`, valkeyAccessService(instance), valkeyAccessService(instance), valkeyAccessService(instance))
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	default:
-		return "", fmt.Errorf("unsupported backend probe %q", probe.Kind)
-	}
-}
-
-func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
+func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
 	if UsesSharedPostgreSQL(m) {
 		return nil
 	}
-	if executor == nil {
-		return errors.New("postgres verification executor is required")
-	}
 	for _, instance := range SQLInstanceNames(m) {
-		out, err := executor.ProbeBackend(ctx, BackendProbe{
-			Kind: BackendProbeSQLSelectOne, Instance: instance, Database: postgresDatabaseName(m, instance),
-		})
+		service := runtimeServiceName("postgres", instance)
+		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
 			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
 		}
@@ -198,39 +141,22 @@ func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, 
 	return nil
 }
 
-func VerifyPostgresRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
-	return VerifyPostgresProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
-}
-
-func VerifyValkeyProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
+func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
 	if UsesSharedValkey(m) {
 		return nil
 	}
-	if executor == nil {
-		return errors.New("valkey verification executor is required")
-	}
 	for _, instance := range CacheInstanceNames(m) {
-		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
+		service := runtimeServiceName("valkey", instance)
+		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
+		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
 		if err != nil {
-			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
+			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
 		}
 		if strings.TrimSpace(out) != "PONG" {
-			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
-		}
-	}
-	for _, instance := range KeyValueInstanceNames(m) {
-		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
-		if err != nil {
-			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
-		}
-		if strings.TrimSpace(out) != "durable" {
-			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
+			return fmt.Errorf("verify valkey instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
 		}
 	}
 	return nil
-}
-func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
-	return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
@@ -245,7 +171,7 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		return "services: {}\n", nil
 	}
 	sqlInstances := SQLInstanceNames(m)
-	cacheInstances := ValkeyInstanceNames(m)
+	cacheInstances := CacheInstanceNames(m)
 	if UsesSharedPostgreSQL(m) {
 		sqlInstances = nil
 	}
@@ -518,7 +444,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	for _, instance := range ValkeyInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if values[passwordKey] == "" {
@@ -613,7 +539,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
-	for _, instance := range ValkeyInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
@@ -686,7 +612,7 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
-	for _, instance := range ValkeyInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			if values[key] == "" {

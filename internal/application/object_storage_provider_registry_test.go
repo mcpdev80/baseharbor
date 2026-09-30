@@ -8,15 +8,15 @@ import (
 
 func TestReferenceProviderRegistryReusesSharedSeaweedFS(t *testing.T) {
 	registry := capability.NewRegistry()
-	alpha := WithObjectStorageBuckets(New("alpha", "prod", false, false, false), "assets")
-	beta := WithObjectStorageBuckets(New("beta", "prod", false, false, false), "uploads")
+	alpha := WithObjectStorageBuckets(Manifest{Version: CurrentVersion, Name: "alpha", Environment: "prod"}, "assets")
+	beta := WithObjectStorageBuckets(Manifest{Version: CurrentVersion, Name: "beta", Environment: "prod"}, "uploads")
 	if err := registerReferenceProviders(&registry, alpha); err != nil {
 		t.Fatal(err)
 	}
 	if err := registerReferenceProviders(&registry, beta); err != nil {
 		t.Fatal(err)
 	}
-	instance, err := registry.Resolve(capability.ProviderSeaweedFS, capability.ScopeShared, alpha.ApplicationID, "")
+	instance, err := registry.Resolve(capability.ProviderSeaweedFS, capability.ScopeShared, "alpha", "")
 	if err != nil {
 		t.Fatal(err)
 	}

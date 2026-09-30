@@ -37,7 +37,7 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		}
 	}
 	if !UsesSharedValkey(m) {
-		for _, instance := range ValkeyInstanceNames(m) {
+		for _, instance := range CacheInstanceNames(m) {
 			service := runtimeServiceName("valkey", instance)
 			resources = append(resources,
 				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},

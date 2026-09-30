@@ -44,7 +44,7 @@ func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []str
 
 func quadletRemoveRuntimeResourceArgs(kind, name string) []string {
 	args := []string{kind, "rm"}
-	if kind == "container" || kind == "volume" {
+	if kind == "volume" {
 		args = append(args, "-f")
 	}
 	return append(args, name)

@@ -66,29 +66,16 @@ const (
 )
 
 func MaterializeOTLPTLSBinding(m Manifest, files RuntimeFiles, caFile, clientCertFile, clientKeyFile string) error {
-	caData, err := readOTLPTLSMaterialFile(caFile, "ca.pem")
-	if err != nil {
-		return err
-	}
-	certData, err := readOTLPTLSMaterialFile(clientCertFile, "client-cert.pem")
-	if err != nil {
-		return err
-	}
-	keyData, err := readOTLPTLSMaterialFile(clientKeyFile, "client-key.pem")
-	if err != nil {
-		return err
-	}
-	return MaterializeOTLPTLSBindingMaterial(m, files, caData, certData, keyData)
-}
-
-func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, clientCertData, clientKeyData []byte) error {
 	if !HasOTLPTelemetry(m) {
 		return nil
 	}
-	if len(caData) == 0 {
+	caFile = strings.TrimSpace(caFile)
+	clientCertFile = strings.TrimSpace(clientCertFile)
+	clientKeyFile = strings.TrimSpace(clientKeyFile)
+	if caFile == "" {
 		return fmt.Errorf("OTLP TLS trust bundle is required")
 	}
-	if (len(clientCertData) == 0) != (len(clientKeyData) == 0) {
+	if (clientCertFile == "") != (clientKeyFile == "") {
 		return fmt.Errorf("OTLP TLS client certificate and key must be provided together")
 	}
 	dir := filepath.Join(files.Bindings, "telemetry")
@@ -98,11 +85,22 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
 	}
-	project := func(data []byte, name string) (string, error) {
-		if len(data) == 0 {
+	project := func(source, name string) (string, error) {
+		if strings.TrimSpace(source) == "" {
 			return "", nil
 		}
-		if len(strings.TrimSpace(string(data))) == 0 {
+		info, err := os.Lstat(source)
+		if err != nil {
+			return "", fmt.Errorf("inspect OTLP TLS %s: %w", name, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return "", fmt.Errorf("OTLP TLS %s must be a regular non-symlink file", name)
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "", fmt.Errorf("read OTLP TLS %s: %w", name, err)
+		}
+		if len(data) == 0 {
 			return "", fmt.Errorf("OTLP TLS %s is empty", name)
 		}
 		target := filepath.Join(dir, name)
@@ -116,15 +114,15 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 		}
 		return target, nil
 	}
-	ca, err := project(caData, "ca.pem")
+	ca, err := project(caFile, "ca.pem")
 	if err != nil {
 		return err
 	}
-	cert, err := project(clientCertData, "client-cert.pem")
+	cert, err := project(clientCertFile, "client-cert.pem")
 	if err != nil {
 		return err
 	}
-	key, err := project(clientKeyData, "client-key.pem")
+	key, err := project(clientKeyFile, "client-key.pem")
 	if err != nil {
 		return err
 	}
@@ -142,25 +140,6 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 		delete(values, OTLPTLSHostClientKeyEnv)
 	}
 	return writeRuntimeEnv(files.Env, m, values)
-}
-
-func readOTLPTLSMaterialFile(path, name string) ([]byte, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil, nil
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, fmt.Errorf("inspect OTLP TLS %s: %w", name, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("OTLP TLS %s must be a regular non-symlink file", name)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read OTLP TLS %s: %w", name, err)
-	}
-	return data, nil
 }
 
 func telemetryResourceAttributes(m Manifest, service, provider string) string {

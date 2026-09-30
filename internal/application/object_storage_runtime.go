@@ -35,29 +35,22 @@ func LoadObjectStorageCredentials(files RuntimeFiles, bucket string) (ObjectStor
 // environment/file binding after the selected provider has materialized its
 // concrete endpoint and bucket identity.
 func MaterializeObjectStorageBinding(m Manifest, files RuntimeFiles, logicalBucket, physicalBucket, endpoint, containerEndpoint, caFile string) error {
-	caFile = strings.TrimSpace(caFile)
-	if caFile == "" {
-		return fmt.Errorf("object-storage binding for %s is incomplete", logicalBucket)
-	}
-	caData, err := os.ReadFile(caFile)
-	if err != nil {
-		return fmt.Errorf("read object-storage trust bundle: %w", err)
-	}
-	return MaterializeObjectStorageBindingMaterial(m, files, logicalBucket, physicalBucket, endpoint, containerEndpoint, caData)
-}
-
-func MaterializeObjectStorageBindingMaterial(m Manifest, files RuntimeFiles, logicalBucket, physicalBucket, endpoint, containerEndpoint string, caData []byte) error {
 	credentials, err := LoadObjectStorageCredentials(files, logicalBucket)
 	if err != nil {
 		return err
 	}
 	endpoint = strings.TrimSpace(endpoint)
 	containerEndpoint = strings.TrimSpace(containerEndpoint)
+	caFile = strings.TrimSpace(caFile)
 	physicalBucket = strings.TrimSpace(physicalBucket)
-	if endpoint == "" || containerEndpoint == "" || physicalBucket == "" || len(caData) == 0 {
+	if endpoint == "" || containerEndpoint == "" || caFile == "" || physicalBucket == "" {
 		return fmt.Errorf("object-storage binding for %s is incomplete", logicalBucket)
 	}
-	if len(strings.TrimSpace(string(caData))) == 0 {
+	caData, err := os.ReadFile(caFile)
+	if err != nil {
+		return fmt.Errorf("read object-storage trust bundle: %w", err)
+	}
+	if len(caData) == 0 {
 		return fmt.Errorf("object-storage trust bundle is empty")
 	}
 	tlsDir := filepath.Join(files.Bindings, "object-storage")

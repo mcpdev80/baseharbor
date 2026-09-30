@@ -12,7 +12,6 @@ type Kind string
 const (
 	SQL             Kind = "database.sql"
 	KeyValue        Kind = "cache.key-value"
-	DurableKeyValue Kind = "database.key-value"
 	Secrets         Kind = "secrets"
 	ExposureHTTP    Kind = "exposure.http"
 	ObjectStorageS3 Kind = "object-storage.s3"

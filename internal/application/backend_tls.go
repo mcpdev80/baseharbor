@@ -77,7 +77,7 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 		}
 	}
 	if !UsesSharedValkey(m) {
-		for _, instance := range ValkeyInstanceNames(m) {
+		for _, instance := range CacheInstanceNames(m) {
 			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
@@ -199,7 +199,7 @@ type BackendTLSLifecycleObservation struct {
 }
 
 func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLifecycleObservation, error) {
-	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m)))
+	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
 	if !UsesSharedPostgreSQL(m) {
 		for _, instance := range SQLInstanceNames(m) {
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
@@ -210,7 +210,7 @@ func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLif
 		}
 	}
 	if !UsesSharedValkey(m) {
-		for _, instance := range ValkeyInstanceNames(m) {
+		for _, instance := range CacheInstanceNames(m) {
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "valkey", instance), "service-access", "pki"))
 			if err != nil {
 				return nil, fmt.Errorf("inspect Valkey TLS lifecycle for %s: %w", instance, err)
@@ -237,7 +237,7 @@ func InspectSharedBackendTLSLifecycleAt(dataDir, namespace string, m Manifest) (
 		}
 	}
 	if UsesSharedValkey(m) {
-		for _, instance := range ValkeyInstanceNames(m) {
+		for _, instance := range CacheInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(root, "service-access", "pki"))
 			if err != nil {

@@ -112,7 +112,7 @@ func captureApplicationBackup(ctx context.Context, compose bhruntime.RuntimeProv
 			entries = append(entries, entry)
 		}
 	}
-	archive, err := applicationbackup.Build(m.ApplicationID, m.Name, m.Environment, time.Now().UTC(), entries, password)
+	archive, err := applicationbackup.Build(m.Name, m.Environment, time.Now().UTC(), entries, password)
 	if err != nil {
 		return err
 	}
@@ -134,9 +134,6 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 	m, err := applicationbackup.ApplicationManifestFromPayload(payload)
 	if err != nil {
 		return applicationRestoreData{}, fmt.Errorf("validate application metadata before mutation: %w", err)
-	}
-	if payload.Manifest.ApplicationID != m.ApplicationID {
-		return applicationRestoreData{}, errors.New("backup application_id does not match embedded application manifest")
 	}
 	if name != "" && name != m.Name {
 		return applicationRestoreData{}, errors.New("restore target NAME does not match backup application identity")

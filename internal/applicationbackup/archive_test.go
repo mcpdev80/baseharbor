@@ -17,7 +17,7 @@ func TestBuildOpenRoundTrip(t *testing.T) {
 		{Name: "secrets/openbao.json", Data: []byte(`{"dyn-abc":"provider-key"}`)},
 	}
 
-	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", created, entries, password)
+	archive, err := Build("mailflow", "dev", created, entries, password)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -29,7 +29,7 @@ func TestBuildOpenRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if payload.Manifest.ApplicationID != "11111111-1111-4111-8111-111111111111" || payload.Manifest.Application != "mailflow" || payload.Manifest.Environment != "dev" {
+	if payload.Manifest.Application != "mailflow" || payload.Manifest.Environment != "dev" {
 		t.Fatalf("unexpected identity: %#v", payload.Manifest)
 	}
 	if !payload.Manifest.CreatedAt.Equal(created) {
@@ -41,7 +41,7 @@ func TestBuildOpenRoundTrip(t *testing.T) {
 }
 
 func TestOpenRejectsWrongPassword(t *testing.T) {
-	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Now(), []PayloadEntry{{Name: "metadata/application.json", Data: []byte("x")}}, []byte("right"))
+	archive, err := Build("mailflow", "dev", time.Now(), []PayloadEntry{{Name: "metadata/application.json", Data: []byte("x")}}, []byte("right"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestOpenRejectsWrongPassword(t *testing.T) {
 }
 
 func TestOpenRejectsTamperedCiphertext(t *testing.T) {
-	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Now(), []PayloadEntry{{Name: "metadata/application.json", Data: []byte("x")}}, []byte("password"))
+	archive, err := Build("mailflow", "dev", time.Now(), []PayloadEntry{{Name: "metadata/application.json", Data: []byte("x")}}, []byte("password"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestBuildRejectsTraversalName(t *testing.T) {
 	}
 	for _, name := range badNames {
 		t.Run(name, func(t *testing.T) {
-			_, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Now(), []PayloadEntry{{Name: name, Data: []byte("x")}}, []byte("password"))
+			_, err := Build("mailflow", "dev", time.Now(), []PayloadEntry{{Name: name, Data: []byte("x")}}, []byte("password"))
 			if err == nil || !strings.Contains(err.Error(), "invalid backup entry name") {
 				t.Fatalf("Build() error = %v", err)
 			}
@@ -117,7 +117,7 @@ func TestOpenRejectsUnsafeKDFBeforeDerivation(t *testing.T) {
 }
 
 func TestPayloadValidateRejectsChecksumMismatch(t *testing.T) {
-	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Now(), []PayloadEntry{{Name: "secrets/openbao.json", Data: []byte("secret")}}, []byte("password"))
+	archive, err := Build("mailflow", "dev", time.Now(), []PayloadEntry{{Name: "secrets/openbao.json", Data: []byte("secret")}}, []byte("password"))
 	if err != nil {
 		t.Fatal(err)
 	}

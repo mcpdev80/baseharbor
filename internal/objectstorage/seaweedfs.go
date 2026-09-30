@@ -46,7 +46,6 @@ type runtimeDiagnostics interface {
 
 type Driver struct {
 	runtime        Runtime
-	realization    SeaweedFSRealization
 	app            application.Manifest
 	files          application.RuntimeFiles
 	issuer         serviceaccess.Issuer
@@ -170,36 +169,11 @@ func ExistingReadySharedProviderAt(ctx context.Context, dataDir, namespace strin
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
-	return &Driver{
-		runtime:        runtime,
-		realization:    newRuntimeSeaweedFSRealization(runtime, issuer, "", "", app),
-		app:            app,
-		files:          files,
-		issuer:         issuer,
-		createdBuckets: map[string]struct{}{},
-	}
+	return &Driver{runtime: runtime, app: app, files: files, issuer: issuer, createdBuckets: map[string]struct{}{}}
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
-	return &Driver{
-		runtime:        runtime,
-		realization:    newRuntimeSeaweedFSRealization(runtime, issuer, dataDir, namespace, app),
-		app:            app,
-		files:          files,
-		issuer:         issuer,
-		createdBuckets: map[string]struct{}{},
-		dataDir:        filepath.Clean(dataDir),
-		namespace:      strings.TrimSpace(namespace),
-	}
-}
-
-func NewDriverWithRealization(realization SeaweedFSRealization, app application.Manifest, files application.RuntimeFiles) *Driver {
-	return &Driver{
-		realization:    realization,
-		app:            app,
-		files:          files,
-		createdBuckets: map[string]struct{}{},
-	}
+	return &Driver{runtime: runtime, app: app, files: files, issuer: issuer, createdBuckets: map[string]struct{}{}, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
 func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
@@ -245,10 +219,8 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 }
 
 func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	if d.realization == nil {
-		return errors.New("SeaweedFS realization is required")
-	}
-	if _, err := d.realization.Apply(ctx); err != nil {
+	providerFiles, _, _, err := d.EnsureSharedProvider(ctx)
+	if err != nil {
 		return err
 	}
 
@@ -258,16 +230,16 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
 
-	exists, err := d.bucketExists(ctx, physical)
+	exists, err := d.bucketExists(ctx, providerFiles, physical)
 	if err != nil {
 		return fmt.Errorf("inspect S3 bucket %s: %w", resource.Name, err)
 	}
 	if !exists {
 		create := fmt.Sprintf("s3.bucket.create -name=%s", physical)
-		if err := d.runSeaweedShell(ctx, create); err != nil {
+		if err := d.runSeaweedShell(ctx, providerFiles, create); err != nil {
 			return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
 		}
-		created, err := d.bucketExists(ctx, physical)
+		created, err := d.bucketExists(ctx, providerFiles, physical)
 		if err != nil {
 			return fmt.Errorf("verify S3 bucket %s creation: %w", resource.Name, err)
 		}
@@ -279,40 +251,42 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 
 	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
 		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
-	if err := d.runSeaweedShell(ctx, configure); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
 	return nil
 }
 
-func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	if d.realization == nil {
-		return errors.New("SeaweedFS realization is required")
-	}
-	instance, err := d.realization.Existing(ctx)
+func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capability.Binding) error {
+	providerFiles, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
+	endpoint, err := providerEndpoint(providerFiles)
+	if err != nil {
+		return err
+	}
+	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(providerFiles.Dir, "service-access", "pki"))
+	if err != nil {
+		return fmt.Errorf("load S3 service trust material: %w", err)
+	}
+	containerHost := "seaweedfs"
+	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
+		containerHost = strings.TrimSpace(policy.ServerName)
+	}
 	physical := PhysicalBucketName(d.app, resource.Name)
-	if err := application.MaterializeObjectStorageBindingMaterial(
-		d.app,
-		d.files,
-		resource.Name,
-		physical,
-		instance.Endpoint,
-		instance.WorkloadEndpoint,
-		instance.TrustBundle,
-	); err != nil {
+	if err := application.MaterializeObjectStorageBinding(d.app, d.files, resource.Name, physical, endpoint, "https://"+containerHost+":8443", material.CA); err != nil {
 		return fmt.Errorf("materialize S3 application binding: %w", err)
 	}
 	return nil
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
-	if d.realization == nil {
-		return errors.New("SeaweedFS realization is required")
-	}
-	instance, err := d.realization.Existing(ctx)
+	providerFiles, err := d.existingProviderFiles()
 	if err != nil {
 		return err
 	}
@@ -320,12 +294,15 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	if err != nil {
 		return err
 	}
-	endpoint := instance.Endpoint
-	if d.client == nil {
-		d.client = instance.HTTPClient
+	endpoint, err := providerEndpoint(providerFiles)
+	if err != nil {
+		return err
 	}
 	if d.client == nil {
-		return errors.New("SeaweedFS realization did not provide an HTTP client")
+		d.client, err = s3HTTPClient(providerFiles)
+		if err != nil {
+			return err
+		}
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
 	var probe [18]byte
@@ -387,40 +364,41 @@ func (d *Driver) Rollback(ctx context.Context) {
 }
 
 func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error {
-	if d.realization == nil {
-		return errors.New("SeaweedFS realization is required")
-	}
-	if _, err := d.realization.Existing(ctx); errors.Is(err, os.ErrNotExist) {
+	providerFiles, err := d.existingProviderFiles()
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
-	} else if err != nil {
+	}
+	if err != nil {
 		return err
 	}
 	physical := PhysicalBucketName(d.app, logicalBucket)
 	command := fmt.Sprintf("s3.bucket.delete -name=%s", physical)
-	if err := d.runSeaweedShell(ctx, command); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, command); err != nil {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
 	}
 	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", physical)
-	if err := d.runSeaweedShell(ctx, revoke); err != nil {
+	if err := d.runSeaweedShell(ctx, providerFiles, revoke); err != nil {
 		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
 	}
 	return nil
 }
 
-func (d *Driver) runSeaweedShell(ctx context.Context, command string) error {
-	_, err := d.runSeaweedShellOutput(ctx, command)
+func (d *Driver) runSeaweedShell(ctx context.Context, files ProviderFiles, command string) error {
+	_, err := d.runSeaweedShellOutput(ctx, files, command)
 	return err
 }
 
-func (d *Driver) runSeaweedShellOutput(ctx context.Context, command string) (string, error) {
-	if d.realization == nil {
-		return "", errors.New("SeaweedFS realization is required")
+func (d *Driver) runSeaweedShellOutput(ctx context.Context, files ProviderFiles, command string) (string, error) {
+	input := []byte(command + "\n")
+	out, err := d.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell")
+	if err != nil {
+		return "", errors.New("SeaweedFS administrative command failed")
 	}
-	return d.realization.Admin(ctx, command)
+	return out, nil
 }
 
-func (d *Driver) bucketExists(ctx context.Context, bucket string) (bool, error) {
-	out, err := d.runSeaweedShellOutput(ctx, "s3.bucket.list")
+func (d *Driver) bucketExists(ctx context.Context, files ProviderFiles, bucket string) (bool, error) {
+	out, err := d.runSeaweedShellOutput(ctx, files, "s3.bucket.list")
 	if err != nil {
 		return false, err
 	}

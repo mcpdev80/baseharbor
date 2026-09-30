@@ -86,7 +86,7 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	for _, name := range application.SQLInstanceNames(m) {
 		overview.Postgres = append(overview.Postgres, overviewResource{Name: name, State: "not applied"})
 	}
-	for _, name := range application.ValkeyInstanceNames(m) {
+	for _, name := range application.CacheInstanceNames(m) {
 		overview.Valkey = append(overview.Valkey, overviewResource{Name: name, State: "not applied"})
 	}
 	if application.HasOTLPTelemetry(m) {

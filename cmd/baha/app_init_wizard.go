@@ -167,9 +167,8 @@ func detectedApplicationManifest(name, environment string, sql, cache, objectSto
 		environment = "dev"
 	}
 	return application.Manifest{
-		Version:       application.CurrentVersion,
-		ApplicationID: application.MustNewApplicationID(),
-		Name:          name,
+		Version:     application.CurrentVersion,
+		Name:        name,
 		Environment: environment,
 		Services: application.Services{
 			SQL:           sql,

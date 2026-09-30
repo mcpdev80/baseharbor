@@ -51,38 +51,19 @@ type ProviderFiles struct {
 }
 
 type Driver struct {
-	runtime     Runtime
-	realization TempoRealization
-	app         application.Manifest
-	issuer      serviceaccess.Issuer
-	dataDir     string
-	namespace   string
+	runtime   Runtime
+	app       application.Manifest
+	issuer    serviceaccess.Issuer
+	dataDir   string
+	namespace string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
-	return &Driver{
-		runtime:     runtime,
-		realization: newRuntimeTempoRealization(runtime, app, issuer, "", ""),
-		app:         app,
-		issuer:      issuer,
-	}
+	return &Driver{runtime: runtime, app: app, issuer: issuer}
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
-	dataDir = filepath.Clean(dataDir)
-	namespace = strings.TrimSpace(namespace)
-	return &Driver{
-		runtime:     runtime,
-		realization: newRuntimeTempoRealization(runtime, app, issuer, dataDir, namespace),
-		app:         app,
-		issuer:      issuer,
-		dataDir:     dataDir,
-		namespace:   namespace,
-	}
-}
-
-func NewDriverWithRealization(realization TempoRealization, app application.Manifest) *Driver {
-	return &Driver{realization: realization, app: app}
+	return &Driver{runtime: runtime, app: app, issuer: issuer, dataDir: filepath.Clean(dataDir), namespace: strings.TrimSpace(namespace)}
 }
 
 func (d *Driver) Descriptor() capability.Provider { return capability.Tempo }
@@ -115,20 +96,14 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, _ ca
 }
 
 func (d *Driver) Provision(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	if d.realization == nil {
-		return errors.New("managed Tempo realization is required")
-	}
-	_, err := d.realization.Apply(ctx)
+	_, err := ProvisionAt(ctx, d.runtime, d.issuer, d.app, d.dataDir, d.namespace)
 	return err
 }
 
 func (d *Driver) Bind(context.Context, capability.Resource, capability.Binding) error { return nil }
 
 func (d *Driver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	if d.realization == nil {
-		return errors.New("managed Tempo realization is required")
-	}
-	return d.realization.VerifyTrace(ctx, telemetry.ProbeTraceIDHex)
+	return VerifyTraceAt(ctx, d.app, telemetry.ProbeTraceIDHex, d.dataDir, d.namespace)
 }
 
 func PlacementFor(m application.Manifest) (Placement, error) {

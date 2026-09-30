@@ -49,8 +49,6 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 	result := applicationDoctorResult{
 		ContractVersion: machine.ContractVersion,
 		Target:          resolved.Target.Name,
-		ApplicationID:   m.ApplicationID,
-		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		State:           "ready",
@@ -301,7 +299,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
-	if m.Services.Cache || m.Services.KeyValue {
+	if m.Services.Cache {
 		if application.UsesSharedValkey(m) {
 			checks = append(checks, preflight.Check{Name: "valkey shared isolation", Run: func(ctx context.Context) error {
 				return application.VerifySharedValkey(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)

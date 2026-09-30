@@ -17,15 +17,20 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 type KeycloakDriver struct {
-	realization KeycloakRealization
-	app         application.Manifest
-	appFiles    application.RuntimeFiles
+	runtime   KeycloakRuntime
+	app       application.Manifest
+	appFiles  application.RuntimeFiles
+	issuer    serviceaccess.Issuer
+	dataDir   string
+	namespace string
 
-	instance     KeycloakInstance
+	files        KeycloakFiles
 	origins      []string
 	realm        string
 	clientID     string
@@ -35,20 +40,10 @@ type KeycloakDriver struct {
 }
 
 func NewKeycloakDriver(runtime KeycloakRuntime, app application.Manifest, appFiles application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *KeycloakDriver {
-	return NewKeycloakDriverWithRealization(
-		newLocalKeycloakRealization(runtime, app, issuer, dataDir, namespace),
-		app,
-		appFiles,
-	)
-}
-
-func NewKeycloakDriverWithRealization(realization KeycloakRealization, app application.Manifest, appFiles application.RuntimeFiles) *KeycloakDriver {
 	return &KeycloakDriver{
-		realization: realization,
-		app:         app,
-		appFiles:    appFiles,
-		realm:       keycloakRealmName(app),
-		clientID:    keycloakClientID(app),
+		runtime: runtime, app: app, appFiles: appFiles, issuer: issuer,
+		dataDir: dataDir, namespace: namespace,
+		realm: keycloakRealmName(app), clientID: keycloakClientID(app),
 	}
 }
 
@@ -123,27 +118,37 @@ type legacyServiceCleaner interface {
 	RemoveProjectServices(context.Context, string, ...string) error
 }
 
-type keycloakRealizationDiagnostics interface {
-	Diagnostics(context.Context) string
+type identityProjectDiagnostics interface {
+	DiagnosticsProject(context.Context, string, string, string) string
 }
 
 func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
 	if d.provisioned {
 		return nil
 	}
-	if d.realization == nil {
-		return errors.New("Keycloak provider realization is required")
-	}
-	instance, err := d.realization.Apply(ctx)
+	files, err := EnsureKeycloakFilesAt(ctx, d.app, d.issuer, d.dataDir, d.namespace)
 	if err != nil {
-		return fmt.Errorf("realize Keycloak provider: %w", err)
+		return err
 	}
-	d.instance = instance
-	publicBase := strings.TrimRight(strings.TrimSpace(instance.PublicBaseURL), "/")
-	if publicBase == "" {
-		return errors.New("Keycloak realization returned an empty public base URL")
+	d.files = files
+	publicBase, err := d.publicBaseURL()
+	if err != nil {
+		return err
 	}
-
+	if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+		return err
+	}
+	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
+		if err := cleaner.RemoveProjectServices(ctx, files.Project, "keycloak-public", "keycloak-admin"); err != nil {
+			return fmt.Errorf("remove legacy Keycloak access gateways: %w", err)
+		}
+	}
+	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("validate Keycloak provider: %w", err)
+	}
+	if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return fmt.Errorf("start Keycloak provider: %w", err)
+	}
 	admin, err := d.adminClient(ctx)
 	if err != nil {
 		return err
@@ -214,37 +219,84 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if !d.provisioned {
 		return errors.New("Keycloak identity was not provisioned")
 	}
-	client := d.instance.PublicHTTPClient
-	if client == nil {
-		return errors.New("Keycloak realization returned no public HTTP client")
+	client, err := keycloakPublicHTTPClient(d.files)
+	if err != nil {
+		return err
 	}
-	endpointIssuer := strings.TrimRight(d.instance.EndpointBaseURL, "/") + "/realms/" + url.PathEscape(d.realm)
-	publicIssuer := strings.TrimRight(d.instance.PublicBaseURL, "/") + "/realms/" + url.PathEscape(d.realm)
-	workloadIssuer := strings.TrimRight(d.instance.WorkloadBaseURL, "/") + "/realms/" + url.PathEscape(d.realm)
+	endpointIssuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
+	publicIssuer, err := d.publicIssuerURL()
+	if err != nil {
+		return err
+	}
 	discovery, err := FetchDiscoveryAt(ctx, client, endpointIssuer, publicIssuer)
 	if err != nil {
 		return err
 	}
-	workloadDiscovery := rebaseIdentityDiscovery(discovery, publicIssuer, workloadIssuer)
+
+	workloadDiscovery := rebaseIdentityDiscovery(discovery, publicIssuer, endpointIssuer)
+	trustBundle := d.files.PublicAccess.Material.CA
+	if isDevelopmentIdentityEnvironment(d.app.Environment) {
+		if err := d.ensureDevelopmentPublicRoute(ctx); err != nil {
+			return fmt.Errorf("reconcile canonical identity route before workload binding: %w", err)
+		}
+		gatewayFiles, err := devgateway.FilesFor(d.targetName())
+		if err != nil {
+			return err
+		}
+		workloadDiscovery = discovery
+		trustBundle = gatewayFiles.CA
+	}
+
 	d.discovery = discovery
-	return application.MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(
+	return application.MaterializeIdentityBindingWithWorkloadDiscovery(
 		d.app, d.appFiles, string(capability.ProviderKeycloak),
-		discovery, workloadDiscovery, d.clientID, d.clientSecret, d.instance.TrustBundle,
+		discovery, workloadDiscovery, d.clientID, d.clientSecret, trustBundle,
 	)
+}
+
+func (d *KeycloakDriver) ensureDevelopmentPublicRoute(ctx context.Context) error {
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
+	if err != nil {
+		return err
+	}
+	var owner, key, host string
+	switch placement.Scope {
+	case capability.ScopeShared:
+		owner = "shared/keycloak"
+		key = owner + "/login"
+		host, err = devaccess.SharedHost(d.targetName(), "identity")
+	case capability.ScopeApplication:
+		owner = "app/" + d.app.Name + "/" + d.app.Environment
+		key = owner + "/identity"
+		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	case capability.ScopeExternal:
+		return errors.New("external OIDC has no managed Keycloak development route")
+	default:
+		return fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+	if err != nil {
+		return err
+	}
+	route := devgateway.Route{
+		Key:        key,
+		Host:       host,
+		Upstream:   fmt.Sprintf("https://%s:%d", devaccess.ProviderAlias(d.files.Project, "identity"), keycloakHTTPSPort),
+		Network:    d.files.ConsumerNetwork,
+		TrustFile:  d.files.PublicAccess.Material.CA,
+		ServerName: d.files.PublicAccess.Material.ServerName,
+	}
+	return devgateway.UpsertOwnerRoutes(ctx, d.runtime, d.issuer, d.targetName(), owner, []devgateway.Route{route})
 }
 
 func (d *KeycloakDriver) VerifyExisting(ctx context.Context, binding capability.Binding, origins []string) error {
 	if err := d.SetApplicationOrigins(origins); err != nil {
 		return err
 	}
-	if d.realization == nil {
-		return errors.New("Keycloak provider realization is required")
-	}
-	instance, err := d.realization.Existing(ctx)
+	files, err := ExistingKeycloakFilesAt(d.app, d.dataDir, d.namespace)
 	if err != nil {
 		return err
 	}
-	d.instance = instance
+	d.files = files
 	return d.Verify(ctx, capability.Resource{}, binding)
 }
 
@@ -252,12 +304,15 @@ func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, bind
 	if binding.Identity == nil {
 		return errors.New("identity binding is required")
 	}
-	client := d.instance.PublicHTTPClient
-	if client == nil {
-		return errors.New("Keycloak realization returned no public HTTP client")
+	client, err := keycloakPublicHTTPClient(d.files)
+	if err != nil {
+		return err
 	}
-	endpointIssuer := strings.TrimRight(d.instance.EndpointBaseURL, "/") + "/realms/" + url.PathEscape(d.realm)
-	publicIssuer := strings.TrimRight(d.instance.PublicBaseURL, "/") + "/realms/" + url.PathEscape(d.realm)
+	endpointIssuer := d.files.PublicURL + "/realms/" + url.PathEscape(d.realm)
+	publicIssuer, err := d.publicIssuerURL()
+	if err != nil {
+		return err
+	}
 	discovery, err := FetchDiscoveryAt(ctx, client, endpointIssuer, publicIssuer)
 	if err != nil {
 		return err
@@ -276,18 +331,15 @@ func (d *KeycloakDriver) Verify(ctx context.Context, _ capability.Resource, bind
 }
 
 func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
-	if d.realization == nil {
-		return errors.New("Keycloak provider realization is required")
-	}
-	if d.instance.StateDir == "" {
-		instance, err := d.realization.Existing(ctx)
+	if d.files.Dir == "" {
+		files, err := ExistingKeycloakFilesAt(d.app, d.dataDir, d.namespace)
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		d.instance = instance
+		d.files = files
 	}
 	admin, err := d.adminClient(ctx)
 	if err != nil {
@@ -301,29 +353,36 @@ func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
 		return err
 	}
 	if placement.Scope == capability.ScopeApplication {
-		return d.realization.Destroy(ctx)
+		if err := d.runtime.DestroyProject(ctx, d.files.Project, d.files.Compose, d.files.Env); err != nil {
+			return fmt.Errorf("destroy app-scoped Keycloak provider: %w", err)
+		}
+		return os.RemoveAll(d.files.Dir)
 	}
-	return os.RemoveAll(filepath.Join(d.instance.StateDir, "scopes", d.realm))
+	scopeDir := filepath.Join(d.files.Dir, "scopes", d.realm)
+	return os.RemoveAll(scopeDir)
 }
 
 func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error) {
-	if d.instance.AdminHTTPClient == nil {
-		return nil, errors.New("Keycloak realization returned no admin HTTP client")
+	client, err := serviceaccess.NewHTTPClient(d.files.AdminAccess.Material, false)
+	if err != nil {
+		return nil, err
 	}
-	endpoint := strings.TrimRight(d.instance.EndpointBaseURL, "/")
-	if err := waitIdentityEndpoint(ctx, d.instance.AdminHTTPClient, endpoint+"/realms/master/.well-known/openid-configuration"); err != nil {
-		if diagnostics, ok := d.realization.(keycloakRealizationDiagnostics); ok {
-			if detail := strings.TrimSpace(diagnostics.Diagnostics(ctx)); detail != "" {
+	if err := waitIdentityEndpoint(ctx, client, d.files.AdminURL+"/realms/master/.well-known/openid-configuration"); err != nil {
+		if diagnostics, ok := d.runtime.(identityProjectDiagnostics); ok {
+			if detail := strings.TrimSpace(diagnostics.DiagnosticsProject(ctx, d.files.Project, d.files.Compose, d.files.Env)); detail != "" {
 				return nil, fmt.Errorf("wait for Keycloak admin endpoint: %w; runtime diagnostics:\n%s", err, detail)
 			}
 		}
 		return nil, fmt.Errorf("wait for Keycloak admin endpoint: %w", err)
 	}
+	values, err := readProtectedEnv(d.files.Env)
+	if err != nil {
+		return nil, err
+	}
 	admin := &keycloakAdmin{
-		endpoint: endpoint,
-		client:   d.instance.AdminHTTPClient,
-		user:     d.instance.AdminUsername,
-		password: d.instance.AdminPassword,
+		endpoint: d.files.AdminURL, client: client,
+		user:     values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
+		password: values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
 	}
 	if err := admin.login(ctx); err != nil {
 		return nil, err
@@ -332,10 +391,7 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 }
 
 func (d *KeycloakDriver) ensureClientSecret() (string, error) {
-	if strings.TrimSpace(d.instance.StateDir) == "" {
-		return "", errors.New("Keycloak realization returned no state directory")
-	}
-	dir := filepath.Join(d.instance.StateDir, "scopes", d.realm)
+	dir := filepath.Join(d.files.Dir, "scopes", d.realm)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
@@ -360,6 +416,47 @@ func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func (d *KeycloakDriver) targetName() string {
+	target := strings.TrimSpace(d.namespace)
+	if target == "" {
+		return "local"
+	}
+	return target
+}
+
+func (d *KeycloakDriver) publicBaseURL() (string, error) {
+	if !isDevelopmentIdentityEnvironment(d.app.Environment) {
+		return d.files.PublicURL, nil
+	}
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
+	if err != nil {
+		return "", err
+	}
+	var host string
+	switch placement.Scope {
+	case capability.ScopeShared:
+		host, err = devaccess.SharedHost(d.targetName(), "identity")
+	case capability.ScopeApplication:
+		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
+	case capability.ScopeExternal:
+		return "", errors.New("external OIDC has no managed Keycloak public URL")
+	default:
+		return "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+	if err != nil {
+		return "", err
+	}
+	return devgateway.URLForRuntime(d.targetName(), host, d.runtime), nil
+}
+
+func (d *KeycloakDriver) publicIssuerURL() (string, error) {
+	base, err := d.publicBaseURL()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(base, "/") + "/realms/" + url.PathEscape(d.realm), nil
 }
 
 func rebaseIdentityDiscovery(discovery application.IdentityDiscovery, fromIssuer, toIssuer string) application.IdentityDiscovery {
