@@ -197,7 +197,6 @@ func TestSelectGatewayHostPortMovesFromStalePersistedPort(t *testing.T) {
 	}
 }
 
-
 func TestURLForRuntimeIgnoresUninitializedGatewayStateAndSelectsFallback(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	target := "gateway-zero-state"
