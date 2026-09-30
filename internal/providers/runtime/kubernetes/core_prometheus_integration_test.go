@@ -152,7 +152,7 @@ func (r *kubernetesPrometheusRealization) Existing(context.Context) (metrics.Pro
 
 func (r *kubernetesPrometheusRealization) RegisterTarget(ctx context.Context, target metrics.PrometheusTarget) error {
 	base := dnsLabel(r.application)
-	serviceName := base + "-" + dnsLabel(target.Service)
+	serviceName := base + "-" + dnsLabel(target.Service) + "." + r.namespace + ".svc"
 	config := prometheusProofConfig(&target)
 	configMap := fmt.Sprintf(`apiVersion: v1
 kind: ConfigMap
