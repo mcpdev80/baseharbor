@@ -275,7 +275,7 @@ jobs:
           name: pre-release-source-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
 
   docker_normal:
