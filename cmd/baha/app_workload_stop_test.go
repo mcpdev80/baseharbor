@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestRepositoryWorkloadStopEnvironmentUsesSecretPlaceholders(t *testing.T) {
@@ -28,5 +29,23 @@ func TestRepositoryWorkloadStopEnvironmentUsesSecretPlaceholders(t *testing.T) {
 	}
 	if got := env["TOKEN_FILE"]; got != "/run/baseharbor/preflight/TOKEN_FILE" {
 		t.Fatalf("TOKEN_FILE placeholder = %q", got)
+	}
+}
+
+
+func TestWorkloadRuntimeCleanupResourcesPreservesVolumes(t *testing.T) {
+	resources := []bhruntime.ProjectResource{
+		{Kind: "container", Name: "demo-api"},
+		{Kind: "network", Name: "demo_default"},
+		{Kind: "volume", Name: "demo_data"},
+	}
+	got := workloadRuntimeCleanupResources(resources)
+	if len(got) != 2 {
+		t.Fatalf("cleanup resources = %#v, want container+network only", got)
+	}
+	for _, resource := range got {
+		if resource.Kind == "volume" {
+			t.Fatalf("repository-owned volume must be preserved: %#v", got)
+		}
 	}
 }
