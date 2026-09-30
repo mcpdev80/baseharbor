@@ -43,4 +43,13 @@ jobs:
               (.requires | type == "array")
             )
           ' "$tmp/demo/tests/gates.json" >/dev/null
+          jq -e --slurpfile gates "$tmp/demo/tests/gates.json" '
+            type == "object" and length > 0 and
+            all(to_entries[];
+              (.value | type == "array" and length > 0) and
+              all(.value[]; type == "string" and length > 0)
+            ) and
+            ([.[][]] | length) == ($gates[0] | length) and
+            ([.[][]] | sort) == ([$gates[0][].name] | sort)
+          ' "$tmp/demo/tests/pre-release-suites.json" >/dev/null
           printf 'demo_sha=%s\n' "$demo_sha" >> "$GITHUB_OUTPUT"
