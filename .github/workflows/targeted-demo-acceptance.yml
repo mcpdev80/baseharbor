@@ -228,6 +228,12 @@ jobs:
             bash tests/debug-podman-container-lookup/run.sh
           elif [ "$DEMO_GATE" = "debug-recovery-evidence" ]; then
             bash tests/debug-recovery-evidence/run.sh
+          elif [ "$DEMO_GATE" = "debug-keycloak-runtime" ]; then
+            export DEMO_ROOT="$WORKDIR"
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash tests/debug-keycloak-runtime/run.sh
           elif [ "$DEMO_GATE" = "debug-restore-route" ]; then
             export DEMO_ROOT="$WORKDIR"
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
