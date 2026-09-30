@@ -115,17 +115,20 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		destroyTargetBestEffort(parent, target, &results)
 	}
 
-	removeFullDestroyLocalState(&results)
+	blockers := countFullDestroyBlockers(results)
+	if blockers == 0 {
+		removeFullDestroyLocalState(&results)
+	} else {
+		results = append(results,
+			fullDestroyResult{Status: "SKIPPED", Resource: "xdg-data", Detail: "preserved because runtime cleanup is incomplete; retry destroy after resolving the reported failures"},
+			fullDestroyResult{Status: "SKIPPED", Resource: "xdg-config", Detail: "preserved because runtime cleanup is incomplete; ownership evidence remains available for retry"},
+		)
+	}
 	renderFullDestroyReport(out, results)
 
-	failures := 0
-	for _, result := range results {
-		if result.Status == "FAILED" {
-			failures++
-		}
-	}
-	if failures > 0 {
-		return fmt.Errorf("full destroy completed with %d cleanup failure(s); review the cleanup report", failures)
+	blockers = countFullDestroyBlockers(results)
+	if blockers > 0 {
+		return fmt.Errorf("full destroy did not complete; %d cleanup result(s) require attention and BaseHarbor state was preserved", blockers)
 	}
 	fmt.Fprintln(out, "BaseHarbor-managed installation state was permanently removed.")
 	return nil
@@ -400,20 +403,22 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		return
 	}
 	if strings.TrimSpace(target.RuntimeProvider) == "" {
-		if err := os.RemoveAll(dataDir); err != nil {
-			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
-		} else {
-			*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state", Detail: "runtime provider unknown; no external runtime resources were guessed"})
-		}
+		*results = append(*results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   target.Name,
+			Resource: "target-state",
+			Detail:   "preserved because runtime provider is unknown; refusing to discard ownership evidence before external cleanup can be verified",
+		})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
+	cleanupResultStart := len(*results)
 	compose, composeErr := detectRuntimeForTarget(ctx, target)
 	if composeErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-provider", Detail: composeErr.Error()})
-		_ = os.RemoveAll(dataDir)
+		*results = append(*results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-state", Detail: "preserved because runtime cleanup could not be verified"})
 		return
 	}
 
@@ -477,6 +482,15 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "control-plane-state", Detail: filesErr.Error()})
 	}
 
+	if countFullDestroyBlockers((*results)[cleanupResultStart:]) > 0 {
+		*results = append(*results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   target.Name,
+			Resource: "target-state",
+			Detail:   "preserved because one or more target runtime resources could not be removed or verified",
+		})
+		return
+	}
 	if err := os.RemoveAll(dataDir); err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
 	} else {
@@ -525,4 +539,15 @@ func renderFullDestroyReport(out io.Writer, results []fullDestroyResult) {
 			fmt.Fprintf(out, "  %-9s %-16s %s: %s\n", result.Status, target, result.Resource, result.Detail)
 		}
 	}
+}
+
+
+func countFullDestroyBlockers(results []fullDestroyResult) int {
+	count := 0
+	for _, result := range results {
+		if result.Status == "FAILED" || result.Status == "SKIPPED" {
+			count++
+		}
+	}
+	return count
 }
