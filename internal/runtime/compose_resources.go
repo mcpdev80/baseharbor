@@ -257,6 +257,82 @@ func (c Compose) RemoveProjectServices(ctx context.Context, project string, serv
 	return nil
 }
 
+func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) ([]ProjectResource, error) {
+	if c.command == "" {
+		return nil, ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil, errors.New("project is required")
+	}
+
+	type inventorySpec struct {
+		kind            string
+		listArgs        []string
+		inspectTemplate string
+	}
+	specs := []inventorySpec{
+		{
+			kind:            "container",
+			listArgs:        []string{"container", "ls", "-a", "--format", "{{.Names}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}`,
+		},
+		{
+			kind:            "network",
+			listArgs:        []string{"network", "ls", "--format", "{{.Name}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+		},
+		{
+			kind:            "volume",
+			listArgs:        []string{"volume", "ls", "--format", "{{.Name}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+		},
+	}
+
+	var resources []ProjectResource
+	for _, spec := range specs {
+		listed, err := c.directOutput(ctx, spec.listArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("list %s resources for project %s: %w", spec.kind, project, err)
+		}
+		var names []string
+		for _, line := range strings.Split(listed, "\n") {
+			if name := strings.TrimSpace(line); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+
+		args := []string{spec.kind, "inspect", "--format", spec.inspectTemplate}
+		args = append(args, names...)
+		inspected, err := c.directOutput(ctx, args...)
+		if err != nil {
+			return nil, fmt.Errorf("inspect %s resources for project %s: %w", spec.kind, project, err)
+		}
+		for _, line := range strings.Split(inspected, "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), "|", 3)
+			if len(parts) != 3 {
+				continue
+			}
+			name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+			owner := firstRuntimeLabel(parts[1], parts[2])
+			if name == "" || owner != project {
+				continue
+			}
+			resources = append(resources, ProjectResource{Kind: spec.kind, Name: name})
+		}
+	}
+	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Kind != resources[j].Kind {
+			return resources[i].Kind < resources[j].Kind
+		}
+		return resources[i].Name < resources[j].Name
+	})
+	return resources, nil
+}
+
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
 	if c.command == "" {
 		return ErrRuntimeNotFound
