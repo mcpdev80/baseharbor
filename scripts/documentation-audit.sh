@@ -125,7 +125,7 @@ grep -Fq "Quadlet" docs/reference/runtime-compose.md
 grep -Fq "Quadlet" docs/de/explanation/architecture.md
 
 grep -Fq 'PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose' .github/workflows/podman-acceptance.yml
-grep -Fq 'PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose' .github/workflows/pre-release.yml
+grep -Fq 'PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose' .github/workflows/pre-release-runtime-suite.yml
 
 echo "Documentation audit"
 echo
