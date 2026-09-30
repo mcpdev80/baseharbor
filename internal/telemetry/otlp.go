@@ -226,6 +226,9 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
 	}
+	if provider == capability.ProviderOTelCollector {
+		d.realization = newRuntimeOTLPRealization(nil, m, nil, dataDir, namespace)
+	}
 	resource := capability.Resource{
 		Application: m.Name,
 		Kind:        capability.TelemetryOTLP,
