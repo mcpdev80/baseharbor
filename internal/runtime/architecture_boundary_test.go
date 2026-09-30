@@ -40,6 +40,19 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		"DockerProvider": {},
 		"PodmanProvider": {},
 	}
+	forbiddenCoreSelectors := map[string]struct{}{
+		"ExecProject":                {},
+		"ExecProjectInput":           {},
+		"ConfigProject":              {},
+		"UpProject":                  {},
+		"DownProject":                {},
+		"StopProject":                {},
+		"DestroyProject":             {},
+		"DestroyProjectRemoveOrphans": {},
+		"RunningServicesProject":     {},
+		"InspectProjectResources":    {},
+		"DiagnosticsProject":         {},
+	}
 
 	for _, relativeRoot := range coreRoots {
 		base := filepath.Join(root, filepath.FromSlash(relativeRoot))
@@ -88,6 +101,11 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 				case *ast.SelectorExpr:
 					if n.Sel.Name == "Engine" {
 						t.Errorf("%s:%d calls product runtime Engine() from portable core", relativePath(root, path), fileSet.Position(n.Pos()).Line)
+					}
+					if relativeRoot == "internal/application" || relativeRoot == "internal/deployment" {
+						if _, forbidden := forbiddenCoreSelectors[n.Sel.Name]; forbidden {
+							t.Errorf("%s:%d uses runtime-project lifecycle selector %s from freeze-relevant core", relativePath(root, path), fileSet.Position(n.Pos()).Line, n.Sel.Name)
+						}
 					}
 					if ident, ok := n.X.(*ast.Ident); ok {
 						if _, runtimeImport := runtimeAliases[ident.Name]; runtimeImport {
