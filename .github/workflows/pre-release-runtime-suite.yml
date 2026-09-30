@@ -1,4 +1,4 @@
-name: "Pre-Release · Runtime Suite"
+name: "Runtime Suite"
 
 on:
   workflow_call:
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   runtime-suite:
-    name: ${{ inputs.runtime }}-${{ inputs.suite }}
+    name: ${{ inputs.runtime == 'podman' && 'Podman' || 'Docker' }} · ${{ inputs.suite == 'normal' && 'Core Journey' || 'Operations' }}
     runs-on: ${{ inputs.runtime == 'podman' && fromJSON('["self-hosted","Linux","X64","baseharbor","podman"]') || fromJSON('["self-hosted","Linux","X64","baseharbor","docker"]') }}
     timeout-minutes: 90
     env:
