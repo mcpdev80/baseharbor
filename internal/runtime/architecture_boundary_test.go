@@ -41,25 +41,25 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		"PodmanProvider": {},
 	}
 	runtimeAdapterFiles := map[string]struct{}{
-		"internal/application/postgres_backup.go":          {},
-		"internal/application/runtime_lifecycle.go":        {},
-		"internal/application/runtime_postgres.go":         {},
-		"internal/application/shared_backends.go":          {},
-		"internal/application/shared_backends_runtime.go":  {},
-		"internal/application/workload.go":                 {},
+		"internal/application/postgres_backup.go":         {},
+		"internal/application/runtime_lifecycle.go":       {},
+		"internal/application/runtime_postgres.go":        {},
+		"internal/application/shared_backends.go":         {},
+		"internal/application/shared_backends_runtime.go": {},
+		"internal/application/workload.go":                {},
 	}
 	forbiddenCoreSelectors := map[string]struct{}{
-		"ExecProject":                {},
-		"ExecProjectInput":           {},
-		"ConfigProject":              {},
-		"UpProject":                  {},
-		"DownProject":                {},
-		"StopProject":                {},
-		"DestroyProject":             {},
+		"ExecProject":                 {},
+		"ExecProjectInput":            {},
+		"ConfigProject":               {},
+		"UpProject":                   {},
+		"DownProject":                 {},
+		"StopProject":                 {},
+		"DestroyProject":              {},
 		"DestroyProjectRemoveOrphans": {},
-		"RunningServicesProject":     {},
-		"InspectProjectResources":    {},
-		"DiagnosticsProject":         {},
+		"RunningServicesProject":      {},
+		"InspectProjectResources":     {},
+		"DiagnosticsProject":          {},
 	}
 
 	for _, relativeRoot := range coreRoots {
