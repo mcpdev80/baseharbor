@@ -230,7 +230,7 @@ exit 2
 		"container rm -f current",
 		"container rm -f orphan",
 		"network rm shared-net",
-		"volume rm -f shared-vol",
+		"volume rm shared-vol",
 	} {
 		if !strings.Contains(calls, want) {
 			t.Fatalf("full owned-project destroy missing %q:\\n%s", want, calls)
