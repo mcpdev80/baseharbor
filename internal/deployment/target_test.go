@@ -137,8 +137,13 @@ func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected DeploymentRecordStateError, got %T: %v", err, err)
 	}
-	if stateErr.Kind != "incomplete" || stateErr.Identity != id {
+	if stateErr.Kind != "incomplete" ||
+		stateErr.Identity.Target != id.Target ||
+		stateErr.Identity.DeploymentID != id.DeploymentID {
 		t.Fatalf("unexpected state error: %#v", stateErr)
+	}
+	if stateErr.Identity.ApplicationID != "" || stateErr.Identity.Application != "" || stateErr.Identity.Environment != "" {
+		t.Fatalf("missing deployment record must not invent semantic identity: %#v", stateErr.Identity)
 	}
 }
 
