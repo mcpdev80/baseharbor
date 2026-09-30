@@ -19,5 +19,3 @@ ADRs preserve decisions and rationale. They do not replace current-state documen
 - [0015 — Managed Runtime API lifecycle](0015-managed-runtime-api-lifecycle.md)
 
 - [0016 — External Developer Portals integrate through emitted contracts](0016-external-developer-portals-integration-by-contract.md)
-
-- [0017 — Stable application and deployment identity](0017-stable-application-and-deployment-identity.md)

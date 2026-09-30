@@ -72,8 +72,6 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 
 		metadata := application.RecoveryMetadata{
 			Version:         application.LastRecoveryMetadataVersion,
-			ApplicationID:   m.ApplicationID,
-			DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 			Application:     m.Name,
 			Environment:     m.Environment,
 			RestoredAt:      time.Now().UTC(),

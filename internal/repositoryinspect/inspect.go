@@ -89,11 +89,6 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 			}
 		}
-		if loaded.Services.KeyValue {
-			for _, name := range application.KeyValueInstanceNames(loaded) {
-				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.key-value", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-			}
-		}
 		if loaded.Services.Secrets {
 			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "secrets", Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
 		}

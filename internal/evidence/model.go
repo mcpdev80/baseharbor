@@ -69,8 +69,6 @@ type AuditEvent struct {
 	Timestamp           time.Time `json:"timestamp"`
 	Actor               Actor     `json:"actor"`
 	Target              string    `json:"target"`
-	ApplicationID       string    `json:"application_id,omitempty"`
-	DeploymentID        string    `json:"deployment_id,omitempty"`
 	Application         string    `json:"application"`
 	Environment         string    `json:"environment"`
 	Operation           string    `json:"operation"`
@@ -97,8 +95,6 @@ type Bundle struct {
 	ContractVersion string       `json:"contract_version"`
 	SchemaVersion   string       `json:"schema_version"`
 	Target          string       `json:"target"`
-	ApplicationID   string       `json:"application_id"`
-	DeploymentID    string       `json:"deployment_id"`
 	Application     string       `json:"application"`
 	Environment     string       `json:"environment"`
 	Desired         []Record     `json:"desired_state"`

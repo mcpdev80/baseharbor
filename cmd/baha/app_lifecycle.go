@@ -95,10 +95,10 @@ func appDownCommand(store application.Store) *cli.Command {
 					return fmt.Errorf("stop application-scoped traces provider: %w", err)
 				}
 			}
-			if removed, err := destroyRepositoryWorkloadRuntime(ctx, compose, resolved, files); err != nil {
+			if stopped, err := stopRepositoryWorkload(ctx, compose, resolved, files); err != nil {
 				return err
-			} else if removed {
-				term.Result("STOPPED", "workload", "repository workload containers and networks removed; application-owned volumes preserved")
+			} else if stopped {
+				term.Result("STOPPED", "workload", "repository workload stopped; application-owned volumes preserved")
 			}
 			if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 				return fmt.Errorf("stop application-scoped logs provider: %w", err)

@@ -102,7 +102,7 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 			binding.Workload = "service/" + resource.Name
 			binding.Logs = &capability.LogsBinding{
 				Direction: "collect",
-				Format:    "runtime-stream",
+				Format:    "syslog-rfc5424",
 				Service:   resource.Name,
 			}
 		}
@@ -138,7 +138,7 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 	switch kind {
 	case capability.SQL:
 		return capability.PostgreSQL, nil
-	case capability.KeyValue, capability.DurableKeyValue:
+	case capability.KeyValue:
 		return capability.Valkey, nil
 	case capability.ExposureHTTP:
 		return capability.Caddy, nil

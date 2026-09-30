@@ -322,8 +322,8 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 		return err
 	}
 
-	connections := make([]map[string]any, 0, len(ValkeyInstanceNames(m)))
-	for _, instance := range ValkeyInstanceNames(m) {
+	connections := make([]map[string]any, 0, len(CacheInstanceNames(m)))
+	for _, instance := range CacheInstanceNames(m) {
 		password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
 		if err != nil {
 			return err

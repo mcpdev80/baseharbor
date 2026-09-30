@@ -27,40 +27,10 @@ const (
 	keycloakHTTPSPort  = 8443
 )
 
-// KeycloakRuntime is the legacy local-runtime realization used by the current
-// Docker/Podman reference implementation.
 type KeycloakRuntime interface {
 	ConfigProject(context.Context, string, string, string) error
 	UpProject(context.Context, string, string, string) error
 	DestroyProject(context.Context, string, string, string) error
-}
-
-// KeycloakLifecycle is the provider-realization boundary consumed by identity
-// semantics. It deliberately avoids Compose/project lifecycle vocabulary.
-type KeycloakLifecycle interface {
-	Validate(context.Context, KeycloakFiles) error
-	Apply(context.Context, KeycloakFiles) error
-	Destroy(context.Context, KeycloakFiles) error
-}
-
-type keycloakRuntimeLifecycle struct {
-	runtime KeycloakRuntime
-}
-
-func NewKeycloakLifecycle(runtime KeycloakRuntime) KeycloakLifecycle {
-	return keycloakRuntimeLifecycle{runtime: runtime}
-}
-
-func (l keycloakRuntimeLifecycle) Validate(ctx context.Context, files KeycloakFiles) error {
-	return l.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env)
-}
-
-func (l keycloakRuntimeLifecycle) Apply(ctx context.Context, files KeycloakFiles) error {
-	return l.runtime.UpProject(ctx, files.Project, files.Compose, files.Env)
-}
-
-func (l keycloakRuntimeLifecycle) Destroy(ctx context.Context, files KeycloakFiles) error {
-	return l.runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env)
 }
 
 type KeycloakFiles struct {

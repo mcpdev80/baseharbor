@@ -24,16 +24,6 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			Durable:         true,
 		})
 	}
-	for _, instance := range application.KeyValueInstanceNames(m) {
-		contributors = append(contributors, RecoveryContributor{
-			StateClass:      StateDurableKeyValue,
-			LogicalResource: instance,
-			Ownership:       "application",
-			Support:         RecoveryUnsupported,
-			Durable:         true,
-			Reason:          "Valkey AOF persistence is managed and verified, but scoped database.key-value backup/restore export is not implemented yet",
-		})
-	}
 	if m.Services.Secrets {
 		contributors = append(contributors, RecoveryContributor{
 			StateClass:      StateSecrets,

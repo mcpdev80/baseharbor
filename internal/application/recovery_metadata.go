@@ -8,12 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 const (
-	LastRecoveryMetadataVersion = 2
+	LastRecoveryMetadataVersion = 1
 	lastRecoveryMetadataName    = "last-recovery.json"
 )
 
@@ -21,8 +19,6 @@ var ErrNoRecoveryMetadata = errors.New("no application recovery metadata recorde
 
 type RecoveryMetadata struct {
 	Version         int                           `json:"version"`
-	ApplicationID   string                        `json:"application_id"`
-	DeploymentID    string                        `json:"deployment_id"`
 	Application     string                        `json:"application"`
 	Environment     string                        `json:"environment"`
 	RestoredAt      time.Time                     `json:"restored_at"`
@@ -34,12 +30,6 @@ type RecoveryMetadata struct {
 func (m RecoveryMetadata) Validate() error {
 	if m.Version != LastRecoveryMetadataVersion {
 		return fmt.Errorf("unsupported recovery metadata version %d", m.Version)
-	}
-	if err := stableid.ValidateUUIDv4("application", m.ApplicationID); err != nil {
-		return err
-	}
-	if err := stableid.ValidateUUIDv4("deployment", m.DeploymentID); err != nil {
-		return err
 	}
 	if err := validateSlug("application name", m.Application); err != nil {
 		return err

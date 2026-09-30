@@ -653,17 +653,6 @@ func quadletStopProject(ctx context.Context, project QuadletProject, selected []
 
 func quadletRemoveProject(ctx context.Context, project QuadletProject, destroyVolumes bool) error {
 	_ = quadletStopProject(ctx, project, nil)
-
-	containerNames := make([]string, 0, len(project.Containers))
-	for _, name := range project.Containers {
-		if name = strings.TrimSpace(name); name != "" {
-			containerNames = append(containerNames, name)
-		}
-	}
-	if err := quadletRemoveRuntimeResources(ctx, "container", containerNames); err != nil {
-		return err
-	}
-
 	dir, err := quadletUserUnitDir()
 	if err != nil {
 		return err

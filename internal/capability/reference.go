@@ -8,7 +8,7 @@ import "fmt"
 // registry layers describe portable intent, placement and ownership.
 var (
 	PostgreSQL    = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
-	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue, DurableKeyValue}}
+	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
 	OpenBao       = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
 	Caddy         = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
 	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
@@ -38,8 +38,8 @@ var (
 	ValkeyIntegration = IntegrationDescriptor{
 		ID: "baseharbor/valkey", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Valkey,
-		Services:        []ServiceKind{ServiceCache, ServiceKeyValue},
-		Capabilities:    []SpecificationID{KeyValueV1.ID, DurableKeyValueV1.ID},
+		Services:        []ServiceKind{ServiceCache},
+		Capabilities:    []SpecificationID{KeyValueV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Interfaces:      []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{

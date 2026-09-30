@@ -45,8 +45,6 @@ func recordApplicationAudit(ctx context.Context, resolved resolvedApplication, o
 		event.Actor.Methods = append([]string(nil), principal.Methods...)
 		event.AuthorizationResult = "allow"
 	}
-	event.ApplicationID = resolved.Manifest.ApplicationID
-	event.DeploymentID = resolved.DeploymentIdentity.DeploymentID
 	event.LifecycleResult = outcome
 	event.VerificationResult = verification
 	event.Ownership = "baseharbor"

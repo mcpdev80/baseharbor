@@ -17,7 +17,7 @@ func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvide
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	for _, instance := range ValkeyInstanceNames(m) {
+	for _, instance := range CacheInstanceNames(m) {
 		app := sharedBackendApplicationKey(m)
 		state, err := loadSharedBackendState(shared.State, m.Environment)
 		if err != nil {

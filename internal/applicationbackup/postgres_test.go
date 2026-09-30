@@ -24,7 +24,7 @@ func TestPostgresPayloadEntriesRoundTrip(t *testing.T) {
 	}
 
 	createdAt := time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC)
-	archive, err := Build(m.ApplicationID, "mailflow", "dev", createdAt, entries, []byte("correct horse battery staple"))
+	archive, err := Build("mailflow", "dev", createdAt, entries, []byte("correct horse battery staple"))
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

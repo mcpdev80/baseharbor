@@ -51,9 +51,8 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	target := configureTestTarget(t)
 	root := t.TempDir()
 	manifest := application.Manifest{
-		Version:       application.CurrentVersion,
-		ApplicationID: application.MustNewApplicationID(),
-		Name:          "mcp-demo",
+		Version:     application.CurrentVersion,
+		Name:        "mcp-demo",
 		Environment: "dev",
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",

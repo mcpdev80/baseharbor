@@ -15,8 +15,6 @@ func TestRecoveryMetadataRoundTripAndPermissions(t *testing.T) {
 	backupCreatedAt := time.Date(2026, 9, 11, 11, 0, 0, 0, time.UTC)
 	metadata := RecoveryMetadata{
 		Version:         LastRecoveryMetadataVersion,
-		ApplicationID:   "11111111-1111-4111-8111-111111111111",
-		DeploymentID:    "22222222-2222-4222-8222-222222222222",
 		Application:     "mailflow",
 		Environment:     "production",
 		RestoredAt:      restoredAt,

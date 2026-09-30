@@ -6,8 +6,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 const (
@@ -21,7 +19,6 @@ const (
 
 type Manifest struct {
 	SchemaVersion int       `json:"schema_version"`
-	ApplicationID string    `json:"application_id"`
 	Application   string    `json:"application"`
 	Environment   string    `json:"environment"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -38,9 +35,6 @@ type Entry struct {
 func (m Manifest) Validate() error {
 	if m.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported backup schema version %d", m.SchemaVersion)
-	}
-	if err := stableid.ValidateUUIDv4("application", m.ApplicationID); err != nil {
-		return err
 	}
 	if strings.TrimSpace(m.Application) == "" {
 		return errors.New("backup application is required")

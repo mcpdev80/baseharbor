@@ -26,25 +26,28 @@ func BuildPlan(m Manifest) (Plan, error) {
 	}
 
 	p := Plan{ContractVersion: "v1", Application: m.Name, Environment: m.Environment}
+	if HasManagedRuntimeServices(m) {
+		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "network", Description: fmt.Sprintf("ensure isolated network for %s-%s", m.Name, m.Environment)})
+	}
 	for _, capability := range contract.Capabilities {
 		switch capability.Kind {
 		case CapabilitySQL:
-			resource := "database.sql:" + capability.Name
+			resource := "postgres"
+			if capability.Name != defaultServiceInstance {
+				resource += ":" + capability.Name
+			}
 			p.Actions = append(p.Actions,
-				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure SQL capability resource %s", capability.Name)},
-				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify application-facing SQL access for %s", capability.Name)},
+				Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated PostgreSQL data volume for %s", capability.Name)},
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated PostgreSQL service for %s", capability.Name)},
 			)
 		case CapabilityKeyValue:
-			resource := "cache.key-value:" + capability.Name
+			resource := "valkey"
+			if capability.Name != defaultServiceInstance {
+				resource += ":" + capability.Name
+			}
 			p.Actions = append(p.Actions,
-				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure key-value cache capability resource %s", capability.Name)},
-				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify application-facing key-value cache access for %s", capability.Name)},
-			)
-		case CapabilityDurableKeyValue:
-			resource := "database.key-value:" + capability.Name
-			p.Actions = append(p.Actions,
-				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure durable key-value database capability resource %s", capability.Name)},
-				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify durable application-facing key-value write/read access for %s", capability.Name)},
+				Action{Kind: "ensure", Resource: resource + "-volume", Description: fmt.Sprintf("ensure dedicated Valkey data volume for %s", capability.Name)},
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure dedicated authenticated Valkey service for %s", capability.Name)},
 			)
 		case CapabilityObjectStorageS3:
 			p.Actions = append(p.Actions,
@@ -99,7 +102,7 @@ func BuildPlan(m Manifest) (Plan, error) {
 		}
 	}
 	if HasExplicitWorkload(m) {
-		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "workload", Description: "start and verify repository workload"})
+		p.Actions = append(p.Actions, Action{Kind: "ensure", Resource: "workload", Description: "start and verify repository Compose workload"})
 	}
 	return p, nil
 }

@@ -646,10 +646,6 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 	if err != nil {
 		return err
 	}
-
-	var units []string
-	var direct []RuntimeContainer
-	seenUnits := map[string]struct{}{}
 	for _, container := range containers {
 		if container.Project != project || !container.Running {
 			continue
@@ -663,29 +659,16 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 			return fmt.Errorf("inspect Quadlet unit for %s/%s (%s): %w", project, container.Service, container.Name, inspectErr)
 		}
 		unit := podmanSystemdUnitLabel(unitOut)
-		if unit == "" {
-			direct = append(direct, container)
+		if unit != "" {
+			if _, stopErr := quadletSystemctlCombined(ctx, "stop", unit); stopErr != nil {
+				return fmt.Errorf("stop owned Quadlet service %s for %s/%s: %w", unit, project, container.Service, stopErr)
+			}
 			continue
 		}
-		if _, seen := seenUnits[unit]; seen {
-			continue
-		}
-		seenUnits[unit] = struct{}{}
-		units = append(units, unit)
-	}
-	sort.Strings(units)
-
-	if len(units) > 0 {
-		if _, stopErr := quadletSystemctlCombined(ctx, append([]string{"stop"}, units...)...); stopErr != nil {
-			return fmt.Errorf("stop owned Quadlet services for project %s: %w", project, stopErr)
-		}
-	}
-	for _, container := range direct {
 		if _, stopErr := p.DirectOutput(ctx, "container", "stop", container.Name); stopErr != nil {
 			return fmt.Errorf("stop owned Podman container %s/%s (%s): %w", project, container.Service, container.Name, stopErr)
 		}
 	}
-
 	remaining, err := p.ListRuntimeContainers(ctx)
 	if err != nil {
 		return err
@@ -703,38 +686,6 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 	if err != nil {
 		return err
 	}
-
-	var containerUnits []string
-	seenUnits := map[string]struct{}{}
-	for _, resource := range existing {
-		if resource.Kind != "container" {
-			continue
-		}
-		unitOut, inspectErr := p.DirectOutput(ctx,
-			"container", "inspect", "--format",
-			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
-			resource.Name,
-		)
-		if inspectErr != nil {
-			return fmt.Errorf("inspect Quadlet unit for owned container %s: %w", resource.Name, inspectErr)
-		}
-		unit := podmanSystemdUnitLabel(unitOut)
-		if unit == "" {
-			continue
-		}
-		if _, seen := seenUnits[unit]; seen {
-			continue
-		}
-		seenUnits[unit] = struct{}{}
-		containerUnits = append(containerUnits, unit)
-	}
-	sort.Strings(containerUnits)
-	if len(containerUnits) > 0 {
-		if _, stopErr := quadletSystemctlCombined(ctx, append([]string{"stop"}, containerUnits...)...); stopErr != nil {
-			return fmt.Errorf("stop owned Quadlet services before resource removal for project %s: %w", project, stopErr)
-		}
-	}
-
 	for _, kind := range []string{"container", "network", "volume"} {
 		for _, resource := range existing {
 			if resource.Kind != kind {

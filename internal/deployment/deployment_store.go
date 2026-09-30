@@ -9,40 +9,14 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
-const DeploymentRecordVersion = 2
+const DeploymentRecordVersion = 1
 
 type DeploymentIdentity struct {
-	DeploymentID  string `json:"deployment_id"`
-	ApplicationID string `json:"application_id"`
-	Target        string `json:"target"`
-	Application   string `json:"application"`
-	Environment   string `json:"environment"`
-}
-
-func NewDeploymentIdentity(target, applicationID, application, environment string) (DeploymentIdentity, error) {
-	id, err := stableid.NewUUIDv4("deployment")
-	if err != nil {
-		return DeploymentIdentity{}, err
-	}
-	identity := DeploymentIdentity{
-		DeploymentID:  id,
-		ApplicationID: strings.TrimSpace(applicationID),
-		Target:        strings.TrimSpace(target),
-		Application:   strings.TrimSpace(application),
-		Environment:   strings.TrimSpace(environment),
-	}
-	if err := identity.Validate(); err != nil {
-		return DeploymentIdentity{}, err
-	}
-	return identity, nil
-}
-
-func ValidateDeploymentID(id string) error {
-	return stableid.ValidateUUIDv4("deployment", id)
+	Target      string `json:"target"`
+	Application string `json:"application"`
+	Environment string `json:"environment"`
 }
 
 type DeploymentSource struct {
@@ -84,8 +58,7 @@ func (e *DeploymentRecordStateError) Error() string {
 	if e == nil {
 		return "deployment record state error"
 	}
-	return fmt.Sprintf("%s deployment state for %s/%s/%s [%s]: %v",
-		e.Kind, e.Identity.Target, e.Identity.Application, e.Identity.Environment, e.Identity.DeploymentID, e.Err)
+	return fmt.Sprintf("%s deployment state for %s/%s/%s: %v", e.Kind, e.Identity.Target, e.Identity.Application, e.Identity.Environment, e.Err)
 }
 
 func (e *DeploymentRecordStateError) Unwrap() error {
@@ -104,42 +77,30 @@ func DeploymentRecordState(err error) (*DeploymentRecordStateError, bool) {
 }
 
 func (id DeploymentIdentity) Validate() error {
-	if err := ValidateDeploymentID(id.DeploymentID); err != nil {
-		return err
-	}
-	if err := stableid.ValidateUUIDv4("application", id.ApplicationID); err != nil {
-		return err
-	}
 	if err := ValidateTargetName(id.Target); err != nil {
 		return err
 	}
-	if strings.TrimSpace(id.Application) == "" || strings.ContainsAny(id.Application, `/\`) {
+	if strings.TrimSpace(id.Application) == "" || strings.ContainsAny(id.Application, `/\\`) {
 		return fmt.Errorf("invalid application %q", id.Application)
 	}
-	if strings.TrimSpace(id.Environment) == "" || strings.ContainsAny(id.Environment, `/\`) {
+	if strings.TrimSpace(id.Environment) == "" || strings.ContainsAny(id.Environment, `/\\`) {
 		return fmt.Errorf("invalid environment %q", id.Environment)
 	}
 	return nil
 }
 
 func DeploymentRoot(id DeploymentIdentity) (string, error) {
-	if err := ValidateDeploymentID(id.DeploymentID); err != nil {
-		return "", err
-	}
-	if err := ValidateTargetName(id.Target); err != nil {
+	if err := id.Validate(); err != nil {
 		return "", err
 	}
 	root, err := TargetStateRoot(id.Target)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "deployments", id.DeploymentID), nil
+	return filepath.Join(root, "deployments", id.Application, id.Environment), nil
 }
 
 func SaveDeploymentRecord(record DeploymentRecord) error {
-	if err := record.Identity.Validate(); err != nil {
-		return err
-	}
 	if record.Version == 0 {
 		record.Version = DeploymentRecordVersion
 	}
@@ -173,41 +134,23 @@ func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
 	if err != nil {
 		return DeploymentRecord{}, err
 	}
-	return loadDeploymentRecordFile(id.Target, id.DeploymentID, filepath.Join(root, "deployment.json"), &id)
-}
-
-func loadDeploymentRecordFile(target, deploymentID, path string, expected *DeploymentIdentity) (DeploymentRecord, error) {
-	identity := DeploymentIdentity{Target: target, DeploymentID: deploymentID}
+	path := filepath.Join(root, "deployment.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return DeploymentRecord{}, &DeploymentRecordStateError{Identity: identity, Kind: "incomplete", Err: fmt.Errorf("deployment.json is missing: %w", os.ErrNotExist)}
+			return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "incomplete", Err: fmt.Errorf("deployment.json is missing: %w", os.ErrNotExist)}
 		}
 		return DeploymentRecord{}, err
 	}
 	var record DeploymentRecord
 	if err := json.Unmarshal(data, &record); err != nil {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: identity, Kind: "corrupt", Err: fmt.Errorf("parse deployment.json: %w", err)}
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: fmt.Errorf("parse deployment.json: %w", err)}
 	}
 	if record.Version != DeploymentRecordVersion {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("unsupported deployment record version %d", record.Version)}
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: fmt.Errorf("unsupported deployment record version %d", record.Version)}
 	}
-	if err := record.Identity.Validate(); err != nil {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}
-	}
-	if record.Identity.Target != target || record.Identity.DeploymentID != deploymentID {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: errors.New("deployment record identity does not match storage path")}
-	}
-	if expected != nil {
-		if record.Identity.Target != expected.Target ||
-			record.Identity.DeploymentID != expected.DeploymentID ||
-			record.Identity.ApplicationID != expected.ApplicationID {
-			return DeploymentRecord{}, &DeploymentRecordStateError{
-				Identity: *expected,
-				Kind:     "corrupt",
-				Err:      errors.New("deployment record technical identity does not match requested identity"),
-			}
-		}
+	if record.Identity != id {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "corrupt", Err: errors.New("deployment record identity does not match storage path")}
 	}
 	return record, nil
 }
@@ -220,39 +163,12 @@ func DeleteDeploymentRecord(id DeploymentIdentity) error {
 	return os.RemoveAll(root)
 }
 
-func FindDeployment(target, applicationID, environment string) (DeploymentRecord, bool, error) {
-	records, err := ListDeployments(target)
-	if err != nil {
-		return DeploymentRecord{}, false, err
-	}
-	var match *DeploymentRecord
-	for i := range records {
-		record := records[i]
-		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
-			continue
-		}
-		if match != nil {
-			return DeploymentRecord{}, false, fmt.Errorf(
-				"multiple deployments claim application_id %s environment %s on target %s",
-				applicationID, environment, target,
-			)
-		}
-		copy := record
-		match = &copy
-	}
-	if match == nil {
-		return DeploymentRecord{}, false, nil
-	}
-	return *match, true, nil
-}
-
 func ListDeployments(target string) ([]DeploymentRecord, error) {
 	root, err := TargetStateRoot(target)
 	if err != nil {
 		return nil, err
 	}
-	records, _, err := listDeploymentRecords(filepath.Join(root, "deployments"), target, false)
-	return records, err
+	return listDeploymentRecords(filepath.Join(root, "deployments"))
 }
 
 func ListDeploymentsForDisplay(target string) ([]DeploymentRecord, []error, error) {
@@ -260,19 +176,10 @@ func ListDeploymentsForDisplay(target string) ([]DeploymentRecord, []error, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	return listDeploymentRecords(filepath.Join(root, "deployments"), target, true)
+	return listDeploymentRecordsBestEffort(filepath.Join(root, "deployments"))
 }
 
 func ListAllDeploymentsForDisplay() ([]DeploymentRecord, []error, error) {
-	return listAllDeployments(true)
-}
-
-func ListAllDeployments() ([]DeploymentRecord, error) {
-	records, _, err := listAllDeployments(false)
-	return records, err
-}
-
-func listAllDeployments(bestEffort bool) ([]DeploymentRecord, []error, error) {
 	root, err := DataRoot()
 	if err != nil {
 		return nil, nil, err
@@ -291,13 +198,10 @@ func listAllDeployments(bestEffort bool) ([]DeploymentRecord, []error, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		items, itemWarnings, err := listDeploymentRecords(filepath.Join(targetsRoot, entry.Name(), "deployments"), entry.Name(), bestEffort)
+		items, itemWarnings, err := ListDeploymentsForDisplay(entry.Name())
 		if err != nil {
-			if bestEffort {
-				warnings = append(warnings, fmt.Errorf("target %s: %w", entry.Name(), err))
-				continue
-			}
-			return nil, nil, err
+			warnings = append(warnings, fmt.Errorf("target %s: %w", entry.Name(), err))
+			continue
 		}
 		records = append(records, items...)
 		warnings = append(warnings, itemWarnings...)
@@ -306,8 +210,70 @@ func listAllDeployments(bestEffort bool) ([]DeploymentRecord, []error, error) {
 	return records, warnings, nil
 }
 
-func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRecord, []error, error) {
-	entries, err := os.ReadDir(root)
+func ListAllDeployments() ([]DeploymentRecord, error) {
+	root, err := DataRoot()
+	if err != nil {
+		return nil, err
+	}
+	targetsRoot := filepath.Join(root, "targets")
+	entries, err := os.ReadDir(targetsRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var records []DeploymentRecord
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		items, err := ListDeployments(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, items...)
+	}
+	sortDeploymentRecords(records)
+	return records, nil
+}
+
+func listDeploymentRecords(root string) ([]DeploymentRecord, error) {
+	apps, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var records []DeploymentRecord
+	for _, app := range apps {
+		if !app.IsDir() {
+			continue
+		}
+		envs, err := os.ReadDir(filepath.Join(root, app.Name()))
+		if err != nil {
+			return nil, err
+		}
+		for _, env := range envs {
+			if !env.IsDir() {
+				continue
+			}
+			id := DeploymentIdentity{Application: app.Name(), Environment: env.Name()}
+			id.Target = filepath.Base(filepath.Dir(root))
+			record, err := LoadDeploymentRecord(id)
+			if err != nil {
+				return nil, err
+			}
+			records = append(records, record)
+		}
+	}
+	sortDeploymentRecords(records)
+	return records, nil
+}
+
+func listDeploymentRecordsBestEffort(root string) ([]DeploymentRecord, []error, error) {
+	apps, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -316,21 +282,31 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 	}
 	var records []DeploymentRecord
 	var warnings []error
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, app := range apps {
+		if !app.IsDir() {
 			continue
 		}
-		deploymentID := entry.Name()
-		path := filepath.Join(root, deploymentID, "deployment.json")
-		record, err := loadDeploymentRecordFile(target, deploymentID, path, nil)
+		envs, err := os.ReadDir(filepath.Join(root, app.Name()))
 		if err != nil {
-			if bestEffort {
-				warnings = append(warnings, err)
+			warnings = append(warnings, fmt.Errorf("%s: %w", app.Name(), err))
+			continue
+		}
+		for _, env := range envs {
+			if !env.IsDir() {
 				continue
 			}
-			return nil, nil, err
+			id := DeploymentIdentity{
+				Target:      filepath.Base(filepath.Dir(root)),
+				Application: app.Name(),
+				Environment: env.Name(),
+			}
+			record, err := LoadDeploymentRecord(id)
+			if err != nil {
+				warnings = append(warnings, fmt.Errorf("%s/%s/%s: %w", id.Target, id.Application, id.Environment, err))
+				continue
+			}
+			records = append(records, record)
 		}
-		records = append(records, record)
 	}
 	sortDeploymentRecords(records)
 	return records, warnings, nil
@@ -345,10 +321,7 @@ func sortDeploymentRecords(records []DeploymentRecord) {
 		if a.Application != b.Application {
 			return a.Application < b.Application
 		}
-		if a.Environment != b.Environment {
-			return a.Environment < b.Environment
-		}
-		return a.DeploymentID < b.DeploymentID
+		return a.Environment < b.Environment
 	})
 }
 

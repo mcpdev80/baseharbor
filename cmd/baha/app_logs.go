@@ -91,7 +91,7 @@ func prepareManagedLogs(ctx context.Context, compose bhruntime.RuntimeProvider, 
 			Workload:    "service/" + service,
 			Logs: &capability.LogsBinding{
 				Direction: "collect",
-				Format:    "runtime-stream",
+				Format:    "syslog-rfc5424",
 				Service:   service,
 			},
 			Driver: prepared.driver,

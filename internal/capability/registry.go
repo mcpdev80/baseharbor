@@ -9,11 +9,9 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-
-	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
-const RegistryVersion = 2
+const RegistryVersion = 1
 
 type ProviderScope string
 
@@ -31,22 +29,20 @@ const (
 )
 
 type ProviderInstance struct {
-	ID                 string            `json:"id"`
-	ProviderID         string            `json:"provider_id,omitempty"`
-	ProviderVersion    string            `json:"provider_version,omitempty"`
-	ProviderProtocol   string            `json:"provider_protocol,omitempty"`
-	Provider           Provider          `json:"provider"`
-	Scope              ProviderScope     `json:"scope"`
-	SharingBoundary    string            `json:"sharing_boundary,omitempty"`
-	Ownership          ProviderOwnership `json:"ownership"`
-	OwnerApplicationID string            `json:"owner_application_id,omitempty"`
-	OwnerApplication   string            `json:"owner_application,omitempty"`
-	OwnerEnvironment   string            `json:"owner_environment,omitempty"`
-	Reference          string            `json:"reference,omitempty"`
+	ID               string            `json:"id"`
+	ProviderID       string            `json:"provider_id,omitempty"`
+	ProviderVersion  string            `json:"provider_version,omitempty"`
+	ProviderProtocol string            `json:"provider_protocol,omitempty"`
+	Provider         Provider          `json:"provider"`
+	Scope            ProviderScope     `json:"scope"`
+	SharingBoundary  string            `json:"sharing_boundary,omitempty"`
+	Ownership        ProviderOwnership `json:"ownership"`
+	OwnerApplication string            `json:"owner_application,omitempty"`
+	OwnerEnvironment string            `json:"owner_environment,omitempty"`
+	Reference        string            `json:"reference,omitempty"`
 }
 
 type ProviderBinding struct {
-	ApplicationID      string   `json:"application_id"`
 	Resource           Resource `json:"resource"`
 	Environment        string   `json:"environment,omitempty"`
 	ProviderInstanceID string   `json:"provider_instance_id"`
@@ -92,8 +88,8 @@ func (r *Registry) Register(instance ProviderInstance) error {
 	return nil
 }
 
-func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, applicationID, externalID string) (ProviderInstance, error) {
-	applicationID = strings.TrimSpace(applicationID)
+func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, application, externalID string) (ProviderInstance, error) {
+	application = strings.TrimSpace(application)
 	externalID = strings.TrimSpace(externalID)
 	var matches []ProviderInstance
 	for _, instance := range r.Instances {
@@ -106,7 +102,7 @@ func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, applicatio
 				matches = append(matches, instance)
 			}
 		case ScopeApplication:
-			if instance.OwnerApplicationID == applicationID {
+			if instance.OwnerApplication == application {
 				matches = append(matches, instance)
 			}
 		case ScopeExternal:
@@ -124,11 +120,11 @@ func (r Registry) Resolve(provider ProviderKind, scope ProviderScope, applicatio
 	return matches[0], nil
 }
 
-func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlacement, applicationID string) (ProviderInstance, error) {
+func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlacement, application string) (ProviderInstance, error) {
 	if err := placement.Validate(); err != nil {
 		return ProviderInstance{}, err
 	}
-	applicationID = strings.TrimSpace(applicationID)
+	application = strings.TrimSpace(application)
 	boundary := strings.TrimSpace(placement.SharingBoundary)
 	reference := strings.TrimSpace(placement.ExternalReference)
 	var matches []ProviderInstance
@@ -142,7 +138,7 @@ func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlac
 				matches = append(matches, instance)
 			}
 		case ScopeApplication:
-			if instance.OwnerApplicationID == applicationID {
+			if instance.OwnerApplication == application {
 				matches = append(matches, instance)
 			}
 		case ScopeExternal:
@@ -160,17 +156,13 @@ func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlac
 	return matches[0], nil
 }
 
-func (r *Registry) Bind(resource Resource, applicationID, providerInstanceID string) error {
-	return r.BindDeployment(resource, applicationID, "", providerInstanceID)
+func (r *Registry) Bind(resource Resource, providerInstanceID string) error {
+	return r.BindDeployment(resource, "", providerInstanceID)
 }
 
-func (r *Registry) BindDeployment(resource Resource, applicationID, environment, providerInstanceID string) error {
+func (r *Registry) BindDeployment(resource Resource, environment, providerInstanceID string) error {
 	if r == nil {
 		return errors.New("provider registry is nil")
-	}
-	applicationID = strings.TrimSpace(applicationID)
-	if err := stableid.ValidateUUIDv4("application", applicationID); err != nil {
-		return err
 	}
 	environment = strings.TrimSpace(environment)
 	instance, ok := r.instance(providerInstanceID)
@@ -184,22 +176,22 @@ func (r *Registry) BindDeployment(resource Resource, applicationID, environment,
 		return fmt.Errorf("provider instance %q does not support capability %q", instance.ID, resource.Kind)
 	}
 	if instance.Scope == ScopeApplication {
-		if instance.OwnerApplicationID != applicationID {
-			return fmt.Errorf("provider instance %q belongs to application_id %q, not %q", instance.ID, instance.OwnerApplicationID, applicationID)
+		if instance.OwnerApplication != resource.Application {
+			return fmt.Errorf("provider instance %q belongs to application %q, not %q", instance.ID, instance.OwnerApplication, resource.Application)
 		}
 		if ownerEnvironment := strings.TrimSpace(instance.OwnerEnvironment); ownerEnvironment != "" && environment != "" && ownerEnvironment != environment {
 			return fmt.Errorf("provider instance %q belongs to environment %q, not %q", instance.ID, ownerEnvironment, environment)
 		}
 	}
 	for _, binding := range r.Bindings {
-		if sameLogicalDeploymentResource(binding, applicationID, resource, environment) {
+		if sameLogicalDeploymentResource(binding, resource, environment) {
 			if binding.ProviderInstanceID == providerInstanceID {
 				return nil
 			}
 			return fmt.Errorf("resource %s/%s/%s/%s is already bound to provider instance %q", resource.Application, environment, resource.Kind, resource.Name, binding.ProviderInstanceID)
 		}
 	}
-	r.Bindings = append(r.Bindings, ProviderBinding{ApplicationID: applicationID, Resource: resource, Environment: environment, ProviderInstanceID: providerInstanceID})
+	r.Bindings = append(r.Bindings, ProviderBinding{Resource: resource, Environment: environment, ProviderInstanceID: providerInstanceID})
 	return nil
 }
 
@@ -220,10 +212,10 @@ type LifecycleAction struct {
 	RemoveBinding      bool               `json:"remove_binding"`
 }
 
-func (r Registry) ApplicationLifecycle(applicationID string, operation LifecycleOperation) ([]LifecycleAction, error) {
-	applicationID = strings.TrimSpace(applicationID)
-	if err := stableid.ValidateUUIDv4("application", applicationID); err != nil {
-		return nil, err
+func (r Registry) ApplicationLifecycle(application string, operation LifecycleOperation) ([]LifecycleAction, error) {
+	application = strings.TrimSpace(application)
+	if application == "" {
+		return nil, errors.New("application is required")
 	}
 	switch operation {
 	case LifecycleUpdate, LifecycleBackup, LifecycleDestroy:
@@ -233,7 +225,7 @@ func (r Registry) ApplicationLifecycle(applicationID string, operation Lifecycle
 	seen := map[string]struct{}{}
 	var actions []LifecycleAction
 	for _, binding := range r.Bindings {
-		if binding.ApplicationID != applicationID {
+		if binding.Resource.Application != application {
 			continue
 		}
 		if _, exists := seen[binding.ProviderInstanceID]; exists {
@@ -244,7 +236,7 @@ func (r Registry) ApplicationLifecycle(applicationID string, operation Lifecycle
 			return nil, fmt.Errorf("binding references missing provider instance %q", binding.ProviderInstanceID)
 		}
 		seen[instance.ID] = struct{}{}
-		ownedDedicated := instance.Scope == ScopeApplication && instance.Ownership == OwnershipBaseHarbor && instance.OwnerApplicationID == applicationID
+		ownedDedicated := instance.Scope == ScopeApplication && instance.Ownership == OwnershipBaseHarbor && instance.OwnerApplication == application
 		actions = append(actions, LifecycleAction{
 			ProviderInstanceID: instance.ID, Scope: instance.Scope, Ownership: instance.Ownership,
 			Operation: operation, MutateProvider: ownedDedicated, RemoveBinding: operation == LifecycleDestroy,
@@ -254,14 +246,14 @@ func (r Registry) ApplicationLifecycle(applicationID string, operation Lifecycle
 	return actions, nil
 }
 
-func (r *Registry) ReleaseManagedApplication(applicationID string) {
+func (r *Registry) ReleaseManagedApplication(application string) {
 	if r == nil {
 		return
 	}
-	applicationID = strings.TrimSpace(applicationID)
+	application = strings.TrimSpace(application)
 	bindings := r.Bindings[:0]
 	for _, binding := range r.Bindings {
-		if binding.ApplicationID != applicationID {
+		if binding.Resource.Application != application {
 			bindings = append(bindings, binding)
 			continue
 		}
@@ -271,41 +263,41 @@ func (r *Registry) ReleaseManagedApplication(applicationID string) {
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedInstances(applicationID)
+	r.removeUnboundOwnedInstances(application)
 }
 
-func (r *Registry) ReleaseManagedDeployment(applicationID, environment string) {
-	r.releaseDeployment(applicationID, environment, true)
+func (r *Registry) ReleaseManagedDeployment(application, environment string) {
+	r.releaseDeployment(application, environment, true)
 }
 
-func (r *Registry) ReleaseApplication(applicationID string) {
+func (r *Registry) ReleaseApplication(application string) {
 	if r == nil {
 		return
 	}
-	applicationID = strings.TrimSpace(applicationID)
+	application = strings.TrimSpace(application)
 	bindings := r.Bindings[:0]
 	for _, binding := range r.Bindings {
-		if binding.ApplicationID != applicationID {
+		if binding.Resource.Application != application {
 			bindings = append(bindings, binding)
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedInstances(applicationID)
+	r.removeUnboundOwnedInstances(application)
 }
 
-func (r *Registry) ReleaseApplicationDeployment(applicationID, environment string) {
-	r.releaseDeployment(applicationID, environment, false)
+func (r *Registry) ReleaseApplicationDeployment(application, environment string) {
+	r.releaseDeployment(application, environment, false)
 }
 
-func (r *Registry) releaseDeployment(applicationID, environment string, preserveExternal bool) {
+func (r *Registry) releaseDeployment(application, environment string, preserveExternal bool) {
 	if r == nil {
 		return
 	}
-	applicationID = strings.TrimSpace(applicationID)
+	application = strings.TrimSpace(application)
 	environment = strings.TrimSpace(environment)
 	bindings := r.Bindings[:0]
 	for _, binding := range r.Bindings {
-		if binding.ApplicationID != applicationID {
+		if binding.Resource.Application != application {
 			bindings = append(bindings, binding)
 			continue
 		}
@@ -321,10 +313,10 @@ func (r *Registry) releaseDeployment(applicationID, environment string, preserve
 		}
 	}
 	r.Bindings = bindings
-	r.removeUnboundOwnedInstances(applicationID)
+	r.removeUnboundOwnedInstances(application)
 }
 
-func (r *Registry) removeUnboundOwnedInstances(applicationID string) {
+func (r *Registry) removeUnboundOwnedInstances(application string) {
 	referenced := make(map[string]struct{}, len(r.Bindings))
 	for _, binding := range r.Bindings {
 		referenced[binding.ProviderInstanceID] = struct{}{}
@@ -343,7 +335,7 @@ func (r *Registry) removeUnboundOwnedInstances(applicationID string) {
 		case ScopeShared:
 			continue
 		case ScopeApplication:
-			if instance.OwnerApplicationID == applicationID {
+			if instance.OwnerApplication == application {
 				continue
 			}
 		}
@@ -377,10 +369,7 @@ func (r Registry) Validate() error {
 	seenResources := map[string]struct{}{}
 	for _, binding := range r.Bindings {
 		environment := strings.TrimSpace(binding.Environment)
-		if err := stableid.ValidateUUIDv4("application", binding.ApplicationID); err != nil {
-			return fmt.Errorf("provider binding: %w", err)
-		}
-		key := binding.ApplicationID + "\x00" + environment + "\x00" + string(binding.Resource.Kind) + "\x00" + binding.Resource.Name
+		key := binding.Resource.Application + "\x00" + environment + "\x00" + string(binding.Resource.Kind) + "\x00" + binding.Resource.Name
 		if _, exists := seenResources[key]; exists {
 			return fmt.Errorf("duplicate binding for resource %s/%s/%s/%s", binding.Resource.Application, environment, binding.Resource.Kind, binding.Resource.Name)
 		}
@@ -393,8 +382,8 @@ func (r Registry) Validate() error {
 			return fmt.Errorf("binding for %s/%s/%s is incompatible with provider instance %q", binding.Resource.Application, binding.Resource.Kind, binding.Resource.Name, instance.ID)
 		}
 		if instance.Scope == ScopeApplication {
-			if instance.OwnerApplicationID != binding.ApplicationID {
-				return fmt.Errorf("binding crosses application identity ownership boundary for provider instance %q", instance.ID)
+			if instance.OwnerApplication != binding.Resource.Application {
+				return fmt.Errorf("binding crosses application ownership boundary for provider instance %q", instance.ID)
 			}
 			if ownerEnvironment := strings.TrimSpace(instance.OwnerEnvironment); ownerEnvironment != "" && environment != "" && ownerEnvironment != environment {
 				return fmt.Errorf("binding crosses environment ownership boundary for provider instance %q", instance.ID)
@@ -464,10 +453,6 @@ func (s RegistryStore) Save(registry Registry) error {
 	sort.Slice(registry.Instances, func(i, j int) bool { return registry.Instances[i].ID < registry.Instances[j].ID })
 	sort.Slice(registry.Bindings, func(i, j int) bool {
 		a, b := registry.Bindings[i].Resource, registry.Bindings[j].Resource
-		ai, bi := registry.Bindings[i].ApplicationID, registry.Bindings[j].ApplicationID
-		if ai != bi {
-			return ai < bi
-		}
 		if a.Application != b.Application {
 			return a.Application < b.Application
 		}
@@ -512,7 +497,7 @@ func validateProviderInstance(instance ProviderInstance) error {
 	}
 	switch instance.Scope {
 	case ScopeShared:
-		if instance.OwnerApplicationID != "" || instance.OwnerApplication != "" {
+		if instance.OwnerApplication != "" {
 			return fmt.Errorf("shared provider instance %q cannot have an application owner", instance.ID)
 		}
 		if instance.Ownership != OwnershipBaseHarbor {
@@ -522,11 +507,8 @@ func validateProviderInstance(instance ProviderInstance) error {
 		if strings.TrimSpace(instance.SharingBoundary) != "" {
 			return fmt.Errorf("application-scoped provider instance %q cannot define a sharing boundary", instance.ID)
 		}
-		if err := stableid.ValidateUUIDv4("application", instance.OwnerApplicationID); err != nil {
-			return fmt.Errorf("application-scoped provider instance %q: %w", instance.ID, err)
-		}
 		if strings.TrimSpace(instance.OwnerApplication) == "" {
-			return fmt.Errorf("application-scoped provider instance %q requires a readable owner application", instance.ID)
+			return fmt.Errorf("application-scoped provider instance %q requires an owner application", instance.ID)
 		}
 		if instance.Ownership != OwnershipBaseHarbor {
 			return fmt.Errorf("application-scoped provider instance %q must be BaseHarbor-owned", instance.ID)
@@ -541,7 +523,7 @@ func validateProviderInstance(instance ProviderInstance) error {
 		if strings.TrimSpace(instance.Reference) == "" {
 			return fmt.Errorf("external provider instance %q requires a non-secret reference", instance.ID)
 		}
-		if instance.OwnerApplicationID != "" || instance.OwnerApplication != "" {
+		if instance.OwnerApplication != "" {
 			return fmt.Errorf("external provider instance %q cannot be lifecycle-owned by an application", instance.ID)
 		}
 	default:
@@ -563,11 +545,8 @@ func sameLogicalResource(a, b Resource) bool {
 	return a.Application == b.Application && a.Kind == b.Kind && a.Name == b.Name
 }
 
-func sameLogicalDeploymentResource(binding ProviderBinding, applicationID string, resource Resource, environment string) bool {
-	return binding.ApplicationID == strings.TrimSpace(applicationID) &&
-		binding.Resource.Kind == resource.Kind &&
-		binding.Resource.Name == resource.Name &&
-		binding.Resource.Provider == resource.Provider &&
+func sameLogicalDeploymentResource(binding ProviderBinding, resource Resource, environment string) bool {
+	return sameLogicalResource(binding.Resource, resource) &&
 		strings.TrimSpace(binding.Environment) == strings.TrimSpace(environment)
 }
 
@@ -586,7 +565,7 @@ func sameProviderInstanceWithoutDistribution(a, b ProviderInstance) bool {
 func sameProviderInstance(a, b ProviderInstance) bool {
 	if a.ID != b.ID || a.ProviderID != b.ProviderID || a.ProviderVersion != b.ProviderVersion || a.ProviderProtocol != b.ProviderProtocol ||
 		a.Provider.Kind != b.Provider.Kind || a.Scope != b.Scope ||
-		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplicationID != b.OwnerApplicationID || a.OwnerApplication != b.OwnerApplication || a.OwnerEnvironment != b.OwnerEnvironment || a.Reference != b.Reference ||
+		a.SharingBoundary != b.SharingBoundary || a.Ownership != b.Ownership || a.OwnerApplication != b.OwnerApplication || a.OwnerEnvironment != b.OwnerEnvironment || a.Reference != b.Reference ||
 		len(a.Provider.Capabilities) != len(b.Provider.Capabilities) {
 		return false
 	}

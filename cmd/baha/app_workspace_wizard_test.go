@@ -21,7 +21,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	manifest := "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: webshop\n  environment: dev\nworkload:\n  compose: compose.yaml\n  services:\n    - app\n"
+	manifest := "version: 1\napp:\n  name: webshop\n  environment: dev\nworkload:\n  compose: compose.yaml\n  services:\n    - app\n"
 	if err := os.WriteFile(filepath.Join(appRoot, "baseharbor.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestWorkspaceWizardCancelDoesNotWriteState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := "version: 1\napp:\n  id: 22222222-2222-4222-8222-222222222222\n  name: demo\n  environment: dev\nworkload:\n  compose: compose.yaml\n  services:\n    - app\n"
+	manifest := "version: 1\napp:\n  name: demo\n  environment: dev\nworkload:\n  compose: compose.yaml\n  services:\n    - app\n"
 	if err := os.WriteFile(filepath.Join(root, "baseharbor.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

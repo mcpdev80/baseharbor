@@ -15,7 +15,7 @@ import (
 
 type managedExposureExecution struct {
 	execution *capability.Execution
-	driver    *exposure.Lifecycle
+	driver    *exposure.Driver
 }
 
 func prepareManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication) (*managedExposureExecution, error) {
@@ -31,12 +31,11 @@ func prepareManagedExposure(ctx context.Context, compose bhruntime.RuntimeProvid
 		return nil, fmt.Errorf("load repository deployment state for managed exposure: %w", err)
 	}
 	runtime := application.RuntimeFilesFor(resolved.Store, m)
-	caddy := exposure.NewDriver(compose, m, runtime, exposure.Deployment{
+	driver := exposure.NewDriver(compose, m, runtime, exposure.Deployment{
 		Hostname: state.Hostname,
 		TLSMode:  state.TLSMode,
 		TLSDir:   state.TLSDir,
 	})
-	driver := exposure.NewLifecycle(state.Hostname, state.TLSMode, exposure.NewCaddyRealization(caddy))
 	requests := make([]capability.Request, 0, len(m.Exposures))
 	for _, route := range m.Exposures {
 		requests = append(requests, capability.Request{

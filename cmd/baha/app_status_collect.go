@@ -243,7 +243,7 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 }
 
 func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
-	if !(c.manifest.Services.Cache || c.manifest.Services.KeyValue) {
+	if !c.manifest.Services.Cache {
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
@@ -253,7 +253,7 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 			c.result.AddCheck("valkey", false, "shared provider readiness failed: "+err.Error())
 			return
 		}
-		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated Valkey resource(s) ready on shared Target provider", len(application.ValkeyInstanceNames(c.manifest))))
+		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated cache resource(s) ready on shared Target provider", len(application.CacheInstanceNames(c.manifest))))
 		return
 	}
 	if !containsString(c.services, "valkey") {
@@ -261,10 +261,10 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		return
 	}
 	if err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
-		c.result.AddCheck("valkey", false, "one or more Valkey instances failed semantic verification")
+		c.result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
 		return
 	}
-	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and semantic Valkey verification passed", len(application.ValkeyInstanceNames(c.manifest))))
+	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
