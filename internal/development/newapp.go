@@ -69,9 +69,10 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	}
 
 	manifest := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        name,
-		Environment: environment,
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          name,
+		Environment:   environment,
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
 			Services: profileComponentIDs(profile),
