@@ -298,7 +298,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
       - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q 'HTTP/1.1 200' <&3"]
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
       interval: 2s
       timeout: 3s
       retries: 90
