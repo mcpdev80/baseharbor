@@ -244,7 +244,6 @@ func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
 	}
 }
 
-
 func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	first := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
