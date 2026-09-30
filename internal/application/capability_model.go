@@ -102,7 +102,7 @@ func CapabilityBindings(m Manifest) ([]capability.Binding, error) {
 			binding.Workload = "service/" + resource.Name
 			binding.Logs = &capability.LogsBinding{
 				Direction: "collect",
-				Format:    "syslog-rfc5424",
+				Format:    "runtime-stream",
 				Service:   resource.Name,
 			}
 		}
