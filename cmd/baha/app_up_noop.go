@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
 
@@ -76,6 +77,15 @@ func repositoryControlStateFingerprint(resolved resolvedApplication) (string, er
 		return "", fmt.Errorf("read application contract for control fingerprint: %w", err)
 	}
 	write("baseharbor.yaml", manifest)
+	if _, sourceModelPath, err := development.LoadSourceModel(resolved.ManifestPath); err == nil {
+		data, readErr := os.ReadFile(sourceModelPath)
+		if readErr != nil {
+			return "", fmt.Errorf("read source identity model for control fingerprint: %w", readErr)
+		}
+		write(".baseharbor/sources.yaml", data)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("load source identity model for control fingerprint: %w", err)
+	}
 
 	if data, err := os.ReadFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err == nil {
 		write(".baseharbor/init.env", data)
@@ -99,24 +109,11 @@ func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApp
 		_, _ = h.Write([]byte{0})
 	}
 
-	paths, err := repositoryTrackedAndUntrackedFiles(ctx, repoRoot)
-	if err != nil {
+	if err := writeRepositoryTreeFingerprint(ctx, write, "canonical", repoRoot); err != nil {
 		return "", err
 	}
-	for _, rel := range paths {
-		path := filepath.Join(repoRoot, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
-		if err != nil {
-			return "", fmt.Errorf("inspect desired-state input %s: %w", rel, err)
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return "", fmt.Errorf("read desired-state input %s: %w", rel, err)
-		}
-		write(filepath.ToSlash(rel), data)
+	if err := fingerprintResolvedWorkspace(ctx, resolved, write); err != nil {
+		return "", fmt.Errorf("fingerprint multi-repository workspace: %w", err)
 	}
 
 	if data, err := os.ReadFile(repositoryInitEnvPathFromStateRoot(resolved.stateRoot())); err == nil {
@@ -131,6 +128,89 @@ func repositoryDesiredStateFingerprint(ctx context.Context, resolved resolvedApp
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func writeRepositoryTreeFingerprint(ctx context.Context, write func(string, []byte), logicalPrefix, root string) error {
+	paths, err := repositoryTrackedAndUntrackedFiles(ctx, root)
+	if err != nil {
+		return err
+	}
+	for _, rel := range paths {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("inspect desired-state input %s: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read desired-state input %s: %w", rel, err)
+		}
+		label := filepath.ToSlash(rel)
+		if strings.TrimSpace(logicalPrefix) != "" {
+			label = strings.TrimSuffix(logicalPrefix, "/") + "/" + label
+		}
+		write(label, data)
+	}
+	return nil
+}
+
+func fingerprintResolvedWorkspace(ctx context.Context, resolved resolvedApplication, write func(string, []byte)) error {
+	model, sourceModelPath, err := development.LoadSourceModel(resolved.ManifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if model.Application != resolved.Manifest.Name {
+		return fmt.Errorf("source model application %q does not match application manifest %q", model.Application, resolved.Manifest.Name)
+	}
+	data, err := os.ReadFile(sourceModelPath)
+	if err != nil {
+		return fmt.Errorf("read canonical source model: %w", err)
+	}
+	write("portable/.baseharbor/sources.yaml", data)
+
+	mapping, _, err := development.LoadWorkspaceMapping(resolved.ManifestPath, resolved.Manifest.Name)
+	if err != nil {
+		return err
+	}
+	workspace, err := development.ResolveWorkspace(resolved.ManifestPath, model, mapping)
+	if err != nil {
+		return err
+	}
+	for _, component := range workspace.Components {
+		identity, err := json.Marshal(struct {
+			Component string                 `json:"component"`
+			Source    string                 `json:"source"`
+			Type      development.SourceKind `json:"type"`
+			Identity  string                 `json:"identity"`
+			Ref       string                 `json:"ref,omitempty"`
+			SubPath   string                 `json:"sub_path,omitempty"`
+			Image     string                 `json:"image,omitempty"`
+		}{
+			Component: component.Component,
+			Source:    component.Source,
+			Type:      component.Type,
+			Identity:  component.Identity,
+			Ref:       component.Ref,
+			SubPath:   component.SubPath,
+			Image:     component.Image,
+		})
+		if err != nil {
+			return err
+		}
+		write("component/"+component.Component+"/source-identity.json", identity)
+		if component.Type == development.SourceRepository {
+			if err := writeRepositoryTreeFingerprint(ctx, write, "component/"+component.Component+"/source", component.Root); err != nil {
+				return fmt.Errorf("fingerprint component %s source: %w", component.Component, err)
+			}
+		}
+	}
+	return nil
 }
 
 func repositoryTrackedAndUntrackedFiles(ctx context.Context, repoRoot string) ([]string, error) {
