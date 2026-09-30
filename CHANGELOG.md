@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-09-30
+
+### Added
+
+- First-class greenfield `baha app new` creation with guided and deterministic paths, ecosystem-native Go, Next.js, Python and Quarkus Development Adapters, reusable/composable Stack Profiles, deterministic Development Plans and JSON/MCP parity.
+- Versioned common extension, provider-descriptor and development-extension contracts using JSON Schema 2020-12, with provider/development conformance foundations and standards-first OCI distribution metadata.
+- First-class multi-repository applications: one canonical version-controlled Application Contract can resolve components across monorepos, multiple existing local worktrees and OCI images while keeping developer-local paths in XDG workspace state.
+- Guided `baha app workspace` plus deterministic `workspace init|map|show|resolve`; component/application identity no longer depends on one current working directory or local checkout path.
+- Optional Backstage `catalog-info.yaml` emission from the greenfield flow with explicit owner/lifecycle input and no Backstage SDK, Catalog API client or template interpreter in Core.
+- Local Docker/Podman host-resource preflight using MemAvailable, swap and memory PSI with delta-aware SAFE/TIGHT/UNSAFE decisions before mutation.
+
+### Changed
+
+- Release acceptance now keeps small gates individually runnable while the full pre-release reuses long-lived environments across four symmetric runtime lanes: Docker/Podman × Core Journey/Operations.
+- Capability-subset demo acceptance validates workload-only and mixed capability contracts without starting unrelated providers; the full demo remains the full-stack integration proof.
+- YAML v3 usage moved to the maintained `go.yaml.in/yaml/v3` module.
+- Targeted runtime workflow names describe the tested behavior, for example `Docker · Capability Matrix`, instead of internal branch/gate terminology.
+- Go 1.25 remains the v0.4.18 support floor; the x/crypto v0.56/v0.57 / Go 1.26 toolchain transition is explicitly deferred.
+
+### Fixed
+
+- Application stop/destroy tears down observed owned workload containers/networks even from partially converged state instead of depending on successful apply-time materialization.
+- Repository workload startup fails fast on terminal runtime failures and persisted host-port fallback is applied consistently across lifecycle paths.
+- Canonical identity/developer-gateway URLs preserve the effective persisted gateway port.
+- Management UI readiness validates browser redirect chains.
+- Reduced capability-matrix cases avoid requiring unrelated managed HTTPS/TLS infrastructure.
+
 ## [0.4.17] - 2026-09-29
 
 ### Added
