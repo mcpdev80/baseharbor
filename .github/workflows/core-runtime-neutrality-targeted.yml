@@ -1,0 +1,46 @@
+name: "Core Runtime-Neutrality Targeted Gate"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-core-runtime-neutrality*'
+    paths:
+      - '.ci/core-runtime-neutrality-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  core-runtime-neutrality:
+    name: Core · Runtime Neutrality
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l internal/application internal/openbao internal/identityprovider internal/capability)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
+            exit 1
+          }
+
+      - name: Run focused Core tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test             ./internal/application             ./internal/openbao             ./internal/identityprovider             ./internal/capability             -count=1
