@@ -10,6 +10,7 @@ type CapabilityKind = capability.Kind
 const (
 	CapabilitySQL             CapabilityKind = capability.SQL
 	CapabilityKeyValue        CapabilityKind = capability.KeyValue
+	CapabilityDurableKeyValue CapabilityKind = capability.DurableKeyValue
 	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
@@ -76,6 +77,9 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	for _, name := range CacheInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityKeyValue, Name: name})
+	}
+	for _, name := range KeyValueInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDurableKeyValue, Name: name})
 	}
 	for _, name := range ObjectStorageBucketNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityObjectStorageS3, Name: name})

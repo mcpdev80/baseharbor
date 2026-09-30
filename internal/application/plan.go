@@ -40,6 +40,12 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure key-value cache capability resource %s", capability.Name)},
 				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify application-facing key-value cache access for %s", capability.Name)},
 			)
+		case CapabilityDurableKeyValue:
+			resource := "database.key-value:" + capability.Name
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure durable key-value database capability resource %s", capability.Name)},
+				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify durable application-facing key-value write/read access for %s", capability.Name)},
+			)
 		case CapabilityObjectStorageS3:
 			p.Actions = append(p.Actions,
 				Action{Kind: "ensure", Resource: "s3-bucket:" + capability.Name, Description: fmt.Sprintf("ensure isolated S3 bucket %s", capability.Name)},
