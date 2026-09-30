@@ -31,18 +31,18 @@ const (
 )
 
 type ProviderInstance struct {
-	ID               string            `json:"id"`
-	ProviderID       string            `json:"provider_id,omitempty"`
-	ProviderVersion  string            `json:"provider_version,omitempty"`
-	ProviderProtocol string            `json:"provider_protocol,omitempty"`
-	Provider         Provider          `json:"provider"`
-	Scope            ProviderScope     `json:"scope"`
-	SharingBoundary  string            `json:"sharing_boundary,omitempty"`
-	Ownership        ProviderOwnership `json:"ownership"`
+	ID                 string            `json:"id"`
+	ProviderID         string            `json:"provider_id,omitempty"`
+	ProviderVersion    string            `json:"provider_version,omitempty"`
+	ProviderProtocol   string            `json:"provider_protocol,omitempty"`
+	Provider           Provider          `json:"provider"`
+	Scope              ProviderScope     `json:"scope"`
+	SharingBoundary    string            `json:"sharing_boundary,omitempty"`
+	Ownership          ProviderOwnership `json:"ownership"`
 	OwnerApplicationID string            `json:"owner_application_id,omitempty"`
 	OwnerApplication   string            `json:"owner_application,omitempty"`
 	OwnerEnvironment   string            `json:"owner_environment,omitempty"`
-	Reference        string            `json:"reference,omitempty"`
+	Reference          string            `json:"reference,omitempty"`
 }
 
 type ProviderBinding struct {
