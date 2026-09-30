@@ -239,3 +239,77 @@ func TestURLForRuntimeUsesPersistedEffectiveGatewayPort(t *testing.T) {
 		t.Fatalf("canonical URL = %q, want persisted effective port", got)
 	}
 }
+
+
+type recordingGatewayRuntime struct {
+	destroyCalls int
+}
+
+func (*recordingGatewayRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
+func (*recordingGatewayRuntime) UpProject(context.Context, string, string, string) error     { return nil }
+func (r *recordingGatewayRuntime) DestroyProject(context.Context, string, string, string) error {
+	r.destroyCalls++
+	return nil
+}
+
+func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Dir:     dir,
+		State:   filepath.Join(dir, "routes.json"),
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Project: "bh-dev-gateway",
+	}
+	if err := os.WriteFile(files.Compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &recordingGatewayRuntime{}
+	previous := state{Version: stateVersion, Routes: []Route{
+		{Key: "app", Network: "app-network"},
+		{Key: "shared", Network: "shared-network"},
+	}}
+	next := state{Version: stateVersion, Routes: []Route{
+		{Key: "shared", Network: "shared-network"},
+	}}
+	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.destroyCalls != 1 {
+		t.Fatalf("gateway destroy calls = %d, want 1 after route network removal", runtime.destroyCalls)
+	}
+	saved, err := loadState(files.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Routes) != 1 || saved.Routes[0].Network != "shared-network" {
+		t.Fatalf("saved routes = %#v", saved.Routes)
+	}
+}
+
+func TestSaveRouteStateKeepsMaterializedGatewayWhenNetworkSetIsStable(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Dir:     dir,
+		State:   filepath.Join(dir, "routes.json"),
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Project: "bh-dev-gateway",
+	}
+	if err := os.WriteFile(files.Compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &recordingGatewayRuntime{}
+	previous := state{Version: stateVersion, Routes: []Route{
+		{Key: "old", Network: "app-network"},
+	}}
+	next := state{Version: stateVersion, Routes: []Route{
+		{Key: "new", Network: "app-network"},
+	}}
+	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.destroyCalls != 0 {
+		t.Fatalf("gateway destroy calls = %d, want 0 for stable network set", runtime.destroyCalls)
+	}
+}
