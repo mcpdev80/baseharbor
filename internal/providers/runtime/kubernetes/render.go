@@ -9,7 +9,7 @@ import (
 
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 	"github.com/mcpdev80/baseharbor/internal/workload"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type Binding = runtimemodel.Binding
