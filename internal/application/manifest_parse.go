@@ -561,15 +561,21 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 		p.manifest.Services.KeyValueInstances[name] = ServiceInstance{}
 		p.manifest.Services.KeyValue = true
 	case "messaging_queue":
-		if p.manifest.Services.MessagingQueueInstances == nil {\n\t\t\tp.manifest.Services.MessagingQueueInstances = map[string]ServiceInstance{}\n\t\t}
+		if p.manifest.Services.MessagingQueueInstances == nil {
+			p.manifest.Services.MessagingQueueInstances = map[string]ServiceInstance{}
+		}
 		p.manifest.Services.MessagingQueueInstances[name] = ServiceInstance{}
 		p.manifest.Services.MessagingQueue = true
 	case "messaging_pubsub":
-		if p.manifest.Services.MessagingPubSubInstances == nil {\n\t\t\tp.manifest.Services.MessagingPubSubInstances = map[string]ServiceInstance{}\n\t\t}
+		if p.manifest.Services.MessagingPubSubInstances == nil {
+			p.manifest.Services.MessagingPubSubInstances = map[string]ServiceInstance{}
+		}
 		p.manifest.Services.MessagingPubSubInstances[name] = ServiceInstance{}
 		p.manifest.Services.MessagingPubSub = true
 	case "messaging_stream":
-		if p.manifest.Services.MessagingStreamInstances == nil {\n\t\t\tp.manifest.Services.MessagingStreamInstances = map[string]ServiceInstance{}\n\t\t}
+		if p.manifest.Services.MessagingStreamInstances == nil {
+			p.manifest.Services.MessagingStreamInstances = map[string]ServiceInstance{}
+		}
 		p.manifest.Services.MessagingStreamInstances[name] = ServiceInstance{}
 		p.manifest.Services.MessagingStream = true
 	case "object_storage":
