@@ -189,6 +189,8 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 		return fmt.Errorf("line %d: expected key: value", lineNo)
 	}
 	switch key {
+	case "id":
+		p.manifest.ApplicationID = strings.TrimSpace(value)
 	case "name":
 		p.manifest.Name = strings.TrimSpace(value)
 	case "environment":
