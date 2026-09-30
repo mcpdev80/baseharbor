@@ -240,13 +240,12 @@ func TestURLForRuntimeUsesPersistedEffectiveGatewayPort(t *testing.T) {
 	}
 }
 
-
 type recordingGatewayRuntime struct {
 	destroyCalls int
 }
 
 func (*recordingGatewayRuntime) ConfigProject(context.Context, string, string, string) error { return nil }
-func (*recordingGatewayRuntime) UpProject(context.Context, string, string, string) error     { return nil }
+func (*recordingGatewayRuntime) UpProject(context.Context, string, string, string) error { return nil }
 func (r *recordingGatewayRuntime) DestroyProject(context.Context, string, string, string) error {
 	r.destroyCalls++
 	return nil
