@@ -121,3 +121,129 @@ exit 2
 		t.Fatalf("terminal evidence lost: %#v", got)
 	}
 }
+
+
+func TestDestroyProjectRemoveOrphansRemovesOwnedResourcesOutsideCurrentComposeModel(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	stateDir := filepath.Join(dir, "state")
+	logPath := filepath.Join(dir, "calls.log")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+set -eu
+printf '%s
+' "$*" >> "$CALL_LOG"
+
+case "$1 $2" in
+  "container ls")
+    if [ ! -f "$STATE_DIR/containers-removed" ]; then
+      printf '%s
+' current orphan unrelated
+    else
+      printf '%s
+' unrelated
+    fi
+    exit 0
+    ;;
+  "network ls")
+    if [ ! -f "$STATE_DIR/network-removed" ]; then
+      printf '%s
+' shared-net unrelated-net
+    else
+      printf '%s
+' unrelated-net
+    fi
+    exit 0
+    ;;
+  "volume ls")
+    if [ ! -f "$STATE_DIR/volume-removed" ]; then
+      printf '%s
+' shared-vol
+    fi
+    exit 0
+    ;;
+  "container inspect")
+    if [ ! -f "$STATE_DIR/containers-removed" ]; then
+      printf '%s
+'         '/current|bh-local-shared|<no value>'         '/orphan|bh-local-shared|<no value>'         '/unrelated|other-project|<no value>'
+    else
+      printf '%s
+' '/unrelated|other-project|<no value>'
+    fi
+    exit 0
+    ;;
+  "network inspect")
+    if [ ! -f "$STATE_DIR/network-removed" ]; then
+      printf '%s
+'         'shared-net|bh-local-shared|<no value>'         'unrelated-net|other-project|<no value>'
+    else
+      printf '%s
+' 'unrelated-net|other-project|<no value>'
+    fi
+    exit 0
+    ;;
+  "volume inspect")
+    if [ ! -f "$STATE_DIR/volume-removed" ]; then
+      printf '%s
+' 'shared-vol|bh-local-shared|<no value>'
+    fi
+    exit 0
+    ;;
+esac
+
+if [ "$1 $2" = "container rm" ]; then
+  touch "$STATE_DIR/containers-removed"
+  exit 0
+fi
+if [ "$1 $2" = "network rm" ]; then
+  touch "$STATE_DIR/network-removed"
+  exit 0
+fi
+if [ "$1 $2" = "volume rm" ]; then
+  touch "$STATE_DIR/volume-removed"
+  exit 0
+fi
+
+printf 'unexpected arguments: %s
+' "$*" >&2
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATE_DIR", stateDir)
+	t.Setenv("CALL_LOG", logPath)
+
+	compose := Compose{command: runtimePath}
+	if err := compose.DestroyProjectRemoveOrphans(context.Background(), "bh-local-shared", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := string(raw)
+	for _, want := range []string{
+		"container rm -f current",
+		"container rm -f orphan",
+		"network rm shared-net",
+		"volume rm -f shared-vol",
+	} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("full owned-project destroy missing %q:
+%s", want, calls)
+		}
+	}
+	for _, forbidden := range []string{
+		"container rm -f unrelated",
+		"network rm unrelated-net",
+	} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("full owned-project destroy touched unrelated resource %q:
+%s", forbidden, calls)
+		}
+	}
+}
