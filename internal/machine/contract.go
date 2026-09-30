@@ -29,28 +29,27 @@ type Operation struct {
 type ErrorCode string
 
 const (
-	ErrorValidationFailed      ErrorCode = "validation_failed"
-	ErrorPortConflict          ErrorCode = "port_conflict"
-	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
-	ErrorSourceMissing         ErrorCode = "source_missing"
-	ErrorApprovalRequired      ErrorCode = "approval_required"
-	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
-	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
-	ErrorAuthenticationFailed  ErrorCode = "authentication_failed"
-	ErrorInvalidWorkload       ErrorCode = "invalid_workload"
-	ErrorCapabilityMissing     ErrorCode = "capability_missing"
-	ErrorPolicyDenied          ErrorCode = "policy_denied"
-	ErrorConflict              ErrorCode = "conflict"
-	ErrorOwnershipAmbiguous    ErrorCode = "ownership_ambiguous"
-	ErrorProviderUnavailable   ErrorCode = "provider_unavailable"
-	ErrorRuntimeUnavailable        ErrorCode = "runtime_unavailable"
-	ErrorHostResourceInsufficient  ErrorCode = "host_resource_insufficient"
-	ErrorTimeout               ErrorCode = "timeout"
-	ErrorVerificationFailed    ErrorCode = "verification_failed"
-	ErrorUnsupported           ErrorCode = "unsupported_operation"
-	ErrorInternal              ErrorCode = "internal_error"
+	ErrorValidationFailed         ErrorCode = "validation_failed"
+	ErrorPortConflict             ErrorCode = "port_conflict"
+	ErrorRequiredSecretMissing    ErrorCode = "required_secret_missing"
+	ErrorSourceMissing            ErrorCode = "source_missing"
+	ErrorApprovalRequired         ErrorCode = "approval_required"
+	ErrorWorkloadStartFailed      ErrorCode = "workload_start_failed"
+	ErrorImagePullFailed          ErrorCode = "image_pull_failed"
+	ErrorAuthenticationFailed     ErrorCode = "authentication_failed"
+	ErrorInvalidWorkload          ErrorCode = "invalid_workload"
+	ErrorCapabilityMissing        ErrorCode = "capability_missing"
+	ErrorPolicyDenied             ErrorCode = "policy_denied"
+	ErrorConflict                 ErrorCode = "conflict"
+	ErrorOwnershipAmbiguous       ErrorCode = "ownership_ambiguous"
+	ErrorProviderUnavailable      ErrorCode = "provider_unavailable"
+	ErrorRuntimeUnavailable       ErrorCode = "runtime_unavailable"
+	ErrorHostResourceInsufficient ErrorCode = "host_resource_insufficient"
+	ErrorTimeout                  ErrorCode = "timeout"
+	ErrorVerificationFailed       ErrorCode = "verification_failed"
+	ErrorUnsupported              ErrorCode = "unsupported_operation"
+	ErrorInternal                 ErrorCode = "internal_error"
 )
-
 type Error struct {
 	Code        ErrorCode `json:"code"`
 	Message     string    `json:"message"`
