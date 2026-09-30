@@ -43,11 +43,7 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	canonicalAdminBase, err := managedOperatorCanonicalAdminBaseURL(runtime, namespace)
-	if err != nil {
-		return ManagedOperatorOIDC{}, err
-	}
-	if err := SetKeycloakCanonicalURLs(files, canonicalBase, canonicalAdminBase); err != nil {
+	if err := SetKeycloakCanonicalURL(files, canonicalBase); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	files.CanonicalPublicURL = canonicalBase
@@ -147,14 +143,6 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 
 func managedOperatorCanonicalBaseURL(runtime KeycloakRuntime, namespace string) (string, error) {
 	host, err := devaccess.SharedHost(namespace, "identity")
-	if err != nil {
-		return "", err
-	}
-	return devgateway.URLForRuntime(namespace, host, runtime), nil
-}
-
-func managedOperatorCanonicalAdminBaseURL(runtime KeycloakRuntime, namespace string) (string, error) {
-	host, err := devaccess.SharedHost(namespace, "identity-admin")
 	if err != nil {
 		return "", err
 	}
