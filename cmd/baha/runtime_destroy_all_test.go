@@ -87,3 +87,22 @@ func TestFullDestroyRemovesOwnedLocalStateButPreservesSourceRepository(t *testin
 		t.Fatalf("expected cleanup report, got:\n%s", out.String())
 	}
 }
+
+
+func TestCountFullDestroyBlockersDistinguishesInformationalSkip(t *testing.T) {
+	results := []fullDestroyResult{
+		{Status: "REMOVED", Resource: "ok"},
+		{Status: "SKIPPED", Resource: "runtime-provider", Detail: "runtime provider cannot be inferred; only local state can be removed safely"},
+	}
+	if got := countFullDestroyBlockers(results); got != 0 {
+		t.Fatalf("informational skip blockers = %d, want 0", got)
+	}
+
+	results = append(results,
+		fullDestroyResult{Status: "FAILED", Resource: "data-providers", Detail: "active endpoints"},
+		fullDestroyResult{Status: "SKIPPED", Resource: "target-state", Detail: "preserved because runtime cleanup could not be verified"},
+	)
+	if got := countFullDestroyBlockers(results); got != 2 {
+		t.Fatalf("cleanup blockers = %d, want 2", got)
+	}
+}
