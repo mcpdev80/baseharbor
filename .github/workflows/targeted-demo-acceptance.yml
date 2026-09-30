@@ -132,7 +132,7 @@ jobs:
 
       - name: Reset runtime state
         id: reset
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         timeout-minutes: 3
         run: |
@@ -161,9 +161,17 @@ jobs:
           go test ./internal/repositoryinspect -run 'TestAnalyzeComposeFile.*Workload.*Protocol' -count=1
           go test ./cmd/baha -run 'TestDevelopmentWorkloadRoute|TestWorkloadExposureSchemeForService' -count=1
 
+      - name: Run focused Keycloak readiness checks
+        id: keycloak_readiness
+        if: steps.target.outputs.gate == 'debug-keycloak-readiness'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/identityprovider -run 'TestKeycloakCompose|Test.*IdentityEndpoint' -count=1
+
       - name: Verify Podman Quadlet runtime
         id: quadlet
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.runtime == 'podman'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.runtime == 'podman'
         shell: bash
         run: |
           set -euo pipefail
@@ -220,6 +228,12 @@ jobs:
             bash tests/debug-podman-container-lookup/run.sh
           elif [ "$DEMO_GATE" = "debug-recovery-evidence" ]; then
             bash tests/debug-recovery-evidence/run.sh
+          elif [ "$DEMO_GATE" = "debug-keycloak-runtime" ]; then
+            export DEMO_ROOT="$WORKDIR"
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash tests/debug-keycloak-runtime/run.sh
           elif [ "$DEMO_GATE" = "debug-restore-route" ]; then
             export DEMO_ROOT="$WORKDIR"
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
@@ -252,7 +266,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
-          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
+          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.target.outputs.gate }}" != "debug-keycloak-readiness" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
             export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
@@ -263,7 +277,7 @@ jobs:
 
       - name: Cleanup runtime state
         id: cleanup
-        if: always() && steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence'
+        if: always() && steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         timeout-minutes: 3
         run: |

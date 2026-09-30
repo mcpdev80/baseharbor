@@ -118,6 +118,10 @@ type legacyServiceCleaner interface {
 	RemoveProjectServices(context.Context, string, ...string) error
 }
 
+type identityProjectDiagnostics interface {
+	DiagnosticsProject(context.Context, string, string, string) string
+}
+
 func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Resource, binding capability.Binding) error {
 	if d.provisioned {
 		return nil
@@ -364,6 +368,11 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 		return nil, err
 	}
 	if err := waitIdentityEndpoint(ctx, client, d.files.AdminURL+"/realms/master/.well-known/openid-configuration"); err != nil {
+		if diagnostics, ok := d.runtime.(identityProjectDiagnostics); ok {
+			if detail := strings.TrimSpace(diagnostics.DiagnosticsProject(ctx, d.files.Project, d.files.Compose, d.files.Env)); detail != "" {
+				return nil, fmt.Errorf("wait for Keycloak admin endpoint: %w; runtime diagnostics:\n%s", err, detail)
+			}
+		}
 		return nil, fmt.Errorf("wait for Keycloak admin endpoint: %w", err)
 	}
 	values, err := readProtectedEnv(d.files.Env)
