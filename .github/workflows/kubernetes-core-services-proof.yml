@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   postgres:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'runtime-validation/targeted-kubernetes-core-services-postgres')
     name: Kubernetes · PostgreSQL Core Seam
     runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
     timeout-minutes: 15
@@ -64,6 +65,7 @@ jobs:
 
 
   openbao:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'runtime-validation/targeted-kubernetes-core-services-openbao')
     name: Kubernetes · OpenBao Core Seam
     runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
     timeout-minutes: 20
@@ -113,6 +115,7 @@ jobs:
 
 
   identity:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'runtime-validation/targeted-kubernetes-core-services-identity')
     name: Kubernetes · Keycloak Identity Core Seam
     runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
     timeout-minutes: 25
