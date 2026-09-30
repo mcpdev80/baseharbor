@@ -47,7 +47,6 @@ func TestManagedOperatorCanonicalBaseURL(t *testing.T) {
 	}
 }
 
-
 func TestManagedOperatorCanonicalBaseURLUsesPersistedGatewayFallback(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv("BASEHARBOR_DEV_DOMAIN", "baha.localhost")
