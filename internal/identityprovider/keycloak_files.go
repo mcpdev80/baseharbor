@@ -257,6 +257,12 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
     volumes:
       - keycloak-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_KEYCLOAK_DB_USER} -d ${BASEHARBOR_KEYCLOAK_DB_NAME}"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 2s
     networks:
       - identity-internal
 
@@ -267,7 +273,8 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
-      - keycloak-db
+      keycloak-db:
+        condition: service_healthy
     command:
       - start
       - --http-enabled=false
@@ -290,6 +297,12 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - ./native-tls/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
       - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
       - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q 'HTTP/1.1 200' <&3"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+      start_period: 10s
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
