@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -42,19 +43,30 @@ func newRuntimeSeaweedFSRealization(runtime Runtime, issuer serviceaccess.Issuer
 	return &runtimeSeaweedFSRealization{
 		runtime:   runtime,
 		issuer:    issuer,
-		dataDir:   filepath.Clean(dataDir),
+		dataDir:   strings.TrimSpace(dataDir),
 		namespace: strings.TrimSpace(namespace),
 		app:       app,
 	}
 }
 
+func (r *runtimeSeaweedFSRealization) dataDirPath() (string, error) {
+	if strings.TrimSpace(r.dataDir) != "" {
+		return filepath.Clean(r.dataDir), nil
+	}
+	return bhruntime.DataDir("")
+}
+
 func (r *runtimeSeaweedFSRealization) Apply(ctx context.Context) (SeaweedFSInstance, error) {
+	dataDir, err := r.dataDirPath()
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
 	if r.app.Services.ObjectStorageManagementUI {
-		if err := RegisterManagementUIConsumerAt(r.dataDir, r.namespace, r.app); err != nil {
+		if err := RegisterManagementUIConsumerAt(dataDir, r.namespace, r.app); err != nil {
 			return SeaweedFSInstance{}, err
 		}
 	}
-	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, r.dataDir, r.namespace)
+	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, dataDir, r.namespace)
 	if err != nil {
 		return SeaweedFSInstance{}, err
 	}
@@ -62,7 +74,11 @@ func (r *runtimeSeaweedFSRealization) Apply(ctx context.Context) (SeaweedFSInsta
 }
 
 func (r *runtimeSeaweedFSRealization) Existing(ctx context.Context) (SeaweedFSInstance, error) {
-	files, _, _, err := ExistingReadySharedProviderAt(ctx, r.dataDir, r.namespace)
+	dataDir, err := r.dataDirPath()
+	if err != nil {
+		return SeaweedFSInstance{}, err
+	}
+	files, _, _, err := ExistingReadySharedProviderAt(ctx, dataDir, r.namespace)
 	if err != nil {
 		return SeaweedFSInstance{}, err
 	}
@@ -70,7 +86,11 @@ func (r *runtimeSeaweedFSRealization) Existing(ctx context.Context) (SeaweedFSIn
 }
 
 func (r *runtimeSeaweedFSRealization) Admin(ctx context.Context, command string) (string, error) {
-	files, err := ExistingProviderFilesAt(r.dataDir, r.namespace)
+	dataDir, err := r.dataDirPath()
+	if err != nil {
+		return "", err
+	}
+	files, err := ExistingProviderFilesAt(dataDir, r.namespace)
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +103,11 @@ func (r *runtimeSeaweedFSRealization) Admin(ctx context.Context, command string)
 }
 
 func (r *runtimeSeaweedFSRealization) Destroy(ctx context.Context) error {
-	return DestroySharedProviderAt(ctx, r.runtime, r.dataDir, r.namespace)
+	dataDir, err := r.dataDirPath()
+	if err != nil {
+		return err
+	}
+	return DestroySharedProviderAt(ctx, r.runtime, dataDir, r.namespace)
 }
 
 func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) {
