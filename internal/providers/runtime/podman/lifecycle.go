@@ -629,6 +629,58 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 	return existing, nil
 }
 
+func podmanSystemdUnitLabel(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "<no value>" {
+		return ""
+	}
+	return value
+}
+
+func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project string) error {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return errors.New("project is required")
+	}
+	containers, err := p.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if container.Project != project || !container.Running {
+			continue
+		}
+		unitOut, inspectErr := p.DirectOutput(ctx,
+			"container", "inspect", "--format",
+			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
+			container.Name,
+		)
+		if inspectErr != nil {
+			return fmt.Errorf("inspect Quadlet unit for %s/%s (%s): %w", project, container.Service, container.Name, inspectErr)
+		}
+		unit := podmanSystemdUnitLabel(unitOut)
+		if unit != "" {
+			if _, stopErr := quadletSystemctlCombined(ctx, "stop", unit); stopErr != nil {
+				return fmt.Errorf("stop owned Quadlet service %s for %s/%s: %w", unit, project, container.Service, stopErr)
+			}
+			continue
+		}
+		if _, stopErr := p.DirectOutput(ctx, "container", "stop", container.Name); stopErr != nil {
+			return fmt.Errorf("stop owned Podman container %s/%s (%s): %w", project, container.Service, container.Name, stopErr)
+		}
+	}
+	remaining, err := p.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range remaining {
+		if container.Project == project && container.Running {
+			return fmt.Errorf("verify owned project stop: container %s/%s (%s) is still running", project, container.Service, container.Name)
+		}
+	}
+	return nil
+}
+
 func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
 	existing, err := p.InspectProjectResources(ctx, project, resources)
 	if err != nil {
