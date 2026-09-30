@@ -696,6 +696,9 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 				args = []string{"container", "rm", "-f", resource.Name}
 			}
 			if _, err := p.DirectOutput(ctx, args...); err != nil {
+				if kind == "network" && podmanNetworkHasActiveConsumers(err) {
+					continue
+				}
 				remaining, inspectErr := p.InspectProjectResources(ctx, project, []ProjectResource{resource})
 				if inspectErr == nil && len(remaining) == 0 {
 					continue
@@ -708,6 +711,16 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 		}
 	}
 	return nil
+}
+
+func podmanNetworkHasActiveConsumers(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "network is being used") ||
+		strings.Contains(message, "has associated containers") ||
+		strings.Contains(message, "active endpoints")
 }
 
 func (p PodmanProvider) ContainerLogConfigProjectService(context.Context, string, string) (string, string, error) {
