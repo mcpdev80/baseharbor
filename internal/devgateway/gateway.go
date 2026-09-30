@@ -491,17 +491,8 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 		},
 	}
 	client := &http.Client{Transport: transport}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, canonicalURL(route.Host, hostPort)+"/", nil)
-	if err != nil {
+	if err := serviceaccess.VerifyBrowserRoute(ctx, client, canonicalURL(route.Host, hostPort)+"/"); err != nil {
 		return fmt.Errorf("%s: %w", route.Host, err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("%s: %w", route.Host, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 500 {
-		return fmt.Errorf("%s returned HTTP %d", route.Host, resp.StatusCode)
 	}
 	return nil
 }
