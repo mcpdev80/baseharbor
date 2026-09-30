@@ -26,7 +26,7 @@ func (seamTestProvider) Descriptor() ProviderDescriptor {
 func (seamTestProvider) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{WorkloadLifecycle: true}
 }
-func (seamTestProvider) TargetScope() string { return "test" }
+func (seamTestProvider) TargetScope() string                                    { return "test" }
 func (seamTestProvider) Apply(context.Context, runtimemodel.WorkloadPlan) error { return nil }
 func (seamTestProvider) WaitReady(context.Context, runtimemodel.WorkloadPlan, time.Duration) error {
 	return nil
@@ -72,12 +72,12 @@ func TestInternalWorkloadProviderRemainsRuntimeOnly(t *testing.T) {
 
 	forbidden := map[string]bool{
 		"Provision": true,
-		"Bind": true,
-		"Unbind": true,
-		"Backup": true,
-		"Restore": true,
+		"Bind":      true,
+		"Unbind":    true,
+		"Backup":    true,
+		"Restore":   true,
 		"Reconcile": true,
-		"Deliver": true,
+		"Deliver":   true,
 	}
 	for _, method := range got {
 		if forbidden[method] {
