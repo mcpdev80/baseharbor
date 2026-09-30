@@ -353,6 +353,23 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("restore managed HTTP exposure: %w", err)
 	}
+	if requiresDevelopmentGateway(m) {
+		routes := &applicationApplyExecution{
+			resolved:      resolved,
+			manifest:      m,
+			term:          cli.NewTerminal(ctx, out, io.Discard),
+			out:           out,
+			errOut:        io.Discard,
+			compose:       compose,
+			platformFiles: platformFiles,
+			issuer:        issuer,
+			files:         files,
+		}
+		if err := routes.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+			_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+			return fmt.Errorf("restore canonical development routes: %w", err)
+		}
+	}
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
