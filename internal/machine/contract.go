@@ -50,6 +50,7 @@ const (
 	ErrorUnsupported              ErrorCode = "unsupported_operation"
 	ErrorInternal                 ErrorCode = "internal_error"
 )
+
 type Error struct {
 	Code        ErrorCode `json:"code"`
 	Message     string    `json:"message"`
