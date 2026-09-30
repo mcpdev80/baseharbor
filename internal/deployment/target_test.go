@@ -243,3 +243,46 @@ func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
 		t.Fatalf("rename did not preserve stable deployment identity: %#v", again.Identity)
 	}
 }
+
+
+func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	first := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
+	second := testDeploymentIdentity(t, "docker-dev", "renamed-alpha", "dev")
+	if first.DeploymentID == second.DeploymentID {
+		t.Fatal("expected unique deployment IDs")
+	}
+	for _, id := range []DeploymentIdentity{first, second} {
+		if err := SaveDeploymentRecord(DeploymentRecord{
+			Identity: id,
+			Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := FindDeployment("docker-dev", testApplicationID, "dev"); err == nil {
+		t.Fatal("ambiguous stable application ownership was accepted")
+	}
+}
+
+func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
+	record := DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+
+	requested := id
+	requested.Application = "renamed-alpha"
+	got, err := LoadDeploymentRecord(requested)
+	if err != nil {
+		t.Fatalf("stable identity lookup rejected readable rename: %v", err)
+	}
+	if got.Identity.DeploymentID != id.DeploymentID || got.Identity.ApplicationID != id.ApplicationID {
+		t.Fatalf("stable identity changed across readable rename: %#v", got.Identity)
+	}
+}
