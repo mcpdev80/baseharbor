@@ -1,0 +1,66 @@
+name: "Kubernetes Valkey Proof"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes-valkey'
+    paths:
+      - '.ci/kubernetes-valkey-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  valkey:
+    name: Kubernetes · Valkey Core Seam
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/providers/runtime/kubernetes/core_postgres_integration_test.go internal/providers/runtime/kubernetes/core_valkey_integration_test.go
+          git diff --exit-code -- internal/providers/runtime/kubernetes/core_postgres_integration_test.go internal/providers/runtime/kubernetes/core_valkey_integration_test.go
+
+      - name: Compile focused packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes ./internal/application -run TestDoesNotExist -count=1
+
+      - name: Run Valkey Core seam proof on k3s
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes -run TestKubernetesCoreValkeySemanticProbe -count=1 -v
+
+      - name: Cleanup and assert proof cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+          namespace="${namespace:-default}"
+          selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-valkey-proof'
+          kubectl delete deployment,service -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+          remaining="$(kubectl get deployment,service -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+          test -z "$remaining" || {
+            echo "Valkey proof left BaseHarbor-owned resources:" >&2
+            echo "$remaining" >&2
+            exit 1
+          }
