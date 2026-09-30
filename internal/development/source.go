@@ -2,9 +2,9 @@ package development
 
 import (
 	"crypto/sha256"
-	"errors"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
