@@ -1,0 +1,79 @@
+name: "Targeted · Identity Canonical URLs"
+
+on:
+  push:
+    branches:
+      - fix/v0418-keycloak-admin-hostname
+
+permissions:
+  contents: read
+
+jobs:
+  docker-identity:
+    name: "Docker · Guided + Identity"
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 35
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:targeted-identity
+      DEMO_REF: 2e380f210fda0ae7e6897083f705609bd0f2dcd6
+      ARTIFACT_DIR: /tmp/baseharbor-targeted-identity-docker
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Reset runner
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.0"
+
+      - name: Targeted source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l internal/identityprovider)"
+          go test ./internal/identityprovider
+
+      - name: Build targeted candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          mkdir -p "$RUNNER_TEMP/targeted-candidate"
+          CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=v0.4.18 -X main.commit=$candidate_sha -X main.date=unknown"             -o "$RUNNER_TEMP/targeted-candidate/baha" ./cmd/baha
+          docker build             --build-arg VERSION=v0.4.18             --build-arg COMMIT="$candidate_sha"             -t "$BASEHARBOR_RUNTIME_IMAGE"             -f deploy/control-plane/Dockerfile .
+
+      - name: Checkout pinned demo
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="/tmp/baseharbor-demo-targeted-identity-docker"
+          rm -rf "$workdir" "$ARTIFACT_DIR"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          echo "DEMO_WORKDIR=$workdir" >> "$GITHUB_ENV"
+
+      - name: Run guided + identity gates
+        shell: bash
+        env:
+          BASEHARBOR_PREBUILT_BINARY: ${{ runner.temp }}/targeted-candidate/baha
+        run: |
+          set -euo pipefail
+          cd "$DEMO_WORKDIR"
+          BASEHARBOR_SOURCE_REF="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"           BASEHARBOR_PREBUILT_BINARY="$BASEHARBOR_PREBUILT_BINARY"           BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"           BASEHARBOR_TEST_RUNTIME=docker           ARTIFACT_DIR="$ARTIFACT_DIR"           bash scripts/acceptance.sh guided identity
+
+      - name: Diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
+          docker ps -a > "$ARTIFACT_DIR/runtime-diagnostics/docker-ps.txt" 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
