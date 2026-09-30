@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/artifact"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
@@ -26,18 +27,22 @@ const (
 )
 
 type repositoryInitOptions struct {
-	Hostname string
-	TLSMode  string
-	CertDir  string
-	Yes      bool
+	Hostname           string
+	TLSMode            string
+	CertDir            string
+	ArtifactRepository string
+	BuildKitAddress    string
+	Yes                bool
 }
 
 type repositoryInitState struct {
-	Hostname        string
-	TLSMode         string
-	CertDir         string
-	TLSDir          string
-	RuntimeProvider bhruntime.ProviderKind
+	Hostname           string
+	TLSMode            string
+	CertDir            string
+	TLSDir             string
+	RuntimeProvider    bhruntime.ProviderKind
+	ArtifactRepository string
+	BuildKitAddress    string
 }
 
 type detectedCertificatePair struct {
@@ -52,8 +57,8 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create the application contract or initialize deployment settings",
-		Usage:   "baha app init [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes]",
-		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, asks only for the public FQDN and TLS settings. The --hostname flag is kept for compatibility and accepts the public FQDN. Existing certificate mode accepts one directory; BaseHarbor detects and validates the matching certificate/key pair and normalizes it under protected local state.",
+		Usage:   "baha app init [--artifact-repository REGISTRY/PREFIX] [--buildkit-address ADDR] [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes]",
+		Long:    "Without an existing baseharbor.yaml, runs the normal guided application-contract generator. With an existing repository manifest, initializes deployment-owned settings. Runtime selection remains target-owned. Kubernetes source-backed workloads require an OCI artifact repository; BuildKit access is deployment configuration and never portable application intent.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -93,6 +98,14 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 		switch {
 		case arg == "--yes" || arg == "-y":
 			opts.Yes = true
+		case arg == "--artifact-repository":
+			opts.ArtifactRepository, err = next("--artifact-repository")
+		case strings.HasPrefix(arg, "--artifact-repository="):
+			opts.ArtifactRepository = strings.TrimSpace(strings.TrimPrefix(arg, "--artifact-repository="))
+		case arg == "--buildkit-address":
+			opts.BuildKitAddress, err = next("--buildkit-address")
+		case strings.HasPrefix(arg, "--buildkit-address="):
+			opts.BuildKitAddress = strings.TrimSpace(strings.TrimPrefix(arg, "--buildkit-address="))
 		case arg == "--hostname":
 			opts.Hostname, err = next("--hostname")
 		case strings.HasPrefix(arg, "--hostname="):
@@ -106,7 +119,7 @@ func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {
 		case strings.HasPrefix(arg, "--cert-dir="):
 			opts.CertDir = strings.TrimSpace(strings.TrimPrefix(arg, "--cert-dir="))
 		default:
-			return repositoryInitOptions{}, unknownOptionUsage("baha app init", arg, "--hostname", "--tls", "--cert-dir", "--yes", "-y")
+			return repositoryInitOptions{}, unknownOptionUsage("baha app init", arg, "--artifact-repository", "--buildkit-address", "--hostname", "--tls", "--cert-dir", "--yes", "-y")
 		}
 		if err != nil {
 			return repositoryInitOptions{}, err
@@ -132,6 +145,8 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	if err != nil {
 		return err
 	}
+	artifactRepository := firstNonEmpty(strings.TrimSpace(opts.ArtifactRepository), current.ArtifactRepository)
+	buildKitAddress := firstNonEmpty(strings.TrimSpace(opts.BuildKitAddress), current.BuildKitAddress)
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
 	reader := bufio.NewReader(appInitInput)
@@ -186,6 +201,40 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 		}
 	}
 
+	if provider == bhruntime.ProviderKubernetes {
+		model, found, modelErr := application.ResolveRepositoryWorkloadModel(repoRoot, resolved.Manifest)
+		if modelErr != nil {
+			return modelErr
+		}
+		if found {
+			resolution, resolveErr := artifact.ResolveWorkload(repoRoot, model)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			if len(resolution.Builds) > 0 && artifactRepository == "" {
+				if interactive {
+					artifactRepository, err = promptLine(reader, out, "OCI artifact repository prefix (example: ghcr.io/acme/baseharbor)", "")
+					if err != nil {
+						return err
+					}
+					artifactRepository = strings.TrimSpace(artifactRepository)
+				}
+				if artifactRepository == "" {
+					return usageError(
+						"Kubernetes deployment has source-backed workloads but no OCI artifact repository",
+						"Re-run 'baha app init --artifact-repository REGISTRY/PREFIX'.",
+					)
+				}
+			}
+		}
+	}
+	if artifactRepository != "" {
+		artifactRepository, err = deployment.NormalizeArtifactRepositoryPrefix(artifactRepository)
+		if err != nil {
+			return err
+		}
+	}
+
 	tlsDir := filepath.Join(stateRoot, repositoryTLSDirName)
 	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
 		return fmt.Errorf("create local TLS state directory: %w", err)
@@ -231,13 +280,21 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 		TLSMode:         tlsMode,
 		CertDir:         certDir,
 		TLSDir:          tlsDir,
-		RuntimeProvider: provider,
+		RuntimeProvider:    provider,
+		ArtifactRepository: artifactRepository,
+		BuildKitAddress:    buildKitAddress,
 	}
 	if err := writeRepositoryInitStateToStateRoot(stateRoot, state); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Application runtime initialization saved for %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
 	fmt.Fprintf(out, "Runtime provider: %s\n", provider)
+	if artifactRepository != "" {
+		fmt.Fprintf(out, "OCI artifact repository: %s\n", artifactRepository)
+	}
+	if buildKitAddress != "" {
+		fmt.Fprintf(out, "BuildKit address: %s\n", buildKitAddress)
+	}
 	if development {
 		domain, _ := devaccess.LoadDomain(resolved.Target.Name)
 		fmt.Fprintf(out, "Development domain: %s\n", domain)
@@ -458,12 +515,18 @@ func loadRepositoryInitStateFromStateRoot(stateRoot string) (repositoryInitState
 	if err != nil {
 		return repositoryInitState{}, err
 	}
+	artifactState, err := deployment.ArtifactDistributionStateFromValues(values)
+	if err != nil {
+		return repositoryInitState{}, err
+	}
 	return repositoryInitState{
 		Hostname:        strings.TrimSpace(values["BASEHARBOR_HOSTNAME"]),
 		TLSMode:         strings.TrimSpace(values["BASEHARBOR_TLS_MODE"]),
 		CertDir:         strings.TrimSpace(values["BASEHARBOR_TLS_SOURCE_DIR"]),
 		TLSDir:          strings.TrimSpace(values["BASEHARBOR_TLS_CERT_DIR"]),
-		RuntimeProvider: providerState.Provider,
+		RuntimeProvider:    providerState.Provider,
+		ArtifactRepository: artifactState.RepositoryPrefix,
+		BuildKitAddress:    artifactState.BuildKitAddress,
 	}, nil
 }
 
@@ -531,6 +594,12 @@ func writeRepositoryInitStateToStateRoot(stateRoot string, state repositoryInitS
 		"BASEHARBOR_TLS_SOURCE_DIR": state.CertDir,
 	}
 	if err := deployment.ApplyRuntimeProviderState(values, deployment.RuntimeProviderState{Provider: state.RuntimeProvider}); err != nil {
+		return err
+	}
+	if err := deployment.ApplyArtifactDistributionState(values, deployment.ArtifactDistributionState{
+		RepositoryPrefix: state.ArtifactRepository,
+		BuildKitAddress:   state.BuildKitAddress,
+	}); err != nil {
 		return err
 	}
 	return updateRepositoryInitValuesAtStateRoot(stateRoot, values)
