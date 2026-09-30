@@ -264,21 +264,30 @@ spec:
 	if err != nil {
 		return identityprovider.KeycloakInstance{}, err
 	}
+	var portForwardOutput bytes.Buffer
 	cmd := exec.CommandContext(
 		context.Background(),
 		r.provider.KubectlPath(),
 		"port-forward",
 		"-n", r.namespace,
-		"service/"+base+"-keycloak",
+		"deployment/"+base+"-keycloak",
 		fmt.Sprintf("%d:8443", port),
 	)
+	cmd.Stdout = &portForwardOutput
+	cmd.Stderr = &portForwardOutput
 	if err := cmd.Start(); err != nil {
 		return identityprovider.KeycloakInstance{}, fmt.Errorf("start Keycloak port-forward: %w", err)
 	}
 	r.portForward = cmd
 
 	if err := waitTCP("127.0.0.1", port, 20*time.Second); err != nil {
-		return identityprovider.KeycloakInstance{}, err
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			return identityprovider.KeycloakInstance{}, fmt.Errorf("Keycloak port-forward exited before becoming ready: %s", strings.TrimSpace(portForwardOutput.String()))
+		}
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		r.portForward = nil
+		return identityprovider.KeycloakInstance{}, fmt.Errorf("wait for Keycloak port-forward: %w: %s", err, strings.TrimSpace(portForwardOutput.String()))
 	}
 
 	pool := x509.NewCertPool()
