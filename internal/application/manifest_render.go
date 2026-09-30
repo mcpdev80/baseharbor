@@ -27,6 +27,15 @@ func (m Manifest) YAML() string {
 			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
 			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
 		}
+		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
+			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+		}
+		if m.Services.MessagingPubSub || len(m.Services.MessagingPubSubInstances) > 0 {
+			writeServiceYAML(&b, "messaging_pubsub", m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+		}
+		if m.Services.MessagingStream || len(m.Services.MessagingStreamInstances) > 0 {
+			writeServiceYAML(&b, "messaging_stream", m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
 			writeManagementUIYAML(&b, m.Services.ObjectStorageManagementUI)

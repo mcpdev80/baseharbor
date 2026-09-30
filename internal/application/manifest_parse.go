@@ -210,7 +210,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "key_value", "object_storage", "secrets", "identity", "observability":
+	case "sql", "cache", "key_value", "messaging_queue", "messaging_pubsub", "messaging_stream", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -311,7 +311,7 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 }
 
 func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
-	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value") {
+	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value" || p.service == "messaging_queue" || p.service == "messaging_pubsub" || p.service == "messaging_stream") {
 		p.serviceField = "instances"
 		return nil
 	}
@@ -354,6 +354,12 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.Cache = enabled
 	case "key_value":
 		p.manifest.Services.KeyValue = enabled
+	case "messaging_queue":
+		p.manifest.Services.MessagingQueue = enabled
+	case "messaging_pubsub":
+		p.manifest.Services.MessagingPubSub = enabled
+	case "messaging_stream":
+		p.manifest.Services.MessagingStream = enabled
 	case "object_storage":
 		p.manifest.Services.ObjectStorage = enabled
 	case "secrets":
@@ -554,6 +560,18 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 		}
 		p.manifest.Services.KeyValueInstances[name] = ServiceInstance{}
 		p.manifest.Services.KeyValue = true
+	case "messaging_queue":
+		if p.manifest.Services.MessagingQueueInstances == nil { p.manifest.Services.MessagingQueueInstances = map[string]ServiceInstance{} }
+		p.manifest.Services.MessagingQueueInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingQueue = true
+	case "messaging_pubsub":
+		if p.manifest.Services.MessagingPubSubInstances == nil { p.manifest.Services.MessagingPubSubInstances = map[string]ServiceInstance{} }
+		p.manifest.Services.MessagingPubSubInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingPubSub = true
+	case "messaging_stream":
+		if p.manifest.Services.MessagingStreamInstances == nil { p.manifest.Services.MessagingStreamInstances = map[string]ServiceInstance{} }
+		p.manifest.Services.MessagingStreamInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingStream = true
 	case "object_storage":
 		if p.manifest.Services.ObjectStorageBuckets == nil {
 			p.manifest.Services.ObjectStorageBuckets = map[string]ServiceInstance{}

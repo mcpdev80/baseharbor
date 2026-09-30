@@ -27,7 +27,10 @@ func (m Manifest) Validate() error {
 	cache := CacheInstanceNames(m)
 	keyValue := KeyValueInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	messagingQueue := MessagingQueueInstanceNames(m)
+	messagingPubSub := MessagingPubSubInstanceNames(m)
+	messagingStream := MessagingStreamInstanceNames(m)
+	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range sql {
@@ -58,6 +61,20 @@ func (m Manifest) Validate() error {
 		if err := validateSlug("object-storage bucket name", name); err != nil {
 			return err
 		}
+	}
+	for _, item := range []struct {
+		label string
+		names []string
+	}{
+		{label: "messaging queue instance name", names: messagingQueue},
+		{label: "messaging pubsub instance name", names: messagingPubSub},
+		{label: "messaging stream instance name", names: messagingStream},
+	} {
+		for _, name := range item.names {
+			if err := validateSlug(item.label, name); err != nil {
+				return err
+			}
+	}
 	}
 	if err := validateManagementUIPreferences(m.Services); err != nil {
 		return err

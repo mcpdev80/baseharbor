@@ -63,6 +63,9 @@ type Services struct {
 	SQL                       bool
 	Cache                     bool
 	KeyValue                  bool
+	MessagingQueue            bool
+	MessagingPubSub           bool
+	MessagingStream           bool
 	Secrets                   bool
 	ObjectStorage             bool
 	Identity                  bool
@@ -76,6 +79,9 @@ type Services struct {
 	SQLInstances              map[string]ServiceInstance
 	CacheInstances            map[string]ServiceInstance
 	KeyValueInstances         map[string]ServiceInstance
+	MessagingQueueInstances   map[string]ServiceInstance
+	MessagingPubSubInstances  map[string]ServiceInstance
+	MessagingStreamInstances  map[string]ServiceInstance
 	ObjectStorageBuckets      map[string]ServiceInstance
 }
 
@@ -313,6 +319,18 @@ func CacheInstanceNames(m Manifest) []string {
 
 func KeyValueInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
+}
+
+func MessagingQueueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+}
+
+func MessagingPubSubInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+}
+
+func MessagingStreamInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingStream, m.Services.MessagingStreamInstances)
 }
 
 func ValkeyInstanceNames(m Manifest) []string {
