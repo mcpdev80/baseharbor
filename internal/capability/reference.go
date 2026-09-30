@@ -19,6 +19,7 @@ var (
 	Tempo         = Provider{Kind: ProviderTempo, Capabilities: []Kind{Traces}}
 	Keycloak      = Provider{Kind: ProviderKeycloak, Capabilities: []Kind{Identity}}
 	ExternalOIDC  = Provider{Kind: ProviderExternalOIDC, Capabilities: []Kind{Identity}}
+	RabbitMQ      = Provider{Kind: ProviderRabbitMQ, Capabilities: []Kind{MessagingQueue, MessagingPubSub, MessagingStream}}
 )
 
 var (
@@ -168,6 +169,14 @@ var (
 		SupportedScopes: []ProviderScope{ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}},
 	}
+	RabbitMQIntegration = IntegrationDescriptor{
+		ID: "baseharbor/rabbitmq", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: RabbitMQ,
+		Services:        []ServiceKind{ServiceMessaging},
+		Capabilities:    []SpecificationID{MessagingQueueV1.ID, MessagingPubSubV1.ID, MessagingStreamV1.ID},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -203,6 +212,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return KeycloakIntegration, nil
 	case ProviderExternalOIDC:
 		return ExternalOIDCIntegration, nil
+	case ProviderRabbitMQ:
+		return RabbitMQIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}

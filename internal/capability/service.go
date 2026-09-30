@@ -41,6 +41,8 @@ func ServiceKindForCapability(kind Kind) (ServiceKind, error) {
 		return ServiceExposure, nil
 	case Identity:
 		return ServiceIdentity, nil
+	case MessagingQueue, MessagingPubSub, MessagingStream:
+		return ServiceMessaging, nil
 	default:
 		return "", fmt.Errorf("service kind for capability %q is not defined", kind)
 	}
