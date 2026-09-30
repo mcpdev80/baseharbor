@@ -32,12 +32,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd/baha internal/runtime)"
-          test -z "$files" || {
-            echo "gofmt required:" >&2
-            echo "$files" >&2
+          gofmt -w cmd/baha internal/runtime
+          if ! git diff --exit-code -- cmd/baha internal/runtime; then
+            echo "Surface parity scope requires gofmt; diff shown above." >&2
             exit 1
-          }
+          fi
 
       - name: Run machine surface parity tests
         shell: bash
