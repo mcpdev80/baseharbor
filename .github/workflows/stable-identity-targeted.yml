@@ -1,0 +1,43 @@
+name: "Stable Identity Targeted"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-stable-identity'
+    paths:
+      - '.ci/stable-identity-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  identity:
+    name: Core · Stable Identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/application/identity.go internal/application/manifest.go internal/application/manifest_parse.go internal/application/manifest_render.go internal/application/manifest_validation.go internal/application/manifest_test.go
+          git diff --exit-code -- internal/application
+      - name: Compile application package
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -run TestDoesNotExist -count=1
+      - name: Run application tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -count=1
