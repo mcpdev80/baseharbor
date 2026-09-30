@@ -122,7 +122,6 @@ exit 2
 	}
 }
 
-
 func TestDestroyProjectRemoveOrphansRemovesOwnedResourcesOutsideCurrentComposeModel(t *testing.T) {
 	dir := t.TempDir()
 	runtimePath := filepath.Join(dir, "runtime")
