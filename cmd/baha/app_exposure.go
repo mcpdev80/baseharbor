@@ -163,4 +163,3 @@ func exposureVisibility(value string) string {
 	}
 	return value
 }
-
