@@ -359,6 +359,10 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 			if resolved.FromRepository {
 				if _, stopErr := stopRepositoryWorkload(parent, compose, resolved, files); stopErr != nil {
 					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "workload " + m.Name + "/" + m.Environment, Detail: stopErr.Error()})
+				} else if removed, cleanupErr := destroyRepositoryWorkloadRuntime(parent, compose, resolved, files); cleanupErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "workload-runtime " + m.Name + "/" + m.Environment, Detail: cleanupErr.Error()})
+				} else if removed {
+					*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "workload-runtime " + m.Name + "/" + m.Environment, Detail: "owned containers and networks removed; repository volumes preserved"})
 				}
 			}
 			if application.RequiresRuntimeBroker(m) {
