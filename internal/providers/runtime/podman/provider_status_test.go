@@ -26,7 +26,6 @@ func TestParsePodmanPublishedPortsRejectsInvalidInspect(t *testing.T) {
 	}
 }
 
-
 func TestPodmanSystemdUnitLabel(t *testing.T) {
 	for _, tc := range []struct {
 		input string
