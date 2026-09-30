@@ -508,6 +508,38 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 	return true, nil
 }
 
+func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	if !resolved.FromRepository {
+		return false, nil
+	}
+	project := application.WorkloadProjectNameForRuntime(resolved.Manifest, files)
+	resources, err := compose.ListOwnedProjectResources(ctx, project)
+	if err != nil {
+		return false, fmt.Errorf("inventory application workload runtime resources: %w", err)
+	}
+	cleanup := make([]bhruntime.ProjectResource, 0, len(resources))
+	for _, resource := range resources {
+		switch resource.Kind {
+		case "container", "network":
+			cleanup = append(cleanup, resource)
+		}
+	}
+	if len(cleanup) == 0 {
+		return false, nil
+	}
+	if err := compose.DestroyOwnedProjectResources(ctx, project, cleanup); err != nil {
+		return false, fmt.Errorf("remove application workload containers/networks: %w", err)
+	}
+	remaining, err := compose.InspectProjectResources(ctx, project, cleanup)
+	if err != nil {
+		return false, fmt.Errorf("verify application workload runtime cleanup: %w", err)
+	}
+	if len(remaining) != 0 {
+		return false, fmt.Errorf("verify application workload runtime cleanup: %d owned container/network resource(s) remain", len(remaining))
+	}
+	return true, nil
+}
+
 func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, []string, bool, error) {
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
