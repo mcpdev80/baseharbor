@@ -20,9 +20,9 @@ const (
 var ErrNoRecoveryMetadata = errors.New("no application recovery metadata recorded")
 
 type RecoveryMetadata struct {
-	Version         int
+	Version         int                           `json:"version"`
 	ApplicationID   string                        `json:"application_id"`
-	DeploymentID    string                        `json:"deployment_id"`                           `json:"version"`
+	DeploymentID    string                        `json:"deployment_id"`
 	Application     string                        `json:"application"`
 	Environment     string                        `json:"environment"`
 	RestoredAt      time.Time                     `json:"restored_at"`
