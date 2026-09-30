@@ -17,6 +17,21 @@ const maxBrowserSurfaceRedirects = 5
 // effective authority. A non-default port therefore cannot silently collapse
 // to HTTPS/443 during a redirect.
 func VerifyBrowserSurface(ctx context.Context, client *http.Client, rawURL string) error {
+	return verifyBrowserSurface(ctx, client, rawURL, func(status int) bool {
+		return status >= 200 && status < 300
+	})
+}
+
+// VerifyBrowserRoute validates bounded same-authority redirects while preserving
+// route-level reachability semantics for surfaces that intentionally answer
+// with authentication challenges.
+func VerifyBrowserRoute(ctx context.Context, client *http.Client, rawURL string) error {
+	return verifyBrowserSurface(ctx, client, rawURL, func(status int) bool {
+		return status < 500
+	})
+}
+
+func verifyBrowserSurface(ctx context.Context, client *http.Client, rawURL string, acceptFinal func(int) bool) error {
 	if client == nil {
 		return errors.New("browser surface HTTP client is required")
 	}
@@ -61,7 +76,7 @@ func VerifyBrowserSurface(ctx context.Context, client *http.Client, rawURL strin
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if !acceptFinal(resp.StatusCode) {
 		return fmt.Errorf("browser surface final response is HTTP %d", resp.StatusCode)
 	}
 	return nil
