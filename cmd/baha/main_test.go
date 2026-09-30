@@ -73,10 +73,16 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "create", "demo", "--environment", "dev", "--sql", "--cache"}, &out, &out); err != nil {
 		t.Fatalf("create failed: %v\n%s", err, out.String())
 	}
-	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "dev"}
-	record, err := deployment.LoadDeploymentRecord(id)
+	records, err := deployment.ListDeployments(target.Name)
 	if err != nil {
-		t.Fatalf("deployment record missing: %v", err)
+		t.Fatalf("list deployments: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("deployments = %#v, want one managed deployment", records)
+	}
+	record := records[0]
+	if record.Identity.Application != "demo" || record.Identity.Environment != "dev" {
+		t.Fatalf("unexpected deployment identity: %#v", record.Identity)
 	}
 	m, err := application.LoadManifestFile(record.Source.Manifest)
 	if err != nil {
