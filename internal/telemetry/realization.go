@@ -16,14 +16,14 @@ import (
 )
 
 type OTLPInstance struct {
-	HostEndpoint     string
-	WorkloadEndpoint string
-	TrustBundle      []byte
+	HostEndpoint      string
+	WorkloadEndpoint  string
+	TrustBundle       []byte
 	ClientCertificate []byte
-	ClientKey        []byte
-	HTTPClient       *http.Client
-	Network          string
-	ObservationID    string
+	ClientKey         []byte
+	HTTPClient        *http.Client
+	Network           string
+	ObservationID     string
 }
 
 type OTLPRealization interface {
