@@ -74,7 +74,7 @@ func (m Manifest) Validate() error {
 			if err := validateSlug(item.label, name); err != nil {
 				return err
 			}
-	}
+		}
 	}
 	if err := validateManagementUIPreferences(m.Services); err != nil {
 		return err
