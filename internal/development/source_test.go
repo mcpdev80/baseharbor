@@ -89,7 +89,7 @@ func TestResolveWorkspaceMissingWorktreeFailsBeforeMutation(t *testing.T) {
 	mapping := WorkspaceMapping{
 		SchemaVersion: WorkspaceMappingVersion,
 		Application:   "shop",
-		Sources: map[string]string{"api-source": filepath.Join(root, "missing")},
+		Sources:       map[string]string{"api-source": filepath.Join(root, "missing")},
 	}
 	if _, err := ResolveWorkspace(manifest, model, mapping); err == nil {
 		t.Fatal("expected missing worktree error")
@@ -123,14 +123,13 @@ func TestSourceModelRejectsEscapingSubPath(t *testing.T) {
 	model := SourceModel{
 		SchemaVersion: SourceModelVersion,
 		Application:   "shop",
-		Sources: []SourceDefinition{{ID: "api-source", Type: SourceRepository, Repository: "https://git.example/api.git"}},
-		Components: []ComponentSource{{Component: "api", Source: "api-source", SubPath: "../outside"}},
+		Sources:       []SourceDefinition{{ID: "api-source", Type: SourceRepository, Repository: "https://git.example/api.git"}},
+		Components:    []ComponentSource{{Component: "api", Source: "api-source", SubPath: "../outside"}},
 	}
 	if err := model.Validate(); err == nil {
 		t.Fatal("expected escaping subPath to fail")
 	}
 }
-
 
 func TestBuildPlanForWorkspaceCarriesStableSourceIdentity(t *testing.T) {
 	registry, err := NewRegistry(testAdapter{id: "development/go"}, testAdapter{id: "development/nextjs"})
