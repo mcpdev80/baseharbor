@@ -163,7 +163,7 @@ jobs:
 
           $RUNNER_TEMP/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
           $RUNNER_TEMP/baha app plan podman-ci | tee /tmp/podman-plan.txt
-          grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
+          grep -q "ensure database.sql:default - ensure SQL capability resource default" /tmp/podman-plan.txt
 
           $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
           timeout 180s $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
