@@ -39,7 +39,7 @@ func verifyIdentityManagementBrowserSurfaces(ctx context.Context, m application.
 		}
 		adminClient, adminErr := serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
 		if adminErr == nil {
-			adminErr = serviceaccess.VerifyBrowserSurface(ctx, adminClient, files.AdminURL+"/")
+			adminErr = serviceaccess.VerifyBrowserSurfaceWithAllowedAuthorities(ctx, adminClient, files.AdminURL+"/", files.PublicURL)
 		}
 		return []managementUIBrowserResult{
 			{Name: "identity-login", URL: files.PublicURL, Err: loginErr},
