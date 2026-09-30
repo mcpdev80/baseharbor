@@ -333,6 +333,38 @@ func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) 
 	return resources, nil
 }
 
+func (c Compose) StopOwnedProjectContainers(ctx context.Context, project string) error {
+	if c.command == "" {
+		return ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return errors.New("project is required")
+	}
+	containers, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if container.Project != project || !container.Running {
+			continue
+		}
+		if _, err := c.directOutput(ctx, "container", "stop", container.Name); err != nil {
+			return fmt.Errorf("stop owned container %s/%s (%s): %w", project, container.Service, container.Name, err)
+		}
+	}
+	remaining, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range remaining {
+		if container.Project == project && container.Running {
+			return fmt.Errorf("verify owned project stop: container %s/%s (%s) is still running", project, container.Service, container.Name)
+		}
+	}
+	return nil
+}
+
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
 	if c.command == "" {
 		return ErrRuntimeNotFound
