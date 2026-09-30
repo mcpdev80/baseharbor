@@ -500,7 +500,8 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 		var record deployment.DeploymentRecord
 		var recordErr error
 		if deploymentFound {
-			record, recordErr = deployment.LoadDeploymentRecord(id)
+			record = existing
+			record.Identity = id
 		} else {
 			recordErr = os.ErrNotExist
 		}
