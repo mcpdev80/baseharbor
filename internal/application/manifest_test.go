@@ -16,6 +16,7 @@ func TestManifestRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "OPENAI_API_KEY", "SMTP_PASSWORD")
+	expected.ApplicationID = want.ApplicationID
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, expected)
 	}
