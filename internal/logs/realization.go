@@ -47,11 +47,11 @@ type runtimeLokiRealization struct {
 
 func newRuntimeLokiRealization(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) LokiRealization {
 	return &runtimeLokiRealization{
-		runtime: runtime,
-		mode: logCollectionMode(runtime),
-		app: app,
-		issuer: issuer,
-		dataDir: strings.TrimSpace(dataDir),
+		runtime:   runtime,
+		mode:      logCollectionMode(runtime),
+		app:       app,
+		issuer:    issuer,
+		dataDir:   strings.TrimSpace(dataDir),
 		namespace: strings.TrimSpace(namespace),
 	}
 }
