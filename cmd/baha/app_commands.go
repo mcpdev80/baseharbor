@@ -10,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -179,6 +180,9 @@ func appPreflightCommand(store application.Store) *cli.Command {
 			requiredKnown := false
 			checks := []preflight.Check{
 				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+				{Name: "host memory", Run: func(ctx context.Context) error {
+					return runHostMemoryPreflight(ctx, runtimeInput, out, hostresource.EstimateApplication(m), false)
+				}},
 				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 				{Name: "manifest permissions", Run: func(context.Context) error {
 					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
