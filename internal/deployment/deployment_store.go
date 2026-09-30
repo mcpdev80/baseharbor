@@ -123,7 +123,10 @@ func (id DeploymentIdentity) Validate() error {
 }
 
 func DeploymentRoot(id DeploymentIdentity) (string, error) {
-	if err := id.Validate(); err != nil {
+	if err := ValidateDeploymentID(id.DeploymentID); err != nil {
+		return "", err
+	}
+	if err := ValidateTargetName(id.Target); err != nil {
 		return "", err
 	}
 	root, err := TargetStateRoot(id.Target)
@@ -134,6 +137,9 @@ func DeploymentRoot(id DeploymentIdentity) (string, error) {
 }
 
 func SaveDeploymentRecord(record DeploymentRecord) error {
+	if err := record.Identity.Validate(); err != nil {
+		return err
+	}
 	if record.Version == 0 {
 		record.Version = DeploymentRecordVersion
 	}
