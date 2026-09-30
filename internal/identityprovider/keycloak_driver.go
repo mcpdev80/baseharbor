@@ -45,10 +45,10 @@ func NewKeycloakDriver(runtime KeycloakRuntime, app application.Manifest, appFil
 func NewKeycloakDriverWithRealization(realization KeycloakRealization, app application.Manifest, appFiles application.RuntimeFiles) *KeycloakDriver {
 	return &KeycloakDriver{
 		realization: realization,
-		app: app,
-		appFiles: appFiles,
-		realm: keycloakRealmName(app),
-		clientID: keycloakClientID(app),
+		app:         app,
+		appFiles:    appFiles,
+		realm:       keycloakRealmName(app),
+		clientID:    keycloakClientID(app),
 	}
 }
 
