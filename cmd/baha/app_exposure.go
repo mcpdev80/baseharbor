@@ -163,3 +163,8 @@ func exposureVisibility(value string) string {
 	}
 	return value
 }
+
+
+func shouldProvisionManagedExposureBeforeWorkload(m application.Manifest) bool {
+	return application.HasManagedRuntimeServices(m)
+}
