@@ -72,14 +72,22 @@ func registerTestDeployment(t *testing.T, target deployment.ResolvedTarget, m ap
 
 func testDeploymentStore(t *testing.T, target deployment.ResolvedTarget, m application.Manifest) application.Store {
 	t.Helper()
-	root, err := deployment.DeploymentRoot(deployment.DeploymentIdentity{
+	identity := deployment.DeploymentIdentity{
 		DeploymentID: testDeploymentID,
 		ApplicationID: m.ApplicationID,
 		Target:        target.Name,
 		Application:   m.Name,
 		Environment:   m.Environment,
-	})
+	}
+	root, err := deployment.DeploymentRoot(identity)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: identity,
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: target.RuntimeProvider},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	return application.Store{Root: filepath.Join(root, "state"), Namespace: target.Name}
