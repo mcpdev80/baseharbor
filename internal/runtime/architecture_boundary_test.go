@@ -40,6 +40,27 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		"DockerProvider": {},
 		"PodmanProvider": {},
 	}
+	runtimeAdapterFiles := map[string]struct{}{
+		"internal/application/postgres_backup.go":          {},
+		"internal/application/runtime_lifecycle.go":        {},
+		"internal/application/runtime_postgres.go":         {},
+		"internal/application/shared_backends.go":          {},
+		"internal/application/shared_backends_runtime.go":  {},
+		"internal/application/workload.go":                 {},
+	}
+	forbiddenCoreSelectors := map[string]struct{}{
+		"ExecProject":                {},
+		"ExecProjectInput":           {},
+		"ConfigProject":              {},
+		"UpProject":                  {},
+		"DownProject":                {},
+		"StopProject":                {},
+		"DestroyProject":             {},
+		"DestroyProjectRemoveOrphans": {},
+		"RunningServicesProject":     {},
+		"InspectProjectResources":    {},
+		"DiagnosticsProject":         {},
+	}
 
 	for _, relativeRoot := range coreRoots {
 		base := filepath.Join(root, filepath.FromSlash(relativeRoot))
@@ -88,6 +109,14 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 				case *ast.SelectorExpr:
 					if n.Sel.Name == "Engine" {
 						t.Errorf("%s:%d calls product runtime Engine() from portable core", relativePath(root, path), fileSet.Position(n.Pos()).Line)
+					}
+					if relativeRoot == "internal/application" || relativeRoot == "internal/deployment" {
+						rel := relativePath(root, path)
+						if _, adapter := runtimeAdapterFiles[rel]; !adapter {
+							if _, forbidden := forbiddenCoreSelectors[n.Sel.Name]; forbidden {
+								t.Errorf("%s:%d uses runtime-project lifecycle selector %s from freeze-relevant semantic core", rel, fileSet.Position(n.Pos()).Line, n.Sel.Name)
+							}
+						}
 					}
 					if ident, ok := n.X.(*ast.Ident); ok {
 						if _, runtimeImport := runtimeAliases[ident.Name]; runtimeImport {
