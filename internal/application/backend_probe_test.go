@@ -18,6 +18,7 @@ func (e *recordingBackendProbeExecutor) ProbeBackend(_ context.Context, probe Ba
 }
 
 func TestVerifyPostgresProviderUsesRuntimeNeutralSemanticProbe(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("demo", "dev", true, false, false)
 	exec := &recordingBackendProbeExecutor{out: "1\n"}
 
@@ -34,6 +35,7 @@ func TestVerifyPostgresProviderUsesRuntimeNeutralSemanticProbe(t *testing.T) {
 }
 
 func TestVerifyValkeyProviderUsesRuntimeNeutralSemanticProbe(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("demo", "dev", false, true, false)
 	exec := &recordingBackendProbeExecutor{out: "PONG\n"}
 
@@ -50,6 +52,7 @@ func TestVerifyValkeyProviderUsesRuntimeNeutralSemanticProbe(t *testing.T) {
 }
 
 func TestVerifyBackendProviderPropagatesSemanticProbeFailure(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := New("demo", "dev", true, false, false)
 	exec := &recordingBackendProbeExecutor{err: errors.New("transport unavailable")}
 
