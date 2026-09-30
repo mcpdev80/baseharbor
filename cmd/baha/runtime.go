@@ -19,13 +19,13 @@ import (
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
-	Yes              bool
-	ControlPlaneOnly bool
-	PostgresPort     int
-	OpenBaoPort      int
-	RecoveryFile     string
-	Environment      string
-	TrustHostCA      bool
+	Yes                 bool
+	ControlPlaneOnly    bool
+	PostgresPort        int
+	OpenBaoPort         int
+	RecoveryFile        string
+	Environment         string
+	TrustHostCA         bool
 	SkipMemoryPreflight bool
 }
 
