@@ -22,10 +22,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-type keycloakRuntimeLocalHTTPS interface {
-	PreferredLocalHTTPSPort() int
-}
-
 type KeycloakDriver struct {
 	runtime   KeycloakRuntime
 	app       application.Manifest

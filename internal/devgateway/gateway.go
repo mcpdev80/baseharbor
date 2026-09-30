@@ -131,6 +131,12 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 		}
 	}
 	current.Routes = normalizedRoutes(filtered)
+	if len(current.Routes) > 0 && current.HostPort == 0 {
+		current.HostPort, err = resolveGatewayHostPort(files, current, runtime)
+		if err != nil {
+			return err
+		}
+	}
 	if err := saveState(files.State, current); err != nil {
 		return err
 	}
@@ -168,6 +174,12 @@ func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacces
 		current.Routes = append(current.Routes, route)
 	}
 	current.Routes = normalizedRoutes(current.Routes)
+	if len(current.Routes) > 0 && current.HostPort == 0 {
+		current.HostPort, err = resolveGatewayHostPort(files, current, runtime)
+		if err != nil {
+			return err
+		}
+	}
 	if err := saveState(files.State, current); err != nil {
 		return err
 	}
@@ -337,7 +349,7 @@ func URLForRuntime(target, host string, runtime Runtime) string {
 func urlForRuntime(target, host string, runtime Runtime, available func(int) bool) string {
 	files, err := FilesFor(target)
 	if err == nil {
-		if current, loadErr := loadState(files.State); loadErr == nil {
+		if current, loadErr := loadState(files.State); loadErr == nil && current.HostPort > 0 {
 			return canonicalURL(host, current.HostPort)
 		}
 	}
@@ -538,9 +550,6 @@ func loadState(path string) (state, error) {
 	}
 	if value.Version != stateVersion {
 		return state{}, fmt.Errorf("unsupported development gateway route state version %d", value.Version)
-	}
-	if value.HostPort == 0 {
-		value.HostPort = gatewayPort
 	}
 	value.Routes = normalizedRoutes(value.Routes)
 	return value, nil
