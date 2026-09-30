@@ -288,7 +288,7 @@ spec:
 			TLSClientConfig: &tls.Config{
 				MinVersion: tls.VersionTLS12,
 				RootCAs:    pool,
-				ServerName:  host,
+				ServerName: host,
 			},
 			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
