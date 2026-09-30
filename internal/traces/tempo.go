@@ -51,20 +51,20 @@ type ProviderFiles struct {
 }
 
 type Driver struct {
-	runtime      Runtime
+	runtime     Runtime
 	realization TempoRealization
-	app          application.Manifest
-	issuer       serviceaccess.Issuer
-	dataDir      string
-	namespace    string
+	app         application.Manifest
+	issuer      serviceaccess.Issuer
+	dataDir     string
+	namespace   string
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{
-		runtime:      runtime,
+		runtime:     runtime,
 		realization: newRuntimeTempoRealization(runtime, app, issuer, "", ""),
-		app:          app,
-		issuer:       issuer,
+		app:         app,
+		issuer:      issuer,
 	}
 }
 
@@ -72,12 +72,12 @@ func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess
 	dataDir = filepath.Clean(dataDir)
 	namespace = strings.TrimSpace(namespace)
 	return &Driver{
-		runtime:      runtime,
+		runtime:     runtime,
 		realization: newRuntimeTempoRealization(runtime, app, issuer, dataDir, namespace),
-		app:          app,
-		issuer:       issuer,
-		dataDir:      dataDir,
-		namespace:    namespace,
+		app:         app,
+		issuer:      issuer,
+		dataDir:     dataDir,
+		namespace:   namespace,
 	}
 }
 
