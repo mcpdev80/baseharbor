@@ -353,22 +353,8 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("restore managed HTTP exposure: %w", err)
 	}
-	if requiresDevelopmentGateway(m) {
-		routes := &applicationApplyExecution{
-			resolved:      resolved,
-			manifest:      m,
-			term:          cli.NewTerminal(ctx, out, io.Discard),
-			out:           out,
-			errOut:        io.Discard,
-			compose:       compose,
-			platformFiles: platformFiles,
-			issuer:        issuer,
-			files:         files,
-		}
-		if err := routes.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
-			_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
-			return fmt.Errorf("restore canonical development routes: %w", err)
-		}
+	if err := reconcileRestoredDevelopmentRoutes(ctx, out, resolved, compose, platformFiles, issuer, files); err != nil {
+		return err
 	}
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
@@ -393,6 +379,29 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
+}
+
+func reconcileRestoredDevelopmentRoutes(ctx context.Context, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, issuer serviceaccess.Issuer, files application.RuntimeFiles) error {
+	m := resolved.Manifest
+	if !requiresDevelopmentGateway(m) {
+		return nil
+	}
+	routes := &applicationApplyExecution{
+		resolved:      resolved,
+		manifest:      m,
+		term:          cli.NewTerminal(ctx, out, io.Discard),
+		out:           out,
+		errOut:        io.Discard,
+		compose:       compose,
+		platformFiles: platformFiles,
+		issuer:        issuer,
+		files:         files,
+	}
+	if err := routes.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+		return fmt.Errorf("restore canonical development routes: %w", err)
+	}
+	return nil
 }
 
 func restoreSelectedWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, restoreData applicationRestoreData) error {
