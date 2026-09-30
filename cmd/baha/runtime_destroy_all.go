@@ -481,6 +481,22 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "control-plane-state", Detail: filesErr.Error()})
 	}
 
+	if containers, err := compose.ListRuntimeContainers(ctx); err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-audit", Detail: err.Error()})
+	} else if residual := targetOwnedRuntimeContainers(target.Name, containers); len(residual) > 0 {
+		var names []string
+		for _, container := range residual {
+			names = append(names, container.Project+"/"+container.Service+" ("+container.Name+")")
+		}
+		sort.Strings(names)
+		*results = append(*results, fullDestroyResult{
+			Status:   "FAILED",
+			Target:   target.Name,
+			Resource: "runtime-audit",
+			Detail:   "BaseHarbor-owned containers remain: " + strings.Join(names, ", "),
+		})
+	}
+
 	if countFullDestroyBlockers((*results)[cleanupResultStart:]) > 0 {
 		*results = append(*results, fullDestroyResult{
 			Status:   "SKIPPED",
@@ -553,4 +569,27 @@ func countFullDestroyBlockers(results []fullDestroyResult) int {
 		}
 	}
 	return count
+}
+
+
+func targetOwnedRuntimeContainers(target string, containers []bhruntime.RuntimeContainer) []bhruntime.RuntimeContainer {
+	sharedProject := bhruntime.SharedProjectName(target)
+	projectPrefix := strings.TrimSuffix(sharedProject, "shared")
+	var result []bhruntime.RuntimeContainer
+	for _, container := range containers {
+		project := strings.TrimSpace(container.Project)
+		if project == sharedProject || strings.HasPrefix(project, projectPrefix) {
+			result = append(result, container)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Project != result[j].Project {
+			return result[i].Project < result[j].Project
+		}
+		if result[i].Service != result[j].Service {
+			return result[i].Service < result[j].Service
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result
 }
