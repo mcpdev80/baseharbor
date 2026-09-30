@@ -42,6 +42,7 @@ type Runtime interface {
 
 type Driver struct {
 	runtime          Runtime
+	realization      OTLPRealization
 	app              application.Manifest
 	files            application.RuntimeFiles
 	issuer           serviceaccess.Issuer
@@ -65,6 +66,7 @@ type ProviderFiles struct {
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
 	return &Driver{
 		runtime:          runtime,
+		realization:      newRuntimeOTLPRealization(runtime, app, issuer, "", ""),
 		app:              app,
 		files:            files,
 		issuer:           issuer,
@@ -75,12 +77,22 @@ func NewDriver(runtime Runtime, app application.Manifest, files application.Runt
 func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
 	return &Driver{
 		runtime:          runtime,
+		realization:      newRuntimeOTLPRealization(runtime, app, issuer, dataDir, namespace),
 		app:              app,
 		files:            files,
 		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
+	}
+}
+
+func NewDriverWithRealization(realization OTLPRealization, app application.Manifest, files application.RuntimeFiles) *Driver {
+	return &Driver{
+		realization:      realization,
+		app:              app,
+		files:            files,
+		externalEndpoint: application.ExternalOTLPEndpoint(),
 	}
 }
 
@@ -105,6 +117,9 @@ func (d *Driver) Descriptor() capability.Provider {
 func (d *Driver) SetTraceBackend(endpoint, network string) {
 	d.traceEndpoint = strings.TrimSpace(endpoint)
 	d.traceNetwork = strings.TrimSpace(network)
+	if realization, ok := d.realization.(*runtimeOTLPRealization); ok {
+		realization.SetTraceBackend(endpoint, network)
+	}
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -143,88 +158,43 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return nil
 	}
-	files, err := d.ensureProviderFiles(ctx)
+	if d.realization == nil {
+		return errors.New("managed OTLP realization is required")
+	}
+	instance, err := d.realization.Apply(ctx)
 	if err != nil {
 		return err
 	}
-	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
-		if err := cleaner.RemoveProjectServices(ctx, files.Project, "otel-collector-access"); err != nil {
-			return fmt.Errorf("remove legacy OpenTelemetry access gateway: %w", err)
-		}
-	}
-	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("validate OpenTelemetry Collector configuration: %w", err)
-	}
-	if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("start OpenTelemetry Collector: %w", err)
-	}
-	endpoint, err := providerEndpoint(files)
-	if err != nil {
-		return err
-	}
-	d.client, err = managedOTLPHTTPClient(d.app.Environment, files)
-	if err != nil {
-		return err
-	}
-	if err := waitOTLP(ctx, d.client, endpoint); err != nil {
-		return err
-	}
+	d.client = instance.HTTPClient
 	if resource.Provider == capability.ProviderOTelCollector {
-		metricsPolicy, err := application.MetricsPolicy(d.app)
-		if err != nil {
-			return err
-		}
-		metricsEnabled := (application.HasMetricsSources(d.app) || application.HasRuntimeMetricsPermissions(d.app)) &&
-			metricsPolicy.Enabled && metricsPolicy.Collect[application.MetricsSourcePlatformProvider]
-		signals := map[string]observability.ProviderSignalRuntime{}
-		if metricsEnabled {
-			signals["collector-metrics"] = observability.ProviderSignalRuntime{
-				Network: files.Network,
-				Target:  ProviderService + ":8888",
-			}
-		}
-		if err := observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
-			ID:         "opentelemetry-collector:" + files.Project,
-			Descriptor: capability.OTelCollectorIntegration,
-			Class:      observability.SourcePlatformProvider,
-			Scope:      capability.ScopeShared,
-			Enabled:    map[observability.SignalKind]bool{observability.SignalMetrics: metricsEnabled},
-			Signals:    signals,
-		}); err != nil {
+		if err := registerOTLPObservation(d.app, instance); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *Driver) Bind(_ context.Context, resource capability.Resource, _ capability.Binding) error {
+func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	if resource.Provider == capability.ProviderExternalOTLP {
 		return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, d.externalEndpoint, d.externalEndpoint)
 	}
-	files, err := d.existingProviderFiles()
+	if d.realization == nil {
+		return errors.New("managed OTLP realization is required")
+	}
+	instance, err := d.realization.Existing(ctx)
 	if err != nil {
 		return err
 	}
-	hostEndpoint, err := providerEndpoint(files)
-	if err != nil {
+	if err := application.MaterializeOTLPTLSBindingMaterial(
+		d.app,
+		d.files,
+		instance.TrustBundle,
+		instance.ClientCertificate,
+		instance.ClientKey,
+	); err != nil {
 		return err
 	}
-	policy, err := serviceaccess.Resolve(d.app.Environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
-	if err != nil {
-		return err
-	}
-	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
-	if err != nil {
-		return fmt.Errorf("load managed OTLP TLS material: %w", err)
-	}
-	if err := application.MaterializeOTLPTLSBinding(d.app, d.files, material.CA, material.ClientCertificate, material.ClientKey); err != nil {
-		return err
-	}
-	containerHost := "otel-collector"
-	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
-		containerHost = strings.TrimSpace(policy.ServerName)
-	}
-	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, hostEndpoint, "https://"+containerHost+":4318")
+	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, instance.HostEndpoint, instance.WorkloadEndpoint)
 }
 
 func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
@@ -256,6 +226,9 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
 	}
+	if provider == capability.ProviderOTelCollector {
+		d.realization = newRuntimeOTLPRealization(nil, m, nil, dataDir, namespace)
+	}
 	resource := capability.Resource{
 		Application: m.Name,
 		Kind:        capability.TelemetryOTLP,
@@ -268,17 +241,17 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	endpoint := d.externalEndpoint
 	if resource.Provider != capability.ProviderExternalOTLP {
-		files, err := d.existingProviderFiles()
+		if d.realization == nil {
+			return errors.New("managed OTLP realization is required")
+		}
+		instance, err := d.realization.Existing(ctx)
 		if err != nil {
 			return err
 		}
-		endpoint, err = providerEndpoint(files)
-		if err != nil {
-			return err
-		}
-		d.client, err = managedOTLPHTTPClient(d.app.Environment, files)
-		if err != nil {
-			return err
+		endpoint = instance.HostEndpoint
+		d.client = instance.HTTPClient
+		if d.client == nil {
+			return errors.New("managed OTLP realization did not provide an HTTP client")
 		}
 	} else if d.client == nil {
 		d.client = &http.Client{Timeout: 10 * time.Second}
