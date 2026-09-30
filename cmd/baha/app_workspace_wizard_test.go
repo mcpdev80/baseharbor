@@ -54,7 +54,7 @@ func TestWorkspaceWizardCreatesPortableModelAndLocalMapping(t *testing.T) {
 		"external-source",
 		"ghcr.io/example/external@sha256:deadbeef",
 		"n",
-		"",
+		"y",
 	}, "\n"))
 
 	oldWD, err := os.Getwd()
