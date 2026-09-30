@@ -315,7 +315,6 @@ func TestSaveRouteStateKeepsMaterializedGatewayWhenNetworkSetIsStable(t *testing
 	}
 }
 
-
 func TestRelatedRedirectURLsAllowsPairedIdentityLoginOnly(t *testing.T) {
 	routes := []Route{
 		{Owner: "shared/keycloak", Key: "shared/keycloak/login", Host: "auth.baha.localhost"},
