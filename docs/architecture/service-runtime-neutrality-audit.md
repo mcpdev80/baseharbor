@@ -150,3 +150,13 @@ The Keycloak conflict was resolved semantically:
 - current targeted-gate routing and the current v0.4.18 immutable demo revision are retained.
 
 The post-rebase Core identity/runtime-neutrality and architecture/conformance gates are green. Docker/Podman exact-head runtime regression evidence is recorded separately when those runner-bound gates complete.
+
+
+### Final reference-runtime regression
+
+```text
+Docker Core regression (post-rebase)        36777265097  PASS
+Podman Core regression (post-rebase)        36777185021  PASS
+```
+
+Both reference runtimes passed the same post-boundary-correction semantic lifecycle, including recovery, real log ingestion, real trace ingestion, cleanup and evidence generation.
