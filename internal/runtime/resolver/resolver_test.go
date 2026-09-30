@@ -11,6 +11,7 @@ func TestReferenceProviderDescriptors(t *testing.T) {
 	for _, kind := range []runtimecontract.ProviderKind{
 		runtimecontract.ProviderDocker,
 		runtimecontract.ProviderPodman,
+		runtimecontract.ProviderKubernetes,
 	} {
 		descriptor, err := Descriptor(kind)
 		if err != nil {
@@ -25,11 +26,11 @@ func TestReferenceProviderDescriptors(t *testing.T) {
 	}
 }
 
-func TestUnavailableProviderFailsClosed(t *testing.T) {
-	if _, err := Descriptor(runtimecontract.ProviderKubernetes); err == nil {
-		t.Fatal("unregistered Kubernetes descriptor unexpectedly resolved")
+func TestKubernetesUsesWorkloadProviderBoundary(t *testing.T) {
+	if _, err := WorkloadProvider(context.Background(), runtimecontract.ProviderKubernetes); err != nil {
+		t.Fatalf("Kubernetes workload provider did not resolve: %v", err)
 	}
 	if _, err := RuntimeProvider(context.Background(), runtimecontract.ProviderKubernetes); err == nil {
-		t.Fatal("unregistered Kubernetes provider unexpectedly resolved")
+		t.Fatal("Kubernetes unexpectedly implemented the legacy Docker/Podman runtime interface")
 	}
 }
