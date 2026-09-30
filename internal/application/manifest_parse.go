@@ -60,6 +60,12 @@ func ParseYAML(input string) (Manifest, error) {
 	if err := scanner.Err(); err != nil {
 		return Manifest{}, err
 	}
+	if parser.manifest.ApplicationID == "" {
+		return Manifest{}, fmt.Errorf("application id is required")
+	}
+	if err := ValidateApplicationID(parser.manifest.ApplicationID); err != nil {
+		return Manifest{}, err
+	}
 	if err := parser.manifest.Validate(); err != nil {
 		return Manifest{}, err
 	}
@@ -189,6 +195,8 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 		return fmt.Errorf("line %d: expected key: value", lineNo)
 	}
 	switch key {
+	case "id":
+		p.manifest.ApplicationID = strings.TrimSpace(value)
 	case "name":
 		p.manifest.Name = strings.TrimSpace(value)
 	case "environment":

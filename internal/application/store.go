@@ -23,6 +23,12 @@ func DefaultStore() Store {
 }
 
 func (s Store) Create(m Manifest) (string, error) {
+	if m.ApplicationID == "" {
+		return "", fmt.Errorf("application id is required")
+	}
+	if err := ValidateApplicationID(m.ApplicationID); err != nil {
+		return "", err
+	}
 	if err := m.Validate(); err != nil {
 		return "", err
 	}

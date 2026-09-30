@@ -8,7 +8,11 @@ import (
 
 func (m Manifest) YAML() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\n", m.Version, m.Name, m.Environment)
+	fmt.Fprintf(&b, "version: %d\napp:\n", m.Version)
+	if m.ApplicationID != "" {
+		fmt.Fprintf(&b, "  id: %s\n", m.ApplicationID)
+	}
+	fmt.Fprintf(&b, "  name: %s\n  environment: %s\n", m.Name, m.Environment)
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
