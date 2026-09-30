@@ -30,8 +30,8 @@ func TestResolveRepositoryWorkloadModelKeepsManifestSelectionPortable(t *testing
 		Name:        "demo",
 		Environment: "dev",
 		Services: Services{
-			SQL:       true,
-			Cache:     true,
+			SQL:   true,
+			Cache: true,
 		},
 		Workload: WorkloadConfig{
 			Compose:  "compose.yaml",
