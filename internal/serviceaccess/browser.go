@@ -17,7 +17,7 @@ const maxBrowserSurfaceRedirects = 5
 // effective authority. A non-default port therefore cannot silently collapse
 // to HTTPS/443 during a redirect.
 func VerifyBrowserSurface(ctx context.Context, client *http.Client, rawURL string) error {
-	return verifyBrowserSurface(ctx, client, rawURL, func(status int) bool {
+	return verifyBrowserSurface(ctx, client, rawURL, nil, func(status int) bool {
 		return status >= 200 && status < 300
 	})
 }
@@ -26,12 +26,21 @@ func VerifyBrowserSurface(ctx context.Context, client *http.Client, rawURL strin
 // route-level reachability semantics for surfaces that intentionally answer
 // with authentication challenges.
 func VerifyBrowserRoute(ctx context.Context, client *http.Client, rawURL string) error {
-	return verifyBrowserSurface(ctx, client, rawURL, func(status int) bool {
+	return verifyBrowserSurface(ctx, client, rawURL, nil, func(status int) bool {
 		return status < 500
 	})
 }
 
-func verifyBrowserSurface(ctx context.Context, client *http.Client, rawURL string, acceptFinal func(int) bool) error {
+// VerifyBrowserSurfaceWithAllowedAuthorities permits only the canonical URL
+// plus explicitly listed HTTPS authorities. It is intended for products such
+// as Keycloak where an admin alias may redirect to the canonical identity host.
+func VerifyBrowserSurfaceWithAllowedAuthorities(ctx context.Context, client *http.Client, rawURL string, allowedURLs ...string) error {
+	return verifyBrowserSurface(ctx, client, rawURL, allowedURLs, func(status int) bool {
+		return status >= 200 && status < 300
+	})
+}
+
+func verifyBrowserSurface(ctx context.Context, client *http.Client, rawURL string, allowedURLs []string, acceptFinal func(int) bool) error {
 	if client == nil {
 		return errors.New("browser surface HTTP client is required")
 	}
@@ -39,10 +48,22 @@ func verifyBrowserSurface(ctx context.Context, client *http.Client, rawURL strin
 	if err != nil || canonical.Scheme != "https" || canonical.Host == "" {
 		return fmt.Errorf("browser surface URL %q must be an absolute HTTPS URL", rawURL)
 	}
-	expectedHost := strings.ToLower(canonical.Hostname())
-	expectedPort, err := httpsAuthorityPort(canonical)
+	allowed := map[string]struct{}{}
+	canonicalAuthority, err := normalizedHTTPSAuthority(canonical)
 	if err != nil {
 		return err
+	}
+	allowed[canonicalAuthority] = struct{}{}
+	for _, rawAllowed := range allowedURLs {
+		value, parseErr := url.Parse(strings.TrimSpace(rawAllowed))
+		if parseErr != nil || value.Scheme != "https" || value.Host == "" {
+			return fmt.Errorf("allowed browser surface URL %q must be an absolute HTTPS URL", rawAllowed)
+		}
+		authority, authorityErr := normalizedHTTPSAuthority(value)
+		if authorityErr != nil {
+			return authorityErr
+		}
+		allowed[authority] = struct{}{}
 	}
 
 	probe := *client
@@ -53,11 +74,11 @@ func verifyBrowserSurface(ctx context.Context, client *http.Client, rawURL strin
 		if !strings.EqualFold(req.URL.Scheme, "https") {
 			return fmt.Errorf("browser surface redirect changed scheme to %q", req.URL.Scheme)
 		}
-		port, err := httpsAuthorityPort(req.URL)
+		authority, err := normalizedHTTPSAuthority(req.URL)
 		if err != nil {
 			return err
 		}
-		if !strings.EqualFold(req.URL.Hostname(), expectedHost) || port != expectedPort {
+		if _, ok := allowed[authority]; !ok {
 			return fmt.Errorf(
 				"browser surface redirect changed canonical authority from %s to %s",
 				canonical.Host,
@@ -95,4 +116,13 @@ func httpsAuthorityPort(value *url.URL) (int, error) {
 		return 0, fmt.Errorf("browser surface URL has invalid port %q", raw)
 	}
 	return port, nil
+}
+
+
+func normalizedHTTPSAuthority(value *url.URL) (string, error) {
+	port, err := httpsAuthorityPort(value)
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(value.Hostname()) + ":" + strconv.Itoa(port), nil
 }
