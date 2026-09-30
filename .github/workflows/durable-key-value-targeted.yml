@@ -1,0 +1,43 @@
+name: "Durable Key-Value Targeted"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-durable-key-value'
+    paths:
+      - '.ci/durable-key-value-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Core · Durable Key-Value
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w             internal/capability/domain.go             internal/capability/reference.go             internal/capability/specification.go             internal/capability/service.go             internal/application/manifest.go             internal/application/manifest_parse.go             internal/application/manifest_render.go             internal/application/manifest_validation.go             internal/application/contract.go             internal/application/capability_model.go             internal/application/plan.go             internal/application/durable_key_value_contract_test.go
+          git diff --exit-code -- internal/capability internal/application
+      - name: Compile contract packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/capability ./internal/application -run TestDoesNotExist -count=1
+      - name: Run durable key-value contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/capability ./internal/application -run 'Test.*(DurableKeyValue|Capability|Manifest|Provider|Service)' -count=1

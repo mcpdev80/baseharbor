@@ -138,7 +138,7 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 	switch kind {
 	case capability.SQL:
 		return capability.PostgreSQL, nil
-	case capability.KeyValue:
+	case capability.KeyValue, capability.DurableKeyValue:
 		return capability.Valkey, nil
 	case capability.ExposureHTTP:
 		return capability.Caddy, nil

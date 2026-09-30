@@ -62,17 +62,20 @@ type MetricsSourceRequirement struct {
 type Services struct {
 	SQL                       bool
 	Cache                     bool
+	KeyValue                  bool
 	Secrets                   bool
 	ObjectStorage             bool
 	Identity                  bool
 	SQLManagementUI           bool
 	CacheManagementUI         bool
+	KeyValueManagementUI      bool
 	SecretsManagementUI       bool
 	ObjectStorageManagementUI bool
 	IdentityManagementUI      bool
 	ObservabilityManagementUI bool
 	SQLInstances              map[string]ServiceInstance
 	CacheInstances            map[string]ServiceInstance
+	KeyValueInstances         map[string]ServiceInstance
 	ObjectStorageBuckets      map[string]ServiceInstance
 }
 
@@ -199,6 +202,20 @@ func WithCacheInstances(m Manifest, names ...string) Manifest {
 	return m
 }
 
+func WithKeyValueInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.KeyValueInstances == nil {
+		m.Services.KeyValueInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.KeyValueInstances[name] = ServiceInstance{}
+	}
+	m.Services.KeyValue = true
+	return m
+}
+
 func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
 		return m
@@ -292,6 +309,10 @@ func SQLInstanceNames(m Manifest) []string {
 
 func CacheInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.Cache, m.Services.CacheInstances)
+}
+
+func KeyValueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
 }
 
 func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {

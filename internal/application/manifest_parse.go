@@ -210,7 +210,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "object_storage", "secrets", "identity", "observability":
+	case "sql", "cache", "key_value", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -311,7 +311,7 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 }
 
 func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
-	if trim == "instances:" && (p.service == "sql" || p.service == "cache") {
+	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value") {
 		p.serviceField = "instances"
 		return nil
 	}
@@ -334,6 +334,8 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 			p.manifest.Services.SQLManagementUI = enabled
 		case "cache":
 			p.manifest.Services.CacheManagementUI = enabled
+		case "key_value":
+			p.manifest.Services.KeyValueManagementUI = enabled
 		case "object_storage":
 			p.manifest.Services.ObjectStorageManagementUI = enabled
 		case "secrets":
@@ -350,6 +352,8 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.SQL = enabled
 	case "cache":
 		p.manifest.Services.Cache = enabled
+	case "key_value":
+		p.manifest.Services.KeyValue = enabled
 	case "object_storage":
 		p.manifest.Services.ObjectStorage = enabled
 	case "secrets":
@@ -515,7 +519,7 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 	if p.section != "services" || (p.serviceField != "instances" && p.serviceField != "buckets") {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
-	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" {
+	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
 	if p.serviceField == "buckets" && p.service != "object_storage" {
@@ -544,6 +548,12 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 		}
 		p.manifest.Services.CacheInstances[name] = ServiceInstance{}
 		p.manifest.Services.Cache = true
+	case "key_value":
+		if p.manifest.Services.KeyValueInstances == nil {
+			p.manifest.Services.KeyValueInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.KeyValueInstances[name] = ServiceInstance{}
+		p.manifest.Services.KeyValue = true
 	case "object_storage":
 		if p.manifest.Services.ObjectStorageBuckets == nil {
 			p.manifest.Services.ObjectStorageBuckets = map[string]ServiceInstance{}
