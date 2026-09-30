@@ -32,8 +32,8 @@ type SeaweedFSRealization interface {
 }
 
 type runtimeSeaweedFSRealization struct {
-	runtime      Runtime
-	issuer       serviceaccess.Issuer
+	runtime   Runtime
+	issuer    serviceaccess.Issuer
 	dataDir   string
 	namespace string
 	app       application.Manifest
