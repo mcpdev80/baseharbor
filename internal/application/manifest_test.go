@@ -393,7 +393,6 @@ func TestManifestLogsRejectUnknownSource(t *testing.T) {
 	}
 }
 
-
 func TestApplicationIDRoundTripAndValidation(t *testing.T) {
 	m := New("identity-proof", "dev", true, false, false)
 	if err := ValidateApplicationID(m.ApplicationID); err != nil {
