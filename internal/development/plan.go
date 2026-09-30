@@ -129,7 +129,6 @@ func profileCapabilityAppliesToComponent(profile StackProfile, kind capability.K
 	return !matched
 }
 
-
 func BuildPlanForWorkspace(contract application.PortableContract, profile StackProfile, adapters Registry, workspace WorkspaceResolution) (DevelopmentPlan, error) {
 	plan, err := BuildPlan(contract, profile, adapters)
 	if err != nil {
