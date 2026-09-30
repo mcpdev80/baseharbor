@@ -262,3 +262,16 @@ func cleanupManagedExposureFixture(compose bhruntime.RuntimeProvider, resolved r
 	_ = destroyManagedExposure(ctx, compose, resolved.Manifest, files)
 	_ = compose.DownProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Compose, workload.Override)
 }
+
+
+func TestManagedExposureProvisioningWaitsForWorkloadOwnedNetwork(t *testing.T) {
+	workloadOnly := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
+	if shouldProvisionManagedExposureBeforeWorkload(workloadOnly) {
+		t.Fatal("workload-only exposure must wait until the workload creates its integration network")
+	}
+
+	withSQL := application.New("demo", "dev", true, false, false)
+	if !shouldProvisionManagedExposureBeforeWorkload(withSQL) {
+		t.Fatal("managed backend applications may provision exposure before workload start")
+	}
+}
