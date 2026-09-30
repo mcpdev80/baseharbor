@@ -3,6 +3,7 @@ package devgateway
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -193,5 +194,49 @@ func TestSelectGatewayHostPortMovesFromStalePersistedPort(t *testing.T) {
 	}
 	if selected != 18443 {
 		t.Fatalf("replacement fallback = %d, want 18443", selected)
+	}
+}
+
+
+func TestURLForRuntimeIgnoresUninitializedGatewayStateAndSelectsFallback(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := "gateway-zero-state"
+	files, err := FilesFor(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(files.State), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(files.State, state{Version: stateVersion, HostPort: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	available := func(port int) bool {
+		return port == 18443
+	}
+	got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}, available)
+	if got != "https://auth.baha.localhost:18443" {
+		t.Fatalf("canonical URL = %q, want persisted-selection fallback port", got)
+	}
+}
+
+func TestURLForRuntimeUsesPersistedEffectiveGatewayPort(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := "gateway-persisted-state"
+	files, err := FilesFor(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(files.State), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(files.State, state{Version: stateVersion, HostPort: 18443}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}, func(int) bool { return false })
+	if got != "https://auth.baha.localhost:18443" {
+		t.Fatalf("canonical URL = %q, want persisted effective port", got)
 	}
 }
