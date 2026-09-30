@@ -131,7 +131,11 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	if err != nil {
 		return err
 	}
-	if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+	adminBase, err := d.adminBaseURL()
+	if err != nil {
+		return err
+	}
+	if err := SetKeycloakCanonicalURLs(files, publicBase, adminBase); err != nil {
 		return err
 	}
 	if cleaner, ok := d.runtime.(legacyServiceCleaner); ok {
@@ -433,6 +437,31 @@ func (d *KeycloakDriver) publicBaseURL() (string, error) {
 		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity")
 	case capability.ScopeExternal:
 		return "", errors.New("external OIDC has no managed Keycloak public URL")
+	default:
+		return "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+	if err != nil {
+		return "", err
+	}
+	return devgateway.URLForRuntime(d.targetName(), host, d.runtime), nil
+}
+
+func (d *KeycloakDriver) adminBaseURL() (string, error) {
+	if !isDevelopmentIdentityEnvironment(d.app.Environment) {
+		return d.files.AdminURL, nil
+	}
+	placement, err := application.ResolveProviderPlacement(d.app, capability.ProviderKeycloak)
+	if err != nil {
+		return "", err
+	}
+	var host string
+	switch placement.Scope {
+	case capability.ScopeShared:
+		host, err = devaccess.SharedHost(d.targetName(), "identity-admin")
+	case capability.ScopeApplication:
+		host, err = devaccess.ApplicationHost(d.targetName(), d.app.Name, "identity-admin")
+	case capability.ScopeExternal:
+		return "", errors.New("external OIDC has no managed Keycloak admin URL")
 	default:
 		return "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
 	}
