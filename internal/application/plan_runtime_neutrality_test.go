@@ -13,7 +13,7 @@ func TestBuildPlanContainsNoRuntimeNativeTopology(t *testing.T) {
 	m = WithHTTPExposure(m, "public", "api", 8080, "http")
 	m = WithOTLPTelemetry(m, "traces", "metrics", "logs")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
-	m = WithLogsCollection(m, "api")
+	m = WithLogsCollection(m, "application")
 	m = WithWorkload(m, "compose.yaml", "api")
 
 	plan, err := BuildPlan(m)
