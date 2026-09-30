@@ -21,6 +21,7 @@ on:
   push:
     branches:
       - 'release-candidate/**'
+      - 'validation/pre-release/**'
 
 permissions:
   contents: read
@@ -28,7 +29,7 @@ permissions:
 jobs:
   validate:
     name: Source · Build & Contracts
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
     outputs:
@@ -74,7 +75,7 @@ jobs:
           fi
 
           git fetch origin main develop
-          if git merge-base --is-ancestor HEAD origin/develop; then
+          if git merge-base --is-ancestor origin/develop HEAD; then
             echo "Candidate follows the normal develop release line."
           elif git merge-base --is-ancestor origin/main HEAD; then
             echo "Candidate follows the released main hotfix line."
@@ -287,7 +288,7 @@ jobs:
   docker_normal:
     name: Docker · Core Journey
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
@@ -298,7 +299,7 @@ jobs:
   docker_operations:
     name: Docker · Operations
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
@@ -309,7 +310,7 @@ jobs:
   podman_normal:
     name: Podman · Core Journey
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
@@ -320,7 +321,7 @@ jobs:
   podman_operations:
     name: Podman · Operations
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release-candidate/') || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
