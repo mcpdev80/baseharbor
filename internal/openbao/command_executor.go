@@ -58,18 +58,10 @@ type commandExecutorAdapter struct {
 	executor CommandExecutor
 }
 
-func (e commandExecutorAdapter) ExecProject(_ context.Context, _, _, _, _ string, _ ...string) (string, error) {
-	panic("unreachable")
-}
-
-func (e commandExecutorAdapter) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, _ ...string) (string, error) {
-	panic("unreachable")
-}
-
-func (e commandExecutorAdapter) execProject(ctx context.Context, args ...string) (string, error) {
+func (e commandExecutorAdapter) ExecProject(ctx context.Context, _, _, _, _ string, args ...string) (string, error) {
 	return e.executor.Exec(ctx, args...)
 }
 
-func (e commandExecutorAdapter) execProjectInput(ctx context.Context, input []byte, args ...string) (string, error) {
+func (e commandExecutorAdapter) ExecProjectInput(ctx context.Context, _, _, _ string, input []byte, _ string, args ...string) (string, error) {
 	return e.executor.ExecInput(ctx, input, args...)
 }
