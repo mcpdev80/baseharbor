@@ -182,9 +182,9 @@ func TestKubernetesCoreExposureLifecycle(t *testing.T) {
 	driver := exposure.NewLifecycle("exposure.baseharbor.local", "disabled", realization)
 	resource := capability.Resource{
 		Application: appName,
-		Kind: capability.ExposureHTTP,
-		Name: "public",
-		Provider: capability.ProviderCaddy,
+		Kind:        capability.ExposureHTTP,
+		Name:        "public",
+		Provider:    capability.ProviderCaddy,
 	}
 	binding := capability.Binding{
 		Resource: resource,
