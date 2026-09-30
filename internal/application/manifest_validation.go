@@ -45,6 +45,15 @@ func (m Manifest) Validate() error {
 			return err
 		}
 	}
+	cacheNames := make(map[string]struct{}, len(cache))
+	for _, name := range cache {
+		cacheNames[name] = struct{}{}
+	}
+	for _, name := range keyValue {
+		if _, exists := cacheNames[name]; exists {
+			return fmt.Errorf("service instance %q cannot be both cache.key-value and database.key-value", name)
+		}
+	}
 	for _, name := range objectStorage {
 		if err := validateSlug("object-storage bucket name", name); err != nil {
 			return err

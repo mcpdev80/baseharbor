@@ -315,6 +315,22 @@ func KeyValueInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
 }
 
+func ValkeyInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, name := range CacheInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	for _, name := range KeyValueInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {
 	if len(instances) == 0 {
 		if enabled {

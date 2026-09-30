@@ -97,6 +97,9 @@ func declaredCapabilityIntents(manifest *application.Manifest) []CapabilityInten
 	for _, name := range application.CacheInstanceNames(*manifest) {
 		intents = append(intents, CapabilityIntent{Capability: "cache.key-value", Name: name, Direction: DirectionConsume})
 	}
+	for _, name := range application.KeyValueInstanceNames(*manifest) {
+		intents = append(intents, CapabilityIntent{Capability: "database.key-value", Name: name, Direction: DirectionConsume})
+	}
 	for _, name := range application.ObjectStorageBucketNames(*manifest) {
 		intents = append(intents, CapabilityIntent{Capability: "object-storage.s3", Name: name, Direction: DirectionConsume})
 	}

@@ -406,6 +406,13 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, fmt.Sprintf("cache(%d)", count))
 		}
 	}
+	if count := len(application.KeyValueInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "key-value")
+		} else {
+			names = append(names, fmt.Sprintf("key-value(%d)", count))
+		}
+	}
 	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {
 		if count == 1 {
 			names = append(names, "s3")
