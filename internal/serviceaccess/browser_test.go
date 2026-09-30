@@ -86,7 +86,6 @@ func TestVerifyBrowserSurfaceRejectsNonSuccessfulFinalResponse(t *testing.T) {
 	}
 }
 
-
 func TestVerifyBrowserSurfaceAllowsExplicitCanonicalAuthority(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
