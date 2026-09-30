@@ -1,9 +1,6 @@
 name: "Test · Kubernetes Runtime Foundation"
 
 on:
-  push:
-    branches:
-      - 'feature/kubernetes-runtime-foundation'
   workflow_dispatch:
 
 permissions:
