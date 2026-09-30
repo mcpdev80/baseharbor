@@ -46,3 +46,13 @@ jobs:
         run: |
           set -euo pipefail
           go test ./cmd/baha -run 'Test.*(Deployment|ApplicationContext|CreateTarget|RepositoryApplication|Incomplete)' -count=1
+      - name: Run broad package tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./... -count=1
+      - name: Run Go vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          go vet ./...
