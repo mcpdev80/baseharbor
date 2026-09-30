@@ -263,7 +263,6 @@ func cleanupManagedExposureFixture(compose bhruntime.RuntimeProvider, resolved r
 	_ = compose.DownProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, nil, workload.Compose, workload.Override)
 }
 
-
 func TestManagedExposureProvisioningWaitsForWorkloadOwnedNetwork(t *testing.T) {
 	workloadOnly := application.Manifest{Version: 1, Name: "demo", Environment: "dev"}
 	if shouldProvisionManagedExposureBeforeWorkload(workloadOnly) {
