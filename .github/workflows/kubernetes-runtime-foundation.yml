@@ -2,6 +2,11 @@ name: "Test · Kubernetes Runtime Foundation"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes*'
+    paths:
+      - '.ci/kubernetes-foundation-trigger'
 
 permissions:
   contents: read
