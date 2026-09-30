@@ -392,3 +392,30 @@ func TestManifestLogsRejectUnknownSource(t *testing.T) {
 		t.Fatalf("expected unsupported logs source failure, got %v", err)
 	}
 }
+
+
+func TestApplicationIDRoundTripAndValidation(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	if err := ValidateApplicationID(m.ApplicationID); err != nil {
+		t.Fatalf("generated application ID: %v", err)
+	}
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "  id: "+m.ApplicationID+"\n") {
+		t.Fatalf("manifest does not render application ID:\n%s", rendered)
+	}
+	got, err := ParseYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ApplicationID != m.ApplicationID {
+		t.Fatalf("application ID changed on round trip: got %q want %q", got.ApplicationID, m.ApplicationID)
+	}
+}
+
+func TestApplicationIDRejectsNonV4Identity(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	m.ApplicationID = "00000000-0000-0000-0000-000000000000"
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected invalid application ID to fail")
+	}
+}
