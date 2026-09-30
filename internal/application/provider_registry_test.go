@@ -108,9 +108,9 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 		Version:       CurrentVersion,
 		ApplicationID: MustNewApplicationID(),
 		Name:          "frontend",
-		Environment: "production",
-		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
-		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
+		Environment:   "production",
+		Workload:      WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Exposures:     []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
 	}
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		t.Fatal(err)
