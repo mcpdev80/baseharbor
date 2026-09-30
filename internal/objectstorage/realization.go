@@ -33,27 +33,26 @@ type SeaweedFSRealization interface {
 type runtimeSeaweedFSRealization struct {
 	runtime      Runtime
 	issuer       serviceaccess.Issuer
-	dataDir      string
-	namespace    string
-	managementUI bool
+	dataDir   string
+	namespace string
+	app       application.Manifest
 }
 
-func newRuntimeSeaweedFSRealization(runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, managementUI bool) SeaweedFSRealization {
+func newRuntimeSeaweedFSRealization(runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, app application.Manifest) SeaweedFSRealization {
 	return &runtimeSeaweedFSRealization{
-		runtime:      runtime,
-		issuer:       issuer,
-		dataDir:      filepath.Clean(dataDir),
-		namespace:    strings.TrimSpace(namespace),
-		managementUI: managementUI,
+		runtime:   runtime,
+		issuer:    issuer,
+		dataDir:   filepath.Clean(dataDir),
+		namespace: strings.TrimSpace(namespace),
+		app:       app,
 	}
 }
 
 func (r *runtimeSeaweedFSRealization) Apply(ctx context.Context) (SeaweedFSInstance, error) {
-	if r.managementUI {
-		// Registration remains realization state: it changes provider/operator
-		// surfaces, not portable application intent.
-		manifest := application.Manifest{Services: application.Services{ObjectStorageManagementUI: true}}
-		_ = manifest
+	if r.app.Services.ObjectStorageManagementUI {
+		if err := RegisterManagementUIConsumerAt(r.dataDir, r.namespace, r.app); err != nil {
+			return SeaweedFSInstance{}, err
+		}
 	}
 	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, r.dataDir, r.namespace)
 	if err != nil {
