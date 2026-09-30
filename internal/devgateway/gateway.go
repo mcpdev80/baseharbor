@@ -512,7 +512,8 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 			continue
 		}
 		seen[route.Host] = struct{}{}
-		if err := verifyRoute(ctx, roots, route, current.HostPort); err != nil {
+		allowed := relatedRedirectURLs(current.Routes, route, current.HostPort)
+		if err := verifyRoute(ctx, roots, route, current.HostPort, allowed...); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -524,7 +525,22 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 	return errors.Join(errs...)
 }
 
-func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int) error {
+func relatedRedirectURLs(routes []Route, route Route, hostPort int) []string {
+	if !strings.HasSuffix(route.Key, "/admin") && !strings.HasSuffix(route.Key, "/identity-admin") {
+		return nil
+	}
+	for _, candidate := range routes {
+		if candidate.Owner != route.Owner {
+			continue
+		}
+		if strings.HasSuffix(candidate.Key, "/login") || strings.HasSuffix(candidate.Key, "/identity") {
+			return []string{canonicalURL(candidate.Host, hostPort)}
+		}
+	}
+	return nil
+}
+
+func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int, allowedURLs ...string) error {
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -537,7 +553,7 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 		},
 	}
 	client := &http.Client{Transport: transport}
-	if err := serviceaccess.VerifyBrowserRoute(ctx, client, canonicalURL(route.Host, hostPort)+"/"); err != nil {
+	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
 		return fmt.Errorf("%s: %w", route.Host, err)
 	}
 	return nil
