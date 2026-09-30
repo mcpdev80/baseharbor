@@ -74,7 +74,9 @@ func RunAdapterConformance(root string, request NewApplicationRequest, adapter A
 	report.Add("secret-safety", validateGeneratedSecretSafety(request, bootstrap.Files))
 	report.Add("no-provider-leakage", validatePortableContractProviderNeutrality(bootstrap.Contract))
 
-	second, secondErr := BootstrapApplication(request, registry)
+	replayRequest := request
+	replayRequest.ApplicationID = bootstrap.Manifest.ApplicationID
+	second, secondErr := BootstrapApplication(replayRequest, registry)
 	if secondErr != nil {
 		report.Add("idempotency", secondErr)
 	} else {
