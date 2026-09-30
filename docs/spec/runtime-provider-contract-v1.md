@@ -2,7 +2,7 @@
 
 ## Status
 
-Foundation draft on `feature/kubernetes-runtime-foundation`. This contract is not yet frozen and is not a claim of released Kubernetes support.
+Pre-freeze architecture draft carried by PR #616. This contract is not yet frozen and is not a claim of released Kubernetes support.
 
 ## Scope
 
