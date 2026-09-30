@@ -24,10 +24,12 @@ func appApplyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "apply",
 		Summary: "Converge and verify an application's backend runtime",
-		Usage:   "baha app apply [NAME]",
+		Usage:   "baha app apply [NAME] [--skip-memory-preflight]",
 		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return executeApplicationApplyLifecycle(ctx, store, args, out, errOut)
+			filtered, skip := stripMemoryPreflightOverride(args)
+			ctx = withMemoryPreflightOverride(ctx, skip)
+			return executeApplicationApplyLifecycle(ctx, store, filtered, out, errOut)
 		},
 	}
 }
