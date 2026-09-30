@@ -24,6 +24,7 @@ import (
 
 type KeycloakDriver struct {
 	runtime   KeycloakRuntime
+	lifecycle KeycloakLifecycle
 	app       application.Manifest
 	appFiles  application.RuntimeFiles
 	issuer    serviceaccess.Issuer
@@ -40,8 +41,16 @@ type KeycloakDriver struct {
 }
 
 func NewKeycloakDriver(runtime KeycloakRuntime, app application.Manifest, appFiles application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *KeycloakDriver {
+	return newKeycloakDriver(runtime, NewKeycloakLifecycle(runtime), app, appFiles, issuer, dataDir, namespace)
+}
+
+func NewKeycloakDriverWithLifecycle(lifecycle KeycloakLifecycle, app application.Manifest, appFiles application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *KeycloakDriver {
+	return newKeycloakDriver(nil, lifecycle, app, appFiles, issuer, dataDir, namespace)
+}
+
+func newKeycloakDriver(runtime KeycloakRuntime, lifecycle KeycloakLifecycle, app application.Manifest, appFiles application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *KeycloakDriver {
 	return &KeycloakDriver{
-		runtime: runtime, app: app, appFiles: appFiles, issuer: issuer,
+		runtime: runtime, lifecycle: lifecycle, app: app, appFiles: appFiles, issuer: issuer,
 		dataDir: dataDir, namespace: namespace,
 		realm: keycloakRealmName(app), clientID: keycloakClientID(app),
 	}
@@ -139,10 +148,13 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 			return fmt.Errorf("remove legacy Keycloak access gateways: %w", err)
 		}
 	}
-	if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+	if d.lifecycle == nil {
+		return errors.New("Keycloak provider lifecycle is required")
+	}
+	if err := d.lifecycle.Validate(ctx, files); err != nil {
 		return fmt.Errorf("validate Keycloak provider: %w", err)
 	}
-	if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+	if err := d.lifecycle.Apply(ctx, files); err != nil {
 		return fmt.Errorf("start Keycloak provider: %w", err)
 	}
 	admin, err := d.adminClient(ctx)
@@ -349,7 +361,10 @@ func (d *KeycloakDriver) DestroyApplication(ctx context.Context) error {
 		return err
 	}
 	if placement.Scope == capability.ScopeApplication {
-		if err := d.runtime.DestroyProject(ctx, d.files.Project, d.files.Compose, d.files.Env); err != nil {
+		if d.lifecycle == nil {
+			return errors.New("Keycloak provider lifecycle is required")
+		}
+		if err := d.lifecycle.Destroy(ctx, d.files); err != nil {
 			return fmt.Errorf("destroy app-scoped Keycloak provider: %w", err)
 		}
 		return os.RemoveAll(d.files.Dir)
