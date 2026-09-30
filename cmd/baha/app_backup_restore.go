@@ -461,12 +461,12 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	existing, found, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
+	existing, deploymentFound, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
 	var id deployment.DeploymentIdentity
-	if found {
+	if deploymentFound {
 		id = existing.Identity
 		id.Application = backupManifest.Name
 	} else {
@@ -499,7 +499,7 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	if !found {
 		var record deployment.DeploymentRecord
 		var recordErr error
-		if found {
+		if deploymentFound {
 			record, recordErr = deployment.LoadDeploymentRecord(id)
 		} else {
 			recordErr = os.ErrNotExist
