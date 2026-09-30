@@ -223,7 +223,7 @@ func (d *KeycloakDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	}
 	workloadDiscovery := rebaseIdentityDiscovery(discovery, publicIssuer, workloadIssuer)
 	d.discovery = discovery
-	return application.MaterializeIdentityBindingWithWorkloadDiscovery(
+	return application.MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(
 		d.app, d.appFiles, string(capability.ProviderKeycloak),
 		discovery, workloadDiscovery, d.clientID, d.clientSecret, d.instance.TrustBundle,
 	)
