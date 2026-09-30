@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
@@ -242,6 +243,16 @@ func classifyMachineCLIError(err error) error {
 	var usage *cli.UsageError
 	if errors.As(err, &usage) {
 		return machine.Wrap(machine.ErrorValidationFailed, err, usage.Hint, false)
+	}
+	if errors.Is(err, development.ErrWorkspaceSourceMissing) {
+		return &machine.Error{
+			Code:        machine.ErrorSourceMissing,
+			CauseCode:   "workspace_source_missing",
+			Message:     err.Error(),
+			Remediation: "map the existing local repository/worktree for the declared source identity",
+			Next:        "Run 'baha app workspace map SOURCE PATH' and retry. BaseHarbor will not clone or mutate Git state in v0.4.18.",
+			Cause:       err,
+		}
 	}
 	return machine.Classify(err)
 }
