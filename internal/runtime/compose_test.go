@@ -245,7 +245,6 @@ exit 2
 	}
 }
 
-
 func TestStopOwnedProjectContainersUsesObservedOwnershipOnly(t *testing.T) {
 	dir := t.TempDir()
 	runtimePath := filepath.Join(dir, "runtime")
