@@ -226,7 +226,7 @@ spec:
               command:
                 - sh
                 - -ec
-                - 'bao status >/dev/null 2>&1; code=$?; [ "$code" -eq 0 ] || [ "$code" -eq 2 ]'
+                - 'if bao status >/dev/null 2>&1; then exit 0; else code=$?; [ "$code" -eq 2 ]; fi'
             initialDelaySeconds: 2
             periodSeconds: 2
           volumeMounts:
