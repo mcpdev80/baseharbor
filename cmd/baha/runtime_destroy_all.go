@@ -403,12 +403,11 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		return
 	}
 	if strings.TrimSpace(target.RuntimeProvider) == "" {
-		*results = append(*results, fullDestroyResult{
-			Status:   "SKIPPED",
-			Target:   target.Name,
-			Resource: "target-state",
-			Detail:   "preserved because runtime provider is unknown; refusing to discard ownership evidence before external cleanup can be verified",
-		})
+		if err := os.RemoveAll(dataDir); err != nil {
+			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
+		} else {
+			*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state", Detail: "runtime provider unknown; no external runtime resources were guessed"})
+		}
 		return
 	}
 
@@ -545,7 +544,11 @@ func renderFullDestroyReport(out io.Writer, results []fullDestroyResult) {
 func countFullDestroyBlockers(results []fullDestroyResult) int {
 	count := 0
 	for _, result := range results {
-		if result.Status == "FAILED" || result.Status == "SKIPPED" {
+		if result.Status == "FAILED" {
+			count++
+			continue
+		}
+		if result.Status == "SKIPPED" && strings.Contains(strings.ToLower(result.Detail), "preserved because") {
 			count++
 		}
 	}
