@@ -556,7 +556,6 @@ func renderFullDestroyReport(out io.Writer, results []fullDestroyResult) {
 	}
 }
 
-
 func countFullDestroyBlockers(results []fullDestroyResult) int {
 	count := 0
 	for _, result := range results {
@@ -570,7 +569,6 @@ func countFullDestroyBlockers(results []fullDestroyResult) int {
 	}
 	return count
 }
-
 
 func targetOwnedRuntimeContainers(target string, containers []bhruntime.RuntimeContainer) []bhruntime.RuntimeContainer {
 	sharedProject := bhruntime.SharedProjectName(target)
