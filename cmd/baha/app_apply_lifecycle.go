@@ -219,13 +219,6 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	}); err != nil {
 		return err
 	}
-	if shouldProvisionManagedExposureBeforeWorkload(e.manifest) {
-		if err := activity(ctx, e.term, "Preparing application exposure", func(io.Writer) error {
-			return provisionManagedExposure(ctx, e.providers.exposure)
-		}); err != nil {
-			return err
-		}
-	}
 	if err := activity(ctx, e.term, "Reconciling application identity", func(progress io.Writer) error {
 		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
