@@ -247,10 +247,10 @@ func appWorkspaceShowCommand() *cli.Command {
 				return mapErr
 			}
 			result := struct {
-				SourceModelPath  string                       `json:"source_model_path"`
-				WorkspacePath    string                       `json:"workspace_path"`
-				Model            development.SourceModel      `json:"source_model"`
-				Workspace        development.WorkspaceMapping `json:"workspace"`
+				SourceModelPath string                       `json:"source_model_path"`
+				WorkspacePath   string                       `json:"workspace_path"`
+				Model           development.SourceModel      `json:"source_model"`
+				Workspace       development.WorkspaceMapping `json:"workspace"`
 			}{sourcePath, mappingPath, model, mapping}
 			if format == outputJSON {
 				return writeJSON(out, result)
