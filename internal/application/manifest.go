@@ -11,8 +11,9 @@ const defaultServiceInstance = "default"
 
 // Manifest is the declarative application backend request understood by BaseHarbor.
 type Manifest struct {
-	Version     int
-	Name        string
+	Version       int
+	ApplicationID string
+	Name          string
 	Environment string
 	Services    Services
 	Secrets     SecretRequirements
@@ -167,7 +168,7 @@ func New(name, environment string, sql, cache, secrets bool) Manifest {
 	if !sql && !cache && !secrets {
 		sql = true
 	}
-	return Manifest{Version: CurrentVersion, Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
+	return Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
 }
 
 func WithSQLInstances(m Manifest, names ...string) Manifest {
