@@ -696,6 +696,13 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 				args = []string{"container", "rm", "-f", resource.Name}
 			}
 			if _, err := p.DirectOutput(ctx, args...); err != nil {
+				remaining, inspectErr := p.InspectProjectResources(ctx, project, []ProjectResource{resource})
+				if inspectErr == nil && len(remaining) == 0 {
+					continue
+				}
+				if inspectErr != nil {
+					return fmt.Errorf("remove owned %s %s: %w (post-remove verification failed: %v)", kind, resource.Name, err, inspectErr)
+				}
 				return fmt.Errorf("remove owned %s %s: %w", kind, resource.Name, err)
 			}
 		}
