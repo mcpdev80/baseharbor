@@ -394,6 +394,9 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 				return fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
 			}
 			if _, err := c.directOutput(ctx, args...); err != nil {
+				if resource.Kind == "network" && networkHasActiveConsumers(err) {
+					continue
+				}
 				return fmt.Errorf("remove owned %s %s: %w", resource.Kind, resource.Name, err)
 			}
 		}
@@ -555,4 +558,14 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 		tag = strings.TrimSpace(parts[1])
 	}
 	return driver, tag, nil
+}
+
+func networkHasActiveConsumers(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "active endpoints") ||
+		strings.Contains(message, "network is being used") ||
+		strings.Contains(message, "network has connected containers")
 }
