@@ -115,7 +115,7 @@ func TestAppCreateListShowPlan(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"app", "plan"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "ensure postgres") || !strings.Contains(out.String(), "No changes were made") {
+	if !strings.Contains(out.String(), "ensure database.sql:default") || !strings.Contains(out.String(), "No changes were made") {
 		t.Fatalf("unexpected plan: %s", out.String())
 	}
 }
