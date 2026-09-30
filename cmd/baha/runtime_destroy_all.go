@@ -258,75 +258,33 @@ func releaseFullDestroyConnectivity(parent context.Context, target deployment.Re
 }
 
 func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDestroyResult) {
-	root, err := deployment.DataRoot()
-	if err != nil {
-		return nil, []fullDestroyResult{{Status: "FAILED", Resource: "deployment-registry", Detail: err.Error()}}
-	}
-	targetEntries, err := os.ReadDir(filepath.Join(root, "targets"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+	records, warnings, err := deployment.ListAllDeploymentsForDisplay()
 	if err != nil {
 		return nil, []fullDestroyResult{{Status: "FAILED", Resource: "deployment-registry", Detail: err.Error()}}
 	}
 
-	var records []deployment.DeploymentRecord
 	var results []fullDestroyResult
-	for _, targetEntry := range targetEntries {
-		if !targetEntry.IsDir() || deployment.ValidateTargetName(targetEntry.Name()) != nil {
+	for _, warning := range warnings {
+		stateErr, ok := deployment.DeploymentRecordState(warning)
+		if !ok {
+			results = append(results, fullDestroyResult{
+				Status:   "FAILED",
+				Resource: "deployment-registry",
+				Detail:   warning.Error(),
+			})
 			continue
 		}
-		deploymentsRoot := filepath.Join(root, "targets", targetEntry.Name(), "deployments")
-		appEntries, readErr := os.ReadDir(deploymentsRoot)
-		if errors.Is(readErr, os.ErrNotExist) {
-			continue
+		resource := "deployment " + stateErr.Identity.DeploymentID
+		if stateErr.Identity.DeploymentID == "" {
+			resource = "deployment unknown"
 		}
-		if readErr != nil {
-			results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment-registry", Detail: readErr.Error()})
-			continue
-		}
-		for _, appEntry := range appEntries {
-			if !appEntry.IsDir() {
-				continue
-			}
-			envEntries, envErr := os.ReadDir(filepath.Join(deploymentsRoot, appEntry.Name()))
-			if envErr != nil {
-				results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name(), Detail: envErr.Error()})
-				continue
-			}
-			for _, envEntry := range envEntries {
-				if !envEntry.IsDir() {
-					continue
-				}
-				id := deployment.DeploymentIdentity{Target: targetEntry.Name(), Application: appEntry.Name(), Environment: envEntry.Name()}
-				record, loadErr := deployment.LoadDeploymentRecord(id)
-				if errors.Is(loadErr, os.ErrNotExist) {
-					results = append(results, fullDestroyResult{
-						Status:   "SKIPPED",
-						Target:   targetEntry.Name(),
-						Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(),
-						Detail:   "incomplete deployment state has no deployment.json; refusing to guess runtime ownership, local BaseHarbor state will still be removed",
-					})
-					continue
-				}
-				if loadErr != nil {
-					results = append(results, fullDestroyResult{Status: "FAILED", Target: targetEntry.Name(), Resource: "deployment " + appEntry.Name() + "/" + envEntry.Name(), Detail: loadErr.Error()})
-					continue
-				}
-				records = append(records, record)
-			}
-		}
+		results = append(results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   stateErr.Identity.Target,
+			Resource: resource,
+			Detail:   "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
+		})
 	}
-	sort.Slice(records, func(i, j int) bool {
-		a, b := records[i].Identity, records[j].Identity
-		if a.Target != b.Target {
-			return a.Target < b.Target
-		}
-		if a.Application != b.Application {
-			return a.Application < b.Application
-		}
-		return a.Environment < b.Environment
-	})
 	return records, results
 }
 

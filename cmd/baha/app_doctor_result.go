@@ -24,6 +24,8 @@ type applicationDoctorSecretResult struct {
 type applicationDoctorResult struct {
 	ContractVersion string                                       `json:"contract_version"`
 	Target          string                                       `json:"target"`
+	ApplicationID   string                                       `json:"application_id"`
+	DeploymentID    string                                       `json:"deployment_id"`
 	Application     string                                       `json:"application"`
 	Environment     string                                       `json:"environment"`
 	State           string                                       `json:"state"`

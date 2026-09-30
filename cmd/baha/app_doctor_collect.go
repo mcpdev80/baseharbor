@@ -49,6 +49,8 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 	result := applicationDoctorResult{
 		ContractVersion: machine.ContractVersion,
 		Target:          resolved.Target.Name,
+		ApplicationID:   m.ApplicationID,
+		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		State:           "ready",
