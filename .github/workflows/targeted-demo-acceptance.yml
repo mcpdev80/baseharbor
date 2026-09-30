@@ -58,6 +58,12 @@ jobs:
       INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || '' }}
 
     steps:
+      - name: Checkout BaseHarbor
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
       - name: Resolve targeted gate
         id: target
         shell: bash
@@ -74,6 +80,7 @@ jobs:
               runtime-validation/targeted-docker*) runtime="docker" ;;
               *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
             esac
+            test -s .ci/targeted-gate-trigger
             trigger="$(tr -d '\r\n' < .ci/targeted-gate-trigger)"
             gate="$(printf '%s\n' "$trigger" | awk '{print $1}')"
             demo_ref="$(printf '%s\n' "$trigger" | awk '{print $2}')"
@@ -82,20 +89,12 @@ jobs:
 
           case "$runtime" in docker|podman) ;; *) echo "Unsupported runtime: $runtime" >&2; exit 2 ;; esac
           test -n "$gate"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            test -n "$demo_ref"
-            [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
-          fi
+          test -n "$demo_ref"
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
           printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
           printf 'gate=%s\n' "$gate" >> "$GITHUB_OUTPUT"
           printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
           printf 'demo_ref=%s\n' "$demo_ref" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout BaseHarbor
-        id: checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ steps.target.outputs.ref }}
 
       - name: Resolve immutable demo revision
         id: demo_revision
