@@ -26,13 +26,13 @@ import (
 )
 
 type kubernetesKeycloakRealization struct {
-	provider    Provider
-	application string
-	environment string
-	namespace   string
-	stateDir    string
-	instance    identityprovider.KeycloakInstance
-	portForward *exec.Cmd
+	provider     Provider
+	application  string
+	environment  string
+	namespace    string
+	stateDir     string
+	instance     identityprovider.KeycloakInstance
+	portForward  *exec.Cmd
 }
 
 func (r *kubernetesKeycloakRealization) Apply(ctx context.Context) (identityprovider.KeycloakInstance, error) {
@@ -348,11 +348,11 @@ func TestKubernetesCoreKeycloakIdentityLifecycle(t *testing.T) {
 	const appName = "bh-core-identity-proof"
 	const environment = "dev"
 	app := application.Manifest{
-		Version: application.CurrentVersion,
-		Name: appName,
+		Version:     application.CurrentVersion,
+		Name:        appName,
 		Environment: environment,
-		Services: application.Services{Identity: true},
-		Identity: application.IdentityRequirements{Scopes: []string{"openid", "profile", "email"}},
+		Services:    application.Services{Identity: true},
+		Identity:    application.IdentityRequirements{Scopes: []string{"openid", "profile", "email"}},
 	}
 
 	root := t.TempDir()
@@ -373,11 +373,11 @@ func TestKubernetesCoreKeycloakIdentityLifecycle(t *testing.T) {
 	}
 
 	realization := &kubernetesKeycloakRealization{
-		provider: provider,
+		provider:    provider,
 		application: appName,
 		environment: environment,
-		namespace: namespace,
-		stateDir: filepath.Join(root, "keycloak-state"),
+		namespace:   namespace,
+		stateDir:    filepath.Join(root, "keycloak-state"),
 	}
 	if err := os.MkdirAll(realization.stateDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -386,9 +386,9 @@ func TestKubernetesCoreKeycloakIdentityLifecycle(t *testing.T) {
 	driver := identityprovider.NewKeycloakDriverWithRealization(realization, app, files)
 	resource := capability.Resource{
 		Application: appName,
-		Kind: capability.Identity,
-		Name: "identity",
-		Provider: capability.ProviderKeycloak,
+		Kind:        capability.Identity,
+		Name:        "identity",
+		Provider:    capability.ProviderKeycloak,
 	}
 	binding := capability.Binding{
 		Resource: resource,
@@ -443,15 +443,15 @@ func selfSignedServerCertificate(host string) ([]byte, []byte, error) {
 	}
 	now := time.Now()
 	template := x509.Certificate{
-		SerialNumber: serial,
-		Subject: pkix.Name{CommonName: host},
-		NotBefore: now.Add(-time.Minute),
-		NotAfter: now.Add(24 * time.Hour),
-		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: host},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IsCA: true,
-		DNSNames: []string{host},
+		IsCA:                  true,
+		DNSNames:              []string{host},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
