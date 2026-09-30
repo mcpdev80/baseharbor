@@ -16,7 +16,7 @@ import (
 const DeploymentRecordVersion = 2
 
 type DeploymentIdentity struct {
-	DeploymentID string `json:"deployment_id"`
+	DeploymentID  string `json:"deployment_id"`
 	ApplicationID string `json:"application_id"`
 	Target        string `json:"target"`
 	Application   string `json:"application"`
@@ -29,11 +29,11 @@ func NewDeploymentIdentity(target, applicationID, application, environment strin
 		return DeploymentIdentity{}, err
 	}
 	identity := DeploymentIdentity{
-		DeploymentID: id,
+		DeploymentID:  id,
 		ApplicationID: strings.TrimSpace(applicationID),
-		Target: strings.TrimSpace(target),
-		Application: strings.TrimSpace(application),
-		Environment: strings.TrimSpace(environment),
+		Target:        strings.TrimSpace(target),
+		Application:   strings.TrimSpace(application),
+		Environment:   strings.TrimSpace(environment),
 	}
 	if err := identity.Validate(); err != nil {
 		return DeploymentIdentity{}, err
