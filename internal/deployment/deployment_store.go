@@ -192,8 +192,16 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 	if record.Identity.Target != target || record.Identity.DeploymentID != deploymentID {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: errors.New("deployment record identity does not match storage path")}
 	}
-	if expected != nil && record.Identity != *expected {
-		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: *expected, Kind: "corrupt", Err: errors.New("deployment record identity does not match requested identity")}
+	if expected != nil {
+		if record.Identity.Target != expected.Target ||
+			record.Identity.DeploymentID != expected.DeploymentID ||
+			record.Identity.ApplicationID != expected.ApplicationID {
+			return DeploymentRecord{}, &DeploymentRecordStateError{
+				Identity: *expected,
+				Kind:     "corrupt",
+				Err:      errors.New("deployment record technical identity does not match requested identity"),
+			}
+		}
 	}
 	return record, nil
 }
