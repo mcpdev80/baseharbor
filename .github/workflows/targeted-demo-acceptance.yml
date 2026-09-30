@@ -119,7 +119,7 @@ jobs:
 
       - name: Set up Go
         id: setup_go
-        if: steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
+        if: steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -260,7 +260,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
-          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
+          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.target.outputs.gate }}" != "debug-keycloak-readiness" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
             export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
