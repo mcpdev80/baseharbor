@@ -3,6 +3,7 @@ package serviceaccess
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -89,8 +90,8 @@ func TestVerifyBrowserSurfaceRejectsNonSuccessfulFinalResponse(t *testing.T) {
 func TestVerifyBrowserSurfaceAllowsExplicitCanonicalAuthority(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host == strings.TrimPrefix(server.URL, "https://") {
-			target := strings.Replace(server.URL, "127.0.0.1", "localhost", 1) + "/admin/"
+		if strings.HasPrefix(r.Host, "foo.example.com:") {
+			target := "https://bar.example.com:" + strings.Split(r.Host, ":")[1] + "/admin/"
 			http.Redirect(w, r, target, http.StatusFound)
 			return
 		}
@@ -98,8 +99,17 @@ func TestVerifyBrowserSurfaceAllowsExplicitCanonicalAuthority(t *testing.T) {
 	}))
 	defer server.Close()
 
-	allowed := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
-	if err := VerifyBrowserSurfaceWithAllowedAuthorities(context.Background(), server.Client(), server.URL+"/", allowed); err != nil {
+	client := server.Client()
+	transport := client.Transport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+	client.Transport = transport
+
+	port := strings.Split(strings.TrimPrefix(server.URL, "https://"), ":")[1]
+	startURL := "https://foo.example.com:" + port + "/"
+	allowed := "https://bar.example.com:" + port
+	if err := VerifyBrowserSurfaceWithAllowedAuthorities(context.Background(), client, startURL, allowed); err != nil {
 		t.Fatal(err)
 	}
 }
