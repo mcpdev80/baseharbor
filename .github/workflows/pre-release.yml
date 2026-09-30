@@ -141,11 +141,15 @@ jobs:
 
       - name: Run release-source tests
         id: source_tests
+        shell: bash
         run: |
-          go test ./internal/... ./spec/...
-          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
-          go vet ./...
-          go build ./cmd/baha
+          set -euo pipefail
+          logs="$RUNNER_TEMP/pre-release-source-logs"
+          mkdir -p "$logs"
+          go test ./internal/... ./spec/... 2>&1 | tee "$logs/go-test-internal-spec.log"
+          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
+          go vet ./... 2>&1 | tee "$logs/go-vet.log"
+          go build ./cmd/baha 2>&1 | tee "$logs/go-build.log"
 
       - name: Set up Python
         id: setup_python
@@ -260,6 +264,8 @@ jobs:
           Candidate upload	${{ steps.candidate_upload.outcome }}	prebuilt binary and runtime image shared with runtime suites
           Runner cleanup	${{ steps.cleanup.outcome }}	persistent Docker runner reset
           EOF
+          mkdir -p "$RUNNER_TEMP/pre-release-evidence/source-logs"
+          cp -a "$RUNNER_TEMP/pre-release-source-logs/." "$RUNNER_TEMP/pre-release-evidence/source-logs/" 2>/dev/null || true
           bash scripts/ci-evidence.sh \
             "$RUNNER_TEMP/pre-release-evidence" \
             "BaseHarbor Source/Build Pre-Release Evidence" \
