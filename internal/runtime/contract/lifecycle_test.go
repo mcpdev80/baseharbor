@@ -13,6 +13,16 @@ import (
 type seamTestProvider struct{}
 
 func (seamTestProvider) Kind() ProviderKind { return ProviderKubernetes }
+func (seamTestProvider) Descriptor() ProviderDescriptor {
+	return ProviderDescriptor{
+		Kind:            ProviderKubernetes,
+		ContractVersion: RuntimeProviderContractVersion,
+		ProviderVersion: "test",
+		WorkloadSources: []string{"compose-spec"},
+		Realization:     "test",
+		Capabilities:    seamTestProvider{}.Capabilities(),
+	}
+}
 func (seamTestProvider) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{WorkloadLifecycle: true}
 }
@@ -45,6 +55,7 @@ func TestInternalWorkloadProviderRemainsRuntimeOnly(t *testing.T) {
 	want := []string{
 		"Apply",
 		"Capabilities",
+		"Descriptor",
 		"Destroy",
 		"Exec",
 		"Kind",
