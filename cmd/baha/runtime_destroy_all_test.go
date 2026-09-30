@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestFullDestroyDryRunDoesNotMutateState(t *testing.T) {
@@ -104,5 +105,22 @@ func TestCountFullDestroyBlockersDistinguishesInformationalSkip(t *testing.T) {
 	)
 	if got := countFullDestroyBlockers(results); got != 2 {
 		t.Fatalf("cleanup blockers = %d, want 2", got)
+	}
+}
+
+
+func TestTargetOwnedRuntimeContainersFiltersOnlyTargetProjects(t *testing.T) {
+	containers := []bhruntime.RuntimeContainer{
+		{Name: "shared", Project: "bh-local-shared", Service: "postgres"},
+		{Name: "app", Project: "bh-local-demo-dev", Service: "demo-app"},
+		{Name: "other", Project: "bh-other-demo-dev", Service: "demo-app"},
+		{Name: "foreign", Project: "unrelated", Service: "x"},
+	}
+	got := targetOwnedRuntimeContainers("local", containers)
+	if len(got) != 2 {
+		t.Fatalf("target-owned containers = %#v, want 2", got)
+	}
+	if got[0].Project != "bh-local-demo-dev" || got[1].Project != "bh-local-shared" {
+		t.Fatalf("unexpected target-owned ordering/content: %#v", got)
 	}
 }
