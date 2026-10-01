@@ -83,6 +83,10 @@ func developmentWorkloadRoute(appOwner, host, upstreamHost, network string, file
 	return route
 }
 
+func developmentExposureUpstream(project, routeName, protocol string, port int) string {
+	return fmt.Sprintf("%s://%s:%d", protocol, devaccess.ProviderAlias(project, routeName), port)
+}
+
 func requiresDevelopmentGateway(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
@@ -431,7 +435,7 @@ func (e *applicationApplyExecution) addDevelopmentExposureRoutes(_ context.Conte
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
 				Key:        plan.appOwner + "/exposure/" + route.Name,
 				Host:       host,
-				Upstream:   fmt.Sprintf("%s://%s:%d", upstreamScheme, devaccess.ProviderAlias(state.Project, route.Name), containerPort),
+				Upstream:   developmentExposureUpstream(state.Project, route.Name, upstreamScheme, containerPort),
 				Network:    state.Network,
 				TrustFile:  trustFile,
 				ServerName: serverName,
