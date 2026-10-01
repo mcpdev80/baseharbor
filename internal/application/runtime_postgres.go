@@ -303,6 +303,7 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
     user: "rabbitmq"
     read_only: true
     cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETGID", "SETUID"]
     security_opt: ["no-new-privileges:true"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
