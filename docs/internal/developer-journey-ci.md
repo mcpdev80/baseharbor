@@ -118,9 +118,9 @@ Pre-release must pin and record both:
 - the exact BaseHarbor candidate SHA;
 - the exact `baseharbor-demo` SHA used as the external consumer contract.
 
-The pre-release approval is valid only when source/build validation, Docker runtime core, Podman runtime core and the complete external demo acceptance suite—including the guided human gate—are green.
+Pre-release is atomic-first. Static contract/DX gates run without provider containers. Docker and Podman gates run independently with the smallest declared resource profile for the behavior under test, including dedicated provider-semantic gates for durable key-value, MongoDB document storage and RabbitMQ queue/pubsub/stream semantics. A failed gate is debugged and repeated independently; successful unrelated gates are not rerun during diagnosis.
 
-The final release workflow consumes that immutable approval/evidence. It must not rerun the same expensive acceptance suite; it performs only checks/publishing that were not already proven by pre-release.
+The release-boundary approval is valid only when the complete expected atomic gate set is reproduced on one unchanged BaseHarbor candidate SHA and one pinned external demo SHA, every required gate reports success, and the immutable evidence manifest is complete. The final release workflow consumes that approval and must not rerun the same expensive acceptance work.
 
 ## Product rule
 

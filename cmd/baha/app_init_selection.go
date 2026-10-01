@@ -12,21 +12,29 @@ import (
 )
 
 type guidedInitSelection struct {
-	name                      string
-	environment               string
-	compose                   string
-	workloadServices          []string
-	selected                  []bool
-	sqlInstances              []string
-	cacheInstances            []string
-	objectStorageBuckets      []string
-	secretPolicies            []guidedSecretPolicy
-	sqlManagementUI           bool
-	cacheManagementUI         bool
-	objectStorageManagementUI bool
-	secretsManagementUI       bool
-	identityManagementUI      bool
-	observabilityManagementUI bool
+	name                         string
+	environment                  string
+	compose                      string
+	workloadServices             []string
+	selected                     []bool
+	sqlInstances                 []string
+	cacheInstances               []string
+	keyValueInstances            []string
+	documentDatabaseInstances    []string
+	messagingQueueInstances      []string
+	messagingPubSubInstances     []string
+	messagingStreamInstances     []string
+	objectStorageBuckets         []string
+	secretPolicies               []guidedSecretPolicy
+	sqlManagementUI              bool
+	cacheManagementUI            bool
+	keyValueManagementUI         bool
+	documentDatabaseManagementUI bool
+	messagingManagementUI        bool
+	objectStorageManagementUI    bool
+	secretsManagementUI          bool
+	identityManagementUI         bool
+	observabilityManagementUI    bool
 }
 
 func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (guidedInitSelection, error) {
@@ -55,34 +63,63 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		return selection, err
 	}
 
-	defaults := []bool{
-		d.SQL,
-		d.Cache,
-		d.ObjectStorage,
-		len(d.SecretCandidates) > 0,
-		false,
-		d.Metrics,
-		d.OTLP && len(d.OTLPSignals) > 0,
-		false,
-	}
+	defaults := make([]bool, guidedCapabilityCount)
+	defaults[guidedCapabilitySQL] = d.SQL
+	defaults[guidedCapabilityCache] = d.Cache
+	defaults[guidedCapabilityObjectStorage] = d.ObjectStorage
+	defaults[guidedCapabilitySecrets] = len(d.SecretCandidates) > 0
+	defaults[guidedCapabilityIdentity] = false
+	defaults[guidedCapabilityMetrics] = d.Metrics
+	defaults[guidedCapabilityOTLP] = d.OTLP && len(d.OTLPSignals) > 0
+	defaults[guidedCapabilityLogs] = false
 	selection.selected, err = promptCapabilityList(reader, out, defaults, len(selection.workloadServices) > 0)
 	if err != nil {
 		return selection, err
 	}
 
-	if selection.selected[0] {
+	if selection.selected[guidedCapabilitySQL] {
 		selection.sqlInstances, err = promptServiceInstances(reader, out, "PostgreSQL", d.SQLInstances)
 		if err != nil {
 			return selection, err
 		}
 	}
-	if selection.selected[1] {
-		selection.cacheInstances, err = promptServiceInstances(reader, out, "Valkey / Redis", d.CacheInstances)
+	if selection.selected[guidedCapabilityCache] {
+		selection.cacheInstances, err = promptServiceInstances(reader, out, "Valkey / Redis cache", d.CacheInstances)
 		if err != nil {
 			return selection, err
 		}
 	}
-	if selection.selected[2] {
+	if selection.selected[guidedCapabilityDurableKeyValue] {
+		selection.keyValueInstances, err = promptServiceInstances(reader, out, "Durable Valkey / Redis", nil)
+		if err != nil {
+			return selection, err
+		}
+	}
+	if selection.selected[guidedCapabilityDocumentDatabase] {
+		selection.documentDatabaseInstances, err = promptServiceInstances(reader, out, "MongoDB-compatible document database", nil)
+		if err != nil {
+			return selection, err
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingQueue] {
+		selection.messagingQueueInstances, err = promptServiceInstances(reader, out, "Messaging queue", nil)
+		if err != nil {
+			return selection, err
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingPubSub] {
+		selection.messagingPubSubInstances, err = promptServiceInstances(reader, out, "Messaging pub/sub", nil)
+		if err != nil {
+			return selection, err
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingStream] {
+		selection.messagingStreamInstances, err = promptServiceInstances(reader, out, "Messaging stream", nil)
+		if err != nil {
+			return selection, err
+		}
+	}
+	if selection.selected[guidedCapabilityObjectStorage] {
 		selection.objectStorageBuckets, err = promptServiceInstances(reader, out, "S3 buckets", nil)
 		if err != nil {
 			return selection, err
@@ -91,7 +128,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 			selection.objectStorageBuckets = []string{"default"}
 		}
 	}
-	if selection.selected[3] {
+	if selection.selected[guidedCapabilitySecrets] {
 		printManagedCredentialSummary(out, selection.selected, len(d.RuntimePermissions) > 0)
 		selection.secretPolicies, err = promptSecretPolicies(reader, out, d.SecretCandidates, d.SecretSources)
 		if err != nil {
@@ -110,43 +147,60 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	}
 
 	if appInitReaderIsRealTerminal(appInitInput) {
-		if selection.selected[0] {
+		if selection.selected[guidedCapabilitySQL] {
 			selection.sqlManagementUI, err = promptOptionalYesNo(reader, out, "PostgreSQL management UI?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-		if selection.selected[1] {
+		if selection.selected[guidedCapabilityCache] {
 			selection.cacheManagementUI, err = promptOptionalYesNo(reader, out, "Cache management UI?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-		if selection.selected[2] {
+		if selection.selected[guidedCapabilityDurableKeyValue] {
+			selection.keyValueManagementUI, err = promptOptionalYesNo(reader, out, "Durable key-value management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[guidedCapabilityDocumentDatabase] {
+			selection.documentDatabaseManagementUI, err = promptOptionalYesNo(reader, out, "Document database management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[guidedCapabilityMessagingQueue] || selection.selected[guidedCapabilityMessagingPubSub] || selection.selected[guidedCapabilityMessagingStream] {
+			selection.messagingManagementUI, err = promptOptionalYesNo(reader, out, "Messaging management UI?", false)
+			if err != nil {
+				return selection, err
+			}
+		}
+		if selection.selected[guidedCapabilityObjectStorage] {
 			selection.objectStorageManagementUI, err = promptOptionalYesNo(reader, out, "Object storage management UI?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-		if selection.selected[3] {
+		if selection.selected[guidedCapabilitySecrets] {
 			selection.secretsManagementUI, err = promptOptionalYesNo(reader, out, "Secrets management UI?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-		if selection.selected[4] {
+		if selection.selected[guidedCapabilityIdentity] {
 			selection.identityManagementUI, err = promptOptionalYesNo(reader, out, "Identity management UI?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-		if selection.selected[5] {
+		if selection.selected[guidedCapabilityMetrics] {
 			selection.observabilityManagementUI, err = promptOptionalYesNo(reader, out, "Observability management UI (Prometheus)?", false)
 			if err != nil {
 				return selection, err
 			}
 		}
-
 	}
 	return selection, nil
 }
@@ -183,10 +237,10 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	m := detectedApplicationManifest(
 		selection.name,
 		selection.environment,
-		selection.selected[0],
-		selection.selected[1],
-		selection.selected[2],
-		selection.selected[3],
+		selection.selected[guidedCapabilitySQL],
+		selection.selected[guidedCapabilityCache],
+		selection.selected[guidedCapabilityObjectStorage],
+		selection.selected[guidedCapabilitySecrets],
 		selection.compose != "" && len(selection.workloadServices) > 0,
 	)
 	if len(selection.sqlInstances) > 0 {
@@ -195,14 +249,47 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	if len(selection.cacheInstances) > 0 {
 		m = application.WithCacheInstances(m, selection.cacheInstances...)
 	}
+	if selection.selected[guidedCapabilityDurableKeyValue] {
+		m.Services.KeyValue = true
+		if len(selection.keyValueInstances) > 0 {
+			m = application.WithKeyValueInstances(m, selection.keyValueInstances...)
+		}
+	}
+	if selection.selected[guidedCapabilityDocumentDatabase] {
+		m.Services.DocumentDatabase = true
+		if len(selection.documentDatabaseInstances) > 0 {
+			m = application.WithDocumentDatabaseInstances(m, selection.documentDatabaseInstances...)
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingQueue] {
+		m.Services.MessagingQueue = true
+		if len(selection.messagingQueueInstances) > 0 {
+			m = application.WithMessagingQueueInstances(m, selection.messagingQueueInstances...)
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingPubSub] {
+		m.Services.MessagingPubSub = true
+		if len(selection.messagingPubSubInstances) > 0 {
+			m = application.WithMessagingPubSubInstances(m, selection.messagingPubSubInstances...)
+		}
+	}
+	if selection.selected[guidedCapabilityMessagingStream] {
+		m.Services.MessagingStream = true
+		if len(selection.messagingStreamInstances) > 0 {
+			m = application.WithMessagingStreamInstances(m, selection.messagingStreamInstances...)
+		}
+	}
 	if len(selection.objectStorageBuckets) > 0 {
 		m = application.WithObjectStorageBuckets(m, selection.objectStorageBuckets...)
 	}
-	if selection.selected[4] {
+	if selection.selected[guidedCapabilityIdentity] {
 		m = application.WithIdentity(m)
 	}
 	m.Services.SQLManagementUI = selection.sqlManagementUI
 	m.Services.CacheManagementUI = selection.cacheManagementUI
+	m.Services.KeyValueManagementUI = selection.keyValueManagementUI
+	m.Services.DocumentDatabaseManagementUI = selection.documentDatabaseManagementUI
+	m.Services.MessagingManagementUI = selection.messagingManagementUI
 	m.Services.ObjectStorageManagementUI = selection.objectStorageManagementUI
 	m.Services.SecretsManagementUI = selection.secretsManagementUI
 	m.Services.IdentityManagementUI = selection.identityManagementUI
@@ -230,7 +317,7 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 }
 
 func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection, m application.Manifest) (application.Manifest, error) {
-	if selection.selected[5] {
+	if selection.selected[guidedCapabilityMetrics] {
 		service, port, ok := detectedMetricsTarget(d, selection.workloadServices)
 		if !ok {
 			var err error
@@ -241,7 +328,7 @@ func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDet
 		}
 		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
 	}
-	if selection.selected[6] {
+	if selection.selected[guidedCapabilityOTLP] {
 		defaultSignals := strings.Join(d.OTLPSignals, ",")
 		if defaultSignals == "" {
 			defaultSignals = "traces"
@@ -256,7 +343,7 @@ func addGuidedObservability(reader *bufio.Reader, out io.Writer, d appProjectDet
 		}
 		m = application.WithOTLPTelemetry(m, signals...)
 	}
-	if selection.selected[7] {
+	if selection.selected[guidedCapabilityLogs] {
 		m = application.WithLogsCollection(m, "application")
 	}
 	return m, nil

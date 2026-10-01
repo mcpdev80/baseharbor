@@ -84,7 +84,7 @@ func repositoryControlStateFingerprint(resolved resolvedApplication) (string, er
 			return "", fmt.Errorf("read source identity model for control fingerprint: %w", readErr)
 		}
 		write(".baseharbor/sources.yaml", data)
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, development.ErrWorkspaceModelMissing) {
 		return "", fmt.Errorf("load source identity model for control fingerprint: %w", err)
 	}
 
@@ -160,7 +160,7 @@ func writeRepositoryTreeFingerprint(ctx context.Context, write func(string, []by
 
 func fingerprintResolvedWorkspace(ctx context.Context, resolved resolvedApplication, write func(string, []byte)) error {
 	model, sourceModelPath, err := development.LoadSourceModel(resolved.ManifestPath)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, development.ErrWorkspaceModelMissing) {
 		return nil
 	}
 	if err != nil {

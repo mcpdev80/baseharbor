@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Guided and deterministic application initialization now expose the full v0.4.19 capability catalog, including durable key-value, document database and queue/pub-sub/stream messaging, with matching optional management-UI intent.
+- Recovery discovery now makes durable key-value, document-database and messaging state classes explicitly addressable; unsupported scoped recovery fails closed instead of silently omitting those durable contributors.
+- Capability/provider conformance tests now derive coverage from the shipped specification catalog and include Keycloak, external OIDC, RabbitMQ and MongoDB reference integrations.
+
 - Non-interactive lifecycle flags and host-memory approvals now propagate consistently across top-level CLI, application lifecycle and MCP; TIGHT memory remains an explicit approval decision while unsafe memory conditions still fail closed.
 - Required-secret prompting preserves buffered PTY input across confirmation and hidden entry, preventing remotely driven terminals from losing secret values between prompts.
 - Workload startup failures retain bounded, secret-redacted runtime diagnostics for verbose troubleshooting, and failed rebuilt candidates invalidate their verified source fingerprint so later retries cannot reuse a failed mutable image as `source unchanged`.

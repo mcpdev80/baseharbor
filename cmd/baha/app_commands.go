@@ -20,7 +20,7 @@ func appCreateCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "create",
 		Summary: "Create an application manifest in BaseHarbor state",
-		Usage:   "baha app create NAME [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app create NAME [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...",
 		Long:    "Creates BaseHarbor-managed declarative application source on the effective Target; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			m, err := manifestFromCreateArgs(args)

@@ -46,12 +46,11 @@ func TestRunWithTimeoutRefreshesDeadlineForEveryCheck(t *testing.T) {
 	}
 }
 
-
 func TestRunPreservesTypedErrorIdentity(t *testing.T) {
 	want := errors.New("typed preflight cause")
 	results, ok := Run(context.Background(), []Check{{
 		Name: "typed",
-		Run: func(context.Context) error { return want },
+		Run:  func(context.Context) error { return want },
 	}})
 	if ok || len(results) != 1 {
 		t.Fatalf("unexpected result: ok=%v results=%#v", ok, results)

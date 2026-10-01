@@ -196,7 +196,6 @@ func TestFailedBuildCandidateInvalidatesVerifiedFingerprintState(t *testing.T) {
 	}
 }
 
-
 func TestSanitizeWorkloadDiagnosticRedactsInjectedValues(t *testing.T) {
 	const secret = "super-secret-value"
 	got := sanitizeWorkloadDiagnostic("panic: token="+secret+"\n", map[string]string{"APP_SECRET": secret})
