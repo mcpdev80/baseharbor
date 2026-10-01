@@ -29,7 +29,7 @@ permissions:
 jobs:
   source:
     name: Source · Contracts · Docs
-    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    runs-on: [self-hosted, Linux, X64, baseharbor, kubernetes, k3s]
     timeout-minutes: 45
     outputs:
       tag: ${{ steps.release.outputs.tag }}
