@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
+	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
 )
 
 func providerPlacementEnvToken(provider capability.ProviderKind) string {
@@ -160,7 +160,6 @@ func ProviderPlacementNameToken(value string) string {
 	}
 	return fmt.Sprintf("%s-%x", base, sum[:4])
 }
-
 
 func resolveOrganizationProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
 	state, ok, err := orgconfig.LoadActiveOptional()
