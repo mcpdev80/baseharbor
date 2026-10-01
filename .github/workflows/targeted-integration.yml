@@ -1,0 +1,120 @@
+name: "Targeted · Integration"
+
+run-name: "Targeted · Integration · ${{ inputs.gate }} · ${{ inputs.ref }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: Focused integration gate
+        required: true
+        default: app-backup-restore
+        type: choice
+        options:
+          - app-backup-restore
+          - metrics
+          - openbao-backup
+          - otlp
+          - postgres-backup
+          - shared-postgres
+          - shared-valkey
+      ref:
+        description: Git ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: targeted-integration-${{ inputs.gate }}-${{ inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused:
+    name: ${{ inputs.gate }}
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:targeted-integration
+      GOTOOLCHAIN: local
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset Docker runner state
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Build BaseHarbor control-plane image
+        if: inputs.gate == 'app-backup-restore'
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
+      - name: Application backup and restore
+        if: inputs.gate == 'app-backup-restore'
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' -count=1 -v
+
+      - name: Metrics ingestion
+        if: inputs.gate == 'metrics'
+        env:
+          BASEHARBOR_METRICS_INTEGRATION: "1"
+        run: go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -v
+
+      - name: OpenBao backup and restore
+        if: inputs.gate == 'openbao-backup'
+        env:
+          BASEHARBOR_OPENBAO_BACKUP_ACCEPTANCE: "true"
+        run: go test ./internal/openbao -run '^TestApplicationSecretBackupRestoreRealOpenBao$' -count=1 -v
+
+      - name: OTLP export
+        if: inputs.gate == 'otlp'
+        env:
+          BASEHARBOR_OTLP_INTEGRATION: "1"
+        run: go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport$' -count=1 -v
+
+      - name: PostgreSQL backup and restore
+        if: inputs.gate == 'postgres-backup'
+        env:
+          BASEHARBOR_POSTGRES_BACKUP_INTEGRATION: "1"
+        run: go test ./internal/application -run '^TestPostgresBackupDisasterRecovery$' -count=1 -v
+
+      - name: Shared PostgreSQL focused checks
+        if: inputs.gate == 'shared-postgres'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -count=1 -run '^(TestSharedPostgres|TestVerifySharedPostgres|TestResolveProviderPlacement|TestReferenceProviderRegistry|TestRegisterReferenceProviders|TestProviderRegistry|TestPostgresBackup|TestPostgresRestore|TestDumpPostgres|TestRestorePostgres)'
+          go test ./cmd/baha ./internal/capability -run '^$'
+          BASEHARBOR_SHARED_POSTGRES_INTEGRATION=1 go test -p 1 ./internal/application -count=1 -run '^TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy$' -v
+
+      - name: Shared Valkey focused checks
+        if: inputs.gate == 'shared-valkey'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -count=1 -run '^(TestSharedValkey|TestVerifySharedValkey|TestResolveProviderPlacement|TestReferenceProviderRegistry|TestRegisterReferenceProviders|TestProviderRegistry)'
+          go test ./internal/capability -count=1 -run '^(TestReference|TestProvider|TestRegistry)'
+          go test ./cmd/baha ./internal/capability -run '^$'
+          BASEHARBOR_SHARED_VALKEY_INTEGRATION=1 go test -p 1 ./internal/application -count=1 -run '^TestSharedValkeyTwoApplicationIsolationDestroy$' -v
+
+      - name: Runtime diagnostics
+        if: failure()
+        shell: bash
+        run: bash scripts/ci-failure-diagnostics.sh docker "$RUNNER_TEMP/targeted-integration-diagnostics" "$GITHUB_WORKSPACE" || true
+
+      - name: Cleanup Docker runner state
+        if: always()
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
