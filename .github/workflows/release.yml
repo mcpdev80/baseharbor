@@ -176,6 +176,7 @@ jobs:
             | .name // empty
           ' <<<"${artifacts_json}")"
 
+          split_pre_release="false"
           if [ -z "${approval_artifact}" ]; then
             approval_artifact="$(jq -r '
               [.artifacts[]
@@ -184,17 +185,45 @@ jobs:
               | first
               | .name // empty
             ' <<<"${artifacts_json}")"
-            test -n "${approval_artifact}" || {
-              echo "Pre-Release run has no immutable approval or combined gate evidence artifact." >&2
-              exit 1
-            }
-            legacy_pre_release="true"
-            echo "Using legacy combined gate evidence from Pre-Release run ${run_id}."
+            if [ -n "${approval_artifact}" ]; then
+              legacy_pre_release="true"
+              echo "Using legacy combined gate evidence from Pre-Release run ${run_id}."
+            else
+              required_split_prefixes=(
+                "pre-release-source-evidence-"
+                "pre-release-docker-normal-evidence-"
+                "pre-release-docker-operations-evidence-"
+                "pre-release-podman-normal-evidence-"
+                "pre-release-podman-operations-evidence-"
+              )
+              missing_split=()
+              for prefix in "${required_split_prefixes[@]}"; do
+                artifact="$(jq -r --arg prefix "${prefix}" '
+                  [.artifacts[]
+                   | select(.expired == false)
+                   | select(.name | startswith($prefix))]
+                  | first
+                  | .name // empty
+                ' <<<"${artifacts_json}")"
+                if [ -z "${artifact}" ]; then
+                  missing_split+=("${prefix}")
+                fi
+              done
+              if [ "${#missing_split[@]}" -ne 0 ]; then
+                echo "Pre-Release run is missing required split evidence artifacts:" >&2
+                printf '  %s\n' "${missing_split[@]}" >&2
+                exit 1
+              fi
+              approval_artifact="split-pre-release-evidence"
+              split_pre_release="true"
+              legacy_pre_release="false"
+              echo "Using complete split pre-release evidence from run ${run_id}."
+            fi
           else
             legacy_pre_release="false"
           fi
 
-          if [ "${legacy_pre_release}" = "false" ]; then
+          if [ "${legacy_pre_release}" = "false" ] && [ "${split_pre_release}" = "false" ]; then
             approval_dir="${RUNNER_TEMP}/pre-release-approval"
             rm -rf "${approval_dir}"
             mkdir -p "${approval_dir}"
@@ -210,7 +239,11 @@ jobs:
               exit 1
             }
           else
-            demo_sha="legacy-unpinned"
+            demo_sha="$(git show "${tested_sha}:docs/releases/${tag}.demo-ref" | tr -d '[:space:]')"
+            [[ "${demo_sha}" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Pre-Release candidate does not pin an exact baseharbor-demo SHA." >&2
+              exit 1
+            }
           fi
 
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
