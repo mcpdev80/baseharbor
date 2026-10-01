@@ -24,6 +24,7 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		ComposeCandidates:      append([]string(nil), result.ComposeCandidates...),
 		Compose:                result.SelectedCompose,
 		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
+		WorkloadProtocols:      map[string]string{},
 		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
 		AmbiguousServices:      append([]string(nil), result.AmbiguousServices...),
 		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
@@ -33,6 +34,13 @@ func detectAppProject(root string) (appProjectDetection, error) {
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
+	}
+	if strings.TrimSpace(result.SelectedCompose) != "" {
+		if analysis, analyzeErr := repositoryinspect.AnalyzeComposeFile(root, result.SelectedCompose); analyzeErr == nil {
+			for service, protocol := range analysis.WorkloadProtocols {
+				d.WorkloadProtocols[service] = protocol
+			}
+		}
 	}
 	for _, artifact := range result.Artifacts {
 		if artifact.Kind == "env" {
@@ -279,6 +287,42 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 		return slugifyAppName(serviceName)
 	}
 	return name
+}
+
+func detectedHTTPExposureTarget(d appProjectDetection, workloadServices []string) (string, int, bool) {
+	allowed := map[string]struct{}{}
+	for _, service := range workloadServices {
+		allowed[service] = struct{}{}
+	}
+	type target struct {
+		service string
+		port    int
+	}
+	var targets []target
+	seen := map[string]struct{}{}
+	for _, item := range d.Ports {
+		if _, ok := allowed[item.Service]; !ok {
+			continue
+		}
+		protocol := strings.ToLower(strings.TrimSpace(d.WorkloadProtocols[item.Service]))
+		if protocol != "http" && protocol != "https" {
+			continue
+		}
+		port, ok := composeTargetPort(item.Value)
+		if !ok {
+			continue
+		}
+		key := item.Service + ":" + strconv.Itoa(port)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		targets = append(targets, target{service: item.Service, port: port})
+	}
+	if len(targets) != 1 {
+		return "", 0, false
+	}
+	return targets[0].service, targets[0].port, true
 }
 
 func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (string, int, bool) {
