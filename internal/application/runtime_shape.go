@@ -1,10 +1,10 @@
 package application
 
 // HasManagedRuntimeServices reports whether BaseHarbor owns a materialized
-// PostgreSQL or Valkey runtime for the application. Shared object storage uses
+// PostgreSQL, Valkey or RabbitMQ runtime for the application. Shared object storage uses
 // its own lazy provider runtime and is intentionally not part of this project.
 func HasManagedRuntimeServices(m Manifest) bool {
-	return len(SQLInstanceNames(m)) > 0 || len(ValkeyInstanceNames(m)) > 0
+	return len(SQLInstanceNames(m)) > 0 || len(ValkeyInstanceNames(m)) > 0 || len(RabbitMQInstanceNames(m)) > 0
 }
 
 // HasObjectStorage reports whether the application explicitly requests at least

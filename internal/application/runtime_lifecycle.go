@@ -46,6 +46,13 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			)
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		service := runtimeServiceName("rabbitmq", instance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+		)
+	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
 	}

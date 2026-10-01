@@ -174,7 +174,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: RabbitMQ,
 		Services:        []ServiceKind{ServiceMessaging},
 		Capabilities:    []SpecificationID{MessagingQueueV1.ID, MessagingPubSubV1.ID, MessagingStreamV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
