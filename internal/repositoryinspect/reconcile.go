@@ -1,17 +1,13 @@
 package repositoryinspect
 
-import (
-	"sort"
-
-	"github.com/mcpdev80/baseharbor/internal/application"
-)
+import "sort"
 
 // Reconcile compares read-only repository evidence with the explicit application
 // contract. It never mutates the manifest. In particular, "stale" means only
 // that current inspection did not rediscover evidence; it is never permission
 // to remove a declared capability.
-func Reconcile(findings []Finding, manifest *application.Manifest) ([]CapabilityIntent, []ReconciliationItem) {
-	declared := declaredCapabilityIntents(manifest)
+func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityIntent, []ReconciliationItem) {
+	declared = append([]CapabilityIntent(nil), declared...)
 	items := make([]ReconciliationItem, 0, len(declared)+len(findings))
 	matchedFinding := make([]bool, len(findings))
 
@@ -84,38 +80,6 @@ func Reconcile(findings []Finding, manifest *application.Manifest) ([]Capability
 		return items[i].Name < items[j].Name
 	})
 	return declared, items
-}
-
-func declaredCapabilityIntents(manifest *application.Manifest) []CapabilityIntent {
-	if manifest == nil {
-		return nil
-	}
-	var intents []CapabilityIntent
-	for _, name := range application.SQLInstanceNames(*manifest) {
-		intents = append(intents, CapabilityIntent{Capability: "database.sql", Name: name, Direction: DirectionConsume})
-	}
-	for _, name := range application.CacheInstanceNames(*manifest) {
-		intents = append(intents, CapabilityIntent{Capability: "cache.key-value", Name: name, Direction: DirectionConsume})
-	}
-	for _, name := range application.KeyValueInstanceNames(*manifest) {
-		intents = append(intents, CapabilityIntent{Capability: "database.key-value", Name: name, Direction: DirectionConsume})
-	}
-	for _, name := range application.ObjectStorageBucketNames(*manifest) {
-		intents = append(intents, CapabilityIntent{Capability: "object-storage.s3", Name: name, Direction: DirectionConsume})
-	}
-	if manifest.Services.Secrets {
-		intents = append(intents, CapabilityIntent{Capability: "secrets", Direction: DirectionConsume})
-	}
-	for _, exposure := range manifest.Exposures {
-		intents = append(intents, CapabilityIntent{Capability: "exposure.http", Name: exposure.Name, Direction: DirectionProvide})
-	}
-	if application.HasOTLPTelemetry(*manifest) {
-		intents = append(intents, CapabilityIntent{Capability: "telemetry.otlp", Name: "default", Direction: DirectionExport})
-	}
-	for _, source := range manifest.Metrics.Sources {
-		intents = append(intents, CapabilityIntent{Capability: "metrics", Name: source.Name, Direction: DirectionProvide})
-	}
-	return intents
 }
 
 func findingMatchesIntent(finding Finding, intent CapabilityIntent) bool {

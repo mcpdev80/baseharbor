@@ -41,7 +41,9 @@ func (Adapter) Detect(root string) (development.Detection, error) {
 
 func (Adapter) Supports(r capability.Requirement) bool {
 	switch r.Kind {
-	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
+	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+		capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
+		capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
 		return true
 	default:
 		return false
@@ -70,6 +72,19 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 		case capability.KeyValue:
 			add(development.ActionDependency, r.Kind, "io.quarkus:quarkus-redis-client", "")
 			add(development.ActionBinding, r.Kind, "REDIS_URL", "")
+			add(development.ActionBinding, r.Kind, "REDIS_CA_FILE", "")
+		case capability.DurableKeyValue:
+			add(development.ActionDependency, r.Kind, "io.quarkus:quarkus-redis-client", "")
+			add(development.ActionBinding, r.Kind, "VALKEY_URL", "")
+			add(development.ActionBinding, r.Kind, "VALKEY_CA_FILE", "")
+		case capability.DocumentDatabase:
+			add(development.ActionDependency, r.Kind, "io.quarkus:quarkus-mongodb-client", "")
+			add(development.ActionBinding, r.Kind, "MONGODB_URL", "")
+			add(development.ActionBinding, r.Kind, "MONGODB_CA_FILE", "")
+		case capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream:
+			add(development.ActionDependency, r.Kind, "io.quarkus:quarkus-messaging-rabbitmq", "")
+			add(development.ActionBinding, r.Kind, "AMQP_URL", "")
+			add(development.ActionBinding, r.Kind, "RABBITMQ_CA_FILE", "")
 		case capability.ObjectStorageS3:
 			add(development.ActionDependency, r.Kind, "software.amazon.awssdk:s3", "2.55.6")
 			add(development.ActionBinding, r.Kind, "S3_ENDPOINT", "")
@@ -171,6 +186,12 @@ func renderProperties(bindings map[string]struct{}) string {
 	}
 	if _, ok := bindings["REDIS_URL"]; ok {
 		b.WriteString("quarkus.redis.hosts=${REDIS_URL}\n")
+	}
+	if _, ok := bindings["VALKEY_URL"]; ok {
+		b.WriteString("quarkus.redis.durable.hosts=${VALKEY_URL}\n")
+	}
+	if _, ok := bindings["MONGODB_URL"]; ok {
+		b.WriteString("quarkus.mongodb.connection-string=${MONGODB_URL}\n")
 	}
 	if _, ok := bindings["OTEL_EXPORTER_OTLP_ENDPOINT"]; ok {
 		b.WriteString("quarkus.otel.exporter.otlp.endpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}\n")

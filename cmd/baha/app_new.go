@@ -34,7 +34,7 @@ func appNewCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
-		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus | --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
+		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus | --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
 		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) == 0 {
@@ -149,6 +149,16 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 			addCapability(capability.SQL)
 		case "--cache":
 			addCapability(capability.KeyValue)
+		case "--key-value", "--durable-key-value":
+			addCapability(capability.DurableKeyValue)
+		case "--document-db", "--document-database":
+			addCapability(capability.DocumentDatabase)
+		case "--queue":
+			addCapability(capability.MessagingQueue)
+		case "--pubsub":
+			addCapability(capability.MessagingPubSub)
+		case "--stream":
+			addCapability(capability.MessagingStream)
 		case "--s3":
 			addCapability(capability.ObjectStorageS3)
 		case "--secrets":
@@ -158,7 +168,11 @@ func parseAppNewOptions(args []string) (appNewOptions, error) {
 		case "--emit-backstage":
 			options.EmitBackstage = true
 		case "--all":
-			for _, kind := range []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP} {
+			for _, kind := range []capability.Kind{
+				capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+				capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
+				capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP,
+			} {
 				addCapability(kind)
 			}
 		case "--environment", "-e", "--directory", "--stack", "--stack-profile", "--require-secret", "--backstage-owner", "--backstage-lifecycle", "--output", "-o":
@@ -229,6 +243,16 @@ func developmentCapabilityKinds(values []string) ([]capability.Kind, error) {
 			kind = capability.SQL
 		case "cache", "cache.key-value":
 			kind = capability.KeyValue
+		case "key-value", "durable-key-value", "database.key-value":
+			kind = capability.DurableKeyValue
+		case "document", "document-db", "document-database", "database.document":
+			kind = capability.DocumentDatabase
+		case "queue", "messaging.queue":
+			kind = capability.MessagingQueue
+		case "pubsub", "pub-sub", "messaging.pubsub":
+			kind = capability.MessagingPubSub
+		case "stream", "messaging.stream":
+			kind = capability.MessagingStream
 		case "s3", "object-storage.s3":
 			kind = capability.ObjectStorageS3
 		case "secrets":
@@ -236,7 +260,7 @@ func developmentCapabilityKinds(values []string) ([]capability.Kind, error) {
 		case "telemetry", "otlp", "telemetry.otlp":
 			kind = capability.TelemetryOTLP
 		default:
-			return nil, usageError("unsupported greenfield capability "+value, "Use exposure.http, database.sql, cache.key-value, object-storage.s3, secrets or telemetry.otlp.")
+			return nil, usageError("unsupported greenfield capability "+value, "Use exposure.http, database.sql, cache.key-value, database.key-value, database.document, messaging.queue, messaging.pubsub, messaging.stream, object-storage.s3, secrets or telemetry.otlp.")
 		}
 		if _, exists := seen[kind]; exists {
 			continue

@@ -15,10 +15,17 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 		Name:        "catalog",
 		Environment: "dev",
 		Services: application.Services{
-			SQL:           true,
-			Cache:         true,
-			ObjectStorage: true,
-			Secrets:       true,
+			SQL:               true,
+			Cache:             true,
+			KeyValue:          true,
+			DocumentDatabase:  true,
+			MessagingQueue:    true,
+			MessagingPubSub:   true,
+			MessagingStream:   true,
+			ObjectStorage:     true,
+			Secrets:           true,
+			CacheInstances:    map[string]application.ServiceInstance{"cache": {}},
+			KeyValueInstances: map[string]application.ServiceInstance{"durable": {}},
 		},
 		Secrets: application.SecretRequirements{
 			Required: []application.SecretRequirement{{Name: "APP_SECRET"}},
@@ -47,6 +54,11 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 	}
 	requireAction(t, actions, development.ActionDependency, capability.SQL, "github.com/jackc/pgx/v5")
 	requireAction(t, actions, development.ActionDependency, capability.KeyValue, "github.com/redis/go-redis/v9")
+	requireAction(t, actions, development.ActionDependency, capability.DurableKeyValue, "github.com/redis/go-redis/v9")
+	requireAction(t, actions, development.ActionDependency, capability.DocumentDatabase, "go.mongodb.org/mongo-driver/v2")
+	requireAction(t, actions, development.ActionDependency, capability.MessagingQueue, "github.com/rabbitmq/amqp091-go")
+	requireAction(t, actions, development.ActionDependency, capability.MessagingPubSub, "github.com/rabbitmq/amqp091-go")
+	requireAction(t, actions, development.ActionDependency, capability.MessagingStream, "github.com/rabbitmq/amqp091-go")
 	requireAction(t, actions, development.ActionDependency, capability.ObjectStorageS3, "github.com/aws/aws-sdk-go-v2/service/s3")
 	requireAction(t, actions, development.ActionDependency, capability.TelemetryOTLP, "go.opentelemetry.io/otel")
 	requireAction(t, actions, development.ActionBinding, capability.Secrets, "APP_SECRET")

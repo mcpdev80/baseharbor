@@ -25,6 +25,14 @@ func (keyValueDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Findin
 	return detectCapability(ctx, snapshot, "cache.key-value", keyValueSignals())
 }
 
+type documentDatabaseDetector struct{}
+
+func (documentDatabaseDetector) Name() string { return "database.document" }
+
+func (documentDatabaseDetector) Detect(ctx context.Context, snapshot Snapshot) ([]Finding, error) {
+	return detectCapability(ctx, snapshot, "database.document", documentDatabaseSignals())
+}
+
 type signalSet struct {
 	env        []string
 	compose    []string
@@ -57,6 +65,18 @@ func keyValueSignals() signalSet {
 	}
 }
 
+func documentDatabaseSignals() signalSet {
+	return signalSet{
+		env:     []string{"MONGODB_URL", "MONGO_URL"},
+		compose: []string{"mongodb", "mongo"},
+		dependency: []string{
+			"mongodb", "mongo-driver", "mongoose", "pymongo", "motor",
+		},
+		imports: []string{"mongodb", "mongo-driver", "mongoose", "pymongo", "motor"},
+		config:  []string{"mongodb://", "mongodb+srv://"},
+	}
+}
+
 func detectCapability(ctx context.Context, snapshot Snapshot, capability string, signals signalSet) ([]Finding, error) {
 	var detected, suggested, possible []Evidence
 	namedDetected := map[string][]Evidence{}
@@ -81,6 +101,9 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 				case "cache.key-value":
 					matches = service.Redis
 					instanceKind = "redis"
+				case "database.document":
+					matches = service.MongoDB
+					instanceKind = "mongodb"
 				default:
 					matches = containsAny(strings.ToLower(service.Name), signals.compose)
 				}
